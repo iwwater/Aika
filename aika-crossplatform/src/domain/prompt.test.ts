@@ -24,8 +24,17 @@ describe("buildInstructions", () => {
     expect(instructions).not.toContain("接触日语");
   });
 
-  it("包含 code-switch 规则", () => {
-    expect(buildInstructions(context(), persona)).toContain("整句用中文回应");
+  it("双语规则写成一个人，而不是两种可切换的模式", () => {
+    const instructions = buildInstructions(context(), persona);
+    expect(instructions).toContain("两种话对你没有主次之分");
+    expect(instructions).toContain("一句话里混着说");
+    // 不能再出现「默认某语言 / 满足条件才切换」这种二元表述
+    expect(instructions).not.toContain("默认用自然、口语化的日语");
+  });
+
+  it("输出契约允许原话本身就是中日混说", () => {
+    const instructions = buildInstructions(context(), persona);
+    expect(instructions).toContain("中日混着也照原样写");
   });
 
   it("保留反模板句规则", () => {

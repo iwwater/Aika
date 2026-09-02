@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { LoaderCircle, Mic, X } from "lucide-react";
-import type { VoiceCaption, VoiceInputLanguage, VoicePhase } from "../services/voice/contracts";
+import type { VoiceCaption, VoicePhase } from "../services/voice/contracts";
 
 interface VoiceModalProps {
   phase: VoicePhase;
@@ -8,8 +8,6 @@ interface VoiceModalProps {
   error: string;
   captions: VoiceCaption[];
   speakingCaptionId: number | null;
-  language: VoiceInputLanguage;
-  onLanguageChange(language: VoiceInputLanguage): void;
   onInterrupt(): void;
   onClose(): void;
 }
@@ -35,14 +33,10 @@ export function VoiceModal(props: VoiceModalProps) {
           <div className="voice-avatar">愛</div>
         </div>
         <p className="voice-kicker">REALTIME TALK</p>
-        <div className="voice-language" aria-label="语音输入语言">
-          <button className={props.language === "ja-JP" ? "active" : ""} onClick={() => props.onLanguageChange("ja-JP")}>日语</button>
-          <button className={props.language === "zh-CN" ? "active" : ""} onClick={() => props.onLanguageChange("zh-CN")}>中文</button>
-        </div>
         <h2>{title}</h2>
         <div className="voice-subtitles" aria-live="polite" aria-label="实时对话字幕">
           {!props.captions.length && !props.interim && !props.error && (
-            <div className="voice-subtitle-empty">直接说话，识别和回复会显示在这里</div>
+            <div className="voice-subtitle-empty">直接说话就行，日语、中文、混着说都可以</div>
           )}
           {props.captions.map((caption) => (
             <div

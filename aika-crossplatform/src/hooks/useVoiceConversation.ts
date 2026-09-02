@@ -18,7 +18,11 @@ const recognitionErrors: Record<string, string> = {
   "language-not-supported": "当前系统语音识别不支持所选语言。",
 };
 
-export function useVoiceConversation(onTranscript: (text: string) => Promise<CompanionReply | null>) {
+export function useVoiceConversation(
+  onTranscript: (text: string) => Promise<CompanionReply | null>,
+  /** 下一轮该用哪个识别语言。由会话按用户最近说的话推导，用户不需要自己选。 */
+  resolveLanguage: () => VoiceInputLanguage = () => "ja-JP",
+) {
   const [isOpen, setIsOpen] = useState(false);
   const [phase, setPhase] = useState<VoicePhase>("idle");
   const [transcript, setTranscript] = useState("");
@@ -26,11 +30,11 @@ export function useVoiceConversation(onTranscript: (text: string) => Promise<Com
   const [error, setError] = useState("");
   const [captions, setCaptions] = useState<VoiceCaption[]>([]);
   const [speakingCaptionId, setSpeakingCaptionId] = useState<number | null>(null);
-  const [language, setLanguageState] = useState<VoiceInputLanguage>("ja-JP");
   const inputRef = useRef<SpeechInputEngine | null>(null);
   const activeRef = useRef(false);
   const busyRef = useRef(false);
-  const languageRef = useRef<VoiceInputLanguage>("ja-JP");
+  const resolveLanguageRef = useRef(resolveLanguage);
+  resolveLanguageRef.current = resolveLanguage;
   const captionIdRef = useRef(0);
   const onTranscriptRef = useRef(onTranscript);
   onTranscriptRef.current = onTranscript;
@@ -45,7 +49,7 @@ export function useVoiceConversation(onTranscript: (text: string) => Promise<Com
     setInterim("");
 
     try {
-      input.start(languageRef.current, {
+      input.start(resolveLanguageRef.current(), {
         onStart: () => setPhase("listening"),
         onInterim: setInterim,
         onFinal: handleFinalTranscript,
@@ -162,15 +166,6 @@ export function useVoiceConversation(onTranscript: (text: string) => Promise<Com
     window.setTimeout(startRecognition, 180);
   }
 
-  function setLanguage(nextLanguage: VoiceInputLanguage) {
-    languageRef.current = nextLanguage;
-    setLanguageState(nextLanguage);
-    if (!activeRef.current) return;
-    busyRef.current = false;
-    inputRef.current?.abort();
-    window.setTimeout(startRecognition, 180);
-  }
-
   function close() {
     activeRef.current = false;
     busyRef.current = false;
@@ -181,5 +176,5 @@ export function useVoiceConversation(onTranscript: (text: string) => Promise<Com
     setIsOpen(false);
   }
 
-  return { isOpen, phase, transcript, interim, error, captions, speakingCaptionId, language, setLanguage, open, close, interruptAndListen };
+  return { isOpen, phase, transcript, interim, error, captions, speakingCaptionId, open, close, interruptAndListen };
 }

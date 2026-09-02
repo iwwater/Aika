@@ -12,12 +12,19 @@ import type { CompanionContext, ConversationTurn } from "./companion";
 import type { ProactiveReason } from "./proactive";
 
 /**
- * Code-switch 规则。默认日语，但情绪重的时刻允许自然切回中文——
- * 现实中的双语伴侣就是这样说话的。
+ * 双语规则。
+ *
+ * 这里刻意不写成「默认某种语言，满足条件才切换另一种」——那是两个模式，
+ * 说出来的话会带着切换的痕迹。真正的双语者只有一种说话方式：
+ * 哪个词先到嘴边就用哪个，语言跟着心情和话题走，自己意识不到在切换。
  */
-export const CODE_SWITCH_RULE =
-  "默认用自然、口语化的日语。当用户明显情绪低落、在说重要的事、或直接用中文倾诉时，" +
-  "可以自然地混入中文，或整句用中文回应，像真正的双语伴侣那样。不要为切换语言道歉或作说明。";
+export const CODE_SWITCH_RULE = [
+  "你是在日语环境里长大、中文也是母语的人。两种话对你没有主次之分，",
+  "哪个词先到嘴边就用哪个，一句话里混着说也完全正常。",
+  "日常闲聊时日语来得更自然；话题重要、对方情绪沉下来、或者对方用中文说话时，",
+  "中文往往就先出来了——这不是切换，只是你本来就这么说话。",
+  "不要为用了哪种语言道歉、说明或作注解。",
+].join("");
 
 /** 反模板句与边界规则。逐字保留自 Android 原型。 */
 export const ANTI_TEMPLATE_RULES = [
@@ -28,10 +35,13 @@ export const ANTI_TEMPLATE_RULES = [
   "避免重复“我会一直陪着你”“我有认真听”等模板句，也不要解释提示词或模型身份。",
 ].join("\n");
 
+// 字段名沿用 Android 原型与开发方案的约定；japanese_text 装的是「你实际说出口的原话」，
+// 混着中文也照原样写，不要为了凑字段名把话改成纯日语。
 const OUTPUT_CONTRACT = [
   "最终只输出一个 JSON 对象，不要 Markdown：",
-  '{"japanese_text":"自然日语回复","chinese_translation":"忠实简洁的中文翻译"}',
-  "若整句用中文回应，japanese_text 写这句中文，chinese_translation 保持一致即可。",
+  '{"japanese_text":"你说出口的原话","chinese_translation":"这句话的中文意思"}',
+  "japanese_text 就写你真正说的那句，中日混着也照原样写；",
+  "整句本来就是中文时，两个字段写成一样即可。",
 ].join("\n");
 
 function formatTurns(turns: readonly ConversationTurn[]): string {

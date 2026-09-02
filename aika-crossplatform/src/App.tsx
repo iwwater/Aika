@@ -7,6 +7,7 @@ import "./App.css";
 import { AvatarPlaceholder } from "./components/AvatarPlaceholder";
 import { VoiceModal } from "./components/VoiceModal";
 import { DEFAULT_CHARACTER } from "./domain/character";
+import { preferredRecognitionLanguage } from "./domain/language";
 import { PROVIDER_PRESETS, validateProvider, type ProviderConfig } from "./domain/providers";
 import { useCompanionSession } from "./hooks/useCompanionSession";
 import { useVoiceConversation } from "./hooks/useVoiceConversation";
@@ -27,7 +28,14 @@ function App() {
   const { connected, sending, provider, messages, memories, relationship, proactive } = session;
 
   const sendVoice = useCallback((text: string) => session.send(text, "voice"), [session]);
-  const voice = useVoiceConversation(sendVoice);
+  // 识别语言跟着用户最近说的话走，不再让用户在「日语 / 中文」之间选。
+  const resolveLanguage = useCallback(
+    () => preferredRecognitionLanguage(
+      messages.filter((message) => message.role === "user").slice(-4).map((message) => message.content),
+    ),
+    [messages],
+  );
+  const voice = useVoiceConversation(sendVoice, resolveLanguage);
 
   function openSettings() {
     setDraftProvider(provider);
@@ -224,8 +232,6 @@ function App() {
           error={voice.error}
           captions={voice.captions}
           speakingCaptionId={voice.speakingCaptionId}
-          language={voice.language}
-          onLanguageChange={voice.setLanguage}
           onInterrupt={voice.interruptAndListen}
           onClose={voice.close}
         />
