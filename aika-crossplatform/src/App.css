@@ -44,12 +44,9 @@ button { border: 0; cursor: pointer; }
 
 .avatar-stage { position: relative; z-index: 1; height: 82%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding-bottom: 35px; }
 .avatar-halo { position: absolute; top: 15%; width: min(24vw,320px); aspect-ratio: 1; border: 1px solid rgba(55,230,255,.3); border-radius: 50%; box-shadow: 0 0 0 26px rgba(55,230,255,.05), 0 0 0 70px rgba(154,107,255,.035), 0 0 60px rgba(55,230,255,.18); animation: halo-drift 9s ease-in-out infinite; }
-.avatar-portrait { position: relative; width: min(18vw,235px); aspect-ratio: .82; display: grid; place-items: center; border-radius: 48% 48% 42% 42% / 40% 40% 58% 58%; background: linear-gradient(155deg,#2ad2f2 0 20%,#5f7fe0 21% 30%,#dfe9f5 31% 65%,#8a5cf0 66%); box-shadow: 0 30px 60px rgba(10,60,90,.5), 0 0 45px rgba(55,230,255,.2), inset 0 1px rgba(255,255,255,.5); overflow: hidden; }
-/* 占位立绘上的全息扫描。M4 换成真正的 Live2D 模型后整块移除。 */
-.avatar-portrait { background-image: repeating-linear-gradient(to bottom, rgba(5,20,35,.16) 0 2px, transparent 2px 6px), linear-gradient(155deg,#2ad2f2 0 20%,#5f7fe0 21% 30%,#dfe9f5 31% 65%,#8a5cf0 66%); }
-.avatar-portrait::before { content: ""; position: absolute; width: 68%; height: 55%; top: 21%; border-radius: 48% 48% 52% 52%; background: linear-gradient(155deg,#dbe8f6,#a7c1dc); box-shadow: -25px -35px 0 -10px #1c9fc4, 30px -43px 0 -13px #1c9fc4; }
-.avatar-portrait::after { content: "⌣"; position: absolute; top: 38%; color: #1d7fa0; font-size: 50px; line-height: 1; letter-spacing: 28px; transform: translateX(13px); text-shadow: -34px -8px 0 #2a6ea8; }
-.avatar-face { position: relative; z-index: 2; margin-top: 100%; padding: 5px 12px; color: #eaf9ff; font-family: serif; border: 1px solid rgba(55,230,255,.45); border-radius: 999px; background: rgba(5,12,22,.35); backdrop-filter: blur(6px); }
+/* 占位立绘容器。M4 导入正式 Live2D 模型后，把 AvatarPlaceholder 换成模型画布即可。 */
+.avatar-portrait { position: relative; width: min(18vw,235px); display: grid; place-items: center; }
+.avatar-art { width: 100%; height: auto; filter: drop-shadow(0 20px 44px rgba(6,40,70,.6)) drop-shadow(0 0 28px rgba(55,230,255,.26)); }
 .avatar-spark { position: absolute; z-index: 3; color: #eafcff; text-shadow: 0 0 12px rgba(55,230,255,.9); }
 .avatar-spark-one { top: 13%; right: 7%; font-size: 29px; }
 .avatar-spark-two { bottom: 24%; left: 7%; font-size: 23px; }

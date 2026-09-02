@@ -33,6 +33,9 @@
 - **结构化双语输出已接通**：`sendChat` 返回 `{japaneseText, chineseTranslation}`，
   聊天气泡与实时语音字幕都是「日语主 + 中文次级」两层，不再靠换行猜。
 - **界面已赛博朋克化**：App.css 改为青蓝/紫霓虹暗色主题，配色对齐角色设定。
+  左侧占位立绘换成 `components/AvatarPlaceholder.tsx`，按 character-brief 的锁定方向绘制
+  （渐变发、圆框眼镜、蓝青瞳、黑白赛博服装、全息扫描层，面部不叠加光点）。
+  这是矢量占位，不是美术定稿，M4 导入正式模型后整块删除。
 - 未完成的 M0 项：API Key 仍在 localStorage，尚未迁到 Stronghold/DPAPI。
 
 可执行清单见 [NEXT_STEPS.md](NEXT_STEPS.md)，下一步是 SQLite 替代 localStorage。

@@ -4,6 +4,7 @@ import {
   Mic, PanelRightClose, Plus, SendHorizontal, Settings2, Sparkles, Volume2, X,
 } from "lucide-react";
 import "./App.css";
+import { AvatarPlaceholder } from "./components/AvatarPlaceholder";
 import { VoiceModal } from "./components/VoiceModal";
 import { DEFAULT_CHARACTER } from "./domain/character";
 import type { CompanionReply } from "./domain/companion";
@@ -163,7 +164,7 @@ function App() {
           <div className="ambient ambient-one" /><div className="ambient ambient-two" />
           <div className="avatar-stage">
             <div className="avatar-halo" />
-            <div className="avatar-portrait"><div className="avatar-face">{DEFAULT_CHARACTER.name.slice(0, 1)}</div><span className="avatar-spark avatar-spark-one">✦</span><span className="avatar-spark avatar-spark-two">✧</span></div>
+            <div className="avatar-portrait"><AvatarPlaceholder /><span className="avatar-spark avatar-spark-one">✦</span><span className="avatar-spark avatar-spark-two">✧</span></div>
             <div className="companion-name">{DEFAULT_CHARACTER.name} <span>{DEFAULT_CHARACTER.reading}</span></div>
             <p className="mood">“{DEFAULT_CHARACTER.moodLine}”</p>
             <div className="presence"><span /> 在线 · 想和你聊聊天</div>

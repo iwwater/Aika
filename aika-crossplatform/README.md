@@ -29,6 +29,7 @@ Windows 安装包生成在 `src-tauri/target/release/bundle/`。
 
 - [开发方案](docs/DEVELOPMENT_PLAN.md)：产品边界、架构和里程碑。
 - [角色包规范](docs/CHARACTER_PACK.md)：人格、Live2D 与声线资源的组合格式。
+- [角色视觉方向](tools/live2d-pipeline/character-brief.json)：未来赛博朋克 / 全息生命，界面与 Live2D 统一走这一套。
 - [声音工坊方案](docs/VOICE_WORKSHOP.md)：自主训练声线的安全、易用工作流。
 - [声音工坊工具包](tools/voice-workshop/README.md)：环境检查、数据目录和配置模板。
 - [实机测试记录](docs/FIELD_TEST_NOTES.md)：当前问题、目标行为和修复优先级。
