@@ -1,5 +1,6 @@
 import { japanTimeLabel, type CompanionContext, type CompanionReply, type ConversationTurn } from "./companion";
 import { computeRelationship, deriveRelationshipSignals } from "./relationship";
+import { RAW_TURN_WINDOW } from "./summary";
 
 export type ConversationRole = "user" | "assistant";
 
@@ -18,9 +19,13 @@ export interface ChatMessage extends ChatTurn {
   japaneseText?: string;
   /** 次级字幕。模型没给翻译时为空，界面据此不显示第二层。 */
   chineseTranslation?: string;
+  /** 这条消息是怎么来的。proactive 用于统计每日主动消息条数。 */
+  source?: MessageSource;
   pending?: boolean;
   error?: boolean;
 }
+
+export type MessageSource = "text" | "voice" | "proactive";
 
 export function formatClockTime(createdAt: number): string {
   return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(new Date(createdAt));
@@ -34,6 +39,7 @@ export function companionMessage(
   reply: CompanionReply,
   createdAt: number = Date.now(),
   id: string = crypto.randomUUID(),
+  source: MessageSource = "text",
 ): ChatMessage {
   return {
     id,
@@ -41,6 +47,7 @@ export function companionMessage(
     content: reply.japaneseText,
     japaneseText: reply.japaneseText,
     chineseTranslation: reply.chineseTranslation,
+    source,
     createdAt,
     time: formatClockTime(createdAt),
   };
@@ -56,18 +63,27 @@ export function toCompanionTurns(messages: readonly ChatMessage[]): Conversation
     }));
 }
 
-/** 组装一轮请求需要的全部上下文。记忆来源在 M1 接入 SQLite 后替换。 */
-export function buildCompanionContext(
-  messages: readonly ChatMessage[],
-  memories: readonly string[] = [],
-  now: number = Date.now(),
-  recentTurnLimit = 16,
-): CompanionContext {
-  const usable = messages.filter((message) => !message.pending && !message.error);
+/**
+ * 组装一轮请求需要的全部上下文。
+ * 近 recentTurnLimit 轮走原文，更早的靠 summary；关系状态由消息时间戳现算，不冗余存储。
+ */
+export function buildCompanionContext(options: {
+  messages: readonly ChatMessage[];
+  memories?: readonly string[];
+  summary?: string | null;
+  /** 全部消息的时间戳。分页加载时它比 messages 更全，缺省则退回 messages 自身。 */
+  timestamps?: readonly number[];
+  now?: number;
+  recentTurnLimit?: number;
+}): CompanionContext {
+  const now = options.now ?? Date.now();
+  const usable = options.messages.filter((message) => !message.pending && !message.error);
+  const timestamps = options.timestamps ?? usable.map((message) => message.createdAt);
   return {
-    recentTurns: toCompanionTurns(usable.slice(-recentTurnLimit)),
-    memories: [...memories],
-    relationship: computeRelationship(deriveRelationshipSignals(usable.map((message) => message.createdAt), now)),
+    recentTurns: toCompanionTurns(usable.slice(-(options.recentTurnLimit ?? RAW_TURN_WINDOW))),
+    memories: [...(options.memories ?? [])],
+    summary: options.summary ?? null,
+    relationship: computeRelationship(deriveRelationshipSignals(timestamps, now)),
     currentTimeInJapan: japanTimeLabel(new Date(now)),
   };
 }

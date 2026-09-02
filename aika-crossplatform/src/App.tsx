@@ -1,63 +1,38 @@
-import { FormEvent, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useRef, useState } from "react";
 import {
-  Bot, Check, ChevronDown, KeyRound, Languages, LoaderCircle, MessageCircleMore,
-  Mic, PanelRightClose, Plus, SendHorizontal, Settings2, Sparkles, Volume2, X,
+  Bell, BellOff, Bot, Check, ChevronDown, KeyRound, Languages, LoaderCircle, MessageCircleMore,
+  Mic, PanelRightClose, SendHorizontal, Settings2, Sparkles, Trash2, Volume2, X,
 } from "lucide-react";
 import "./App.css";
 import { AvatarPlaceholder } from "./components/AvatarPlaceholder";
 import { VoiceModal } from "./components/VoiceModal";
 import { DEFAULT_CHARACTER } from "./domain/character";
-import type { CompanionReply } from "./domain/companion";
-import {
-  buildCompanionContext, companionMessage, formatClockTime, userMessage,
-  type ChatMessage,
-} from "./domain/conversation";
-import { buildConversationInput, buildInstructions } from "./domain/prompt";
 import { PROVIDER_PRESETS, validateProvider, type ProviderConfig } from "./domain/providers";
+import { useCompanionSession } from "./hooks/useCompanionSession";
 import { useVoiceConversation } from "./hooks/useVoiceConversation";
-import { sendChat, testProvider } from "./services/providerClient";
-import { appStorage } from "./services/storage/appStorage";
+import { testProvider } from "./services/providerClient";
 
-function initialProvider(): ProviderConfig {
-  return appStorage.loadProvider(PROVIDER_PRESETS[1]);
-}
-
-function welcomeMessage(): ChatMessage {
-  const createdAt = Date.now();
-  return {
-    id: "welcome",
-    role: "assistant",
-    content: DEFAULT_CHARACTER.greeting,
-    japaneseText: DEFAULT_CHARACTER.greeting,
-    chineseTranslation: DEFAULT_CHARACTER.greetingTranslation,
-    createdAt,
-    time: formatClockTime(createdAt),
-  };
-}
-
-function initialMessages(): ChatMessage[] {
-  return appStorage.loadMessages() ?? [welcomeMessage()];
-}
+const QUICK_STARTS = ["今天发生了一件小事…", "有点累，想随便聊聊", "刚才想到你说过的那件事"];
 
 function App() {
-  const [provider, setProvider] = useState<ProviderConfig>(initialProvider);
-  const [draftProvider, setDraftProvider] = useState<ProviderConfig>(initialProvider);
-  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
+  const session = useCompanionSession();
+  const [draftProvider, setDraftProvider] = useState<ProviderConfig>(PROVIDER_PRESETS[1]);
   const [input, setInput] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
   const [showTranslation, setShowTranslation] = useState(true);
   const [status, setStatus] = useState<{ kind: "idle" | "testing" | "ok" | "error"; text: string }>({ kind: "idle", text: "" });
-  const [sending, setSending] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const connected = Boolean(provider.apiKey && provider.baseUrl && provider.model);
-  const relationship = useMemo(() => buildCompanionContext(messages).relationship, [messages]);
-  const voice = useVoiceConversation(sendMessage);
+  const { connected, sending, provider, messages, memories, relationship, proactive } = session;
 
-  function persistMessages(next: ChatMessage[]) {
-    setMessages(next);
-    appStorage.saveMessages(next);
+  const sendVoice = useCallback((text: string) => session.send(text, "voice"), [session]);
+  const voice = useVoiceConversation(sendVoice);
+
+  function openSettings() {
+    setDraftProvider(provider);
+    setStatus({ kind: "idle", text: "" });
+    setShowSettings(true);
   }
 
   function choosePreset(id: string) {
@@ -78,83 +53,54 @@ function App() {
     }
   }
 
-  function handleSave() {
+  async function handleSave() {
     const validation = validateProvider(draftProvider);
     if (validation) return setStatus({ kind: "error", text: validation });
     const preset = PROVIDER_PRESETS.find((item) => item.id === draftProvider.id);
-    const next = {
+    await session.setProvider({
       ...draftProvider,
       protocol: preset && preset.id !== "custom" ? preset.protocol : draftProvider.protocol,
       baseUrl: draftProvider.baseUrl.trim(),
       model: draftProvider.model.trim(),
-    };
-    setProvider(next);
-    appStorage.saveProvider(next);
+    });
     setStatus({ kind: "ok", text: "配置已保存，现在可以直接聊天" });
     setTimeout(() => setShowSettings(false), 450);
   }
 
-  async function sendMessage(content: string): Promise<CompanionReply | null> {
-    if (!content || sending) return null;
+  async function submit(content: string) {
+    if (!content) return;
     if (!connected) {
-      setDraftProvider(provider);
-      setShowSettings(true);
+      openSettings();
       setStatus({ kind: "error", text: "请先完成 API 配置" });
-      return null;
+      return;
     }
-
-    const asked = userMessage(content);
-    const pendingId = crypto.randomUUID();
-    const next = [...messages, asked];
     setInput("");
-    setSending(true);
-    setMessages([...next, { id: pendingId, role: "assistant", content: "", createdAt: asked.createdAt, time: asked.time, pending: true }]);
-
-    try {
-      // 上下文不含刚发出的这一句：它作为“用户刚刚说”单独交给提示词。
-      const context = buildCompanionContext(messages);
-      const reply = await sendChat(
-        provider,
-        buildInstructions(context, DEFAULT_CHARACTER.systemPrompt),
-        [{ role: "user", content: buildConversationInput(content, context) }],
-      );
-      persistMessages([...next, companionMessage(reply, Date.now(), pendingId)]);
-      return reply;
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      const failedAt = Date.now();
-      persistMessages([...next, {
-        id: pendingId, role: "assistant", content: `这次没有发出去：${detail}`,
-        createdAt: failedAt, time: formatClockTime(failedAt), error: true,
-      }]);
-      return null;
-    } finally {
-      setSending(false);
-      requestAnimationFrame(() => inputRef.current?.focus());
-    }
+    await session.send(content);
+    requestAnimationFrame(() => inputRef.current?.focus());
   }
 
   async function handleSend(event?: FormEvent) {
     event?.preventDefault();
-    await sendMessage(input.trim());
+    await submit(input.trim());
   }
 
   function openVoice() {
     if (!connected) {
-      setDraftProvider(provider);
-      setShowSettings(true);
+      openSettings();
       setStatus({ kind: "error", text: "请先完成 API 配置，再进入实时语音" });
       return;
     }
     void voice.open();
   }
 
+  const pendingMemories = memories.filter((memory) => memory.status === "pending");
+
   return (
     <main className="app-shell">
       <header className="titlebar">
         <div className="brand"><span className="brand-mark"><Sparkles size={17} /></span><span>{DEFAULT_CHARACTER.name}</span><span className="brand-subtitle">Aika</span></div>
         <div className="titlebar-actions">
-          <button className="icon-button" title="设置" onClick={() => setShowSettings(true)}><Settings2 size={18} /></button>
+          <button className="icon-button" title="设置" onClick={openSettings}><Settings2 size={18} /></button>
           <button className="icon-button sidebar-toggle" title="切换侧栏" onClick={() => setShowSidebar((value) => !value)}><PanelRightClose size={18} /></button>
         </div>
       </header>
@@ -167,7 +113,7 @@ function App() {
             <div className="avatar-portrait"><AvatarPlaceholder /><span className="avatar-spark avatar-spark-one">✦</span><span className="avatar-spark avatar-spark-two">✧</span></div>
             <div className="companion-name">{DEFAULT_CHARACTER.name} <span>{DEFAULT_CHARACTER.reading}</span></div>
             <p className="mood">“{DEFAULT_CHARACTER.moodLine}”</p>
-            <div className="presence"><span /> 在线 · 想和你聊聊天</div>
+            <div className="presence"><span /> {proactive.enabled ? "在线 · 想起你时会先开口" : "在线 · 想和你聊聊天"}</div>
           </div>
           <div className="scene-note"><Sparkles size={16} /><div><strong>个性化角色包</strong><span>后续可导入 Live2D 与自训练声线</span></div></div>
         </aside>
@@ -178,13 +124,22 @@ function App() {
             <button className={`translation-toggle ${showTranslation ? "active" : ""}`} onClick={() => setShowTranslation((v) => !v)}><Languages size={17} /> 中文字幕 <span>{showTranslation ? "开" : "关"}</span></button>
           </div>
 
+          {session.storageError && (
+            <div className="storage-error" role="alert">
+              本地存储打不开，这次的对话和记忆不会被保存：{session.storageError}
+            </div>
+          )}
+
           <div className="messages" aria-live="polite">
-            <div className="day-divider"><span>今天</span></div>
+            <div className="day-divider"><span>{session.ready ? "今天" : "正在打开记忆…"}</span></div>
             {messages.map((message) => (
               <article key={message.id} className={`message-row ${message.role} ${message.error ? "error" : ""}`}>
                 {message.role === "assistant" && <div className="mini-avatar">{DEFAULT_CHARACTER.name.slice(0, 1)}</div>}
                 <div className="message-wrap">
-                  <div className="message-meta">{message.role === "assistant" ? DEFAULT_CHARACTER.name : "你"} · {message.time}</div>
+                  <div className="message-meta">
+                    {message.role === "assistant" ? DEFAULT_CHARACTER.name : "你"} · {message.time}
+                    {message.source === "proactive" && <span className="meta-tag">主动</span>}
+                  </div>
                   <div className="message-bubble">
                     {message.pending ? <span className="typing"><i /><i /><i /></span> : (
                       <>
@@ -216,22 +171,48 @@ function App() {
 
         <aside className="right-sidebar">
           <section className="side-card provider-card">
-            <div className="side-card-title"><span><Bot size={17} /> 当前模型</span><button onClick={() => setShowSettings(true)}>配置</button></div>
+            <div className="side-card-title"><span><Bot size={17} /> 当前模型</span><button onClick={openSettings}>配置</button></div>
             <div className="provider-status"><div className="provider-logo">{provider.name.slice(0, 1)}</div><div><strong>{provider.name}</strong><span>{provider.model || "尚未配置模型"}</span></div><i className={connected ? "connected" : ""} /></div>
           </section>
+
           <section className="side-card">
-            <div className="side-card-title"><span><MessageCircleMore size={17} /> 相处状态</span><button title="长期记忆将在下一版接入" disabled><Plus size={15} /></button></div>
+            <div className="side-card-title"><span><Sparkles size={17} /> 相处状态</span></div>
             <div className="memory-list">
               <div className="memory-item"><span>01</span><p><strong>相识</strong>{relationship.daysKnown} 天</p></div>
               <div className="memory-item"><span>02</span><p><strong>连续互动</strong>{relationship.consecutiveActiveDays} 天</p></div>
               <div className="memory-item"><span>03</span><p><strong>聊过</strong>{relationship.totalMessageCount} 条消息</p></div>
-              <div className="memory-item muted"><span>04</span><p><strong>长期记忆</strong>下一版接入，可见可删</p></div>
             </div>
           </section>
+
+          <section className="side-card">
+            <div className="side-card-title">
+              <span><MessageCircleMore size={17} /> 长期记忆</span>
+              {pendingMemories.length > 0 && <span className="pill">{pendingMemories.length} 条待确认</span>}
+            </div>
+            <div className="memory-list">
+              {memories.length === 0 && (
+                <div className="memory-item muted"><span>—</span><p><strong>还没有记忆</strong>聊过之后会自动记下，你可以随时删</p></div>
+              )}
+              {[...memories].reverse().slice(0, 12).map((memory) => (
+                <div key={memory.id} className={`memory-item editable ${memory.status}`}>
+                  <span>{memory.category}</span>
+                  <p>{memory.content}</p>
+                  <div className="memory-actions">
+                    {memory.status === "pending" && (
+                      <button title="保留这条记忆" onClick={() => void session.confirmMemory(memory.id)}><Check size={13} /></button>
+                    )}
+                    <button title="删除这条记忆" onClick={() => void session.deleteMemory(memory.id)}><Trash2 size={13} /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
           <section className="side-card quick-card">
             <div className="side-card-title"><span><Sparkles size={17} /> 快速开始</span></div>
-            {["今天发生了一件小事…", "有点累，想随便聊聊", "刚才想到你说过的那件事"].map((text) => <button key={text} onClick={() => { setInput(text); inputRef.current?.focus(); }}>{text}</button>)}
+            {QUICK_STARTS.map((text) => <button key={text} onClick={() => { setInput(text); inputRef.current?.focus(); }}>{text}</button>)}
           </section>
+
           <button className="voice-coming" onClick={openVoice}><Volume2 size={17} /><span><strong>实时语音</strong>点击进入连续对话</span></button>
         </aside>
       </section>
@@ -264,7 +245,35 @@ function App() {
               <label className="field wide"><span>API Key</span><div className="key-input"><KeyRound size={17} /><input type="password" value={draftProvider.apiKey} onChange={(e) => setDraftProvider({ ...draftProvider, apiKey: e.target.value })} placeholder="sk-…" /></div></label>
             </div>
             {status.text && <div className={`test-result ${status.kind}`}>{status.kind === "testing" ? <LoaderCircle size={17} className="spin" /> : status.kind === "ok" ? <Check size={17} /> : <X size={17} />}<span>{status.text}</span></div>}
-            <div className="security-note"><KeyRound size={16} /><span>当前开发版会把配置保存在本机应用数据中；正式版将切换到加密保险库。</span></div>
+            <div className="security-note">
+              <KeyRound size={16} />
+              <span>{session.keyIsSecure
+                ? "API Key 存在 Windows DPAPI 加密的保险库里，与聊天记录分开；聊天与记忆存在本机 SQLite。"
+                : "当前是浏览器开发模式：API Key 以明文存在 localStorage，聊天记录也没有落库。正式桌面版会走加密保险库和 SQLite。"}</span>
+            </div>
+
+            <div className="settings-divider" />
+            <div className="modal-heading"><div><p className="eyebrow">Presence</p><h3>主动消息</h3></div></div>
+            <p className="modal-intro">她会在想起你的时候先开口。每天最多 6 条，两条之间至少隔 90 分钟，免打扰时段完全静默。</p>
+            <div className="toggle-row">
+              <button className={`toggle ${proactive.enabled ? "on" : ""}`} onClick={() => void session.setProactive({ ...proactive, enabled: !proactive.enabled })}>
+                {proactive.enabled ? <Bell size={15} /> : <BellOff size={15} />}
+                <span>{proactive.enabled ? "已开启" : "已关闭"}</span>
+              </button>
+              <span className="toggle-hint">随时可以一键关掉，关掉之后不会有任何提醒或补发。</span>
+            </div>
+            <div className="form-grid">
+              <label className="field"><span>免打扰开始</span><select value={proactive.quietStartHour} onChange={(e) => void session.setProactive({ ...proactive, quietStartHour: Number(e.target.value) })}>{Array.from({ length: 24 }, (_, hour) => <option key={hour} value={hour}>{String(hour).padStart(2, "0")}:00</option>)}</select></label>
+              <label className="field"><span>免打扰结束</span><select value={proactive.quietEndHour} onChange={(e) => void session.setProactive({ ...proactive, quietEndHour: Number(e.target.value) })}>{Array.from({ length: 24 }, (_, hour) => <option key={hour} value={hour}>{String(hour).padStart(2, "0")}:00</option>)}</select></label>
+            </div>
+            <div className="toggle-row">
+              <button className={`toggle ${session.memoryExtractionEnabled ? "on" : ""}`} onClick={() => void session.setMemoryExtractionEnabled(!session.memoryExtractionEnabled)}>
+                <MessageCircleMore size={15} />
+                <span>自动记忆 · {session.memoryExtractionEnabled ? "开" : "关"}</span>
+              </button>
+              <span className="toggle-hint">开启后每轮对话结束会额外发一次抽取请求，会产生平台调用费用。</span>
+            </div>
+
             <div className="modal-actions"><button className="secondary-button" onClick={handleTest} disabled={status.kind === "testing"}>测试连接</button><button className="primary-button" onClick={handleSave}>保存并使用</button></div>
           </section>
         </div>

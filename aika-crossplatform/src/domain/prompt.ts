@@ -9,6 +9,7 @@
  */
 
 import type { CompanionContext, ConversationTurn } from "./companion";
+import type { ProactiveReason } from "./proactive";
 
 /**
  * Code-switch 规则。默认日语，但情绪重的时刻允许自然切回中文——
@@ -45,11 +46,16 @@ function formatMemories(memories: readonly string[]): string {
   return `\n可参考的长期记忆：\n- ${memories.join("\n- ")}`;
 }
 
+function formatSummary(summary: string | null): string {
+  if (!summary?.trim()) return "";
+  return `\n更早之前发生过什么：\n${summary.trim()}`;
+}
+
 export function buildInstructions(context: CompanionContext, personaPrompt: string): string {
   const situation = [
     `当前日本时间：${context.currentTimeInJapan}`,
     `当前关系感：${context.relationship.description}`,
-  ].join("\n") + formatMemories(context.memories);
+  ].join("\n") + formatSummary(context.summary) + formatMemories(context.memories);
 
   return [
     personaPrompt.trim(),
@@ -66,12 +72,13 @@ export function buildConversationInput(userText: string, context: CompanionConte
   return `最近的对话：\n${formatTurns(context.recentTurns)}\n\n用户刚刚说：\n${userText}`;
 }
 
-export function buildProactiveInput(context: CompanionContext): string {
+export function buildProactiveInput(context: CompanionContext, reason?: ProactiveReason): string {
   return [
     "最近的对话：",
     formatTurns(context.recentTurns.slice(-12)),
     "",
     "请像熟悉的人想起对方时那样，主动发一条简短消息。可以延续未完话题、分享一个小念头，",
     "或结合当前时间自然问候。不要说“系统提醒”“学习任务”，不要索取回复，也不要制造负罪感。",
+    ...(reason ? ["", `这次想起对方的具体理由：${reason.hint}`] : []),
   ].join("\n");
 }

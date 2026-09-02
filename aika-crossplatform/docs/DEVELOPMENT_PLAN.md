@@ -148,14 +148,14 @@ Tauri 2、React、TypeScript、Rust。桌面工程 `aika-crossplatform/` 是唯�
 
 ## 里程碑
 
-### M0 工程底座
+### M0 工程底座 ✅（`output/` 冷备份除外）
 
 - git 仓库初始化，`output/` 与 `node_modules/` 排除或走 LFS。
 - 移植 Android domain 层，接上结构化双语输出解析。
 - 归档 Android 工程，根 README 标注为历史原型。
 - API Key 从 localStorage 迁移到 Stronghold 或 Windows DPAPI。
 
-### M1 记忆与关系
+### M1 记忆与关系 ✅ 已实现，待真机验收
 
 - SQLite（`tauri-plugin-sql`）替代 localStorage。
 - 每轮对话后异步抽取候选记忆，用户在记忆页确认或删除。
@@ -163,7 +163,7 @@ Tauri 2、React、TypeScript、Rust。桌面工程 `aika-crossplatform/` 是唯�
 - 多因子关系状态。
 - 验收：跨重启、跨会话，她能在自然时机提起两周前说过的事，且不炫耀自己记得。
 
-### M2 主动性与托盘
+### M2 主动性与托盘 ✅ 已实现，待真机验收
 
 - 移植 `ProactivePolicy` 及其测试用例。
 - 多样化触发理由（未完话题、用户计划、时间语义、记忆日期）。
@@ -222,6 +222,8 @@ M2 排在 M3 之前是刻意的：主动消息的策略逻辑已经写完，跑�
 
 1. **语音链路**：先用 Realtime API 跑通体验再换本地管线，还是直接建本地管线。接口抽象已在 `services/voice/contracts.ts`，两条路可共存。倾向：Realtime 仅作早期验证，本地管线是终局。
 2. **记忆抽取**：用主模型还是本地小模型。涉及成本与隐私。
+   现状：走主模型，接口 `services/memory/extractor.ts` 的 `MemoryExtractor` 已留好，
+   换本地小模型不用改主程序；设置页可一键关闭抽取。
 3. **桌宠窗口**：与主窗口共用一个 WebView，还是两个独立 Tauri window。
 
 ## 完成标准

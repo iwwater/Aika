@@ -7,6 +7,7 @@ function context(overrides: Partial<CompanionContext> = {}): CompanionContext {
   return {
     recentTurns: [],
     memories: [],
+    summary: null,
     relationship: computeRelationship(EMPTY_RELATIONSHIP_SIGNALS),
     currentTimeInJapan: "2026-09-02 星期三 21:30",
     ...overrides,
@@ -85,5 +86,27 @@ describe("buildProactiveInput", () => {
     expect(input).not.toContain("第7句");
     expect(input).toContain("第8句");
     expect(input).toContain("第19句");
+  });
+});
+
+describe("摘要与主动理由注入", () => {
+  it("有摘要时写进提示词，没有时不出现空段落", () => {
+    const withSummary = buildInstructions(context({ summary: "上周聊过换工作的事。" }), persona);
+    expect(withSummary).toContain("更早之前发生过什么");
+    expect(withSummary).toContain("上周聊过换工作的事。");
+    expect(buildInstructions(context(), persona)).not.toContain("更早之前发生过什么");
+  });
+
+  it("主动输入里带上这次想起对方的具体理由", () => {
+    const input = buildProactiveInput(context(), {
+      kind: "user-plan",
+      hint: "对方提过下周要面试。不要索取回复，也不要制造负罪感。",
+    });
+    expect(input).toContain("这次想起对方的具体理由");
+    expect(input).toContain("下周要面试");
+  });
+
+  it("不给理由时退回原来的主动输入", () => {
+    expect(buildProactiveInput(context())).not.toContain("这次想起对方的具体理由");
   });
 });

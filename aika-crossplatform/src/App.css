@@ -63,7 +63,7 @@ button { border: 0; cursor: pointer; }
 .chat-panel { min-width: 0; display: flex; flex-direction: column; background: linear-gradient(180deg, rgba(7,11,21,.6), rgba(5,7,14,.9)); }
 .chat-heading { height: 88px; flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; border-bottom: 1px solid var(--line-soft); }
 .eyebrow { margin: 0 0 5px; color: var(--cyan); font-family: var(--display); font-size: 9px; font-weight: 700; letter-spacing: .3em; text-transform: uppercase; }
-.chat-heading h1, .modal-heading h2 { margin: 0; font-family: var(--heading); font-size: 24px; font-weight: 700; line-height: 1.2; letter-spacing: .03em; color: #e6f4ff; }
+.chat-heading h1, .modal-heading h2, .modal-heading h3 { margin: 0; font-family: var(--heading); font-size: 24px; font-weight: 700; line-height: 1.2; letter-spacing: .03em; color: #e6f4ff; }
 .translation-toggle { display: flex; align-items: center; gap: 7px; padding: 8px 11px; border: 1px solid var(--line-soft); border-radius: 8px; color: var(--muted); background: rgba(16,24,40,.7); font-size: 11px; transition: .2s; }
 .translation-toggle span { padding: 2px 6px; border-radius: 5px; background: rgba(255,255,255,.06); }
 .translation-toggle.active { color: var(--cyan); border-color: rgba(55,230,255,.35); box-shadow: var(--glow-cyan); }
@@ -206,3 +206,20 @@ button { border: 0; cursor: pointer; }
 @media(prefers-reduced-motion: reduce) { .avatar-halo, .voice-wave, .typing i { animation: none; } }
 @media(max-width:1000px) { .workspace { grid-template-columns: 260px minmax(390px,1fr); }.right-sidebar { display: none; }.sidebar-toggle { display: none; }.avatar-portrait { width: 165px; }.avatar-halo { width: 220px; } }
 @media(max-width:720px) { .app-shell { min-height: 500px; }.workspace { grid-template-columns: 1fr; }.companion-panel { display: none; }.titlebar { height: 52px; }.workspace { height: calc(100% - 52px); }.chat-heading { height: 72px; padding: 0 17px; }.chat-heading h1 { font-size: 19px; }.translation-toggle { font-size: 0; }.translation-toggle span { font-size: 9px; }.messages { padding: 4px 16px; }.composer { padding: 10px 14px 14px; }.shortcut { display: none; }.message-wrap { max-width: 87%; }.form-grid { grid-template-columns: 1fr; }.field.wide { grid-column: auto; }.settings-modal { padding: 21px; } }
+
+/* --- M1 记忆页与 M2 主动消息开关 --- */
+.meta-tag { margin-left: 6px; padding: 1px 5px; border: 1px solid var(--line); border-radius: 4px; color: var(--cyan); font-size: 8px; letter-spacing: .08em; }
+.pill { padding: 2px 7px; border: 1px solid rgba(154,107,255,.35); border-radius: 999px; color: var(--violet); font-size: 9px; }
+.memory-item.editable { position: relative; align-items: center; padding-right: 44px; }
+.memory-item.editable>span { flex: 0 0 auto; min-width: 26px; color: var(--cyan-deep); font-family: inherit; font-size: 9px; }
+.memory-item.pending p { opacity: .72; }
+.memory-actions { position: absolute; right: 0; top: 50%; display: flex; gap: 2px; transform: translateY(-50%); opacity: 0; transition: .18s; }
+.memory-item.editable:hover .memory-actions, .memory-item.editable:focus-within .memory-actions { opacity: 1; }
+.memory-actions button { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; color: var(--muted); background: rgba(255,255,255,.06); }
+.memory-actions button:hover { color: var(--cyan); background: rgba(55,230,255,.12); }
+.settings-divider { height: 1px; margin: 24px 0 4px; background: linear-gradient(90deg, transparent, var(--line), transparent); }
+.toggle-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.toggle { display: flex; align-items: center; gap: 7px; padding: 8px 13px; border: 1px solid var(--line-soft); border-radius: 8px; color: var(--muted); background: rgba(255,255,255,.05); font-size: 11px; transition: .2s; }
+.toggle.on { color: var(--cyan); border-color: rgba(55,230,255,.4); background: rgba(55,230,255,.08); box-shadow: var(--glow-cyan); }
+.toggle-hint { flex: 1; color: var(--dim); font-size: 9px; line-height: 1.5; }
+.storage-error { margin: 12px max(22px,6%) 0; padding: 10px 13px; border: 1px solid rgba(255,77,146,.4); border-radius: 8px; color: #ffb8d1; background: rgba(40,10,26,.7); font-size: 10px; line-height: 1.6; }

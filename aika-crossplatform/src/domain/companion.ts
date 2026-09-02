@@ -20,6 +20,8 @@ export interface ConversationTurn {
 export interface CompanionContext {
   recentTurns: ConversationTurn[];
   memories: string[];
+  /** 更早对话的滚动摘要；没有更早的对话时为 null。 */
+  summary: string | null;
   relationship: RelationshipState;
   currentTimeInJapan: string;
 }

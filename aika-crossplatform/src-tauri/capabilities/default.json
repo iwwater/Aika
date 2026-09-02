@@ -13,6 +13,9 @@
         "http://127.0.0.1:*"
       ]
     },
-    "opener:default"
+    "opener:default",
+    "sql:default",
+    "sql:allow-execute",
+    "notification:default"
   ]
 }

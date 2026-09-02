@@ -24,7 +24,7 @@
 - 已建立角色包 v1 规范与声音工坊工具包骨架。
 - 原生 Android 原型仍保留在上级工程中，没有删除或覆盖。
 
-## M0 进度（2026-09-02）
+## 进度（2026-09-02）
 
 - **git 已初始化**（第 0 步完成）。`output/` 走 ignore，尚未做冷备份，是当前最大的单点风险。
 - **Android domain 层已移植**（第 1 步完成）：`domain/` 下新增 companion、prompt、
@@ -36,9 +36,20 @@
   左侧占位立绘换成 `components/AvatarPlaceholder.tsx`，按 character-brief 的锁定方向绘制
   （渐变发、圆框眼镜、蓝青瞳、黑白赛博服装、全息扫描层，面部不叠加光点）。
   这是矢量占位，不是美术定稿，M4 导入正式模型后整块删除。
-- 未完成的 M0 项：API Key 仍在 localStorage，尚未迁到 Stronghold/DPAPI。
+- **SQLite 已替代 localStorage**（M0 第 2 步完成）：`messages` / `memories` / `summaries` / `settings`
+  四张表走 `tauri-plugin-sql`；浏览器里退回 localStorage 实现，界面不需要知道自己在哪个上面跑。
+  关系状态由 `messages.created_at` 现算，不单独建表。
+- **API Key 已迁到 Windows DPAPI**：`src-tauri/src/secret_store.rs`，密文绑定当前 Windows 账户，
+  与业务数据分开存放；迁移成功后删除 localStorage 里的明文。M0 至此全部完成。
+- **M1 完成**：每轮对话后异步抽取候选记忆（可在设置页关闭），记忆卡片可逐条保留或删除；
+  滚动摘要近 16 轮留原文、更早的累积到 40 条压成一段。候选记忆立刻生效但标记待确认。
+- **M2 完成**：多样化触发理由（未完话题 / 用户计划 / 时间语义 / 记忆日期 / 小念头），
+  避开上次用过的角度；久别只作触发不作话题；系统托盘常驻、关窗收进托盘、本地通知、一键关闭。
 
-可执行清单见 [NEXT_STEPS.md](NEXT_STEPS.md)，下一步是 SQLite 替代 localStorage。
+M1 和 M2 的验收都只能靠真实使用：M1 要「跨重启跨会话在自然时机提起两周前的事」，
+M2 要「连续七天没有一条让人想关掉它的消息」。代码写完不等于通过。
+
+可执行清单见 [NEXT_STEPS.md](NEXT_STEPS.md)，下一步是 M3 语音回合。
 
 ## Live2D 最新状态
 

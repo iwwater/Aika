@@ -4,18 +4,15 @@
 
 ## 已完成（2026-09-02）
 
-### 第 0 步：git ✅
+### M0 第 0 步：git ✅
 
 `E:\Work\AI CHAT` 已初始化 git 仓库，首条提交 `chore: 现状快照，定位收窄为纯感情陪伴前`。
-
-`.gitignore` 排除 `node_modules/`、`dist/`、`target/`、`.gradle/`、`.kotlin/`、
-`local.properties`、`aika-crossplatform/output/`、声音工坊的 workspace/input/export、
-`.playwright-cli/` 与 `.playwright-mcp/`。
+`.gitignore` 排除依赖、构建产物、`aika-crossplatform/output/`、声音工坊本地数据和工具产物。
 
 **未完成的一半：`output/` 的 283 MB 素材没有进仓库，也还没有冷备份。**
 在做冷备份或改走 Git LFS 之前，那批母稿、抠图和 runtime-presets 仍然只有一份。
 
-### 第 1 步：移植 domain 层 ✅
+### M0 第 1 步：移植 domain 层 ✅
 
 | 从 | 到 |
 | --- | --- |
@@ -24,67 +21,85 @@
 | `domain/ProactivePolicy.kt` | `src/domain/proactive.ts` |
 | `domain/ProactivePolicyTest.kt` | `src/domain/proactive.test.ts` |
 | `data/local/MemoryEntity.kt` | `src/domain/memory.ts` |
-| （新增，多因子关系） | `src/domain/relationship.ts` + `relationship.test.ts` |
+| （新增，多因子关系） | `src/domain/relationship.ts` |
+| （新增，滚动摘要） | `src/domain/summary.ts` |
 
-四处必改都已落地：
+四处必改都已落地并有测试锁住：教学残留整段移除；关系阶段改为
+「相识天数 0.45 + 连续互动天数 0.25 + 消息总数 0.30」，阈值 0.3 / 0.7，
+任何单一因子拉满都到不了「亲近」，且**策略上没有衰减**；code-switch 规则写进 system prompt；
+反模板句与 `proactiveInput` 的反负罪感一行逐字保留。
 
-1. 教学残留整段移除，`prompt.test.ts` 断言提示词里不出现 JLPT、纠错、接触日语。
-2. 关系阶段改为多因子：相识天数 0.45 + 连续互动天数 0.25 + 消息总数 0.30，
-   阈值 0.3 / 0.7。任何单一因子拉满都到不了「亲近」，一天狂聊一百条仍是「刚开始熟悉」。
-   **策略上没有衰减**：久不聊天不降级，也不产生任何「好久不见」类信号。
-3. code-switch 规则已写进 system prompt。
-4. 反模板句与 `proactiveInput` 的反负罪感一行逐字保留，有测试锁住。
+### M0 第 2 步：SQLite 与加密保险库 ✅
 
-关联改动：
+- `services/storage/sqliteStorage.ts` 走 `tauri-plugin-sql`，四张表：
+  `messages` / `memories` / `summaries` / `settings`。
+  **关系状态没有单独建表**：它由 `messages.created_at` 现算（`deriveRelationshipSignals`），
+  不冗余存储，避免两份数据对不上。
+- `services/storage/localStorageStorage.ts` 是浏览器回退，`npm run dev` 在普通浏览器里照样能跑。
+- 首次启动会把 0.3 版留在 localStorage 的消息搬进 SQLite；旧记录只有 HH:mm，
+  日期无法还原，统一压成「同一天、导入时刻」，关系状态不会凭空虚高。
+- **API Key 走 Windows DPAPI**（`src-tauri/src/secret_store.rs`），密文绑定当前 Windows 账户，
+  落在 `secrets.json`，不与业务数据同表；迁移成功后会删掉 localStorage 里的明文。
+  浏览器开发模式下没有 DPAPI，退回明文并在设置页显示明确警告，不假装安全。
 
-- `sendChat` 返回 `{japaneseText, chineseTranslation}`；OpenAI Responses 走 json_schema、
-  Gemini 走 responseMimeType，其余协议靠提示词约定。
-  `parseCompanionReply` 容错：模型不按格式返回时整段当日语正文，不丢这一轮。
-- `ChatMessage` 增加 `createdAt`（关系状态按日历天统计，必须持久化）、
-  `japaneseText`、`chineseTranslation`。旧记录只有 HH:mm，迁移时压成同一天。
-- 聊天气泡与语音字幕改为「日语主 + 中文次级」两层，不再靠换行猜。
-- 右侧「相处记忆」占位改为真实的相处状态（相识天数 / 连续互动 / 消息数）。
-- `src/domain/persona.ts` 已删除，人设并入 `character.ts` 的 `AIKA_PERSONA_PROMPT`。
+### M1 记忆与关系 ✅
+
+- 每轮对话结束后异步抽取候选记忆（`services/memory/extractor.ts`），
+  右侧「长期记忆」卡片可逐条保留或删除。
+- **候选记忆立刻参与对话**，但标记为待确认。理由：要求先确认才生效的话，
+  用户不打开记忆页就等于没有记忆，拿不到「她记得」这条验收。
+- 抽取带去重（`isDuplicateMemory`），否则每轮都会堆出一条「喜欢咖啡」。
+- 滚动摘要：近 16 轮保留原文，更早的累积到 40 条就压成一段记录跟着走。
+- 自动记忆可在设置页一键关闭——它每轮会多发一次请求，会产生平台调用费用。
+
+### M2 主动性与托盘 ✅
+
+- 触发理由多样化（`chooseProactiveReason`）：未聊完的话题、用户提过的计划、
+  时间语义（周五夜 / 深夜 / 周一早上 / 清晨）、记忆库中的日期，兜底是「一个小念头」。
+  选理由时会避开上一次用过的角度——连着两条「现在是深夜」比没有主动消息更让人想关掉它。
+- **久别只作为触发条件，不作为话题**：理由文本里明确写了「不要提起这段间隔」。
+- 频率闸门沿用 Android 阈值：每天最多 6 条、最小间隔 90 分钟、免打扰时段静默，
+  且冷却是按**最后一条消息**算的，不会在你刚聊完两分钟后蹦出来。
+- 系统托盘常驻（`src-tauri/src/lib.rs`），关窗只收进托盘，真正退出走托盘菜单。
+- 本地通知走 `tauri-plugin-notification`；设置页可一键完全关闭主动消息。
 
 ### 界面赛博朋克化 ✅
 
-按用户要求，`App.css` 从粉白暖调改为赛博朋克暗色霓虹，配色对齐角色设定
-（青蓝主色 `#37e6ff`、紫色次色 `#9a6bff`、深冷底 `#05070e`）。
-聊天页、实时语音页、设置弹窗三处统一；标题字体改为 Orbitron / Rajdhani；
-全局加了低对比扫描线，并给 `prefers-reduced-motion` 关掉了动画。
-左侧头像仍是 CSS 占位立绘，M4 接入 Live2D 后整块替换。
+`App.css` 改为青蓝 `#37e6ff` / 紫 `#9a6bff` / 深冷底 `#05070e` 的暗色霓虹主题，
+聊天页、实时语音页、设置弹窗统一。左侧占位立绘 `components/AvatarPlaceholder.tsx`
+按 `character-brief.json` 的锁定方向绘制，M4 导入正式 Live2D 后整块删除。
 
-## 第 2 步：SQLite 替代 localStorage（约一天）← 下一步
+## 下一步
 
-`services/storage/appStorage.ts` 现在把消息和 API Key 一起塞在 localStorage 里。
-对纯陪伴定位这是致命的——**记忆就是产品本身**。
+### 需要你先拍板的
 
-- 引入 `tauri-plugin-sql`，建 `messages` / `memories` / `relationship` 三张表。
-- `memories` 表结构已经在 `src/domain/memory.ts` 里定义好：
-  `id / category / content / createdAt / updatedAt`，直接照着建表。
-- `messages` 表要保留 `createdAt`、`japaneseText`、`chineseTranslation`，
-  关系状态由 `deriveRelationshipSignals` 从 `createdAt` 现算，不另存冗余字段。
-- API Key 单独走 Stronghold 或 Windows DPAPI，**不要和业务数据同表**。
+1. **`output/` 冷备份**，或者改走 Git LFS。二选一，别再拖。
+2. **Live2D 模型来源**：买通用成品 / 委托画师按 brief 绑定 / 自制。见 DEVELOPMENT_PLAN M4。
+3. 三个技术选型待定项（语音链路、记忆抽取用哪个模型、桌宠窗口形态）。
+   记忆抽取那条现在是「用主模型」，接口 `MemoryExtractor` 已经留好，换本地小模型不用改主程序。
 
-验收：关掉应用重开，历史对话和记忆都在；记忆页能看到并删除单条记忆。
+### 需要真机验证的
 
-## 之后
+- **M1 验收**：跨重启、跨会话，她能在自然时机提起两周前说过的事，且不炫耀自己记得。
+- **M2 验收**：连续七天真实使用，没有出现一条让人想关掉它的消息。
+- 这两条都只能靠实际用，代码写完不等于通过。
 
-3. 每轮对话后异步抽取候选记忆，用户在记忆页确认或删除；滚动会话摘要。
-4. M2 主动消息与系统托盘：`proactive.ts` 的频率闸门已经就位，
-   还缺多样化触发理由（未完话题、用户计划、时间语义、记忆日期）和托盘常驻。
-5. M3 本地 Whisper + VAD 替换 Web Speech，修复过早断句与手动切语言。
+### 接下来可以直接写的
+
+- **M3 语音回合**：本地 Whisper + Silero VAD 替换 Web Speech，修复过早断句与手动切语言；
+  回复分句流式合成、播放队列、用户开口打断。这是 FIELD_TEST_NOTES 里两个 P0 的正解。
+- M4 桌宠窗口（等模型来源定了再动）。
 
 ## 暂时不要碰的东西
 
 - `tools/live2d-pipeline/` —— M6，产品验证之后再做。素材全部保留，不要删。
 - `app/`（Android 工程）—— 只读归档。移植逻辑时读它，但不要再往里写代码。
 - 自训声线 —— M5。
-- 自制 PSD 拆分与 Cubism 绑定 —— M6，且到时候优先考虑买授权模型。
 
-## 提醒
+## 验收命令
 
-- `output/` 还没有第二份。做冷备份或 LFS，二选一，别再拖。
-- Live2D 走「买模型」而不是「造模型」，这个决定越早定越省事。
-- M2（主动消息）刻意排在 M3（语音）前面：策略逻辑已经写完，几天就能跑起来，
-  情感回报比压低语音延迟更大。
+```powershell
+npm test
+npm run build
+npm run tauri build
+```
