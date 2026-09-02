@@ -66,9 +66,10 @@ describe("sendChat", () => {
     expect(JSON.parse(request.mock.calls[0][1].body).generationConfig.responseMimeType).toBe("application/json");
   });
 
-  it("surfaces the provider error message", async () => {
+  it("names the host it actually called, so a relay 401 is not mistaken for the official one", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ error: { message: "invalid key" } }, 401)));
-    await expect(sendChat(baseConfig, "system", [{ role: "user", content: "hi" }])).rejects.toThrow("API 返回 401：invalid key");
+    await expect(sendChat(baseConfig, "system", [{ role: "user", content: "hi" }]))
+      .rejects.toThrow("example.com 返回 401：invalid key");
   });
 
   it("reports an empty response instead of showing a blank bubble", async () => {

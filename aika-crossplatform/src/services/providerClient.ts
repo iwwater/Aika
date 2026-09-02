@@ -30,7 +30,17 @@ async function readError(response: Response): Promise<string> {
   }
 }
 
+/** 报错必须说清楚请求发去了哪儿：官方端点和中转站的 401 含义完全不同。 */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
 async function postJson(url: string, headers: Record<string, string>, body: unknown) {
+  const host = hostOf(url);
   let response: Response;
   try {
     response = await activeFetch(url, {
@@ -40,9 +50,11 @@ async function postJson(url: string, headers: Record<string, string>, body: unkn
       connectTimeout: 15_000,
     } as RequestInit);
   } catch (error) {
-    throw new Error(`无法连接 API：${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`无法连接 ${host}：${error instanceof Error ? error.message : String(error)}`);
   }
-  if (!response.ok) throw new Error(`API 返回 ${response.status}：${await readError(response)}`);
+  if (!response.ok) {
+    throw new Error(`${host} 返回 ${response.status}：${await readError(response)}`);
+  }
   return response.json();
 }
 
