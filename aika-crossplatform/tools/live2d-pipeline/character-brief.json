@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "status": "draft",
+  "artRevision": {
+    "canonicalBase": "../../output/character-concepts/aika-holographic-turnaround-v1.png",
+    "currentReview": "../../output/character-concepts/aika-holographic-turnaround-v1-rebuild.png",
+    "supersededExperiments": [
+      "v2",
+      "v3",
+      "v4",
+      "v5",
+      "v6"
+    ],
+    "rule": "后续修改必须从 v1 母版或 v1-rebuild 当前稿开始，不得继续使用 v2 至 v6 作为编辑源"
+  },
+  "identity": {
+    "name": "",
+    "reading": "",
+    "genderPresentation": "",
+    "age": "",
+    "apparentAge": "",
+    "relationshipToUser": "",
+    "worldAndEra": "未来",
+    "role": "",
+    "background": "",
+    "personality": [
+      "已确认：温柔"
+    ],
+    "speechStyle": ""
+  },
+  "appearance": {
+    "artStyle": "日系二次元；整体轮廓和亲和感参考用户提供的图片，最终角色必须重新设计",
+    "proportions": "已确认：正常二次元人物比例，非Q版大头比例",
+    "skin": "",
+    "face": "眼镜已确认保留；面部皮肤保持干净，不叠加全息白点或粒子；具体脸型待确认",
+    "eyes": "待确认；候选特征：大尺寸、通透的蓝青渐变瞳",
+    "hair": "已确认：蓝色/青蓝色长发，发顶为清晰天蓝色，中段过渡为青蓝色，下方约20%至25%自然渐变为清晰可见的冷调薰衣草紫色发尾；具体发型细节仍可调整",
+    "outfit": "当前概念采用未来赛博朋克服装和单腿不对称设计：角色左腿穿白色半透明过膝丝袜，角色右腿裸腿；最终服装仍待用户确认",
+    "accessories": "已确认：眼镜；待确认：镜框造型、两侧编发或束发结构、双侧饰结、头顶小型识别装饰",
+    "palette": [
+      "已确认：蓝色/青蓝色为头发主色",
+      "待确认：赛博朋克辅助色和发光色"
+    ],
+    "identityAnchors": [
+      "已确认：蓝色/青蓝色头发",
+      "已确认：未来赛博朋克视觉方向",
+      "已确认：眼镜",
+      "已确认：全息生命",
+      "候选：两侧编发与对称饰品",
+      "候选：头顶小型识别装饰"
+    ],
+    "forbiddenElements": [
+      "直接复制参考图中的角色",
+      "把参考图的温馨卧室或花房背景当作默认世界观",
+      "在面部皮肤上叠加白色全息光点或粒子",
+      "三视图中遗漏或左右颠倒单腿丝袜",
+      "在人物背景和人设未确认前锁定正式设计"
+    ]
+  },
+  "visualDirection": {
+    "genre": "未来赛博朋克",
+    "lane": "已确认：全息生命",
+    "principle": "以全息投影、光学界面和数字生命为统一设计语言，不加入沉重机械义体或其他未确认的科幻类型",
+    "holographicCues": [
+      "候选：发梢或衣装边缘具有低强度半透明发光层",
+      "候选：情绪变化时出现柔和的光纹或粒子变化",
+      "候选：眼镜兼具全息信息界面功能",
+      "避免整个人持续高亮或过度透明，以保证面部表情和Live2D可读性"
+    ]
+  },
+  "motionPersonality": {
+    "idle": "温和、克制的小幅呼吸与轻微重心变化",
+    "listening": "保持柔和眼神和轻微点头，让用户感到正在被认真倾听",
+    "thinking": "",
+    "speaking": "",
+    "eyeContact": "稳定但不紧盯，眨眼自然，偶尔轻柔移开再回到用户",
+    "movementScale": "整体动作幅度偏小且流畅，避免急促和侵略性的动作"
+  },
+  "expressions": [],
+  "references": [
+    {
+      "path": "references/user-reference-blue-hair-01.png",
+      "purpose": "仅参考蓝色长发、亲和轮廓、眼镜和头部装饰语言；不得直接复刻角色、服装或背景",
+      "source": "用户提供"
+    },
+    {
+      "path": "../../output/character-concepts/aika-holographic-turnaround-v1.png",
+      "purpose": "GPT 生图生成的初版总体三视图；用于讨论和后续 ComfyUI 校正，尚未得到用户定稿确认",
+      "source": "GPT image generation"
+    },
+    {
+      "path": "../../output/character-concepts/aika-holographic-turnaround-v2-gradient-hair.png",
+      "purpose": "在 v1 基础上加入蓝色至冰蓝、淡紫发梢渐变的三视图修订稿；已由 v3 继续修订",
+      "source": "GPT image generation edit"
+    },
+    {
+      "path": "../../output/character-concepts/aika-holographic-turnaround-v3-purple-tips.png",
+      "purpose": "加强发尾薰衣草紫色渐变的三视图修订稿；已由 v4 修复三视图连续性",
+      "source": "GPT image generation edit"
+    },
+    {
+      "path": "../../output/character-concepts/aika-holographic-turnaround-v4-continuity-fix.png",
+      "purpose": "首次尝试清除面部白色光点，并在背面恢复角色左腿单侧白色过膝丝袜；鼻部仍有残留白点，已由 v5 修复",
+      "source": "GPT image generation edit"
+    },
+    {
+      "path": "../../output/character-concepts/aika-holographic-turnaround-v5-clean-face.png",
+      "purpose": "二次清理面部皮肤点状高光；复查发现正面鼻部仍有高光，已由 v6 修复",
+      "source": "GPT image generation edit"
+    },
+    {
+      "path": "../../output/character-concepts/aika-holographic-turnaround-v6-no-nose-highlight.png",
+      "purpose": "曾用于移除正面鼻尖白色高光；已停止作为编辑源",
+      "source": "GPT image generation edit"
+    },
+    {
+      "path": "../../output/character-concepts/aika-holographic-turnaround-v1-rebuild.png",
+      "purpose": "重新以 v1 为唯一母版，只加入紫色发尾、干净面部和背面单侧丝袜连续性修正；当前最新待评审版本",
+      "source": "GPT image generation edit from v1"
+    }
+  ],
+  "rightsConfirmed": false,
+  "approvedByUser": false
+}

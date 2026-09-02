@@ -1,0 +1,48 @@
+# --- 构建产物与依赖 ---
+node_modules/
+dist/
+dist-ssr/
+build/
+**/build/
+target/
+aika-crossplatform/src-tauri/target/
+
+# --- Android 原型（只读归档）---
+.gradle/
+.kotlin/
+.android/
+local.properties
+*.iml
+*.jks
+*.keystore
+captures/
+.externalNativeBuild/
+.cxx/
+
+# --- 大体积素材：283 MB 二进制，走冷备份而非 git ---
+aika-crossplatform/output/
+
+# --- 声音工坊本地数据 ---
+aika-crossplatform/tools/voice-workshop/workspace/
+aika-crossplatform/tools/voice-workshop/input/
+aika-crossplatform/tools/voice-workshop/export/
+
+# --- 工具与编辑器 ---
+aika-crossplatform/.playwright-cli/
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# --- 日志 ---
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+*.local

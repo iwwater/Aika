@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "projectName": "my-aika-voice",
+  "language": "ja-JP",
+  "engine": "style-bert-vits2",
+  "sourceDirectory": "input",
+  "workspaceDirectory": "workspace",
+  "exportDirectory": "export",
+  "audio": {
+    "sampleRate": 44100,
+    "channels": 1,
+    "minimumClipSeconds": 2,
+    "maximumClipSeconds": 12
+  },
+  "training": {
+    "batchSize": 2,
+    "epochs": 100,
+    "saveEveryEpochs": 10
+  }
+}
+

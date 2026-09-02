@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "workflow": "Aika_02_Expression_Reference_Qwen2509.json",
+  "usage": "每次只复制一个 positivePrompt 到工作流；固定种子并逐张验收身份一致性。生成结果是 Live2D 绘制参考，不可直接代替可绑定 PSD 图层。",
+  "globalLock": "Preserve the exact identity, facial proportions, glasses, blue-to-lavender hair, outfit, body, front-facing neutral pose, framing, line art, and background. Change only the requested facial area. Keep facial skin clean with no white dots, nose highlights, or holographic particles.",
+  "expressions": [
+    {
+      "id": "exp_neutral",
+      "label": "平静",
+      "positivePrompt": "Change only the facial expression to calm neutral attentiveness: relaxed brows, open eyes, closed relaxed mouth. Preserve everything else exactly."
+    },
+    {
+      "id": "exp_gentle_smile",
+      "label": "温柔微笑",
+      "positivePrompt": "Change only the facial expression to a gentle, warm closed-mouth smile with relaxed kind eyes. Preserve everything else exactly."
+    },
+    {
+      "id": "exp_happy",
+      "label": "开心",
+      "positivePrompt": "Change only the facial expression to genuine happiness: softly closed smiling eyes, raised cheeks, small open smile. Preserve everything else exactly."
+    },
+    {
+      "id": "exp_concerned",
+      "label": "担心",
+      "positivePrompt": "Change only the facial expression to gentle concern: slightly raised inner brows, attentive eyes, small closed mouth. Do not make her frightened or distressed. Preserve everything else exactly."
+    },
+    {
+      "id": "exp_surprised",
+      "label": "惊讶",
+      "positivePrompt": "Change only the facial expression to mild friendly surprise: slightly widened eyes, raised brows, small round open mouth. Preserve everything else exactly."
+    },
+    {
+      "id": "exp_thinking",
+      "label": "思考",
+      "positivePrompt": "Change only the facial expression to thoughtful concentration: eyes looking slightly upward, one brow subtly raised, closed relaxed mouth. Keep the head and body facing forward. Preserve everything else exactly."
+    },
+    {
+      "id": "exp_shy",
+      "label": "害羞",
+      "positivePrompt": "Change only the facial expression to gentle shyness: softened eyes, subtle warm blush, small closed smile. No sparkles or white dots on skin. Preserve everything else exactly."
+    }
+  ],
+  "eyes": [
+    {
+      "id": "eye_half",
+      "label": "半闭眼",
+      "positivePrompt": "Change only both eyelids to an exact symmetrical half-blink. Keep iris position, glasses, brows, mouth, and identity unchanged."
+    },
+    {
+      "id": "eye_closed",
+      "label": "闭眼",
+      "positivePrompt": "Change only both eyes to fully closed relaxed anime eyelids, perfectly symmetrical. Keep glasses, brows, mouth, and identity unchanged."
+    }
+  ],
+  "mouthShapes": [
+    {
+      "id": "mouth_closed",
+      "label": "闭口",
+      "positivePrompt": "Change only the mouth to a relaxed closed neutral mouth. Keep the eyes, brows, face, glasses, and identity unchanged."
+    },
+    {
+      "id": "mouth_a",
+      "label": "A/啊",
+      "positivePrompt": "Change only the mouth to the Japanese phoneme A: vertically open natural oval, jaw slightly lowered, tongue not prominent. Keep all other facial features unchanged."
+    },
+    {
+      "id": "mouth_i",
+      "label": "I/衣",
+      "positivePrompt": "Change only the mouth to the Japanese phoneme I: horizontally narrow opening with slightly spread corners. Keep all other facial features unchanged."
+    },
+    {
+      "id": "mouth_u",
+      "label": "U/乌",
+      "positivePrompt": "Change only the mouth to the Japanese phoneme U: small rounded pursed opening. Keep all other facial features unchanged."
+    },
+    {
+      "id": "mouth_e",
+      "label": "E/诶",
+      "positivePrompt": "Change only the mouth to the Japanese phoneme E: medium horizontal opening, relaxed corners. Keep all other facial features unchanged."
+    },
+    {
+      "id": "mouth_o",
+      "label": "O/哦",
+      "positivePrompt": "Change only the mouth to the Japanese phoneme O: clearly rounded medium oval opening. Keep all other facial features unchanged."
+    }
+  ]
+}

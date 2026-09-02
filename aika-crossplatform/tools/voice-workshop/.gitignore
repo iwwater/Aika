@@ -1,0 +1,8 @@
+input/*
+workspace/*
+export/*
+!input/.gitkeep
+!workspace/.gitkeep
+!export/.gitkeep
+config.json
+

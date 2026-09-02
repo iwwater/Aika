@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "status": "draft",
+  "identity": {
+    "name": "",
+    "reading": "",
+    "genderPresentation": "",
+    "age": "",
+    "apparentAge": "",
+    "relationshipToUser": "",
+    "worldAndEra": "",
+    "role": "",
+    "background": "",
+    "personality": [],
+    "speechStyle": ""
+  },
+  "appearance": {
+    "artStyle": "",
+    "proportions": "",
+    "skin": "",
+    "face": "",
+    "eyes": "",
+    "hair": "",
+    "outfit": "",
+    "accessories": "",
+    "palette": [],
+    "identityAnchors": [],
+    "forbiddenElements": []
+  },
+  "motionPersonality": {
+    "idle": "",
+    "listening": "",
+    "thinking": "",
+    "speaking": "",
+    "eyeContact": "",
+    "movementScale": ""
+  },
+  "expressions": [],
+  "references": [],
+  "rightsConfirmed": false,
+  "approvedByUser": false
+}
+

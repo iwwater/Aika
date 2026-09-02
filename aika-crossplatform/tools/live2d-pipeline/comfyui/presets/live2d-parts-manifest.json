@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "character": "Aika draft",
+  "sourcePolicy": {
+    "canonicalTurnaround": "output/character-concepts/aika-holographic-turnaround-v1.png",
+    "lowResolutionIdentityReference": "output/live2d/source/aika-front-master-v1.png",
+    "currentFrontMaster": "output/live2d/source/aika-front-master-4k.png",
+    "wholeCharacterCutout": "output/live2d/layers/00-character-cutout-rgba.png",
+    "segmentationGuides": "output/live2d/layers/guides",
+    "rule": "所有图层都必须对齐同一张正面母稿；生成式表情只作重绘参考，不直接替换母稿五官。"
+  },
+  "canvas": {
+    "targetWidth": 2048,
+    "targetHeight": 4096,
+    "safeMarginPx": 128,
+    "format": "PSD/PSB, sRGB, transparent background"
+  },
+  "layerGroups": [
+    {
+      "group": "00_GUIDES",
+      "layers": ["turnaround_reference", "center_line", "eye_line", "mouth_line"],
+      "export": false
+    },
+    {
+      "group": "01_BACK_HAIR",
+      "layers": ["hair_back_L3", "hair_back_L2", "hair_back_L1", "hair_back_C", "hair_back_R1", "hair_back_R2", "hair_back_R3", "hair_back_fill"],
+      "notes": "每束长发独立；紫色渐变必须连续；被身体遮住的区域需要补画。"
+    },
+    {
+      "group": "02_BODY_BACK",
+      "layers": ["hologram_back_fx", "jacket_back", "dress_back", "neck_back_fill"]
+    },
+    {
+      "group": "03_BODY",
+      "layers": ["torso_skin_fill", "neck", "body_base", "left_leg_stocking", "right_leg_skin", "boot_L", "boot_R"]
+    },
+    {
+      "group": "04_ARMS",
+      "layers": ["upper_arm_L", "forearm_L", "hand_L", "upper_arm_R", "forearm_R", "hand_R"],
+      "notes": "肩、肘、腕下方需要补面，方便小幅手势和呼吸动作。"
+    },
+    {
+      "group": "05_OUTFIT",
+      "layers": ["dress_main", "jacket_L", "jacket_R", "sleeve_holo_L", "sleeve_holo_R", "hem_holo_L", "hem_holo_R", "chest_emblem", "garter_left", "outfit_glow_fx"]
+    },
+    {
+      "group": "06_FACE_BASE",
+      "layers": ["ear_L", "ear_R", "face_base", "nose_shadow", "cheek_color", "face_shadow"],
+      "notes": "面部皮肤禁止点状白光；鼻部只保留淡肤色阴影。"
+    },
+    {
+      "group": "07_EYES",
+      "layers": ["eye_white_L", "iris_L", "pupil_L", "eye_highlight_L", "upper_lash_L", "lower_lash_L", "eyelid_fill_L", "eye_white_R", "iris_R", "pupil_R", "eye_highlight_R", "upper_lash_R", "lower_lash_R", "eyelid_fill_R"],
+      "notes": "左右眼完全独立；瞳孔和高光分层以支持视线追踪。"
+    },
+    {
+      "group": "08_BROWS",
+      "layers": ["brow_L", "brow_R"]
+    },
+    {
+      "group": "09_MOUTH",
+      "layers": ["mouth_line", "mouth_inner", "upper_teeth", "lower_teeth", "tongue", "lip_color"],
+      "referenceStates": ["closed", "A", "I", "U", "E", "O", "smile"],
+      "notes": "口型参考用于补画内部结构；Cubism 中使用参数形变，不把每张整脸当作切换图。"
+    },
+    {
+      "group": "10_FRONT_HAIR",
+      "layers": ["bang_L2", "bang_L1", "bang_C", "bang_R1", "bang_R2", "side_lock_L", "side_lock_R", "braid_L", "braid_R", "hair_front_fill"]
+    },
+    {
+      "group": "11_ACCESSORIES",
+      "layers": ["glasses_frame_L", "glasses_frame_R", "glasses_bridge", "glasses_lens_L", "glasses_lens_R", "hair_ornament", "ornament_glow"]
+    },
+    {
+      "group": "12_FOREGROUND_FX",
+      "layers": ["hologram_scanline", "hologram_particles", "edge_glow"],
+      "notes": "全息粒子不得覆盖面部皮肤；在 Cubism 内限制强度。"
+    }
+  ],
+  "cubismParameters": [
+    "ParamAngleX",
+    "ParamAngleY",
+    "ParamAngleZ",
+    "ParamBodyAngleX",
+    "ParamEyeLOpen",
+    "ParamEyeROpen",
+    "ParamEyeBallX",
+    "ParamEyeBallY",
+    "ParamBrowLY",
+    "ParamBrowRY",
+    "ParamMouthForm",
+    "ParamMouthOpenY",
+    "ParamBreath"
+  ],
+  "expressionFiles": [
+    "output/live2d/runtime-presets/expressions/neutral.exp3.json",
+    "output/live2d/runtime-presets/expressions/gentle_smile.exp3.json",
+    "output/live2d/runtime-presets/expressions/happy.exp3.json",
+    "output/live2d/runtime-presets/expressions/concerned.exp3.json",
+    "output/live2d/runtime-presets/expressions/surprised.exp3.json",
+    "output/live2d/runtime-presets/expressions/thinking.exp3.json",
+    "output/live2d/runtime-presets/expressions/shy.exp3.json"
+  ],
+  "motionFiles": [
+    "output/live2d/runtime-presets/motions/idle.motion3.json",
+    "output/live2d/runtime-presets/motions/listen.motion3.json",
+    "output/live2d/runtime-presets/motions/think.motion3.json",
+    "output/live2d/runtime-presets/motions/speak.motion3.json"
+  ],
+  "motionPlan": {
+    "idle": "呼吸、轻微重心移动、自然眨眼；60–120 帧循环参考。",
+    "listen": "柔和注视、轻微点头、头部小幅倾斜。",
+    "think": "视线轻微上移、短暂停顿、回正。",
+    "speak": "口型参数驱动，头发和全息袖口做低幅度次级摆动。",
+    "rule": "动作由 Cubism 参数和物理演算制作，不通过 ComfyUI 生成逐帧动画。"
+  }
+}
