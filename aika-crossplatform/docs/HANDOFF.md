@@ -22,8 +22,20 @@
 - 角色资料、会话类型、应用存储、语音输入与语音输出已有独立边界。
 - 当前 Web Speech 只是临时输入/输出适配器；本地 Whisper 和自训练 TTS 可直接替换适配器。
 - 已建立角色包 v1 规范与声音工坊工具包骨架。
-- 实时语音页已显示用户和愛花的连续字幕，但当前仍是单语字幕。
 - 原生 Android 原型仍保留在上级工程中，没有删除或覆盖。
+
+## M0 进度（2026-09-02）
+
+- **git 已初始化**（第 0 步完成）。`output/` 走 ignore，尚未做冷备份，是当前最大的单点风险。
+- **Android domain 层已移植**（第 1 步完成）：`domain/` 下新增 companion、prompt、
+  proactive、memory、relationship 五个模块与配套测试；教学残留整段移除；
+  关系阶段改为多因子且无衰减；code-switch 与反负罪感规则均有测试锁住。
+- **结构化双语输出已接通**：`sendChat` 返回 `{japaneseText, chineseTranslation}`，
+  聊天气泡与实时语音字幕都是「日语主 + 中文次级」两层，不再靠换行猜。
+- **界面已赛博朋克化**：App.css 改为青蓝/紫霓虹暗色主题，配色对齐角色设定。
+- 未完成的 M0 项：API Key 仍在 localStorage，尚未迁到 Stronghold/DPAPI。
+
+可执行清单见 [NEXT_STEPS.md](NEXT_STEPS.md)，下一步是 SQLite 替代 localStorage。
 
 ## Live2D 最新状态
 
@@ -61,7 +73,7 @@
 
 - P0：Web Speech 会在用户句中停顿时过早提交，造成抢话和发言被截断。
 - P0：不应要求用户手动选择日语或中文；默认应自动理解日语、中文和中日混说。
-- P1：愛花的回复必须同时显示日语原文和中文翻译，日语用于朗读，中文用于学习对照。
+- P1：愛花的回复必须同时显示日语原文和中文翻译——已完成，日语用于朗读，中文让情感落地（不是学习对照）。
 
 详细现象、目标行为和验收标准见 [FIELD_TEST_NOTES.md](FIELD_TEST_NOTES.md)。
 

@@ -252,7 +252,7 @@ function App() {
       {showSettings && (
         <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setShowSettings(false)}>
           <section className="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-            <div className="modal-heading"><div><p className="eyebrow">CCSwitch 风格</p><h2 id="settings-title">连接你的模型</h2></div><button className="icon-button" onClick={() => setShowSettings(false)}><X size={20} /></button></div>
+            <div className="modal-heading"><div><p className="eyebrow">Model Link</p><h2 id="settings-title">连接你的模型</h2></div><button className="icon-button" onClick={() => setShowSettings(false)}><X size={20} /></button></div>
             <p className="modal-intro">选择平台、填写 Key 并测试。请求由你的电脑直接发往模型平台，不经过额外服务器。</p>
             <label className="field-label">平台</label>
             <div className="select-wrap"><select value={draftProvider.id} onChange={(event) => choosePreset(event.target.value)}>{PROVIDER_PRESETS.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><ChevronDown size={17} /></div>
