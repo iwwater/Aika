@@ -1,9 +1,11 @@
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import { COMPANION_REPLY_SCHEMA, parseCompanionReply, type CompanionReply } from "../domain/companion";
 import type { ChatTurn } from "../domain/conversation";
 import type { ProviderConfig } from "../domain/providers";
 import { cleanBaseUrl } from "../domain/providers";
 
 export type { ChatTurn } from "../domain/conversation";
+export type { CompanionReply } from "../domain/companion";
 
 function activeFetch(input: string, init: RequestInit): Promise<Response> {
   return "__TAURI_INTERNALS__" in globalThis ? tauriFetch(input, init) : globalThis.fetch(input, init);
@@ -42,51 +44,64 @@ function responsesText(data: any): string {
   return parts.map((part: any) => part.text ?? "").join("").trim();
 }
 
-export async function sendChat(config: ProviderConfig, systemPrompt: string, history: ChatTurn[]): Promise<string> {
+/**
+ * 请求一轮回复。
+ *
+ * 支持结构化输出的协议（OpenAI Responses、Gemini）在请求里声明 schema；
+ * 其余协议只靠提示词约定，由 parseCompanionReply 容错解析。
+ */
+export async function sendChat(
+  config: ProviderConfig,
+  systemPrompt: string,
+  history: ChatTurn[],
+): Promise<CompanionReply> {
   const base = cleanBaseUrl(config.baseUrl);
   let data: any;
+  let text: string | undefined;
 
   if (config.protocol === "openai-responses") {
     data = await postJson(base.endsWith("/responses") ? base : `${base}/responses`, { Authorization: `Bearer ${config.apiKey}` }, {
       model: config.model,
       instructions: systemPrompt,
       input: history.map((turn) => ({ role: turn.role, content: turn.content })),
+      text: {
+        format: {
+          type: "json_schema",
+          name: "aika_companion_reply",
+          strict: true,
+          schema: COMPANION_REPLY_SCHEMA,
+        },
+      },
     });
-    const text = responsesText(data);
-    if (!text) throw new Error("API 已响应，但没有返回可显示的文本");
-    return text;
-  }
-
-  if (config.protocol === "anthropic") {
+    text = responsesText(data);
+  } else if (config.protocol === "anthropic") {
     data = await postJson(base.endsWith("/v1/messages") ? base : `${base}/v1/messages`, {
       "x-api-key": config.apiKey,
       "anthropic-version": "2023-06-01",
     }, { model: config.model, max_tokens: 800, system: systemPrompt, messages: history });
-    const text = data.content?.map((item: any) => item.text ?? "").join("").trim();
-    if (!text) throw new Error("API 已响应，但没有返回可显示的文本");
-    return text;
-  }
-
-  if (config.protocol === "gemini") {
+    text = data.content?.map((item: any) => item.text ?? "").join("").trim();
+  } else if (config.protocol === "gemini") {
     const endpoint = base.includes(":generateContent") ? base : `${base}/v1beta/models/${encodeURIComponent(config.model)}:generateContent`;
     data = await postJson(`${endpoint}?key=${encodeURIComponent(config.apiKey)}`, {}, {
       systemInstruction: { parts: [{ text: systemPrompt }] },
       contents: history.map((turn) => ({ role: turn.role === "assistant" ? "model" : "user", parts: [{ text: turn.content }] })),
+      generationConfig: { responseMimeType: "application/json" },
     });
-    const text = data.candidates?.[0]?.content?.parts?.map((part: any) => part.text ?? "").join("").trim();
-    if (!text) throw new Error("API 已响应，但没有返回可显示的文本");
-    return text;
+    text = data.candidates?.[0]?.content?.parts?.map((part: any) => part.text ?? "").join("").trim();
+  } else {
+    data = await postJson(base.endsWith("/chat/completions") ? base : `${base}/chat/completions`, { Authorization: `Bearer ${config.apiKey}` }, {
+      model: config.model,
+      messages: [{ role: "system", content: systemPrompt }, ...history],
+      temperature: 0.85,
+    });
+    const content = data.choices?.[0]?.message?.content;
+    text = typeof content === "string" ? content : content?.map((part: any) => part.text ?? "").join("").trim();
   }
 
-  data = await postJson(base.endsWith("/chat/completions") ? base : `${base}/chat/completions`, { Authorization: `Bearer ${config.apiKey}` }, {
-    model: config.model,
-    messages: [{ role: "system", content: systemPrompt }, ...history],
-    temperature: 0.85,
-  });
-  const content = data.choices?.[0]?.message?.content;
-  const text = typeof content === "string" ? content : content?.map((part: any) => part.text ?? "").join("").trim();
   if (!text) throw new Error("API 已响应，但没有返回可显示的文本");
-  return text;
+  const reply = parseCompanionReply(text);
+  if (!reply.japaneseText && !reply.chineseTranslation) throw new Error("API 已响应，但没有返回可显示的文本");
+  return reply;
 }
 
 export async function testProvider(config: ProviderConfig): Promise<string> {

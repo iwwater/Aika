@@ -5,7 +5,10 @@ export type VoiceEngineKind = "web-speech" | "whisper-local" | "style-bert-vits2
 export interface VoiceCaption {
   id: number;
   speaker: "user" | "assistant";
+  /** 主字幕：用户的识别结果，或 Aika 的日语正文。 */
   text: string;
+  /** 次级字幕：Aika 的中文翻译，缺失时不显示第二层。 */
+  translation?: string;
 }
 
 export interface SpeechOutputRequest {

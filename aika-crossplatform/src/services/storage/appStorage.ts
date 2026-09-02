@@ -1,4 +1,5 @@
 import type { ChatMessage } from "../../domain/conversation";
+import { formatClockTime } from "../../domain/conversation";
 import type { ProviderConfig } from "../../domain/providers";
 import { normalizeStoredProvider } from "../../domain/providers";
 
@@ -18,6 +19,19 @@ function writeJson(key: string, value: unknown) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+/**
+ * 兼容 createdAt 之前的记录。
+ * 旧记录只存了 HH:mm，日期无法还原，统一按“同一天、导入时刻”处理；
+ * 关系状态因此不会凭空虚高，只是把这段历史压成一天。
+ */
+function normalizeStoredMessages(messages: ChatMessage[], now: number): ChatMessage[] {
+  return messages.map((message, index) => {
+    if (typeof message.createdAt === "number") return message;
+    const createdAt = now - (messages.length - index) * 1000;
+    return { ...message, createdAt, time: message.time ?? formatClockTime(createdAt) };
+  });
+}
+
 export const appStorage = {
   loadProvider(fallback: ProviderConfig): ProviderConfig {
     const saved = readJson<ProviderConfig>(PROVIDER_KEY);
@@ -28,8 +42,9 @@ export const appStorage = {
     writeJson(PROVIDER_KEY, provider);
   },
 
-  loadMessages(): ChatMessage[] | null {
-    return readJson<ChatMessage[]>(MESSAGE_KEY);
+  loadMessages(now: number = Date.now()): ChatMessage[] | null {
+    const saved = readJson<ChatMessage[]>(MESSAGE_KEY);
+    return saved ? normalizeStoredMessages(saved, now) : null;
   },
 
   saveMessages(messages: ChatMessage[]) {

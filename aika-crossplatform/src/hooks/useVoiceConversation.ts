@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { replyDisplayText, type CompanionReply } from "../domain/companion";
 import type {
   SpeechInputEngine,
   VoiceCaption,
@@ -17,7 +18,7 @@ const recognitionErrors: Record<string, string> = {
   "language-not-supported": "当前系统语音识别不支持所选语言。",
 };
 
-export function useVoiceConversation(onTranscript: (text: string) => Promise<string | null>) {
+export function useVoiceConversation(onTranscript: (text: string) => Promise<CompanionReply | null>) {
   const [isOpen, setIsOpen] = useState(false);
   const [phase, setPhase] = useState<VoicePhase>("idle");
   const [transcript, setTranscript] = useState("");
@@ -70,9 +71,10 @@ export function useVoiceConversation(onTranscript: (text: string) => Promise<str
     inputRef.current?.stop();
 
     void onTranscriptRef.current(completed).then((reply) => {
-      if (reply) {
-        const captionId = appendCaption("assistant", reply);
-        speak(reply, captionId);
+      const spoken = reply ? replyDisplayText(reply) : "";
+      if (reply && spoken) {
+        const captionId = appendCaption("assistant", spoken, reply.chineseTranslation);
+        speak(spoken, captionId);
       }
       else {
         busyRef.current = false;
@@ -82,9 +84,9 @@ export function useVoiceConversation(onTranscript: (text: string) => Promise<str
     });
   }
 
-  function appendCaption(speaker: VoiceCaption["speaker"], text: string) {
+  function appendCaption(speaker: VoiceCaption["speaker"], text: string, translation?: string) {
     captionIdRef.current += 1;
-    const caption = { id: captionIdRef.current, speaker, text };
+    const caption: VoiceCaption = { id: captionIdRef.current, speaker, text, translation };
     setCaptions((current) => [...current, caption].slice(-10));
     return caption.id;
   }

@@ -6,23 +6,36 @@ import {
 import "./App.css";
 import { VoiceModal } from "./components/VoiceModal";
 import { DEFAULT_CHARACTER } from "./domain/character";
-import type { ChatMessage } from "./domain/conversation";
+import type { CompanionReply } from "./domain/companion";
+import {
+  buildCompanionContext, companionMessage, formatClockTime, userMessage,
+  type ChatMessage,
+} from "./domain/conversation";
+import { buildConversationInput, buildInstructions } from "./domain/prompt";
 import { PROVIDER_PRESETS, validateProvider, type ProviderConfig } from "./domain/providers";
 import { useVoiceConversation } from "./hooks/useVoiceConversation";
 import { sendChat, testProvider } from "./services/providerClient";
 import { appStorage } from "./services/storage/appStorage";
 
-function now() {
-  return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(new Date());
-}
-
 function initialProvider(): ProviderConfig {
   return appStorage.loadProvider(PROVIDER_PRESETS[1]);
 }
 
+function welcomeMessage(): ChatMessage {
+  const createdAt = Date.now();
+  return {
+    id: "welcome",
+    role: "assistant",
+    content: DEFAULT_CHARACTER.greeting,
+    japaneseText: DEFAULT_CHARACTER.greeting,
+    chineseTranslation: DEFAULT_CHARACTER.greetingTranslation,
+    createdAt,
+    time: formatClockTime(createdAt),
+  };
+}
+
 function initialMessages(): ChatMessage[] {
-  return appStorage.loadMessages()
-    ?? [{ id: "welcome", role: "assistant", content: DEFAULT_CHARACTER.greeting, time: now() }];
+  return appStorage.loadMessages() ?? [welcomeMessage()];
 }
 
 function App() {
@@ -38,7 +51,7 @@ function App() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const connected = Boolean(provider.apiKey && provider.baseUrl && provider.model);
-  const recentMessages = useMemo(() => messages.filter((message) => !message.error).slice(-16), [messages]);
+  const relationship = useMemo(() => buildCompanionContext(messages).relationship, [messages]);
   const voice = useVoiceConversation(sendMessage);
 
   function persistMessages(next: ChatMessage[]) {
@@ -80,7 +93,7 @@ function App() {
     setTimeout(() => setShowSettings(false), 450);
   }
 
-  async function sendMessage(content: string): Promise<string | null> {
+  async function sendMessage(content: string): Promise<CompanionReply | null> {
     if (!content || sending) return null;
     if (!connected) {
       setDraftProvider(provider);
@@ -89,21 +102,30 @@ function App() {
       return null;
     }
 
-    const userMessage: ChatMessage = { id: crypto.randomUUID(), role: "user", content, time: now() };
+    const asked = userMessage(content);
     const pendingId = crypto.randomUUID();
-    const next = [...messages, userMessage];
+    const next = [...messages, asked];
     setInput("");
     setSending(true);
-    setMessages([...next, { id: pendingId, role: "assistant", content: "", time: now(), pending: true }]);
+    setMessages([...next, { id: pendingId, role: "assistant", content: "", createdAt: asked.createdAt, time: asked.time, pending: true }]);
 
     try {
-      const reply = await sendChat(provider, DEFAULT_CHARACTER.systemPrompt,
-        [...recentMessages, userMessage].map(({ role, content: text }) => ({ role, content: text })));
-      persistMessages([...next, { id: pendingId, role: "assistant", content: reply, time: now() }]);
+      // 上下文不含刚发出的这一句：它作为“用户刚刚说”单独交给提示词。
+      const context = buildCompanionContext(messages);
+      const reply = await sendChat(
+        provider,
+        buildInstructions(context, DEFAULT_CHARACTER.systemPrompt),
+        [{ role: "user", content: buildConversationInput(content, context) }],
+      );
+      persistMessages([...next, companionMessage(reply, Date.now(), pendingId)]);
       return reply;
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      persistMessages([...next, { id: pendingId, role: "assistant", content: `这次没有发出去：${detail}`, time: now(), error: true }]);
+      const failedAt = Date.now();
+      persistMessages([...next, {
+        id: pendingId, role: "assistant", content: `这次没有发出去：${detail}`,
+        createdAt: failedAt, time: formatClockTime(failedAt), error: true,
+      }]);
       return null;
     } finally {
       setSending(false);
@@ -152,7 +174,7 @@ function App() {
         <section className="chat-panel">
           <div className="chat-heading">
             <div><p className="eyebrow">日常会话</p><h1>和{DEFAULT_CHARACTER.name}聊天</h1></div>
-            <button className={`translation-toggle ${showTranslation ? "active" : ""}`} onClick={() => setShowTranslation((v) => !v)}><Languages size={17} /> 中文辅助 <span>{showTranslation ? "开" : "关"}</span></button>
+            <button className={`translation-toggle ${showTranslation ? "active" : ""}`} onClick={() => setShowTranslation((v) => !v)}><Languages size={17} /> 中文字幕 <span>{showTranslation ? "开" : "关"}</span></button>
           </div>
 
           <div className="messages" aria-live="polite">
@@ -163,9 +185,16 @@ function App() {
                 <div className="message-wrap">
                   <div className="message-meta">{message.role === "assistant" ? DEFAULT_CHARACTER.name : "你"} · {message.time}</div>
                   <div className="message-bubble">
-                    {message.pending ? <span className="typing"><i /><i /><i /></span> : message.content.split("\n").map((line, index) => (
-                      <span key={`${message.id}-${index}`} className={index > 0 && showTranslation ? "translation" : index > 0 ? "hidden-line" : ""}>{line}</span>
-                    ))}
+                    {message.pending ? <span className="typing"><i /><i /><i /></span> : (
+                      <>
+                        {(message.japaneseText ?? message.content).split("\n").map((line, index) => (
+                          <span key={`${message.id}-${index}`}>{line}</span>
+                        ))}
+                        {showTranslation && message.chineseTranslation && (
+                          <span className="translation">{message.chineseTranslation}</span>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
               </article>
@@ -190,16 +219,17 @@ function App() {
             <div className="provider-status"><div className="provider-logo">{provider.name.slice(0, 1)}</div><div><strong>{provider.name}</strong><span>{provider.model || "尚未配置模型"}</span></div><i className={connected ? "connected" : ""} /></div>
           </section>
           <section className="side-card">
-            <div className="side-card-title"><span><MessageCircleMore size={17} /> 相处记忆</span><button><Plus size={15} /></button></div>
+            <div className="side-card-title"><span><MessageCircleMore size={17} /> 相处状态</span><button title="长期记忆将在下一版接入" disabled><Plus size={15} /></button></div>
             <div className="memory-list">
-              <div className="memory-item"><span>01</span><p><strong>语言偏好</strong>日语为主，中文随时辅助</p></div>
-              <div className="memory-item"><span>02</span><p><strong>聊天方式</strong>自然交流，不过度纠错</p></div>
-              <div className="memory-item muted"><span>03</span><p><strong>更多记忆</strong>会在相处中慢慢形成</p></div>
+              <div className="memory-item"><span>01</span><p><strong>相识</strong>{relationship.daysKnown} 天</p></div>
+              <div className="memory-item"><span>02</span><p><strong>连续互动</strong>{relationship.consecutiveActiveDays} 天</p></div>
+              <div className="memory-item"><span>03</span><p><strong>聊过</strong>{relationship.totalMessageCount} 条消息</p></div>
+              <div className="memory-item muted"><span>04</span><p><strong>长期记忆</strong>下一版接入，可见可删</p></div>
             </div>
           </section>
           <section className="side-card quick-card">
             <div className="side-card-title"><span><Sparkles size={17} /> 快速开始</span></div>
-            {["今天发生了一件小事…", "陪我练习在便利店买东西", "我有句中文不知道怎么说"].map((text) => <button key={text} onClick={() => { setInput(text); inputRef.current?.focus(); }}>{text}</button>)}
+            {["今天发生了一件小事…", "有点累，想随便聊聊", "刚才想到你说过的那件事"].map((text) => <button key={text} onClick={() => { setInput(text); inputRef.current?.focus(); }}>{text}</button>)}
           </section>
           <button className="voice-coming" onClick={openVoice}><Volume2 size={17} /><span><strong>实时语音</strong>点击进入连续对话</span></button>
         </aside>

@@ -51,6 +51,7 @@ export function VoiceModal(props: VoiceModalProps) {
             >
               <span>{caption.speaker === "user" ? "你" : "愛花"}</span>
               <p>{caption.text}</p>
+              {caption.translation && <p className="voice-caption-translation">{caption.translation}</p>}
             </div>
           ))}
           {props.interim && (
