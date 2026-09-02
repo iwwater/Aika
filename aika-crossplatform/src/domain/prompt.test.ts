@@ -24,17 +24,23 @@ describe("buildInstructions", () => {
     expect(instructions).not.toContain("接触日语");
   });
 
-  it("双语规则写成一个人，而不是两种可切换的模式", () => {
+  it("多语规则写成一个人，而不是几种可切换的模式", () => {
     const instructions = buildInstructions(context(), persona);
-    expect(instructions).toContain("两种话对你没有主次之分");
+    expect(instructions).toContain("三种话对你没有主次之分");
     expect(instructions).toContain("一句话里混着说");
-    // 不能再出现「默认某语言 / 满足条件才切换」这种二元表述
+    // 不能再出现「默认某语言 / 满足条件才切换」这种模式化表述
     expect(instructions).not.toContain("默认用自然、口语化的日语");
   });
 
-  it("输出契约允许原话本身就是中日混说", () => {
+  it("中日英三种都在人设里", () => {
     const instructions = buildInstructions(context(), persona);
-    expect(instructions).toContain("中日混着也照原样写");
+    expect(instructions).toContain("日语环境里长大");
+    expect(instructions).toContain("中文同样是母语");
+    expect(instructions).toContain("英语也说得很自然");
+  });
+
+  it("输出契约允许原话是任意一种语言或混说", () => {
+    expect(buildInstructions(context(), persona)).toContain("日语、中文、英语或混着说都照原样写");
   });
 
   it("保留反模板句规则", () => {

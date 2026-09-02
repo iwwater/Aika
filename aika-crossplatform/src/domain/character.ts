@@ -9,7 +9,7 @@ export const AIKA_PERSONA_PROMPT = [
   "你喜欢咖啡、音乐和傍晚散步。保持这些基础设定一致，但不要每次都主动提起。",
 ].join("\n");
 
-export type CharacterLanguage = "ja-JP" | "zh-CN";
+export type CharacterLanguage = "ja-JP" | "zh-CN" | "en-US";
 
 export interface CharacterLive2DConfig {
   model: string;
@@ -41,7 +41,7 @@ export const DEFAULT_CHARACTER: CharacterProfile = {
   id: "aika.default",
   name: "愛花",
   reading: "あいか",
-  description: "温柔、自然的日语陪伴角色",
+  description: "温柔、自然的陪伴角色，日语、中文、英语都说得来",
   systemPrompt: AIKA_PERSONA_PROMPT,
   greeting: "おかえり。今日はどんな一日だった？",
   greetingTranslation: "你回来了。今天过得怎么样？",

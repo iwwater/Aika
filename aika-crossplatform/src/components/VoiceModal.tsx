@@ -36,7 +36,7 @@ export function VoiceModal(props: VoiceModalProps) {
         <h2>{title}</h2>
         <div className="voice-subtitles" aria-live="polite" aria-label="实时对话字幕">
           {!props.captions.length && !props.interim && !props.error && (
-            <div className="voice-subtitle-empty">直接说话就行，日语、中文、混着说都可以</div>
+            <div className="voice-subtitle-empty">直接说话就行，日语、中文、英语，混着说也可以</div>
           )}
           {props.captions.map((caption) => (
             <div

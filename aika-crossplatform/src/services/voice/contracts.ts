@@ -3,7 +3,7 @@
  * 这不是给用户选的开关——它由 domain/language.ts 按用户最近说的话推导。
  * Web Speech 一次只能给一个语言码；真正的中日混说识别要等 M3 的本地 Whisper。
  */
-export type VoiceInputLanguage = "ja-JP" | "zh-CN";
+export type VoiceInputLanguage = "ja-JP" | "zh-CN" | "en-US";
 export type VoicePhase = "idle" | "listening" | "thinking" | "speaking" | "error";
 export type VoiceEngineKind = "web-speech" | "whisper-local" | "style-bert-vits2";
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { replyDisplayText, type CompanionReply } from "../domain/companion";
+import { speechLanguageFor } from "../domain/language";
 import type {
   SpeechInputEngine,
   VoiceCaption,
@@ -103,8 +104,9 @@ export function useVoiceConversation(
   }
 
   function speak(text: string, captionId: number) {
+    // 她用哪种语言说的就用哪种语言念，不要用日语音色去念中文或英文。
     webSpeechOutput.speak(
-      { text, language: "ja-JP", rate: 1.03, pitch: 1.08 },
+      { text, language: speechLanguageFor(text), rate: 1.03, pitch: 1.08 },
       {
         onStart: () => {
           setSpeakingCaptionId(captionId);

@@ -166,11 +166,11 @@ function App() {
           </div>
 
           <form className="composer" onSubmit={handleSend}>
-            <div className="composer-topline"><span>可以输入日语或中文</span><span className="shortcut">Enter 发送 · Shift+Enter 换行</span></div>
+            <div className="composer-topline"><span>日语、中文、英语都可以</span><span className="shortcut">Enter 发送 · Shift+Enter 换行</span></div>
             <div className="composer-box">
               <textarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); handleSend(); }
-              }} placeholder="今日はちょっと疲れた… 或者直接说中文" rows={2} />
+              }} placeholder="今日はちょっと疲れた… / 今天有点累 / I had a long day" rows={2} />
               <button type="button" className="composer-icon voice-entry" title="进入实时语音" onClick={openVoice}><Mic size={19} /></button>
               <button type="submit" className="send-button" disabled={!input.trim() || sending}>{sending ? <LoaderCircle size={19} className="spin" /> : <SendHorizontal size={19} />}</button>
             </div>

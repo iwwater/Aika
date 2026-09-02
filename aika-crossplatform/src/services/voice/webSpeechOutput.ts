@@ -4,6 +4,21 @@ function speakableText(text: string) {
   return text.split("\n")[0].replace(/[*_#>`]/g, "").trim();
 }
 
+/**
+ * 她换语言说话时不能换成另一个人。
+ * 三种语言各挑一个常见的女声，挑不到再退回该语言的任意音色。
+ */
+const FEMALE_VOICE_NAMES = /nanami|haruka|ayumi|mayu|xiaoxiao|huihui|yaoyao|xiaoyi|zira|aria|jenny|michelle|female/i;
+
+function pickVoice(language: string): SpeechSynthesisVoice | null {
+  const voices = window.speechSynthesis.getVoices();
+  const tag = language.toLowerCase();
+  const exact = voices.filter((voice) => voice.lang.toLowerCase().replace("_", "-") === tag);
+  const sameLanguage = voices.filter((voice) => voice.lang.toLowerCase().startsWith(tag.slice(0, 2)));
+  const candidates = exact.length ? exact : sameLanguage;
+  return candidates.find((voice) => FEMALE_VOICE_NAMES.test(voice.name)) ?? candidates[0] ?? null;
+}
+
 export const webSpeechOutput: SpeechOutputEngine = {
   id: "system-japanese-voice",
   kind: "web-speech",
@@ -19,9 +34,7 @@ export const webSpeechOutput: SpeechOutputEngine = {
       return;
     }
     const utterance = new SpeechSynthesisUtterance(text);
-    const voices = window.speechSynthesis.getVoices();
-    const matchingVoices = voices.filter((voice) => voice.lang.toLowerCase().startsWith(request.language.slice(0, 2).toLowerCase()));
-    utterance.voice = matchingVoices.find((voice) => /nanami|haruka|ayumi|female/i.test(voice.name)) ?? matchingVoices[0] ?? null;
+    utterance.voice = pickVoice(request.language);
     utterance.lang = request.language;
     utterance.rate = request.rate ?? 1;
     utterance.pitch = request.pitch ?? 1;
