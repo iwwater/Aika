@@ -1,4 +1,5 @@
 import { japanTimeLabel, type CompanionContext, type CompanionReply, type ConversationTurn } from "./companion";
+import type { Mood } from "./mood";
 import { computeRelationship, deriveRelationshipSignals } from "./relationship";
 import { RAW_TURN_WINDOW } from "./summary";
 
@@ -19,6 +20,8 @@ export interface ChatMessage extends ChatTurn {
   japaneseText?: string;
   /** 次级字幕。模型没给翻译时为空，界面据此不显示第二层。 */
   chineseTranslation?: string;
+  /** 她说这句话时的语气。用户消息不设。 */
+  mood?: Mood;
   /** 她挑的表情包 id。清单里没有这个 id 时界面什么都不显示。 */
   sticker?: string;
   /** 这条消息是怎么来的。proactive 用于统计每日主动消息条数。 */
@@ -49,6 +52,7 @@ export function companionMessage(
     content: reply.japaneseText,
     japaneseText: reply.japaneseText,
     chineseTranslation: reply.chineseTranslation,
+    mood: reply.mood,
     ...(reply.sticker ? { sticker: reply.sticker } : {}),
     source,
     createdAt,

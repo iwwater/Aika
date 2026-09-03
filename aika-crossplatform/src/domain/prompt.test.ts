@@ -181,3 +181,16 @@ describe("buildInstructions 的表情包规则", () => {
     expect(instructions).toContain("先说你自己的事，再问对方的。");
   });
 });
+
+describe("buildInstructions 的语气规则", () => {
+  it("语气写在输出格式的第一个字段：流式时它要比正文先到", () => {
+    const instructions = buildInstructions(context(), persona);
+    expect(instructions).toContain('{"mood":"语气","japanese_text"');
+  });
+
+  it("七个语气都带使用场景，并写明标的是她自己的状态", () => {
+    const instructions = buildInstructions(context(), persona);
+    expect(instructions).toContain("- concerned：");
+    expect(instructions).toContain("不是对方的心情");
+  });
+});

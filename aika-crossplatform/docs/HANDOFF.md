@@ -67,6 +67,11 @@
   送去合成的句子被 `sentences.ts` 清洗过，所以两边归一化（忽略空白与 Markdown 记号）后再找，
   下标再映射回原文；找不到就不亮，亮错位置比不亮更糟。FIELD_TEST_NOTES 修复顺序第 4 条
   至此只剩 Live2D 口型。
+- **语气标签完成**（2026-09-03）：`domain/mood.ts` 的七个语气就是 Live2D 表情预设的文件名。
+  **她自己标，不另跑分类器**；schema 里是 enum 且排在最前面——流式时第一句可能先出声，
+  语气排后面就等于拿不到。今天的唯一消费者是 Web Speech 的 rate/pitch（调幅很小，
+  调大了像换了个人），Live2D 在 M4、TTS style 在 M5。**用户那一侧刻意不做**：
+  猜错情绪既是人机味又是冒犯，而模型本来就在读原话。
 - **M7 手机端第一版完成**（2026-09-03）：`src-tauri/src/remote.rs` 起一个带 token 鉴权的
   局域网 HTTP 服务，`src-tauri/mobile/index.html` 是手写的单文件手机页面。
   **Rust 不碰业务**：手机的请求转成事件送进桌面 WebView，桌面端跑完再交回去——

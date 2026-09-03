@@ -211,7 +211,10 @@ export function useVoiceConversation(
     });
 
     void onTranscriptRef.current(text, (partial) => {
-      if (!current() || !partial.japaneseText) return;
+      if (!current()) return;
+      // mood 在 JSON 最前面，通常比第一句正文先到——第一句因此就能用上这轮的语气。
+      queueRef.current?.setMood(partial.mood);
+      if (!partial.japaneseText) return;
       captionId = upsertAssistantCaption(captionId, partial.japaneseText, partial.chineseTranslation);
       queueRef.current?.enqueue(emitter.push(partial.japaneseText, false));
     }).then((reply) => {
@@ -226,6 +229,7 @@ export function useVoiceConversation(
         return;
       }
 
+      queueRef.current?.setMood(reply.mood);
       captionId = upsertAssistantCaption(captionId, spoken, reply.chineseTranslation);
       queueRef.current?.enqueue(emitter.push(spoken, true));
       queueRef.current?.end();

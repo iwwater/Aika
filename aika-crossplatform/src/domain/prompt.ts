@@ -9,6 +9,7 @@
  */
 
 import type { CompanionContext, ConversationTurn } from "./companion";
+import { MOOD_RULES } from "./mood";
 import type { ProactiveReason } from "./proactive";
 import { formatStickerRules, type Sticker } from "./stickers";
 
@@ -60,9 +61,10 @@ export const ANTI_TEMPLATE_RULES = [
 //
 // 表情包清单为空时不加 sticker 字段：没有素材还要她填一个，只会填出一个编的名字。
 function outputContract(stickers: readonly Sticker[]): string {
+  // mood 写在最前面：流式时第一句可能先出声，语气排后面就等于拿不到。
   const shape = stickers.length
-    ? '{"japanese_text":"你说出口的原话","chinese_translation":"这句话的中文意思","sticker":"表情包名字或空字符串"}'
-    : '{"japanese_text":"你说出口的原话","chinese_translation":"这句话的中文意思"}';
+    ? '{"mood":"语气","japanese_text":"你说出口的原话","chinese_translation":"这句话的中文意思","sticker":"表情包名字或空字符串"}'
+    : '{"mood":"语气","japanese_text":"你说出口的原话","chinese_translation":"这句话的中文意思"}';
   return [
     "最终只输出一个 JSON 对象，不要 Markdown：",
     shape,
@@ -105,6 +107,7 @@ export function buildInstructions(
     CODE_SWITCH_RULE,
     ANTI_TEMPLATE_RULES,
     QUESTION_RULES,
+    MOOD_RULES,
     formatStickerRules(stickers),
     outputContract(stickers),
   ]

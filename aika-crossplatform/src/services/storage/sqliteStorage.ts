@@ -1,6 +1,7 @@
 import Database from "@tauri-apps/plugin-sql";
 import { formatClockTime, type ChatMessage, type MessageSource } from "../../domain/conversation";
 import { isMemoryCategory, type MemoryRecord } from "../../domain/memory";
+import { normalizeMood } from "../../domain/mood";
 import type { AikaStorage } from "./contracts";
 
 /**
@@ -21,7 +22,8 @@ const SCHEMA = [
      chinese_translation TEXT,
      created_at INTEGER NOT NULL,
      is_error INTEGER NOT NULL DEFAULT 0,
-     sticker TEXT
+     sticker TEXT,
+     mood TEXT
    )`,
   `CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages (created_at)`,
   `CREATE TABLE IF NOT EXISTS memories (
@@ -50,6 +52,7 @@ const SCHEMA = [
  */
 const MIGRATIONS = [
   "ALTER TABLE messages ADD COLUMN sticker TEXT",
+  "ALTER TABLE messages ADD COLUMN mood TEXT",
 ];
 
 interface MessageRow {
@@ -62,6 +65,7 @@ interface MessageRow {
   created_at: number;
   is_error: number;
   sticker: string | null;
+  mood: string | null;
 }
 
 interface MemoryRow {
@@ -88,6 +92,7 @@ function toMessage(row: MessageRow): ChatMessage {
     japaneseText: row.japanese_text ?? undefined,
     chineseTranslation: row.chinese_translation ?? undefined,
     sticker: row.sticker ?? undefined,
+    mood: row.mood ? normalizeMood(row.mood) : undefined,
     source: row.source as MessageSource,
     createdAt: row.created_at,
     time: formatClockTime(row.created_at),
@@ -131,8 +136,8 @@ export async function createSqliteStorage(): Promise<AikaStorage> {
     async appendMessage(message) {
       await db.execute(
         `INSERT OR REPLACE INTO messages
-           (id, role, source, content, japanese_text, chinese_translation, created_at, is_error, sticker)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+           (id, role, source, content, japanese_text, chinese_translation, created_at, is_error, sticker, mood)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           message.id,
           message.role,
@@ -143,6 +148,7 @@ export async function createSqliteStorage(): Promise<AikaStorage> {
           message.createdAt,
           message.error ? 1 : 0,
           message.sticker ?? null,
+          message.mood ?? null,
         ],
       );
     },

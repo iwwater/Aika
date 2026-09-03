@@ -9,9 +9,13 @@
  * 也不要让一轮对话卡在解析上。
  */
 
+import { normalizeMood, type Mood } from "./mood";
+
 export interface PartialReply {
   japaneseText: string;
   chineseTranslation: string;
+  /** 她这一轮的语气。字段还没到手时是 neutral。 */
+  mood: Mood;
   /** japanese_text 那个字符串闭合了没有。没闭合说明最后一句可能还在写。 */
   japaneseComplete: boolean;
 }
@@ -83,18 +87,23 @@ function stripLeadingFence(text: string): string {
 export function parsePartialReply(raw: string): PartialReply {
   const text = stripLeadingFence(raw ?? "");
   const trimmed = text.trim();
-  if (!trimmed) return { japaneseText: "", chineseTranslation: "", japaneseComplete: false };
+  if (!trimmed) {
+    return { japaneseText: "", chineseTranslation: "", mood: normalizeMood(null), japaneseComplete: false };
+  }
 
   if (!trimmed.startsWith("{")) {
-    return { japaneseText: trimmed, chineseTranslation: "", japaneseComplete: false };
+    return { japaneseText: trimmed, chineseTranslation: "", mood: normalizeMood(null), japaneseComplete: false };
   }
 
   const japanese = readStringField(text, "japanese_text");
   const chinese = readStringField(text, "chinese_translation");
+  // 只认闭合了的语气：吐到一半的 "hap" 归一化会变成 neutral，随后又跳回 happy。
+  const mood = readStringField(text, "mood");
 
   return {
     japaneseText: japanese?.value ?? "",
     chineseTranslation: chinese?.closed ? chinese.value : "",
+    mood: normalizeMood(mood?.closed ? mood.value : null),
     japaneseComplete: japanese?.closed ?? false,
   };
 }

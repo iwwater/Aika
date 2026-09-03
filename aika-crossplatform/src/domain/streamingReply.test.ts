@@ -8,6 +8,7 @@ describe("parsePartialReply", () => {
     expect(parsePartialReply(FULL)).toEqual({
       japaneseText: "おかえり。今日はどうだった？",
       chineseTranslation: "欢迎回来。今天过得怎么样？",
+      mood: "neutral",
       japaneseComplete: true,
     });
   });
@@ -47,7 +48,9 @@ describe("parsePartialReply", () => {
   });
 
   it("空输入不炸", () => {
-    expect(parsePartialReply("")).toEqual({ japaneseText: "", chineseTranslation: "", japaneseComplete: false });
+    expect(parsePartialReply("")).toEqual({
+      japaneseText: "", chineseTranslation: "", mood: "neutral", japaneseComplete: false,
+    });
     expect(parsePartialReply("{").japaneseText).toBe("");
   });
 
@@ -59,5 +62,21 @@ describe("parsePartialReply", () => {
       if (current.length >= previous.length) previous = current;
     }
     expect(previous).toBe("おかえり。今日はどうだった？");
+  });
+});
+
+describe("流式取语气", () => {
+  it("mood 在第一句正文之前就能拿到——朗读参数要在开口前定下来", () => {
+    const partial = parsePartialReply('{"mood":"happy","japanese_text":"おかえ');
+    expect(partial.mood).toBe("happy");
+    expect(partial.japaneseText).toBe("おかえ");
+  });
+
+  it("语气字符串还没闭合时不采用，否则会先 neutral 再跳到 happy", () => {
+    expect(parsePartialReply('{"mood":"hap').mood).toBe("neutral");
+  });
+
+  it("纯文本回复也有语气字段，值是 neutral", () => {
+    expect(parsePartialReply("おかえり").mood).toBe("neutral");
   });
 });

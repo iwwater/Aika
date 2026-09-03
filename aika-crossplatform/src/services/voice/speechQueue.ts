@@ -1,4 +1,5 @@
 import { speechLanguageFor } from "../../domain/language";
+import { speechToneFor, type Mood } from "../../domain/mood";
 import type { SpeechOutputEngine } from "./contracts";
 
 /**
@@ -26,6 +27,11 @@ export interface SpeechQueue {
   enqueue(sentences: readonly string[]): void;
   /** 声明不会再有新句子了。念完最后一句才算 drained。 */
   end(): void;
+  /**
+   * 这一轮的语气。流式时它比第一句先到（mood 排在 JSON 最前面），
+   * 所以设进来之后从下一句开始生效，已经在念的那句不重念。
+   */
+  setMood(mood: Mood): void;
   /** 一次性播放已经完整的一段，等于 begin + enqueue + end。 */
   speak(sentences: readonly string[], events?: SpeechQueueEvents): void;
   stop(): void;
@@ -53,6 +59,7 @@ export function createSpeechQueue(
   /** 每次 begin/stop 都换一代，用来丢弃上一代迟到的回调。 */
   let generation = 0;
   let events: SpeechQueueEvents = {};
+  let mood: Mood | undefined;
 
   function pump(epoch: number) {
     if (epoch !== generation || running) return;
@@ -71,13 +78,15 @@ export function createSpeechQueue(
     running = true;
     events.onSentence?.(index, text);
 
+    // 语气只调 rate/pitch，幅度很小：调大了不像情绪，像换了个人。
+    const tone = speechToneFor(mood);
     engine.speak(
       {
         text,
         // 她用哪种语言说的就用哪种语言念，逐句判断。
         language: speechLanguageFor(text),
-        rate: options.rate ?? 1.03,
-        pitch: options.pitch ?? 1.08,
+        rate: options.rate ?? tone.rate,
+        pitch: options.pitch ?? tone.pitch,
       },
       {
         onStart: () => {
@@ -108,6 +117,8 @@ export function createSpeechQueue(
     drained = false;
     accepting = true;
     events = nextEvents;
+    // 上一轮的语气不能留到这一轮：她刚才在担心，不代表现在还在担心。
+    mood = undefined;
     engine.stop();
   }
 
@@ -126,6 +137,10 @@ export function createSpeechQueue(
       if (!accepting) return;
       closed = true;
       pump(generation);
+    },
+
+    setMood(next) {
+      if (accepting) mood = next;
     },
 
     speak(next, nextEvents = {}) {

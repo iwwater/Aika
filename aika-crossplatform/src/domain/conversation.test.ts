@@ -7,7 +7,7 @@ const NOW = new Date(2026, 8, 2, 12, 0, 0).getTime();
 function history(): ChatMessage[] {
   return [
     userMessage("おはよう", NOW - 3 * DAY),
-    companionMessage({ japaneseText: "おはよ", chineseTranslation: "早" }, NOW - 3 * DAY + 1000),
+    companionMessage({ japaneseText: "おはよ", chineseTranslation: "早", mood: "neutral" }, NOW - 3 * DAY + 1000),
     userMessage("今日は疲れた", NOW - 1000),
   ];
 }
@@ -60,7 +60,7 @@ describe("buildCompanionContext", () => {
 describe("companionMessage", () => {
   it("主动消息带上 source，用于每日条数统计", () => {
     const message = companionMessage(
-      { japaneseText: "ねえ", chineseTranslation: "喂" }, NOW, "id-1", "proactive",
+      { japaneseText: "ねえ", chineseTranslation: "喂", mood: "neutral" }, NOW, "id-1", "proactive",
     );
     expect(message.source).toBe("proactive");
     expect(message.japaneseText).toBe("ねえ");

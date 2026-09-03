@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SpeechOutputEngine, SpeechOutputEvents, SpeechOutputRequest } from "./contracts";
+import { speechToneFor } from "../../domain/mood";
 import { createSpeechQueue } from "./speechQueue";
 
 function createFakeEngine() {
@@ -188,5 +189,44 @@ describe("流式入队", () => {
     queue.enqueue(["今日はどうだった？"]);
 
     expect(fake.spoken.map((request) => request.text)).toEqual(["おかえり。"]);
+  });
+});
+
+describe("语气", () => {
+  it("语气比第一句先到时，第一句就按这个语气念", () => {
+    // 流式里 mood 排在 JSON 最前面，正是为了赶在开口之前到手
+    const fake = createFakeEngine();
+    const queue = createSpeechQueue(fake.engine);
+
+    queue.begin();
+    queue.setMood("concerned");
+    queue.enqueue(["大丈夫？"]);
+
+    expect(fake.spoken[0].rate).toBe(speechToneFor("concerned").rate);
+    expect(fake.spoken[0].pitch).toBe(speechToneFor("concerned").pitch);
+  });
+
+  it("没设语气时用 neutral 的取值", () => {
+    const fake = createFakeEngine();
+    const queue = createSpeechQueue(fake.engine);
+
+    queue.speak(["おかえり。"]);
+
+    expect(fake.spoken[0].rate).toBe(speechToneFor("neutral").rate);
+  });
+
+  it("上一轮的语气不留到这一轮：她刚才在担心，不代表现在还在担心", () => {
+    const fake = createFakeEngine();
+    const queue = createSpeechQueue(fake.engine);
+
+    queue.begin();
+    queue.setMood("concerned");
+    queue.enqueue(["大丈夫？"]);
+    fake.finish();
+
+    queue.begin();
+    queue.enqueue(["おかえり。"]);
+
+    expect(fake.spoken[1].rate).toBe(speechToneFor("neutral").rate);
   });
 });

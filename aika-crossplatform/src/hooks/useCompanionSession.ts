@@ -237,6 +237,7 @@ export function useCompanionSession() {
                   content: partial.japaneseText,
                   japaneseText: partial.japaneseText,
                   chineseTranslation: partial.chineseTranslation,
+                  mood: partial.mood,
                 }
               : message
           )));
