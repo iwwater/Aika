@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import "./App.css";
 import { AvatarPlaceholder } from "./components/AvatarPlaceholder";
+import { MessageSticker } from "./components/MessageSticker";
 import { VoiceModal } from "./components/VoiceModal";
 import { DEFAULT_CHARACTER } from "./domain/character";
 import { preferredRecognitionLanguage } from "./domain/language";
@@ -175,6 +176,7 @@ function App() {
                         {showTranslation && message.chineseTranslation && (
                           <span className="translation">{message.chineseTranslation}</span>
                         )}
+                        <MessageSticker id={message.sticker} stickers={session.stickers} />
                       </>
                     )}
                   </div>

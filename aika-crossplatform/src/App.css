@@ -150,6 +150,7 @@ button { border: 0; cursor: pointer; }
 .voice-caption.user p { border-radius: 12px 4px 12px 12px; color: #04121a; background: linear-gradient(140deg, var(--cyan), var(--violet)); }
 .voice-caption.interim { opacity: .6; }
 .voice-caption.speaking p { color: #eaf9ff; box-shadow: 0 0 0 1px rgba(55,230,255,.45), 0 0 24px rgba(55,230,255,.25); }
+.message-sticker { display: block; width: min(168px, 62%); margin-top: 7px; border-radius: 10px; border: 1px solid var(--line-soft); }
 .voice-caption-now { padding: 1px 2px; border-radius: 3px; color: #04121a; background: linear-gradient(140deg, rgba(55,230,255,.85), rgba(154,107,255,.85)); }
 .voice-caption-translation { margin-top: 4px !important; padding: 5px 12px !important; color: var(--muted) !important; background: rgba(255,255,255,.045) !important; font-size: 10px !important; }
 .voice-caption-error { padding: 9px 11px; border: 1px solid rgba(255,77,146,.35); border-radius: 9px; color: #ffb8d1; background: rgba(40,10,26,.8); font-size: 10px; line-height: 1.5; }

@@ -11,7 +11,8 @@
     "tauri": "tauri",
     "sync:ort": "node scripts/sync-ort-assets.mjs",
     "predev": "node scripts/sync-ort-assets.mjs",
-    "prebuild": "node scripts/sync-ort-assets.mjs"
+    "prebuild": "node scripts/sync-ort-assets.mjs",
+    "stickers:scan": "node scripts/scan-stickers.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

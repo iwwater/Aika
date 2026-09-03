@@ -157,3 +157,27 @@ describe("提问规则：她可以问，但不能带人机味", () => {
     );
   });
 });
+
+describe("buildInstructions 的表情包规则", () => {
+  const stickers = [{ id: "wink", file: "wink.png", when: "开玩笑逗对方的时候" }];
+
+  it("清单为空时提示词里一个字都不提", () => {
+    // 素材还没放进目录时，行为必须和没有这个功能完全一样
+    const instructions = buildInstructions(context(), persona);
+    expect(instructions).not.toContain("表情包");
+    expect(instructions).not.toContain("sticker");
+  });
+
+  it("有清单时列出选项，并把 sticker 字段写进输出格式", () => {
+    const instructions = buildInstructions(context(), persona, stickers);
+    expect(instructions).toContain("wink：开玩笑逗对方的时候");
+    expect(instructions).toContain('"sticker"');
+    expect(instructions).toContain("不要编造");
+  });
+
+  it("反模板句与提问规则不受影响", () => {
+    const instructions = buildInstructions(context(), persona, stickers);
+    expect(instructions).toContain("避免重复“我会一直陪着你”");
+    expect(instructions).toContain("先说你自己的事，再问对方的。");
+  });
+});

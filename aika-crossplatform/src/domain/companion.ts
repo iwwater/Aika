@@ -8,6 +8,8 @@ import type { RelationshipState } from "./relationship";
 export interface CompanionReply {
   japaneseText: string;
   chineseTranslation: string;
+  /** 她挑的表情包 id。没挑、或者编了个清单里没有的名字时不设。 */
+  sticker?: string;
 }
 
 export type CompanionTurnRole = "user" | "companion";
@@ -31,16 +33,37 @@ export interface CompanionEngine {
   createProactiveMessage(context: CompanionContext): Promise<CompanionReply>;
 }
 
-/** 模型被要求返回的结构化字段，不靠换行猜测。 */
-export const COMPANION_REPLY_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
+/**
+ * 模型被要求返回的结构化字段，不靠换行猜测。
+ *
+ * 表情包清单为空时**不加 sticker 字段**：没有素材还要她填一个字段，
+ * 只会得到一个她自己编出来的名字。strict 模式下每个属性都必须列进 required，
+ * 所以「可选」是靠 enum 里的空串表达的，不是靠省略字段。
+ */
+export function companionReplySchema(stickerIds: readonly string[] = []) {
+  const base = {
     japanese_text: { type: "string" },
     chinese_translation: { type: "string" },
-  },
-  required: ["japanese_text", "chinese_translation"],
-} as const;
+  };
+  if (!stickerIds.length) {
+    return {
+      type: "object",
+      additionalProperties: false,
+      properties: base,
+      required: ["japanese_text", "chinese_translation"],
+    };
+  }
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      ...base,
+      // 枚举里带一个空串：这一轮不发表情包。有了它她就编不出清单以外的名字。
+      sticker: { type: "string", enum: [...stickerIds, ""] },
+    },
+    required: ["japanese_text", "chinese_translation", "sticker"],
+  };
+}
 
 function stripCodeFence(text: string): string {
   return text
@@ -75,7 +98,9 @@ export function parseCompanionReply(modelText: string): CompanionReply {
   if (payload) {
     const japanese = typeof payload.japanese_text === "string" ? payload.japanese_text.trim() : "";
     const chinese = typeof payload.chinese_translation === "string" ? payload.chinese_translation.trim() : "";
-    if (japanese) return { japaneseText: japanese, chineseTranslation: chinese };
+    const sticker = typeof payload.sticker === "string" ? payload.sticker.trim() : "";
+    // id 是不是真的存在由 resolveSticker 说了算，这里只负责把字段取出来。
+    if (japanese) return { japaneseText: japanese, chineseTranslation: chinese, ...(sticker ? { sticker } : {}) };
   }
 
   return { japaneseText: trimmed, chineseTranslation: "" };

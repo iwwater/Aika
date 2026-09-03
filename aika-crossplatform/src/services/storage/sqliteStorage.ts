@@ -20,7 +20,8 @@ const SCHEMA = [
      japanese_text TEXT,
      chinese_translation TEXT,
      created_at INTEGER NOT NULL,
-     is_error INTEGER NOT NULL DEFAULT 0
+     is_error INTEGER NOT NULL DEFAULT 0,
+     sticker TEXT
    )`,
   `CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages (created_at)`,
   `CREATE TABLE IF NOT EXISTS memories (
@@ -43,6 +44,14 @@ const SCHEMA = [
    )`,
 ];
 
+/**
+ * 加列的地方。SQLite 的 ALTER TABLE 没有 IF NOT EXISTS，
+ * 老库执行一次就成功、新库会直接报「duplicate column」——所以这里逐条 try 掉。
+ */
+const MIGRATIONS = [
+  "ALTER TABLE messages ADD COLUMN sticker TEXT",
+];
+
 interface MessageRow {
   id: string;
   role: string;
@@ -52,6 +61,7 @@ interface MessageRow {
   chinese_translation: string | null;
   created_at: number;
   is_error: number;
+  sticker: string | null;
 }
 
 interface MemoryRow {
@@ -77,6 +87,7 @@ function toMessage(row: MessageRow): ChatMessage {
     content: row.content,
     japaneseText: row.japanese_text ?? undefined,
     chineseTranslation: row.chinese_translation ?? undefined,
+    sticker: row.sticker ?? undefined,
     source: row.source as MessageSource,
     createdAt: row.created_at,
     time: formatClockTime(row.created_at),
@@ -98,6 +109,13 @@ function toMemory(row: MemoryRow): MemoryRecord {
 export async function createSqliteStorage(): Promise<AikaStorage> {
   const db = await Database.load(DB_URL);
   for (const statement of SCHEMA) await db.execute(statement);
+  for (const statement of MIGRATIONS) {
+    try {
+      await db.execute(statement);
+    } catch {
+      // 列已经在了。这是加列的正常路径，不是故障。
+    }
+  }
 
   return {
     kind: "sqlite",
@@ -113,8 +131,8 @@ export async function createSqliteStorage(): Promise<AikaStorage> {
     async appendMessage(message) {
       await db.execute(
         `INSERT OR REPLACE INTO messages
-           (id, role, source, content, japanese_text, chinese_translation, created_at, is_error)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+           (id, role, source, content, japanese_text, chinese_translation, created_at, is_error, sticker)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
           message.id,
           message.role,
@@ -124,6 +142,7 @@ export async function createSqliteStorage(): Promise<AikaStorage> {
           message.chineseTranslation ?? null,
           message.createdAt,
           message.error ? 1 : 0,
+          message.sticker ?? null,
         ],
       );
     },

@@ -19,6 +19,8 @@ export interface ChatMessage extends ChatTurn {
   japaneseText?: string;
   /** 次级字幕。模型没给翻译时为空，界面据此不显示第二层。 */
   chineseTranslation?: string;
+  /** 她挑的表情包 id。清单里没有这个 id 时界面什么都不显示。 */
+  sticker?: string;
   /** 这条消息是怎么来的。proactive 用于统计每日主动消息条数。 */
   source?: MessageSource;
   pending?: boolean;
@@ -47,6 +49,7 @@ export function companionMessage(
     content: reply.japaneseText,
     japaneseText: reply.japaneseText,
     chineseTranslation: reply.chineseTranslation,
+    ...(reply.sticker ? { sticker: reply.sticker } : {}),
     source,
     createdAt,
     time: formatClockTime(createdAt),

@@ -24,3 +24,8 @@ output/playwright/
 *.njsproj
 *.sln
 *.sw?
+
+# 表情包素材是用户自己放进去的，不进仓库；清单和说明进。
+public/stickers/*
+!public/stickers/manifest.json
+!public/stickers/README.md

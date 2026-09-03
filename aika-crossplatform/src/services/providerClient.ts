@@ -1,5 +1,5 @@
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
-import { COMPANION_REPLY_SCHEMA, parseCompanionReply, type CompanionReply } from "../domain/companion";
+import { companionReplySchema, parseCompanionReply, type CompanionReply } from "../domain/companion";
 import type { ChatTurn } from "../domain/conversation";
 import type { ProviderConfig } from "../domain/providers";
 import { cleanBaseUrl } from "../domain/providers";
@@ -82,6 +82,8 @@ function prepare(
   history: ChatTurn[],
   format: ResponseFormat,
   stream: boolean,
+  /** 这一轮她能挑的表情包 id。空数组时结构化输出里根本没有这个字段。 */
+  stickerIds: readonly string[] = [],
 ): PreparedRequest {
   const base = cleanBaseUrl(config.baseUrl);
 
@@ -101,7 +103,7 @@ function prepare(
                   type: "json_schema",
                   name: "aika_companion_reply",
                   strict: true,
-                  schema: COMPANION_REPLY_SCHEMA,
+                  schema: companionReplySchema(stickerIds),
                 },
               },
             }
@@ -175,8 +177,9 @@ async function requestText(
   systemPrompt: string,
   history: ChatTurn[],
   format: ResponseFormat,
+  stickerIds: readonly string[] = [],
 ): Promise<string> {
-  const response = await post(prepare(config, systemPrompt, history, format, false));
+  const response = await post(prepare(config, systemPrompt, history, format, false, stickerIds));
   return extractText(config, await response.json());
 }
 
@@ -240,8 +243,9 @@ export async function sendChat(
   config: ProviderConfig,
   systemPrompt: string,
   history: ChatTurn[],
+  stickerIds: readonly string[] = [],
 ): Promise<CompanionReply> {
-  return finish(await requestText(config, systemPrompt, history, "companion-reply"));
+  return finish(await requestText(config, systemPrompt, history, "companion-reply", stickerIds));
 }
 
 function finish(text: string): CompanionReply {
@@ -268,11 +272,12 @@ export async function streamChat(
   systemPrompt: string,
   history: ChatTurn[],
   onPartial: (partial: PartialReply) => void,
+  stickerIds: readonly string[] = [],
 ): Promise<CompanionReply> {
   let raw = "";
 
   try {
-    const response = await post(prepare(config, systemPrompt, history, "companion-reply", true));
+    const response = await post(prepare(config, systemPrompt, history, "companion-reply", true, stickerIds));
     await readEventStream(response, (payload) => {
       const delta = deltaOf(config, payload);
       if (!delta) return;
@@ -281,10 +286,10 @@ export async function streamChat(
     });
   } catch (error) {
     if (raw) throw error;
-    return sendChat(config, systemPrompt, history);
+    return sendChat(config, systemPrompt, history, stickerIds);
   }
 
-  if (!raw) return sendChat(config, systemPrompt, history);
+  if (!raw) return sendChat(config, systemPrompt, history, stickerIds);
   return finish(raw);
 }
 

@@ -10,6 +10,7 @@
 
 import type { CompanionContext, ConversationTurn } from "./companion";
 import type { ProactiveReason } from "./proactive";
+import { formatStickerRules, type Sticker } from "./stickers";
 
 /**
  * 多语规则。
@@ -56,12 +57,19 @@ export const ANTI_TEMPLATE_RULES = [
 
 // 字段名沿用 Android 原型与开发方案的约定；japanese_text 装的是「你实际说出口的原话」，
 // 无论那句是日语、中文、英语还是混着说，都照原样写，不要为了凑字段名改成纯日语。
-const OUTPUT_CONTRACT = [
-  "最终只输出一个 JSON 对象，不要 Markdown：",
-  '{"japanese_text":"你说出口的原话","chinese_translation":"这句话的中文意思"}',
-  "japanese_text 就写你真正说的那句，日语、中文、英语或混着说都照原样写；",
-  "整句本来就是中文时，两个字段写成一样即可。",
-].join("\n");
+//
+// 表情包清单为空时不加 sticker 字段：没有素材还要她填一个，只会填出一个编的名字。
+function outputContract(stickers: readonly Sticker[]): string {
+  const shape = stickers.length
+    ? '{"japanese_text":"你说出口的原话","chinese_translation":"这句话的中文意思","sticker":"表情包名字或空字符串"}'
+    : '{"japanese_text":"你说出口的原话","chinese_translation":"这句话的中文意思"}';
+  return [
+    "最终只输出一个 JSON 对象，不要 Markdown：",
+    shape,
+    "japanese_text 就写你真正说的那句，日语、中文、英语或混着说都照原样写；",
+    "整句本来就是中文时，两个字段写成一样即可。",
+  ].join("\n");
+}
 
 function formatTurns(turns: readonly ConversationTurn[]): string {
   const history = turns
@@ -80,7 +88,12 @@ function formatSummary(summary: string | null): string {
   return `\n更早之前发生过什么：\n${summary.trim()}`;
 }
 
-export function buildInstructions(context: CompanionContext, personaPrompt: string): string {
+export function buildInstructions(
+  context: CompanionContext,
+  personaPrompt: string,
+  /** 这一轮她能挑的表情包。清单为空时提示词里一个字都不提。 */
+  stickers: readonly Sticker[] = [],
+): string {
   const situation = [
     `当前日本时间：${context.currentTimeInJapan}`,
     `当前关系感：${context.relationship.description}`,
@@ -92,7 +105,8 @@ export function buildInstructions(context: CompanionContext, personaPrompt: stri
     CODE_SWITCH_RULE,
     ANTI_TEMPLATE_RULES,
     QUESTION_RULES,
-    OUTPUT_CONTRACT,
+    formatStickerRules(stickers),
+    outputContract(stickers),
   ]
     .filter((block) => block.trim() !== "")
     .join("\n\n");

@@ -14,9 +14,11 @@ import {
 } from "../domain/proactive";
 import { PROVIDER_PRESETS, type ProviderConfig } from "../domain/providers";
 import { computeRelationship, deriveRelationshipSignals } from "../domain/relationship";
+import type { Sticker } from "../domain/stickers";
 import { RAW_TURN_WINDOW, SUMMARY_INPUT_LIMIT, shouldSummarize } from "../domain/summary";
 import { createModelMemoryExtractor, formatTranscript } from "../services/memory/extractor";
 import { sendChat, streamChat, type PartialReply } from "../services/providerClient";
+import { loadStickers } from "../services/stickers/library";
 import { DEFAULT_VOICE_BACKEND, type VoiceBackendConfig } from "../services/voice/inputEngine";
 import {
   loadProvider, openStorage, saveProvider, secretStore, SETTING_KEYS,
@@ -70,11 +72,15 @@ export function useCompanionSession() {
   const [proactive, setProactiveState] = useState<ProactiveSettings>(DEFAULT_PROACTIVE_SETTINGS);
   const [memoryExtractionEnabled, setMemoryExtractionEnabledState] = useState(true);
   const [voiceBackend, setVoiceBackendState] = useState<VoiceBackendConfig>(DEFAULT_VOICE_BACKEND);
+  /** 她能挑的表情包。目录为空时是空数组，提示词里一个字都不提。 */
+  const [stickers, setStickers] = useState<Sticker[]>([]);
   const [sending, setSending] = useState(false);
 
   const storageRef = useRef<AikaStorage | null>(null);
   const providerRef = useRef(provider);
   providerRef.current = provider;
+  const stickersRef = useRef(stickers);
+  stickersRef.current = stickers;
   const busyRef = useRef(false);
 
   const extractor = useMemo(() => createModelMemoryExtractor(() => providerRef.current), []);
@@ -116,6 +122,10 @@ export function useCompanionSession() {
           storage.getSetting(SETTING_KEYS.voiceBackend),
           storage.getSetting(SETTING_KEYS.whisperEndpoint),
         ]);
+      if (cancelled) return;
+
+      // 清单读不出来就当没有表情包，不该拦住这次启动。
+      setStickers(await loadStickers());
       if (cancelled) return;
 
       setStorageKind(storage.kind);
@@ -217,7 +227,7 @@ export function useCompanionSession() {
       const context = buildContext(history);
       const reply = await streamChat(
         providerRef.current,
-        buildInstructions(context, DEFAULT_CHARACTER.systemPrompt),
+        buildInstructions(context, DEFAULT_CHARACTER.systemPrompt, stickersRef.current),
         [{ role: "user", content: buildConversationInput(content, context) }],
         (partial) => {
           setMessages((current) => current.map((message) => (
@@ -232,6 +242,7 @@ export function useCompanionSession() {
           )));
           onPartial?.(partial);
         },
+        stickersRef.current.map((sticker) => sticker.id),
       );
 
       const answered = companionMessage(reply, Date.now(), pendingId, source);
@@ -291,8 +302,9 @@ export function useCompanionSession() {
 
       const reply = await sendChat(
         providerRef.current,
-        buildInstructions(context, DEFAULT_CHARACTER.systemPrompt),
+        buildInstructions(context, DEFAULT_CHARACTER.systemPrompt, stickersRef.current),
         [{ role: "user", content: buildProactiveInput(context, reason) }],
+        stickersRef.current.map((sticker) => sticker.id),
       );
 
       const message = companionMessage(reply, Date.now(), crypto.randomUUID(), "proactive");
@@ -358,6 +370,7 @@ export function useCompanionSession() {
     memoryExtractionEnabled, setMemoryExtractionEnabled,
     proactive, setProactive,
     voiceBackend, setVoiceBackend,
+    stickers,
     relationship, summary,
   };
 }

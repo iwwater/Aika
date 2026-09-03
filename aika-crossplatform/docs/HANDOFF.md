@@ -67,6 +67,11 @@
   送去合成的句子被 `sentences.ts` 清洗过，所以两边归一化（忽略空白与 Markdown 记号）后再找，
   下标再映射回原文；找不到就不亮，亮错位置比不亮更糟。FIELD_TEST_NOTES 修复顺序第 4 条
   至此只剩 Live2D 口型。
+- **表情包机制完成**（2026-09-03）：`domain/stickers.ts` + `public/stickers/manifest.json`。
+  她只能从清单里挑，不生成图；OpenAI 协议下 `sticker` 是 enum（带空串表示不发），
+  编不出清单外的名字，其余协议由 `resolveSticker` 挡掉。**清单为空时整套机制隐身**，
+  提示词与结构化输出都不出现这个字段。落库加了 `messages.sticker` 一列。
+  **缺的是素材**：图片丢进 `public/stickers/`，跑 `npm run stickers:scan`，再给每张写一句使用场景。
 - **提问规则**（2026-09-03）：`domain/prompt.ts` 新增 `QUESTION_RULES`，
   要求提问挂在具体的东西上、点名禁掉万能问句、先说自己再问对方。反模板句五条逐字保留。
 
