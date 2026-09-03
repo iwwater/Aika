@@ -39,6 +39,8 @@ export function createWebSpeechInputEngine(): SpeechInputEngine {
   return {
     id: "windows-web-speech",
     kind: "web-speech",
+    // 每识别出一段就 onend，必须由上层重新 start()。
+    continuous: false,
 
     isAvailable() {
       return Boolean(getConstructor());
@@ -67,7 +69,11 @@ export function createWebSpeechInputEngine(): SpeechInputEngine {
           if (result.isFinal) finalText += result[0].transcript;
           else interimText += result[0].transcript;
         }
-        if (interimText.trim()) events.onInterim?.(interimText.trim());
+        if (interimText.trim()) {
+          // 中间结果就是这个引擎的「有人在说」信号。
+          events.onSpeechStart?.();
+          events.onInterim?.(interimText.trim());
+        }
         if (finalText.trim()) events.onFinal?.(finalText.trim());
       };
       recognition.onerror = (event) => events.onError?.(event.error, event.message);

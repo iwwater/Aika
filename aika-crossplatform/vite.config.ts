@@ -8,6 +8,13 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [react()],
 
+  // onnxruntime-web 默认把 wasm 内联进 bundle，其中 WebGPU(jsep) 那份就有 27 MB。
+  // 这个 resolve 条件切到「wasm 走外部文件」的构建，配合 sileroVad.ts 里的
+  // `wasmPaths = "/ort/"`，运行时从 public/ort 加载——由 npm run sync:ort 生成。
+  resolve: {
+    conditions: ["onnxruntime-web-use-extern-wasm"],
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

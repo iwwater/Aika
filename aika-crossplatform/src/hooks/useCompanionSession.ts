@@ -16,7 +16,8 @@ import { PROVIDER_PRESETS, type ProviderConfig } from "../domain/providers";
 import { computeRelationship, deriveRelationshipSignals } from "../domain/relationship";
 import { RAW_TURN_WINDOW, SUMMARY_INPUT_LIMIT, shouldSummarize } from "../domain/summary";
 import { createModelMemoryExtractor, formatTranscript } from "../services/memory/extractor";
-import { sendChat } from "../services/providerClient";
+import { sendChat, streamChat, type PartialReply } from "../services/providerClient";
+import { DEFAULT_VOICE_BACKEND, type VoiceBackendConfig } from "../services/voice/inputEngine";
 import {
   loadProvider, openStorage, saveProvider, secretStore, SETTING_KEYS,
   type AikaStorage,
@@ -68,6 +69,7 @@ export function useCompanionSession() {
   const [summaryCoversUntil, setSummaryCoversUntil] = useState(0);
   const [proactive, setProactiveState] = useState<ProactiveSettings>(DEFAULT_PROACTIVE_SETTINGS);
   const [memoryExtractionEnabled, setMemoryExtractionEnabledState] = useState(true);
+  const [voiceBackend, setVoiceBackendState] = useState<VoiceBackendConfig>(DEFAULT_VOICE_BACKEND);
   const [sending, setSending] = useState(false);
 
   const storageRef = useRef<AikaStorage | null>(null);
@@ -100,8 +102,10 @@ export function useCompanionSession() {
       if (cancelled) return;
       storageRef.current = storage;
 
-      const [savedProvider, savedMessages, savedMemories, savedTimestamps, savedSummary, rawProactive, rawExtraction] =
-        await Promise.all([
+      const [
+        savedProvider, savedMessages, savedMemories, savedTimestamps, savedSummary,
+        rawProactive, rawExtraction, rawBackend, rawEndpoint,
+      ] = await Promise.all([
           loadProvider(storage, PROVIDER_PRESETS[1]),
           storage.listMessages(MESSAGE_WINDOW),
           storage.listMemories(),
@@ -109,6 +113,8 @@ export function useCompanionSession() {
           storage.latestSummary(),
           storage.getSetting(SETTING_KEYS.proactive),
           storage.getSetting(SETTING_KEYS.memoryExtraction),
+          storage.getSetting(SETTING_KEYS.voiceBackend),
+          storage.getSetting(SETTING_KEYS.whisperEndpoint),
         ]);
       if (cancelled) return;
 
@@ -122,6 +128,10 @@ export function useCompanionSession() {
       setSummaryCoversUntil(savedSummary?.coversUntil ?? 0);
       if (rawProactive) setProactiveState({ ...DEFAULT_PROACTIVE_SETTINGS, ...JSON.parse(rawProactive) });
       if (rawExtraction) setMemoryExtractionEnabledState(rawExtraction === "true");
+      setVoiceBackendState({
+        backend: (rawBackend as VoiceBackendConfig["backend"]) || DEFAULT_VOICE_BACKEND.backend,
+        whisperEndpoint: rawEndpoint || DEFAULT_VOICE_BACKEND.whisperEndpoint,
+      });
       setReady(true);
     }
 
@@ -179,9 +189,16 @@ export function useCompanionSession() {
     })
   ), [memories, summary, timestamps]);
 
+  /**
+   * 发一轮。
+   *
+   * 走流式：气泡逐字长出来，语音页据此让第一句提前开口。
+   * `onPartial` 是给语音页的额外出口——聊天气泡的更新在这里已经做掉了。
+   */
   const send = useCallback(async (
     content: string,
     source: MessageSource = "text",
+    onPartial?: (partial: PartialReply) => void,
   ): Promise<CompanionReply | null> => {
     if (!content || busyRef.current || !connected) return null;
     busyRef.current = true;
@@ -198,10 +215,23 @@ export function useCompanionSession() {
     try {
       // 上下文不含刚发出的这一句：它作为「用户刚刚说」单独交给提示词。
       const context = buildContext(history);
-      const reply = await sendChat(
+      const reply = await streamChat(
         providerRef.current,
         buildInstructions(context, DEFAULT_CHARACTER.systemPrompt),
         [{ role: "user", content: buildConversationInput(content, context) }],
+        (partial) => {
+          setMessages((current) => current.map((message) => (
+            message.id === pendingId
+              ? {
+                  ...message,
+                  content: partial.japaneseText,
+                  japaneseText: partial.japaneseText,
+                  chineseTranslation: partial.chineseTranslation,
+                }
+              : message
+          )));
+          onPartial?.(partial);
+        },
       );
 
       const answered = companionMessage(reply, Date.now(), pendingId, source);
@@ -302,6 +332,12 @@ export function useCompanionSession() {
     await storageRef.current?.setSetting(SETTING_KEYS.memoryExtraction, String(enabled));
   }, []);
 
+  const setVoiceBackend = useCallback(async (next: VoiceBackendConfig) => {
+    setVoiceBackendState(next);
+    await storageRef.current?.setSetting(SETTING_KEYS.voiceBackend, next.backend);
+    await storageRef.current?.setSetting(SETTING_KEYS.whisperEndpoint, next.whisperEndpoint);
+  }, []);
+
   const confirmMemory = useCallback(async (id: string) => {
     await storageRef.current?.setMemoryStatus(id, "confirmed");
     setMemories((current) => current.map((memory) => (
@@ -321,6 +357,7 @@ export function useCompanionSession() {
     memories, confirmMemory, deleteMemory,
     memoryExtractionEnabled, setMemoryExtractionEnabled,
     proactive, setProactive,
+    voiceBackend, setVoiceBackend,
     relationship, summary,
   };
 }

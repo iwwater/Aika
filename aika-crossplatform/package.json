@@ -8,7 +8,10 @@
     "build": "tsc && vite build",
     "test": "vitest run",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "sync:ort": "node scripts/sync-ort-assets.mjs",
+    "predev": "node scripts/sync-ort-assets.mjs",
+    "prebuild": "node scripts/sync-ort-assets.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -17,6 +20,7 @@
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-sql": "^2.4.1",
     "lucide-react": "^1.38.0",
+    "onnxruntime-web": "^1.29.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },

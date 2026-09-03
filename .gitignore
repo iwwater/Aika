@@ -49,3 +49,6 @@ pnpm-debug.log*
 
 # Playwright MCP 会话产物
 .playwright-mcp/
+
+# onnxruntime-web 的 wasm 运行时：由 npm run sync:ort 从 node_modules 生成
+aika-crossplatform/public/ort/

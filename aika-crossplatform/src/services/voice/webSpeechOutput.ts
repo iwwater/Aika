@@ -1,7 +1,11 @@
 import type { SpeechOutputEngine, SpeechOutputEvents, SpeechOutputRequest } from "./contracts";
 
+/**
+ * 分句已经在 domain/sentences.ts 做完，这里只清掉念出来是杂音的记号。
+ * 不能按换行截断：那样多行回复会被悄悄念掉一半。
+ */
 function speakableText(text: string) {
-  return text.split("\n")[0].replace(/[*_#>`]/g, "").trim();
+  return text.replace(/\s*\n+\s*/g, " ").replace(/[*_#>`]/g, "").trim();
 }
 
 /**

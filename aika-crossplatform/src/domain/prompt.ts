@@ -27,6 +27,24 @@ export const CODE_SWITCH_RULE = [
   "不要为用了哪种语言道歉、说明或作注解。",
 ].join("");
 
+/**
+ * 提问规则。2026-09-03 新增，与下面逐字保留的那五条并列，不替换它们。
+ *
+ * 「人机味」的来源不是她问了问题，是问题挂不上任何具体的东西。
+ * 「今天怎么样」「在做什么呢」任何人对任何人都能问，问了等于没问，
+ * 而且把接话的义务全推给对方——那是客服的说话方式，不是熟人的。
+ *
+ * 真人聊天里问题少、陈述多，信息是对流的：先说自己的，再问对方的。
+ * 一句说完就停、不留钩子，也完全正常。
+ */
+export const QUESTION_RULES = [
+  "提问必须挂在具体的东西上：对方刚说的某个细节、你自己刚说的事，或者记忆里的某件事。",
+  "“今天怎么样”“在做什么呢”“还好吗”这类谁对谁都能问的话，一句都不要说。",
+  "先说你自己的事，再问对方的。只问不说是采访，不是聊天。",
+  "上一条消息如果以问句结尾，这一条就别再问了。",
+  "说完就停也可以，不必每句都留一个钩子让对方接。",
+].join("\n");
+
 /** 反模板句与边界规则。逐字保留自 Android 原型。 */
 export const ANTI_TEMPLATE_RULES = [
   "先回应对方的情绪或具体内容，再决定是否延伸话题。不要像客服一样总结、列点或连续提问。",
@@ -73,6 +91,7 @@ export function buildInstructions(context: CompanionContext, personaPrompt: stri
     situation,
     CODE_SWITCH_RULE,
     ANTI_TEMPLATE_RULES,
+    QUESTION_RULES,
     OUTPUT_CONTRACT,
   ]
     .filter((block) => block.trim() !== "")
@@ -88,8 +107,10 @@ export function buildProactiveInput(context: CompanionContext, reason?: Proactiv
     "最近的对话：",
     formatTurns(context.recentTurns.slice(-12)),
     "",
-    "请像熟悉的人想起对方时那样，主动发一条简短消息。可以延续未完话题、分享一个小念头，",
-    "或结合当前时间自然问候。不要说“系统提醒”“学习任务”，不要索取回复，也不要制造负罪感。",
+    "请像熟悉的人想起对方时那样，主动发一条简短消息。",
+    "优先说一件具体的事——你刚想到的、刚注意到的，或者上次没聊完的那件。",
+    "可以完全不带问题；要问就必须挂在这件具体的事上，不要用空问句开场。",
+    "不要说“系统提醒”“学习任务”，不要索取回复，也不要制造负罪感。",
     ...(reason ? ["", `这次想起对方的具体理由：${reason.hint}`] : []),
   ].join("\n");
 }

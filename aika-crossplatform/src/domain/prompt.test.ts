@@ -125,3 +125,35 @@ describe("摘要与主动理由注入", () => {
     expect(buildProactiveInput(context())).not.toContain("这次想起对方的具体理由");
   });
 });
+
+describe("提问规则：她可以问，但不能带人机味", () => {
+  it("要求问题挂在具体的东西上", () => {
+    const instructions = buildInstructions(context(), persona);
+    expect(instructions).toContain("提问必须挂在具体的东西上");
+    expect(instructions).toContain("先说你自己的事，再问对方的");
+  });
+
+  it("点名禁掉万能问句", () => {
+    const instructions = buildInstructions(context(), persona);
+    expect(instructions).toContain("今天怎么样");
+    expect(instructions).toContain("在做什么呢");
+    expect(instructions).toContain("一句都不要说");
+  });
+
+  it("不许连着两条都以问句结尾", () => {
+    expect(buildInstructions(context(), persona)).toContain("上一条消息如果以问句结尾");
+  });
+
+  it("主动消息优先说具体的事，不用空问句开场", () => {
+    const input = buildProactiveInput(context());
+    expect(input).toContain("优先说一件具体的事");
+    expect(input).toContain("可以完全不带问题");
+    expect(input).toContain("不要用空问句开场");
+  });
+
+  it("反负罪感一行仍然逐字保留", () => {
+    expect(buildProactiveInput(context())).toContain(
+      "不要说“系统提醒”“学习任务”，不要索取回复，也不要制造负罪感。",
+    );
+  });
+});

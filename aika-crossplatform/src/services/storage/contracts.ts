@@ -40,4 +40,6 @@ export const SETTING_KEYS = {
   proactiveLastSentAt: "proactive.lastSentAt",
   proactiveLastReason: "proactive.lastReason",
   memoryExtraction: "memory.extraction",
+  voiceBackend: "voice.backend",
+  whisperEndpoint: "voice.whisperEndpoint",
 } as const;

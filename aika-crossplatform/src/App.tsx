@@ -10,8 +10,10 @@ import { DEFAULT_CHARACTER } from "./domain/character";
 import { preferredRecognitionLanguage } from "./domain/language";
 import { PROVIDER_PRESETS, validateProvider, type ProviderConfig } from "./domain/providers";
 import { useCompanionSession } from "./hooks/useCompanionSession";
-import { useVoiceConversation } from "./hooks/useVoiceConversation";
+import { useVoiceConversation, type VoiceTurnHandler } from "./hooks/useVoiceConversation";
 import { testProvider } from "./services/providerClient";
+import type { VoiceBackend } from "./services/voice/inputEngine";
+import { createWhisperClient } from "./services/voice/whisperClient";
 
 const QUICK_STARTS = ["今天发生了一件小事…", "有点累，想随便聊聊", "刚才想到你说过的那件事"];
 
@@ -24,10 +26,15 @@ function App() {
   const [showTranslation, setShowTranslation] = useState(true);
   const [status, setStatus] = useState<{ kind: "idle" | "testing" | "ok" | "error"; text: string }>({ kind: "idle", text: "" });
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [whisperStatus, setWhisperStatus] = useState<"idle" | "checking" | "ok" | "down">("idle");
+  const [whisperNote, setWhisperNote] = useState("");
 
   const { connected, sending, provider, messages, memories, relationship, proactive } = session;
 
-  const sendVoice = useCallback((text: string) => session.send(text, "voice"), [session]);
+  const sendVoice = useCallback<VoiceTurnHandler>(
+    (text, onPartial) => session.send(text, "voice", onPartial),
+    [session],
+  );
   // 识别语言跟着用户最近说的话走，不再让用户在「日语 / 中文」之间选。
   const resolveLanguage = useCallback(
     () => preferredRecognitionLanguage(
@@ -35,7 +42,17 @@ function App() {
     ),
     [messages],
   );
-  const voice = useVoiceConversation(sendVoice, resolveLanguage);
+  const voice = useVoiceConversation(sendVoice, resolveLanguage, session.voiceBackend);
+
+  async function handleProbeWhisper() {
+    setWhisperStatus("checking");
+    setWhisperNote("正在连接…");
+    const alive = await createWhisperClient(() => session.voiceBackend.whisperEndpoint).probe();
+    setWhisperStatus(alive ? "ok" : "down");
+    setWhisperNote(alive
+      ? "本地识别服务在线，进入语音就会用它。"
+      : `连不上 ${session.voiceBackend.whisperEndpoint}。先启动 whisper-server，或把链路切到系统语音识别。`);
+  }
 
   function openSettings() {
     setDraftProvider(provider);
@@ -149,7 +166,8 @@ function App() {
                     {message.source === "proactive" && <span className="meta-tag">主动</span>}
                   </div>
                   <div className="message-bubble">
-                    {message.pending ? <span className="typing"><i /><i /><i /></span> : (
+                    {/* 流式：字一开始长出来就不再显示三个点 */}
+                    {message.pending && !message.content ? <span className="typing"><i /><i /><i /></span> : (
                       <>
                         {(message.japaneseText ?? message.content).split("\n").map((line, index) => (
                           <span key={`${message.id}-${index}`}>{line}</span>
@@ -228,11 +246,15 @@ function App() {
       {voice.isOpen && (
         <VoiceModal
           phase={voice.phase}
+          pending={voice.pending}
           interim={voice.interim}
           error={voice.error}
           captions={voice.captions}
           speakingCaptionId={voice.speakingCaptionId}
+          backendNote={voice.backendNote}
           onInterrupt={voice.interruptAndListen}
+          onSendNow={voice.sendNow}
+          onClearPending={voice.clearPending}
           onClose={voice.close}
         />
       )}
@@ -278,6 +300,36 @@ function App() {
                 <span>自动记忆 · {session.memoryExtractionEnabled ? "开" : "关"}</span>
               </button>
               <span className="toggle-hint">开启后每轮对话结束会额外发一次抽取请求，会产生平台调用费用。</span>
+            </div>
+
+            <div className="settings-divider" />
+            <div className="modal-heading"><div><p className="eyebrow">Listening</p><h3>语音识别</h3></div></div>
+            <p className="modal-intro">本地识别不需要你在说话前选语言，日语、中文、英语都自动认。它要一个本地 whisper.cpp 服务；没开的时候退回系统语音识别，那条链路一次只能认一种语言。</p>
+            <div className="form-grid">
+              <label className="field"><span>识别链路</span>
+                <select
+                  value={session.voiceBackend.backend}
+                  onChange={(e) => void session.setVoiceBackend({ ...session.voiceBackend, backend: e.target.value as VoiceBackend })}
+                >
+                  <option value="auto">自动：本地服务开着就用它</option>
+                  <option value="whisper-local">只用本地 Whisper</option>
+                  <option value="web-speech">只用系统语音识别</option>
+                </select>
+              </label>
+              <label className="field"><span>本地服务地址</span>
+                <input
+                  value={session.voiceBackend.whisperEndpoint}
+                  onChange={(e) => void session.setVoiceBackend({ ...session.voiceBackend, whisperEndpoint: e.target.value })}
+                  placeholder="http://127.0.0.1:8080"
+                />
+              </label>
+            </div>
+            <div className="toggle-row">
+              <button className="toggle" onClick={handleProbeWhisper} disabled={whisperStatus === "checking"}>
+                {whisperStatus === "checking" ? <LoaderCircle size={15} className="spin" /> : <Volume2 size={15} />}
+                <span>检测本地服务</span>
+              </button>
+              <span className="toggle-hint">{whisperNote || "启动 whisper-server 之后点这里确认它活着。"}</span>
             </div>
 
             <div className="modal-actions"><button className="secondary-button" onClick={handleTest} disabled={status.kind === "testing"}>测试连接</button><button className="primary-button" onClick={handleSave}>保存并使用</button></div>
