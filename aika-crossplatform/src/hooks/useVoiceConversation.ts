@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import type { CaptionRange } from "../domain/captionHighlight";
+import { locateSentence } from "../domain/captionHighlight";
 import { replyDisplayText, type CompanionReply } from "../domain/companion";
 import { createSentenceEmitter } from "../domain/sentences";
 import type { PartialReply } from "../domain/streamingReply";
@@ -49,6 +51,8 @@ export function useVoiceConversation(
   const [error, setError] = useState("");
   const [captions, setCaptions] = useState<VoiceCaption[]>([]);
   const [speakingCaptionId, setSpeakingCaptionId] = useState<number | null>(null);
+  /** 正在念的那一句在字幕里的位置。念到哪儿就亮到哪儿，不整条一起亮。 */
+  const [speakingRange, setSpeakingRange] = useState<CaptionRange | null>(null);
   /** 这一轮实际走的是哪条识别链路。要让用户看得见，退回系统识别不能是隐形的。 */
   const [backendNote, setBackendNote] = useState("");
 
@@ -64,6 +68,10 @@ export function useVoiceConversation(
   const lastVoiceAtRef = useRef(0);
   const tickRef = useRef<number | null>(null);
   const captionIdRef = useRef(0);
+  /** 这一轮字幕的最新全文。高亮要按它算下标，state 在回调里读到的是旧的那份。 */
+  const captionTextRef = useRef("");
+  /** 高亮的搜索起点，只往前走。重复出现的同一句话才不会亮回上一处。 */
+  const highlightFromRef = useRef(0);
   /** 这一轮的编号。打断之后模型还会把回复送回来，靠它认出那是上一轮的。 */
   const turnRef = useRef(0);
   const resolveLanguageRef = useRef(resolveLanguage);
@@ -169,6 +177,7 @@ export function useVoiceConversation(
     setInterim("");
     busyRef.current = true;
     setPhase("thinking");
+    clearHighlight();
     // 麦克风一直开着的链路不停收音：这样她说话时用户开口才有东西可听。
     if (!continuous()) {
       inputRef.current?.stop();
@@ -186,6 +195,13 @@ export function useVoiceConversation(
         setPhase("speaking");
         setSpeakingCaptionId(captionId);
         void watchForBargeIn();
+      },
+      // 念到哪一句就把字幕亮到哪一句。找不到就不亮，宁可没有高亮也不能亮错位置。
+      onSentence: (_index, sentence) => {
+        if (!current()) return;
+        const range = locateSentence(captionTextRef.current, sentence, highlightFromRef.current);
+        if (range) highlightFromRef.current = range.end;
+        setSpeakingRange(range);
       },
       onDrained: () => {
         if (current()) finishSpeaking();
@@ -218,6 +234,7 @@ export function useVoiceConversation(
 
   function finishSpeaking() {
     monitorRef.current?.stop();
+    clearHighlight();
     setSpeakingCaptionId(null);
     busyRef.current = false;
     markVoice();
@@ -241,6 +258,13 @@ export function useVoiceConversation(
     }
   }
 
+  /** 一轮说完、被打断或退出时都要清掉，否则上一轮的高亮会留在屏幕上。 */
+  function clearHighlight() {
+    captionTextRef.current = "";
+    highlightFromRef.current = 0;
+    setSpeakingRange(null);
+  }
+
   function appendCaption(speaker: VoiceCaption["speaker"], text: string, translation?: string) {
     captionIdRef.current += 1;
     const caption: VoiceCaption = { id: captionIdRef.current, speaker, text, translation };
@@ -250,6 +274,7 @@ export function useVoiceConversation(
 
   /** 流式字幕：第一段到了才建卡片，之后原地长出来，不要每次都新加一条。 */
   function upsertAssistantCaption(id: number | null, text: string, translation?: string): number {
+    captionTextRef.current = text;
     if (id === null) return appendCaption("assistant", text, translation);
     setCaptions((current) => current.map((caption) => (
       caption.id === id ? { ...caption, text, translation: translation || caption.translation } : caption
@@ -286,6 +311,7 @@ export function useVoiceConversation(
     setError("");
     setCaptions([]);
     setSpeakingCaptionId(null);
+    clearHighlight();
     setPhase("idle");
 
     // 每次进语音页都重新选一次链路：本地服务可能刚开起来，也可能刚关掉。
@@ -327,6 +353,7 @@ export function useVoiceConversation(
     queueRef.current?.stop();
     monitorRef.current?.stop();
     setSpeakingCaptionId(null);
+    clearHighlight();
     busyRef.current = false;
     activeRef.current = true;
     setPendingText("");
@@ -372,12 +399,13 @@ export function useVoiceConversation(
     setPendingText("");
     setInterim("");
     setSpeakingCaptionId(null);
+    clearHighlight();
     setPhase("idle");
     setIsOpen(false);
   }
 
   return {
-    isOpen, phase, pending, interim, error, captions, speakingCaptionId, backendNote,
+    isOpen, phase, pending, interim, error, captions, speakingCaptionId, speakingRange, backendNote,
     open, close, interruptAndListen, sendNow, clearPending,
   };
 }

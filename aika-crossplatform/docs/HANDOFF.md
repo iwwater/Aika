@@ -63,6 +63,10 @@
   `domain/audio.ts` 的环形缓冲让打断不丢字，`domain/vadSegmenter.ts` 带回滞区防止碎句，
   `whisperClient.ts` 挡掉 whisper 对静音的固定幻听。
   **代码这一侧完成并有测试，缺的是把 whisper-server 跑起来**，步骤见 NEXT_STEPS。
+- **逐句字幕高亮完成**（2026-09-03）：`domain/captionHighlight.ts` 把正在念的那一句定位回字幕原文。
+  送去合成的句子被 `sentences.ts` 清洗过，所以两边归一化（忽略空白与 Markdown 记号）后再找，
+  下标再映射回原文；找不到就不亮，亮错位置比不亮更糟。FIELD_TEST_NOTES 修复顺序第 4 条
+  至此只剩 Live2D 口型。
 - **提问规则**（2026-09-03）：`domain/prompt.ts` 新增 `QUESTION_RULES`，
   要求提问挂在具体的东西上、点名禁掉万能问句、先说自己再问对方。反模板句五条逐字保留。
 

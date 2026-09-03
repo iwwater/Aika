@@ -251,6 +251,7 @@ function App() {
           error={voice.error}
           captions={voice.captions}
           speakingCaptionId={voice.speakingCaptionId}
+          speakingRange={voice.speakingRange}
           backendNote={voice.backendNote}
           onInterrupt={voice.interruptAndListen}
           onSendNow={voice.sendNow}

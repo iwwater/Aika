@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { CornerDownLeft, Eraser, LoaderCircle, Mic, X } from "lucide-react";
+import { splitCaption, type CaptionRange } from "../domain/captionHighlight";
 import type { VoiceCaption, VoicePhase } from "../services/voice/contracts";
 
 interface VoiceModalProps {
@@ -10,6 +11,8 @@ interface VoiceModalProps {
   error: string;
   captions: VoiceCaption[];
   speakingCaptionId: number | null;
+  /** 正在念的那一句在字幕里的位置。只对正在说话的那一条字幕有效。 */
+  speakingRange: CaptionRange | null;
   /** 这一轮实际走的识别链路。退回系统识别不能是隐形的。 */
   backendNote: string;
   onInterrupt(): void;
@@ -52,7 +55,10 @@ export function VoiceModal(props: VoiceModalProps) {
               className={`voice-caption ${caption.speaker} ${props.speakingCaptionId === caption.id ? "speaking" : ""}`}
             >
               <span>{caption.speaker === "user" ? "你" : "愛花"}</span>
-              <p>{caption.text}</p>
+              <CaptionText
+                text={caption.text}
+                range={props.speakingCaptionId === caption.id ? props.speakingRange : null}
+              />
               {caption.translation && <p className="voice-caption-translation">{caption.translation}</p>}
             </div>
           ))}
@@ -90,5 +96,18 @@ export function VoiceModal(props: VoiceModalProps) {
         <p className="voice-privacy">{props.backendNote || "正在选择识别链路…"}<br />个性化声线将通过同一接口接入。</p>
       </section>
     </div>
+  );
+}
+
+/** 正在念的那一句亮起来，其余的照常显示。没有区间时就是一段普通文本。 */
+function CaptionText(props: { text: string; range: CaptionRange | null }) {
+  const parts = splitCaption(props.text, props.range);
+  if (!parts.match) return <p>{props.text}</p>;
+  return (
+    <p>
+      {parts.before}
+      <mark className="voice-caption-now">{parts.match}</mark>
+      {parts.after}
+    </p>
   );
 }
