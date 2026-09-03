@@ -1,3 +1,4 @@
+mod remote;
 mod secret_store;
 
 use tauri::menu::{Menu, MenuItem};
@@ -19,7 +20,12 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
+        .manage(remote::RemoteState::default())
         .invoke_handler(tauri::generate_handler![
+            remote::remote_start,
+            remote::remote_stop,
+            remote::remote_status,
+            remote::remote_respond,
             secret_store::secret_available,
             secret_store::secret_set,
             secret_store::secret_get,

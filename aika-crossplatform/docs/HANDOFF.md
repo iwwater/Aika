@@ -67,6 +67,12 @@
   送去合成的句子被 `sentences.ts` 清洗过，所以两边归一化（忽略空白与 Markdown 记号）后再找，
   下标再映射回原文；找不到就不亮，亮错位置比不亮更糟。FIELD_TEST_NOTES 修复顺序第 4 条
   至此只剩 Live2D 口型。
+- **M7 手机端第一版完成**（2026-09-03）：`src-tauri/src/remote.rs` 起一个带 token 鉴权的
+  局域网 HTTP 服务，`src-tauri/mobile/index.html` 是手写的单文件手机页面。
+  **Rust 不碰业务**：手机的请求转成事件送进桌面 WebView，桌面端跑完再交回去——
+  提示词、模型调用、落库都只有桌面那一份实现，Key 也不用离开 DPAPI 保险库。
+  手机不存任何东西，是一块远程屏幕，不是第二份数据。**语音、表情包、主动消息推送这一版都没有**，
+  电脑不开机手机就用不了。端到端待真机验收。
 - **表情包机制完成**（2026-09-03）：`domain/stickers.ts` + `public/stickers/manifest.json`。
   她只能从清单里挑，不生成图；OpenAI 协议下 `sticker` 是 enum（带空串表示不发），
   编不出清单外的名字，其余协议由 `resolveSticker` 挡掉。**清单为空时整套机制隐身**，

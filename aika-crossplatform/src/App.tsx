@@ -1,7 +1,7 @@
 import { FormEvent, useCallback, useRef, useState } from "react";
 import {
   Bell, BellOff, Bot, Check, ChevronDown, KeyRound, Languages, LoaderCircle, MessageCircleMore,
-  Mic, PanelRightClose, SendHorizontal, Settings2, Sparkles, Trash2, Volume2, X,
+  Mic, PanelRightClose, RefreshCw, SendHorizontal, Settings2, Smartphone, Sparkles, Trash2, Volume2, X,
 } from "lucide-react";
 import "./App.css";
 import { AvatarPlaceholder } from "./components/AvatarPlaceholder";
@@ -11,6 +11,7 @@ import { DEFAULT_CHARACTER } from "./domain/character";
 import { preferredRecognitionLanguage } from "./domain/language";
 import { PROVIDER_PRESETS, validateProvider, type ProviderConfig } from "./domain/providers";
 import { useCompanionSession } from "./hooks/useCompanionSession";
+import { useRemoteAccess } from "./hooks/useRemoteAccess";
 import { useVoiceConversation, type VoiceTurnHandler } from "./hooks/useVoiceConversation";
 import { testProvider } from "./services/providerClient";
 import type { VoiceBackend } from "./services/voice/inputEngine";
@@ -44,6 +45,24 @@ function App() {
     [messages],
   );
   const voice = useVoiceConversation(sendVoice, resolveLanguage, session.voiceBackend);
+  // 手机端：它把「发一轮」交回这里跑，数据始终只有电脑上这一份。
+  const remote = useRemoteAccess({
+    messages,
+    connected,
+    send: (text) => session.send(text, "text"),
+  });
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopyRemoteUrl() {
+    if (!remote.info) return;
+    try {
+      await navigator.clipboard.writeText(remote.info.url);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // 剪贴板被拒时地址就在界面上，用户可以自己选中复制。
+    }
+  }
 
   async function handleProbeWhisper() {
     setWhisperStatus("checking");
@@ -335,6 +354,57 @@ function App() {
               <span className="toggle-hint">{whisperNote || "启动 whisper-server 之后点这里确认它活着。"}</span>
             </div>
 
+            <div className="settings-divider" />
+            <div className="modal-heading"><div><p className="eyebrow">Phone</p><h3>手机也能用</h3></div></div>
+            <p className="modal-intro">手机上打开一个网页就能接着聊。它不是同步——记忆仍然只有这台电脑上的一份，手机只是一块远程屏幕。所以<strong>电脑不开机手机就用不了</strong>，主动消息也推不到手机，只有手机开着的时候才收得到。</p>
+            {!remote.available ? (
+              <p className="modal-intro">浏览器开发模式下没有这个功能，要在桌面应用里用。</p>
+            ) : (
+              <>
+                <div className="form-grid">
+                  <label className="field"><span>端口</span>
+                    <input
+                      value={remote.port}
+                      onChange={(e) => remote.setPort(Number(e.target.value) || 0)}
+                      disabled={Boolean(remote.info)}
+                      inputMode="numeric"
+                    />
+                  </label>
+                  <label className="field"><span>手机上打开这个地址</span>
+                    <input value={remote.info?.url ?? "（还没开启）"} readOnly onFocus={(e) => e.target.select()} />
+                  </label>
+                </div>
+                <div className="toggle-row">
+                  <button
+                    className={`toggle ${remote.info ? "on" : ""}`}
+                    onClick={() => void (remote.info ? remote.stop() : remote.start(remote.port))}
+                    disabled={remote.busy}
+                  >
+                    {remote.busy ? <LoaderCircle size={15} className="spin" /> : <Smartphone size={15} />}
+                    <span>{remote.info ? "已开启" : "开启手机访问"}</span>
+                  </button>
+                  {remote.info && (
+                    <>
+                      <button className="toggle" onClick={handleCopyRemoteUrl} disabled={remote.busy}>
+                        <Check size={15} /><span>{copied ? "已复制" : "复制地址"}</span>
+                      </button>
+                      <button className="toggle" onClick={() => void remote.rotateToken()} disabled={remote.busy}>
+                        <RefreshCw size={15} /><span>换一把口令</span>
+                      </button>
+                    </>
+                  )}
+                  <span className="toggle-hint">
+                    {remote.error
+                      ? remote.error
+                      : remote.info
+                        ? remote.info.host === "127.0.0.1"
+                          ? "拿不到局域网地址，手机可能连不上。检查一下电脑是不是连着 WiFi。"
+                          : "地址里带着访问口令，等于钥匙——只发给自己的手机。出门用 Tailscale，不要做公网穿透。"
+                        : "退出应用就会关掉，下次要用再开一次。不想让一个监听端口在你不知情时一直开着。"}
+                  </span>
+                </div>
+              </>
+            )}
             <div className="modal-actions"><button className="secondary-button" onClick={handleTest} disabled={status.kind === "testing"}>测试连接</button><button className="primary-button" onClick={handleSave}>保存并使用</button></div>
           </section>
         </div>

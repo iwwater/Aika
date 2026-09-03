@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>愛花</title>
+<!--
+  手机端页面。
+
+  刻意是一个手写的单文件页面，不是桌面那套 React：
+  手机只是一块远程屏幕，越简单越不容易在 iOS Safari 上出意外，
+  而且它由 Rust 直接 include_str! 进二进制，不需要第二条构建链。
+
+  这里不存任何东西——记忆只有电脑上那一份。token 存在 sessionStorage，
+  关掉标签页就没了，链接本身仍然是唯一的入口。
+-->
+<style>
+  :root {
+    --cyan: #37e6ff; --violet: #9a6bff; --ink: #e8f4ff; --muted: #8ea3c0;
+    --line: rgba(120,160,220,.18); --bg: #05070e; --card: rgba(19,29,49,.9);
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; height: 100dvh; display: flex; flex-direction: column;
+    background: radial-gradient(120% 80% at 50% 0%, #0b1428, var(--bg));
+    color: var(--ink); font: 15px/1.6 -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  }
+  header {
+    padding: calc(env(safe-area-inset-top) + 12px) 16px 12px;
+    border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px;
+  }
+  header .dot { width: 8px; height: 8px; border-radius: 50%; background: #3ddc97; }
+  header .dot.off { background: #ff4d92; }
+  header h1 { margin: 0; font-size: 15px; letter-spacing: .04em; }
+  header small { margin-left: auto; color: var(--muted); font-size: 11px; }
+  main { flex: 1; overflow-y: auto; padding: 14px 14px 4px; display: flex; flex-direction: column; gap: 12px; }
+  .row { display: flex; flex-direction: column; max-width: 86%; }
+  .row.user { align-self: flex-end; align-items: flex-end; }
+  .meta { margin: 0 4px 3px; color: var(--muted); font-size: 10px; }
+  .bubble {
+    padding: 9px 12px; border-radius: 4px 14px 14px; background: var(--card);
+    border: 1px solid var(--line); white-space: pre-wrap; word-break: break-word;
+  }
+  .row.user .bubble {
+    border-radius: 14px 4px 14px 14px; border: none; color: #04121a;
+    background: linear-gradient(140deg, var(--cyan), var(--violet));
+  }
+  .row.error .bubble { color: #ffb8d1; background: rgba(40,10,26,.8); border-color: rgba(255,77,146,.35); }
+  .translation { margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+  footer { padding: 10px 12px calc(env(safe-area-inset-bottom) + 10px); border-top: 1px solid var(--line); }
+  .notice { margin: 0 0 8px; color: var(--muted); font-size: 11px; }
+  .notice.bad { color: #ffb8d1; }
+  form { display: flex; gap: 8px; align-items: flex-end; }
+  textarea {
+    flex: 1; min-height: 44px; max-height: 140px; padding: 11px 12px; resize: none;
+    border: 1px solid var(--line); border-radius: 12px; background: rgba(10,16,28,.9);
+    color: var(--ink); font: inherit; font-size: 16px; /* 16px 以下 iOS 会自动放大页面 */
+  }
+  button {
+    height: 44px; padding: 0 18px; border: none; border-radius: 12px; color: #04121a;
+    background: linear-gradient(140deg, var(--cyan), var(--violet)); font: inherit; font-weight: 600;
+  }
+  button:disabled { opacity: .5; }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="dot"></span>
+  <h1>愛花</h1>
+  <small id="status">连接中…</small>
+</header>
+<main id="list"></main>
+<footer>
+  <p class="notice" id="notice">电脑关机时这里就没有回应了——记忆只有电脑上那一份。</p>
+  <form id="form">
+    <textarea id="input" rows="1" placeholder="日语、中文、英语都可以" enterkeyhint="send"></textarea>
+    <button id="send" type="submit">发送</button>
+  </form>
+</footer>
+<script>
+  // token 从链接里来，之后存进 sessionStorage：刷新还在，关掉标签页就没了。
+  const params = new URLSearchParams(location.search);
+  const token = params.get("t") || sessionStorage.getItem("aika.token") || "";
+  if (params.get("t")) {
+    sessionStorage.setItem("aika.token", params.get("t"));
+    history.replaceState(null, "", location.pathname);
+  }
+
+  const list = document.getElementById("list");
+  const notice = document.getElementById("notice");
+  const status = document.getElementById("status");
+  const dot = document.getElementById("dot");
+  const input = document.getElementById("input");
+  const sendButton = document.getElementById("send");
+
+  let rendered = "";
+  let sending = false;
+
+  function online(ok, text) {
+    dot.className = ok ? "dot" : "dot off";
+    status.textContent = text;
+  }
+
+  function say(text, bad) {
+    notice.textContent = text;
+    notice.className = bad ? "notice bad" : "notice";
+  }
+
+  async function call(path, options) {
+    const response = await fetch(path, {
+      ...options,
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || ("HTTP " + response.status));
+    return data;
+  }
+
+  function render(messages) {
+    // 整段重画只在内容真的变了的时候做，否则会打断正在输入的选词
+    const signature = JSON.stringify(messages);
+    if (signature === rendered) return;
+    rendered = signature;
+
+    const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
+    list.innerHTML = "";
+    for (const message of messages) {
+      const row = document.createElement("div");
+      row.className = "row " + message.role + (message.error ? " error" : "");
+
+      const meta = document.createElement("p");
+      meta.className = "meta";
+      meta.textContent = (message.role === "user" ? "你" : "愛花") + " · " + message.time;
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.textContent = message.text;
+      if (message.translation) {
+        const translation = document.createElement("div");
+        translation.className = "translation";
+        translation.textContent = message.translation;
+        bubble.appendChild(translation);
+      }
+      row.append(meta, bubble);
+      list.appendChild(row);
+    }
+    if (atBottom) list.scrollTop = list.scrollHeight;
+  }
+
+  async function refresh() {
+    try {
+      const data = await call("/api/messages");
+      render(data.messages || []);
+      online(true, data.connected ? "已连上电脑" : "电脑上还没配置模型");
+    } catch (error) {
+      online(false, "连不上电脑");
+      say(String(error.message || error), true);
+    }
+  }
+
+  document.getElementById("form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const text = input.value.trim();
+    if (!text || sending) return;
+
+    sending = true;
+    sendButton.disabled = true;
+    input.value = "";
+    say("已经发过去了，等她说完这一轮…");
+
+    try {
+      const data = await call("/api/send", { method: "POST", body: JSON.stringify({ text }) });
+      // 这一轮落库之后由 refresh() 拉回来：那份才是电脑上真正存下的。
+      say(data.error || "电脑关机时这里就没有回应了——记忆只有电脑上那一份。", Boolean(data.error));
+    } catch (error) {
+      // 发失败时把话还给用户，不要让他重打一遍
+      input.value = text;
+      say(String(error.message || error), true);
+    } finally {
+      sending = false;
+      sendButton.disabled = false;
+      refresh();
+    }
+  });
+
+  input.addEventListener("input", () => {
+    input.style.height = "auto";
+    input.style.height = Math.min(input.scrollHeight, 140) + "px";
+  });
+
+  if (!token) {
+    online(false, "缺 token");
+    say("这个链接少了 token。在电脑上的设置页重新复制一次手机地址。", true);
+  } else {
+    refresh();
+    // 主动消息推不到手机（Web Push 要 HTTPS 和 VAPID），所以开着的时候靠轮询。
+    setInterval(() => { if (!sending) refresh(); }, 3000);
+  }
+</script>
+</body>
+</html>
