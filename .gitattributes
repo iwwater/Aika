@@ -1,0 +1,2 @@
+# Preserve downloaded paper bytes and avoid text diffs or newline conversion.
+*.pdf binary

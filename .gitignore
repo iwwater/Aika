@@ -1,4 +1,15 @@
 # --- 构建产物与依赖 ---
+.local-backups/
+tmp/
+.env
+.env.*
+!.env.example
+secrets.json
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
 node_modules/
 dist/
 dist-ssr/
@@ -52,3 +63,6 @@ pnpm-debug.log*
 
 # onnxruntime-web 的 wasm 运行时：由 npm run sync:ort 从 node_modules 生成
 aika-crossplatform/public/ort/
+
+# Papers are downloaded locally from their original publishers.
+aika-crossplatform/docs/research/affect/papers/
