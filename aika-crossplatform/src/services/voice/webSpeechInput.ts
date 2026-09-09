@@ -1,4 +1,5 @@
 import type { SpeechInputEngine, SpeechInputEvents, VoiceInputLanguage } from "./contracts";
+import { monotonicNow, type SpeechSegmentTiming, type SpeechStartEvent } from "../../domain/voiceRuntime";
 
 interface RecognitionResultLike {
   isFinal: boolean;
@@ -35,6 +36,29 @@ function getConstructor(): RecognitionConstructor | undefined {
 
 export function createWebSpeechInputEngine(): SpeechInputEngine {
   let recognition: RecognitionLike | null = null;
+  let sequence = 0;
+  let currentSegment: SpeechStartEvent | null = null;
+
+  function beginSegment(atMonotonicMs: number): SpeechStartEvent {
+    const started: SpeechStartEvent = {
+      segmentId: `web-speech-${sequence}`,
+      sequence,
+      audioStartAt: atMonotonicMs,
+      timeSource: "estimated",
+    };
+    sequence += 1;
+    currentSegment = started;
+    return started;
+  }
+
+  function finishSegment(events: SpeechInputEvents, text: string) {
+    const endAt = monotonicNow();
+    const started = currentSegment ?? beginSegment(endAt);
+    const timing: SpeechSegmentTiming = { ...started, audioEndAt: endAt };
+    events.onSegmentEnd?.(timing);
+    events.onFinal?.({ ...timing, text });
+    currentSegment = null;
+  }
 
   return {
     id: "windows-web-speech",
@@ -59,6 +83,7 @@ export function createWebSpeechInputEngine(): SpeechInputEngine {
         recognition.continuous = false;
         recognition.interimResults = true;
       }
+      currentSegment = null;
       recognition.lang = language;
       recognition.onstart = () => events.onStart?.();
       recognition.onresult = (event) => {
@@ -71,13 +96,22 @@ export function createWebSpeechInputEngine(): SpeechInputEngine {
         }
         if (interimText.trim()) {
           // 中间结果就是这个引擎的「有人在说」信号。
-          events.onSpeechStart?.();
-          events.onInterim?.(interimText.trim());
+          const at = monotonicNow();
+          const segment = currentSegment ?? beginSegment(at);
+          events.onSpeechStart?.(segment);
+          events.onInterim?.(interimText.trim(), at);
         }
-        if (finalText.trim()) events.onFinal?.(finalText.trim());
+        const hasFinal = Array.from({ length: event.results.length - event.resultIndex })
+          .some((_, index) => event.results[event.resultIndex + index]?.isFinal);
+        if (hasFinal) finishSegment(events, finalText.trim());
       };
       recognition.onerror = (event) => events.onError?.(event.error, event.message);
-      recognition.onend = () => events.onEnd?.();
+      recognition.onend = () => {
+        // 某些 Web Speech 实现只给 onend、不再给最后一个 final；仍然要释放
+        // 「ASR 在途」状态，但时间精度明确是估算。
+        if (currentSegment) finishSegment(events, "");
+        events.onEnd?.();
+      };
       recognition.start();
     },
 
@@ -87,11 +121,13 @@ export function createWebSpeechInputEngine(): SpeechInputEngine {
 
     abort() {
       recognition?.abort();
+      currentSegment = null;
     },
 
     dispose() {
       recognition?.abort();
       recognition = null;
+      currentSegment = null;
     },
   };
 }

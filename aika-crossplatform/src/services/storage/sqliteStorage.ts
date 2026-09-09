@@ -23,7 +23,10 @@ const SCHEMA = [
      created_at INTEGER NOT NULL,
      is_error INTEGER NOT NULL DEFAULT 0,
      sticker TEXT,
-     mood TEXT
+     mood TEXT,
+     turn_id INTEGER,
+     completion_status TEXT NOT NULL DEFAULT 'complete',
+     playback_status TEXT
    )`,
   `CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages (created_at)`,
   `CREATE TABLE IF NOT EXISTS memories (
@@ -53,6 +56,9 @@ const SCHEMA = [
 const MIGRATIONS = [
   "ALTER TABLE messages ADD COLUMN sticker TEXT",
   "ALTER TABLE messages ADD COLUMN mood TEXT",
+  "ALTER TABLE messages ADD COLUMN turn_id INTEGER",
+  "ALTER TABLE messages ADD COLUMN completion_status TEXT NOT NULL DEFAULT 'complete'",
+  "ALTER TABLE messages ADD COLUMN playback_status TEXT",
 ];
 
 interface MessageRow {
@@ -66,6 +72,9 @@ interface MessageRow {
   is_error: number;
   sticker: string | null;
   mood: string | null;
+  turn_id: number | null;
+  completion_status: string | null;
+  playback_status: string | null;
 }
 
 interface MemoryRow {
@@ -93,6 +102,9 @@ function toMessage(row: MessageRow): ChatMessage {
     chineseTranslation: row.chinese_translation ?? undefined,
     sticker: row.sticker ?? undefined,
     mood: row.mood ? normalizeMood(row.mood) : undefined,
+    turnId: row.turn_id ?? undefined,
+    ...(row.completion_status === "interrupted" ? { completion: "interrupted" as const } : {}),
+    playbackStatus: row.playback_status === "played" ? "played" : undefined,
     source: row.source as MessageSource,
     createdAt: row.created_at,
     time: formatClockTime(row.created_at),
@@ -136,8 +148,9 @@ export async function createSqliteStorage(): Promise<AikaStorage> {
     async appendMessage(message) {
       await db.execute(
         `INSERT OR REPLACE INTO messages
-           (id, role, source, content, japanese_text, chinese_translation, created_at, is_error, sticker, mood)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+           (id, role, source, content, japanese_text, chinese_translation, created_at, is_error, sticker, mood,
+            turn_id, completion_status, playback_status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
         [
           message.id,
           message.role,
@@ -149,6 +162,9 @@ export async function createSqliteStorage(): Promise<AikaStorage> {
           message.error ? 1 : 0,
           message.sticker ?? null,
           message.mood ?? null,
+          message.turnId ?? null,
+          message.completion ?? "complete",
+          message.playbackStatus ?? null,
         ],
       );
     },

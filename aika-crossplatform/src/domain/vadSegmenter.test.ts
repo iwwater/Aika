@@ -56,6 +56,9 @@ describe("createVadSegmenter", () => {
     if (end.type !== "speech-end") throw new Error("应该是 speech-end");
     // 静音从第 20 帧开始，段尾要比它更靠后
     expect(end.endSample).toBe(20 * FRAME + samplesFor(DEFAULT_VAD_SETTINGS.tailMs));
+    // 回合计时必须使用最后有声位置，不能把尾静音也算进用户停说时间。
+    expect(end.lastVoiceSample).toBe(20 * FRAME);
+    expect(end.lastVoiceSample).toBeLessThan(end.endSample);
   });
 
   it("回滞区：概率在阈值附近抖动不会把一句话切成碎片", () => {

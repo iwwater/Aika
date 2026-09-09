@@ -12,6 +12,8 @@
  * 这条要等本地管线自己持有音频缓冲区才能真正解决——那时候可以往前回补。
  */
 
+import { monotonicNow } from "../../domain/voiceRuntime";
+
 export interface MicActivityOptions {
   /** 连续多少帧超过阈值才算开口。 */
   frames?: number;
@@ -23,10 +25,15 @@ export interface MicActivityOptions {
   floor?: number;
 }
 
+export interface MicSpeechEvent {
+  /** 连续能量阈值被击穿的时间；这是检测代理时间，不是声学首音时间。 */
+  atMonotonicMs: number;
+}
+
 export interface MicActivityMonitor {
   isAvailable(): boolean;
   /** 开始监听。检测到开口只回调一次，之后自动停下，由调用方决定要不要再开。 */
-  start(onSpeech: () => void): Promise<void>;
+  start(onSpeech: (event: MicSpeechEvent) => void): Promise<void>;
   stop(): void;
   /** 释放麦克风与音频上下文。退出语音页时调用。 */
   dispose(): Promise<void>;
@@ -103,7 +110,7 @@ export function createMicActivityMonitor(options: MicActivityOptions = {}): MicA
         if (hits < frames) return;
         clearTimer();
         hits = 0;
-        onSpeech();
+        onSpeech({ atMonotonicMs: monotonicNow() });
       }, intervalMs);
     },
 

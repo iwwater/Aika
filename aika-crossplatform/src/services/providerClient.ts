@@ -23,6 +23,25 @@ interface PreparedRequest {
   body: unknown;
 }
 
+export interface ProviderRequestOptions {
+  /** 取消整轮 LLM 请求和 SSE reader；调用方仍须用 turnId 屏蔽不支持取消的迟到结果。 */
+  signal?: AbortSignal;
+  turnId?: number;
+}
+
+function abortError(): DOMException {
+  return new DOMException("The operation was aborted", "AbortError");
+}
+
+export function isAbortError(error: unknown): boolean {
+  return (error instanceof DOMException && error.name === "AbortError")
+    || (error instanceof Error && error.name === "AbortError");
+}
+
+function throwIfAborted(signal?: AbortSignal) {
+  if (signal?.aborted) throw abortError();
+}
+
 function activeFetch(input: string, init: RequestInit): Promise<Response> {
   return "__TAURI_INTERNALS__" in globalThis ? tauriFetch(input, init) : globalThis.fetch(input, init);
 }
@@ -47,7 +66,8 @@ function hostOf(url: string): string {
   }
 }
 
-async function post(request: PreparedRequest): Promise<Response> {
+async function post(request: PreparedRequest, options: ProviderRequestOptions = {}): Promise<Response> {
+  throwIfAborted(options.signal);
   const host = hostOf(request.url);
   let response: Response;
   try {
@@ -56,6 +76,7 @@ async function post(request: PreparedRequest): Promise<Response> {
       headers: { "Content-Type": "application/json", ...request.headers },
       body: JSON.stringify(request.body),
       connectTimeout: 15_000,
+      signal: options.signal,
     } as RequestInit);
   } catch (error) {
     throw new Error(`无法连接 ${host}：${error instanceof Error ? error.message : String(error)}`);
@@ -178,8 +199,9 @@ async function requestText(
   history: ChatTurn[],
   format: ResponseFormat,
   stickerIds: readonly string[] = [],
+  options: ProviderRequestOptions = {},
 ): Promise<string> {
-  const response = await post(prepare(config, systemPrompt, history, format, false, stickerIds));
+  const response = await post(prepare(config, systemPrompt, history, format, false, stickerIds), options);
   return extractText(config, await response.json());
 }
 
@@ -204,33 +226,48 @@ function deltaOf(config: ProviderConfig, payload: any): string {
  * 只认 `data:` 行：`event:` 行的类型信息各家不一样，而 data 的形状足够区分，
  * 少认一种就少一处会随上游改版而坏掉的地方。
  */
-async function readEventStream(response: Response, onData: (payload: any) => void): Promise<void> {
+async function readEventStream(
+  response: Response,
+  onData: (payload: any) => void,
+  signal?: AbortSignal,
+): Promise<void> {
   const reader = response.body?.getReader();
   if (!reader) throw new Error("这个响应没有可读的流式内容");
+
+  const onAbort = () => {
+    void reader.cancel().catch(() => undefined);
+  };
+  signal?.addEventListener("abort", onAbort, { once: true });
 
   const decoder = new TextDecoder();
   let buffer = "";
 
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
+  try {
+    for (;;) {
+      throwIfAborted(signal);
+      const { done, value } = await reader.read();
+      if (done) break;
+      throwIfAborted(signal);
+      buffer += decoder.decode(value, { stream: true });
 
-    let newline = buffer.indexOf("\n");
-    while (newline >= 0) {
-      const line = buffer.slice(0, newline).trim();
-      buffer = buffer.slice(newline + 1);
-      newline = buffer.indexOf("\n");
+      let newline = buffer.indexOf("\n");
+      while (newline >= 0) {
+        const line = buffer.slice(0, newline).trim();
+        buffer = buffer.slice(newline + 1);
+        newline = buffer.indexOf("\n");
 
-      if (!line.startsWith("data:")) continue;
-      const data = line.slice(5).trim();
-      if (!data || data === "[DONE]") continue;
-      try {
-        onData(JSON.parse(data));
-      } catch {
-        // 半行 JSON 或心跳注释，跳过就好，不该让一轮对话失败。
+        if (!line.startsWith("data:")) continue;
+        const data = line.slice(5).trim();
+        if (!data || data === "[DONE]") continue;
+        try {
+          onData(JSON.parse(data));
+        } catch {
+          // 半行 JSON 或心跳注释，跳过就好，不该让一轮对话失败。
+        }
       }
     }
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
   }
 }
 
@@ -244,8 +281,9 @@ export async function sendChat(
   systemPrompt: string,
   history: ChatTurn[],
   stickerIds: readonly string[] = [],
+  options: ProviderRequestOptions = {},
 ): Promise<CompanionReply> {
-  return finish(await requestText(config, systemPrompt, history, "companion-reply", stickerIds));
+  return finish(await requestText(config, systemPrompt, history, "companion-reply", stickerIds, options));
 }
 
 function finish(text: string): CompanionReply {
@@ -273,23 +311,26 @@ export async function streamChat(
   history: ChatTurn[],
   onPartial: (partial: PartialReply) => void,
   stickerIds: readonly string[] = [],
+  options: ProviderRequestOptions = {},
 ): Promise<CompanionReply> {
   let raw = "";
 
   try {
-    const response = await post(prepare(config, systemPrompt, history, "companion-reply", true, stickerIds));
+    const response = await post(prepare(config, systemPrompt, history, "companion-reply", true, stickerIds), options);
     await readEventStream(response, (payload) => {
       const delta = deltaOf(config, payload);
       if (!delta) return;
       raw += delta;
       onPartial(parsePartialReply(raw));
-    });
+    }, options.signal);
   } catch (error) {
+    if (options.signal?.aborted || isAbortError(error)) throw (options.signal?.aborted ? abortError() : error);
     if (raw) throw error;
-    return sendChat(config, systemPrompt, history, stickerIds);
+    return sendChat(config, systemPrompt, history, stickerIds, options);
   }
 
-  if (!raw) return sendChat(config, systemPrompt, history, stickerIds);
+  throwIfAborted(options.signal);
+  if (!raw) return sendChat(config, systemPrompt, history, stickerIds, options);
   return finish(raw);
 }
 

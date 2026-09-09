@@ -76,6 +76,36 @@ describe("sendChat", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ choices: [{ message: { content: "" } }] })));
     await expect(sendChat(baseConfig, "system", [{ role: "user", content: "hi" }])).rejects.toThrow("没有返回可显示的文本");
   });
+
+  it("把取消信号传给 Provider 请求", async () => {
+    const controller = new AbortController();
+    const request = vi.fn().mockResolvedValue(jsonResponse({ choices: [{ message: { content: replyJson } }] }));
+    vi.stubGlobal("fetch", request);
+
+    await sendChat(baseConfig, "system", [{ role: "user", content: "hi" }], [], {
+      signal: controller.signal,
+      turnId: 9,
+    });
+
+    expect(request.mock.calls[0][1].signal).toBe(controller.signal);
+  });
+
+  it("请求开始前已取消时不发请求，也不退回成第二次调用", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const request = vi.fn();
+    vi.stubGlobal("fetch", request);
+
+    await expect(streamChat(
+      baseConfig,
+      "system",
+      [{ role: "user", content: "hi" }],
+      () => undefined,
+      [],
+      { signal: controller.signal, turnId: 10 },
+    )).rejects.toMatchObject({ name: "AbortError" });
+    expect(request).not.toHaveBeenCalled();
+  });
 });
 
 function sseResponse(lines: string[]) {
@@ -168,5 +198,31 @@ describe("streamChat", () => {
     vi.stubGlobal("fetch", request);
     const reply = await streamChat(baseConfig, "system", [{ role: "user", content: "hi" }], () => undefined);
     expect(reply.japaneseText).toBe("こんにちは");
+  });
+
+  it("首个 chunk 后取消时屏蔽迟到流，不重发整轮", async () => {
+    const controller = new AbortController();
+    let sent = false;
+    const response = new Response(new ReadableStream<Uint8Array>({
+      pull(stream) {
+        if (sent) return;
+        sent = true;
+        stream.enqueue(new TextEncoder().encode(
+          'data: {"choices":[{"delta":{"content":"{\\"japanese_text\\":\\"こん"}}]}\n',
+        ));
+      },
+    }), { status: 200 });
+    const request = vi.fn().mockResolvedValue(response);
+    vi.stubGlobal("fetch", request);
+
+    await expect(streamChat(
+      baseConfig,
+      "system",
+      [{ role: "user", content: "hi" }],
+      () => controller.abort(),
+      [],
+      { signal: controller.signal, turnId: 11 },
+    )).rejects.toMatchObject({ name: "AbortError" });
+    expect(request).toHaveBeenCalledTimes(1);
   });
 });

@@ -52,7 +52,13 @@ export const DEFAULT_VAD_SETTINGS: VadSegmenterSettings = {
 
 export type VadEvent =
   | { type: "speech-start"; startSample: number }
-  | { type: "speech-end"; startSample: number; endSample: number };
+  | {
+      type: "speech-end";
+      startSample: number;
+      endSample: number;
+      /** 低概率静音开始的位置，作为最后有声采样的近似时间。 */
+      lastVoiceSample: number;
+    };
 
 export interface VadSegmenter {
   /** 喂一帧的概率和它在整条流里的绝对位置，拿回这一帧引发的事件。 */
@@ -110,6 +116,8 @@ export function createVadSegmenter(
             type: "speech-end",
             startSample: segmentFrom(),
             endSample: silenceStart + samplesFor(settings.tailMs),
+            // 尾静音只是为了让音频文件边界完整，不能拿它重置回合计时。
+            lastVoiceSample: silenceStart,
           });
           reset();
           return events;
@@ -118,7 +126,12 @@ export function createVadSegmenter(
 
       // 说得太久也要切：识别不能永远等不到一段完整的输入。
       if (durationMs(frameEnd - speechStart) >= settings.maxSegmentMs) {
-        events.push({ type: "speech-end", startSample: segmentFrom(), endSample: frameEnd });
+        events.push({
+          type: "speech-end",
+          startSample: segmentFrom(),
+          endSample: frameEnd,
+          lastVoiceSample: frameEnd,
+        });
         reset();
       }
       return events;

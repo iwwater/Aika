@@ -1,4 +1,10 @@
 import { createVadSegmenter, DEFAULT_VAD_SETTINGS, type VadSegmenterSettings } from "../../domain/vadSegmenter";
+import { createAsrSegmentReorderer } from "../../domain/asrSegments";
+import {
+  type SpeechFinalResult,
+  type SpeechSegmentTiming,
+  type SpeechStartEvent,
+} from "../../domain/voiceRuntime";
 import { createAudioCapture, type AudioCapture } from "./audioCapture";
 import type { SpeechInputEngine, SpeechInputEvents, VoiceInputLanguage } from "./contracts";
 import { createSileroVad, type VoiceActivityModel } from "./sileroVad";
@@ -32,6 +38,11 @@ export function createWhisperInputEngine(options: WhisperInputOptions): SpeechIn
   let client: WhisperClient | null = null;
   const segmenter = createVadSegmenter(settings);
   let running = false;
+  let generation = 0;
+  let nextSequence = 0;
+  let currentSegment: SpeechStartEvent | null = null;
+  let vadChain: Promise<void> = Promise.resolve();
+  const reorderer = createAsrSegmentReorderer<SpeechFinalResult & { errorMessage?: string }>();
 
   function ensure() {
     if (!capture) capture = createAudioCapture();
@@ -39,14 +50,37 @@ export function createWhisperInputEngine(options: WhisperInputOptions): SpeechIn
     if (!client) client = createWhisperClient(options.endpoint);
   }
 
-  async function transcribe(from: number, to: number, events: SpeechInputEvents) {
+  async function transcribe(
+    timing: SpeechSegmentTiming,
+    from: number,
+    to: number,
+    events: SpeechInputEvents,
+    runGeneration: number,
+  ) {
+    let text = "";
+    let errorMessage: string | undefined;
     try {
       const samples = capture?.read(from, to) ?? new Float32Array(0);
-      const text = (await client?.transcribe(samples)) ?? "";
-      // 空串也要报：上层据此把「用户正在说」的状态放下来。
-      events.onFinal?.(text);
+      text = (await client?.transcribe(samples)) ?? "";
     } catch (error) {
-      events.onError?.("transcription-failed", error instanceof Error ? error.message : String(error));
+      errorMessage = error instanceof Error ? error.message : String(error);
+    }
+
+    // abort/dispose 后，旧的网络结果不能污染新一轮；正常 stop() 不增加 generation，
+    // 因此已经在途的音频仍会按顺序交给上层。
+    if (runGeneration !== generation) return;
+
+    for (const result of reorderer.push({ ...timing, text, errorMessage })) {
+      if (result.errorMessage) events.onError?.("transcription-failed", result.errorMessage);
+      // 空串也要报：上层据此把「用户正在说」的状态放下来。
+      events.onFinal?.({
+        segmentId: result.segmentId,
+        sequence: result.sequence,
+        audioStartAt: result.audioStartAt,
+        audioEndAt: result.audioEndAt,
+        timeSource: result.timeSource,
+        text: result.text,
+      });
     }
   }
 
@@ -69,31 +103,66 @@ export function createWhisperInputEngine(options: WhisperInputOptions): SpeechIn
     start(_language: VoiceInputLanguage, events: SpeechInputEvents) {
       ensure();
       if (running) return;
+      const runGeneration = ++generation;
       running = true;
       segmenter.reset();
       vad?.reset();
+      reorderer.reset(0);
+      nextSequence = 0;
+      currentSegment = null;
+      vadChain = Promise.resolve();
 
       void capture!.start({
         onFrame: (frame, frameStart, frameEnd) => {
-          if (!running) return;
-          void vad!.probability(frame)
-            .then((probability) => {
-              if (!running) return;
+          if (!running || runGeneration !== generation) return;
+          // Silero 推理本身是异步的；按帧串行消费，避免概率返回乱序导致
+          // segmenter 看到倒退的 frameStart，进而错误切段。
+          vadChain = vadChain
+            .then(async () => {
+              if (!running || runGeneration !== generation) return;
+              const probability = await vad!.probability(frame);
+              if (!running || runGeneration !== generation) return;
               for (const event of segmenter.push(probability, frameStart, frameEnd)) {
                 if (event.type === "speech-start") {
-                  events.onSpeechStart?.();
+                  const start: SpeechStartEvent = {
+                    segmentId: `whisper-${nextSequence}`,
+                    sequence: nextSequence,
+                    audioStartAt: capture!.timeAtSample(event.startSample),
+                    timeSource: "audio",
+                  };
+                  nextSequence += 1;
+                  currentSegment = start;
+                  events.onSpeechStart?.(start);
                   continue;
                 }
-                void transcribe(event.startSample, event.endSample, events);
+                const start = currentSegment ?? {
+                  segmentId: `whisper-${nextSequence}`,
+                  sequence: nextSequence++,
+                  audioStartAt: capture!.timeAtSample(event.startSample),
+                  timeSource: "audio" as const,
+                };
+                const timing: SpeechSegmentTiming = {
+                  ...start,
+                  // 只用最后有声采样的时间计算尾静音，不能用含 tailMs 的 endSample。
+                  audioEndAt: capture!.timeAtSample(event.lastVoiceSample),
+                };
+                currentSegment = null;
+                events.onSegmentEnd?.(timing);
+                void transcribe(timing, event.startSample, event.endSample, events, runGeneration);
               }
             })
             .catch((error) => {
-              events.onError?.("vad-failed", error instanceof Error ? error.message : String(error));
+              if (running && runGeneration === generation) {
+                events.onError?.("vad-failed", error instanceof Error ? error.message : String(error));
+              }
             });
         },
       })
-        .then(() => events.onStart?.())
+        .then(() => {
+          if (running && runGeneration === generation) events.onStart?.();
+        })
         .catch((error) => {
+          if (runGeneration !== generation) return;
           running = false;
           events.onError?.("audio-capture", error instanceof Error ? error.message : String(error));
         });
@@ -108,22 +177,29 @@ export function createWhisperInputEngine(options: WhisperInputOptions): SpeechIn
       running = false;
       capture?.stop();
       segmenter.reset();
+      currentSegment = null;
     },
 
     abort() {
       running = false;
+      generation += 1;
       capture?.stop();
       segmenter.reset();
       vad?.reset();
+      reorderer.reset(null);
+      currentSegment = null;
     },
 
     dispose() {
       running = false;
+      generation += 1;
       void capture?.dispose();
       void vad?.dispose();
       capture = null;
       vad = null;
       client = null;
+      reorderer.reset(null);
+      currentSegment = null;
     },
   };
 }

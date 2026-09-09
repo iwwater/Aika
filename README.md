@@ -46,7 +46,8 @@ npm run tauri build
 | 入口 | 内容 |
 | --- | --- |
 | [文档导航](docs/README.md) | 产品、开发、研究与旧原型文档 |
-| [口语陪练 V1 计划](aika-crossplatform/docs/ORAL_PRACTICE_V1_PLAN.md) | 当前优先方向：普通、自然的口语搭子，仅计划 |
+| [当前执行计划](aika-crossplatform/docs/DEVELOPMENT_PLAN.md) | 当前推进 LLM 回复主线；语音真人验收后置 |
+| [口语陪练 V1 计划](aika-crossplatform/docs/ORAL_PRACTICE_V1_PLAN.md) | 独立陪练 Mode 设计，仅计划 |
 | [下一步](aika-crossplatform/docs/NEXT_STEPS.md) | 当前任务和历史验收记录 |
 | [情绪修正研究计划](aika-crossplatform/docs/AFFECT_IMPLEMENTATION_PLAN.md) | 候选论文问题、实验基线与开发顺序 |
 | [论文索引](aika-crossplatform/docs/research/affect/README.md) | 12 篇论文的来源、阅读优先级和本地下载方式 |

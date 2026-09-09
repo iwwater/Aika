@@ -1,4 +1,5 @@
 import { createSampleRing, downsample, TARGET_SAMPLE_RATE, type SampleRing } from "../../domain/audio";
+import { monotonicNow } from "../../domain/voiceRuntime";
 
 /**
  * 麦克风采集。
@@ -32,6 +33,8 @@ export interface AudioCapture {
   totalSamples(): number;
   /** 实际采样率。浏览器不认 16 kHz 时它不等于 TARGET_SAMPLE_RATE。 */
   sampleRate(): number;
+  /** 把绝对采样位置换算到本运行时的单调时钟。 */
+  timeAtSample(sample: number): number;
 }
 
 /**
@@ -61,6 +64,8 @@ export function createAudioCapture(): AudioCapture {
   let pendingFrame: number[] = [];
   let running = false;
   let actualRate = TARGET_SAMPLE_RATE;
+  /** 第一帧到达时建立采样时间轴与 performance.now() 的换算。 */
+  let timelineOrigin: number | null = null;
 
   function available() {
     return typeof AudioContext !== "undefined"
@@ -97,6 +102,9 @@ export function createAudioCapture(): AudioCapture {
       while (pendingFrame.length >= VAD_FRAME_SAMPLES) {
         const frame = Float32Array.from(pendingFrame.splice(0, VAD_FRAME_SAMPLES));
         const frameEnd = ring.totalWritten() - pendingFrame.length;
+        if (timelineOrigin === null) {
+          timelineOrigin = monotonicNow() - (frameEnd / TARGET_SAMPLE_RATE) * 1000;
+        }
         events.onFrame(frame, frameEnd - VAD_FRAME_SAMPLES, frameEnd);
       }
     };
@@ -137,6 +145,7 @@ export function createAudioCapture(): AudioCapture {
       context = null;
       workletUrl = null;
       ring = createSampleRing(TARGET_SAMPLE_RATE * RING_SECONDS);
+      timelineOrigin = null;
     },
 
     read(fromSample, toSample) {
@@ -149,6 +158,12 @@ export function createAudioCapture(): AudioCapture {
 
     sampleRate() {
       return actualRate;
+    },
+
+    timeAtSample(sample) {
+      const origin = timelineOrigin
+        ?? (monotonicNow() - (ring.totalWritten() / TARGET_SAMPLE_RATE) * 1000);
+      return origin + (sample / TARGET_SAMPLE_RATE) * 1000;
     },
   };
 }

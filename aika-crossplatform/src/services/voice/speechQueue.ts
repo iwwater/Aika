@@ -12,12 +12,22 @@ import type { SpeechOutputEngine } from "./contracts";
  */
 
 export interface SpeechQueueEvents {
+  /** 让每个 TTS 请求都能回溯到发起它的用户回合。 */
+  turnId?: number;
   /** 第一句真的出声了。用来把界面切到「正在说话」。 */
   onStart?(): void;
   onSentence?(index: number, text: string): void;
-  /** 全部念完，且调用方已经说过不会再有新句子。被 stop() 打断时不触发。 */
-  onDrained?(): void;
+  /** 全部请求都处理完，且调用方已经说过不会再有新句子。被 stop() 打断时不触发。 */
+  onDrained?(result: SpeechQueueDrainResult): void;
   onError?(message: string): void;
+}
+
+export interface SpeechQueueDrainResult {
+  /** 至少有一句收到 onStart，表示引擎报告过真实开始播放。 */
+  played: boolean;
+  /** 失败的句子数。失败后队列仍会尝试后续句子。 */
+  errorCount: number;
+  sentenceCount: number;
 }
 
 export interface SpeechQueue {
@@ -60,6 +70,8 @@ export function createSpeechQueue(
   let generation = 0;
   let events: SpeechQueueEvents = {};
   let mood: Mood | undefined;
+  let started = false;
+  let errorCount = 0;
 
   function pump(epoch: number) {
     if (epoch !== generation || running) return;
@@ -68,7 +80,7 @@ export function createSpeechQueue(
       // 还没 end()，说明后面可能还有句子在生成，安静等着。
       if (!closed || drained) return;
       drained = true;
-      events.onDrained?.();
+      events.onDrained?.({ played: started, errorCount, sentenceCount: sentences.length });
       return;
     }
 
@@ -87,10 +99,13 @@ export function createSpeechQueue(
         language: speechLanguageFor(text),
         rate: options.rate ?? tone.rate,
         pitch: options.pitch ?? tone.pitch,
+        turnId: events.turnId,
       },
       {
         onStart: () => {
-          if (epoch === generation && index === 0) events.onStart?.();
+          if (epoch !== generation || started) return;
+          started = true;
+          events.onStart?.();
         },
         onEnd: () => {
           if (epoch !== generation) return;
@@ -100,6 +115,7 @@ export function createSpeechQueue(
         onError: (message) => {
           if (epoch !== generation) return;
           running = false;
+          errorCount += 1;
           events.onError?.(message);
           // 一句念不出来不该让整轮哑掉，继续下一句。
           pump(epoch);
@@ -117,6 +133,8 @@ export function createSpeechQueue(
     drained = false;
     accepting = true;
     events = nextEvents;
+    started = false;
+    errorCount = 0;
     // 上一轮的语气不能留到这一轮：她刚才在担心，不代表现在还在担心。
     mood = undefined;
     engine.stop();

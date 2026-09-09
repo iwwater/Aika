@@ -3,7 +3,7 @@ import type { SpeechOutputEngine, SpeechOutputEvents, SpeechOutputRequest } from
 import { speechToneFor } from "../../domain/mood";
 import { createSpeechQueue } from "./speechQueue";
 
-function createFakeEngine() {
+function createFakeEngine(autoStart = true) {
   const spoken: SpeechOutputRequest[] = [];
   let pending: SpeechOutputEvents | null = null;
   let stops = 0;
@@ -15,7 +15,7 @@ function createFakeEngine() {
     speak(request, events = {}) {
       spoken.push(request);
       pending = events;
-      events.onStart?.();
+      if (autoStart) events.onStart?.();
     },
     stop() {
       stops += 1;
@@ -31,6 +31,9 @@ function createFakeEngine() {
       const events = pending;
       pending = null;
       events?.onEnd?.();
+    },
+    start() {
+      pending?.onStart?.();
     },
     fail(message: string) {
       const events = pending;
@@ -106,6 +109,41 @@ describe("createSpeechQueue", () => {
     fake.fail("synthesis-failed");
     expect(errors).toEqual(["synthesis-failed"]);
     expect(fake.spoken.map((request) => request.text)).toEqual(["おかえり。", "今日はどうだった？"]);
+  });
+
+  it("第一句失败、第二句成功时仍报告 firstAudio 并以已播放结束", () => {
+    const fake = createFakeEngine(false);
+    const errors: string[] = [];
+    const drained: Array<{ played: boolean; errorCount: number; sentenceCount: number }> = [];
+    let starts = 0;
+    const queue = createSpeechQueue(fake.engine);
+    queue.speak(["おかえり。", "今日はどうだった？"], {
+      onStart: () => { starts += 1; },
+      onError: (message) => errors.push(message),
+      onDrained: (result) => drained.push(result),
+    });
+
+    fake.fail("first-failed");
+    fake.start();
+    fake.finish();
+
+    expect(errors).toEqual(["first-failed"]);
+    expect(starts).toBe(1);
+    expect(drained).toEqual([{ played: true, errorCount: 1, sentenceCount: 2 }]);
+  });
+
+  it("所有句子都失败时不伪装成已经播放", () => {
+    const fake = createFakeEngine(false);
+    const drained: Array<{ played: boolean; errorCount: number; sentenceCount: number }> = [];
+    const queue = createSpeechQueue(fake.engine);
+    queue.speak(["おかえり。", "今日はどうだった？"], {
+      onDrained: (result) => drained.push(result),
+    });
+
+    fake.fail("first-failed");
+    fake.fail("second-failed");
+
+    expect(drained).toEqual([{ played: false, errorCount: 2, sentenceCount: 2 }]);
   });
 
   it("onStart 只在第一句报一次", () => {

@@ -34,7 +34,7 @@ function App() {
   const { connected, sending, provider, messages, memories, relationship, proactive } = session;
 
   const sendVoice = useCallback<VoiceTurnHandler>(
-    (text, onPartial) => session.send(text, "voice", onPartial),
+    (text, onPartial, request) => session.send(text, "voice", onPartial, request),
     [session],
   );
   // 识别语言跟着用户最近说的话走，不再让用户在「日语 / 中文」之间选。

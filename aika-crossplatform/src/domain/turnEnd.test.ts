@@ -176,4 +176,15 @@ describe("一轮完整对话的模拟", () => {
     );
     expect(submitted).toEqual(["おはよう。", "今日は何してるの？"]);
   });
+
+  it("ASR 迟到返回时沿用音频停说时间，不重新等待完整尾静音", () => {
+    const speechEndAt = 0;
+    const asrReturnAt = 1_800;
+    const text = "今日は疲れた。";
+
+    // ASR 在途期间不能提交；结果回来时，计时起点仍是最后有声采样。
+    expect(shouldSubmit(text, asrReturnAt - speechEndAt)).toBe(true);
+    // 如果错误地在 asrReturnAt 重置起点，此刻还会被迫再等 1.15 秒。
+    expect(shouldSubmit(text, 0)).toBe(false);
+  });
 });

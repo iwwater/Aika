@@ -1,3 +1,17 @@
+import type {
+  SpeechFinalResult,
+  SpeechSegmentTiming,
+  SpeechStartEvent,
+} from "../../domain/voiceRuntime";
+
+export type {
+  PlaybackStatus,
+  SpeechFinalResult,
+  SpeechSegmentTiming,
+  SpeechStartEvent,
+  VoiceTurnRequest,
+} from "../../domain/voiceRuntime";
+
 /**
  * 识别引擎的语言码。
  * 这不是给用户选的开关——它由 domain/language.ts 按用户最近说的话推导。
@@ -21,6 +35,8 @@ export interface SpeechOutputRequest {
   language: VoiceInputLanguage;
   rate?: number;
   pitch?: number;
+  /** 内部关联字段；引擎不应把它展示给用户。 */
+  turnId?: number;
 }
 
 export interface SpeechOutputEvents {
@@ -46,10 +62,12 @@ export interface SpeechInputEvents {
    * 从开口到转写回来这段时间里一个事件都没有，回合计时器会误判成静音并提前提交。
    * 所以引擎必须显式说一声。
    */
-  onSpeechStart?(): void;
-  onInterim?(text: string): void;
+  onSpeechStart?(event: SpeechStartEvent): void;
+  onInterim?(text: string, atMonotonicMs?: number): void;
+  /** 一段音频已经结束，但 ASR 可能仍在路上；调用方据此阻止过早提交。 */
+  onSegmentEnd?(event: SpeechSegmentTiming): void;
   /** 这一段的最终文本。识别不出内容时给空串，调用方据此结束「正在说」状态。 */
-  onFinal?(text: string): void;
+  onFinal?(result: SpeechFinalResult): void;
   onError?(code: string, message?: string): void;
   onEnd?(): void;
 }

@@ -2,12 +2,16 @@
 
 ## 当前项目
 
+当前主线为 LLM 回复 Runtime；语音实机、声学回采、耳机/外放与同设备基线统一后置真人验收。
+
+- [分阶段 SPEC 与验收](../aika-crossplatform/docs/specs/README.md)：S1–S8 范围、接口、验收门槛和报告模板。
+
 - [跨平台项目说明](../aika-crossplatform/README.md)：运行方式、能力和限制。
-- [口语陪练 V1 开发计划](../aika-crossplatform/docs/ORAL_PRACTICE_V1_PLAN.md)：当前优先，仅计划。
+- [口语陪练 V1 开发计划](../aika-crossplatform/docs/ORAL_PRACTICE_V1_PLAN.md)：独立 Mode 设计，仅计划；排在 Voice Runtime 基础工作之后。
 - [下一步](../aika-crossplatform/docs/NEXT_STEPS.md)：新需求入口与历史验收记录。
 - [交接记录](../aika-crossplatform/docs/HANDOFF.md)：已有开发工作的上下文。
 - [实机测试记录](../aika-crossplatform/docs/FIELD_TEST_NOTES.md)：尚需验证的问题。
-- [整体开发方案](../aika-crossplatform/docs/DEVELOPMENT_PLAN.md)：历史里程碑；最新优先级以口语陪练计划为准。
+- [整体开发方案](../aika-crossplatform/docs/DEVELOPMENT_PLAN.md)：当前执行计划与历史里程碑；最新优先级以文首 2026-09-10 更新为准。
 
 ## 角色与语音
 

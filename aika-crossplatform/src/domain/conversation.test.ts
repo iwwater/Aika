@@ -29,6 +29,27 @@ describe("toCompanionTurns", () => {
     ];
     expect(toCompanionTurns(messages)).toHaveLength(3);
   });
+
+  it("中断的 assistant 片段可落库但不作为完整回复进入上下文", () => {
+    const messages: ChatMessage[] = [
+      userMessage("你刚才说到哪里了？", NOW, 3),
+      {
+        id: "interrupted",
+        role: "assistant",
+        content: "我刚才想说",
+        japaneseText: "我刚才想说",
+        createdAt: NOW + 1,
+        time: "12:00",
+        turnId: 3,
+        completion: "interrupted",
+        playbackStatus: "unknown",
+        source: "voice",
+      },
+    ];
+    expect(toCompanionTurns(messages)).toEqual([
+      { role: "user", text: "你刚才说到哪里了？" },
+    ]);
+  });
 });
 
 describe("buildCompanionContext", () => {

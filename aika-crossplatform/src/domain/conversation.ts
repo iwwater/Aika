@@ -2,6 +2,7 @@ import { japanTimeLabel, type CompanionContext, type CompanionReply, type Conver
 import type { Mood } from "./mood";
 import { computeRelationship, deriveRelationshipSignals } from "./relationship";
 import { RAW_TURN_WINDOW } from "./summary";
+import type { PlaybackStatus } from "./voiceRuntime";
 
 export type ConversationRole = "user" | "assistant";
 
@@ -24,10 +25,16 @@ export interface ChatMessage extends ChatTurn {
   mood?: Mood;
   /** 她挑的表情包 id。清单里没有这个 id 时界面什么都不显示。 */
   sticker?: string;
+  /** 运行时关联的用户回合；旧消息没有此字段时仍按旧数据读取。 */
+  turnId?: number;
   /** 这条消息是怎么来的。proactive 用于统计每日主动消息条数。 */
   source?: MessageSource;
   pending?: boolean;
   error?: boolean;
+  /** 被打断且已展示的 assistant 片段不能伪装成完整回复。 */
+  completion?: "complete" | "interrupted";
+  /** 中断时不猜测用户听到了多少；有外部播放进度时才写 played。 */
+  playbackStatus?: PlaybackStatus;
 }
 
 export type MessageSource = "text" | "voice" | "proactive";
@@ -36,8 +43,15 @@ export function formatClockTime(createdAt: number): string {
   return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(new Date(createdAt));
 }
 
-export function userMessage(content: string, createdAt: number = Date.now()): ChatMessage {
-  return { id: crypto.randomUUID(), role: "user", content, createdAt, time: formatClockTime(createdAt) };
+export function userMessage(
+  content: string,
+  createdAt: number = Date.now(),
+  turnId?: number,
+): ChatMessage {
+  return {
+    id: crypto.randomUUID(), role: "user", content, createdAt, time: formatClockTime(createdAt),
+    ...(turnId === undefined ? {} : { turnId }),
+  };
 }
 
 export function companionMessage(
@@ -45,6 +59,7 @@ export function companionMessage(
   createdAt: number = Date.now(),
   id: string = crypto.randomUUID(),
   source: MessageSource = "text",
+  turnId?: number,
 ): ChatMessage {
   return {
     id,
@@ -54,6 +69,7 @@ export function companionMessage(
     chineseTranslation: reply.chineseTranslation,
     mood: reply.mood,
     ...(reply.sticker ? { sticker: reply.sticker } : {}),
+    ...(turnId === undefined ? {} : { turnId }),
     source,
     createdAt,
     time: formatClockTime(createdAt),
@@ -63,7 +79,11 @@ export function companionMessage(
 /** 送进提示词的历史。Aika 的历史只带日语正文，不带中文翻译，避免占用上下文。 */
 export function toCompanionTurns(messages: readonly ChatMessage[]): ConversationTurn[] {
   return messages
-    .filter((message) => !message.pending && !message.error)
+    .filter((message) => (
+      !message.pending
+      && !message.error
+      && !(message.role === "assistant" && message.completion === "interrupted")
+    ))
     .map((message) => ({
       role: message.role === "assistant" ? "companion" as const : "user" as const,
       text: message.role === "assistant" ? message.japaneseText ?? message.content : message.content,
