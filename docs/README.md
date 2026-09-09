@@ -1,37 +1,35 @@
-# 文档导航
+# Aika 文档入口
 
-## 当前项目
+整个项目唯一的文档目录是仓库根 `docs/`。业务源码仍在 `aika-crossplatform/src/`；不在子工程或 src 内再建另一套 docs。目录 README 可保留最小使用说明并链接到这里。
 
-当前主线为 LLM 回复 Runtime；语音实机、声学回采、耳机/外放与同设备基线统一后置真人验收。
+## 当前开发
 
-- [分阶段 SPEC 与验收](../aika-crossplatform/docs/specs/README.md)：S1–S8 范围、接口、验收门槛和报告模板。
+- [模块 SPEC 总入口](modules/README.md)：LLM、STT、TTS、前端四模块与当前状态。
+- [LLM SPEC](llm/SPEC.md) · [STT SPEC](stt/SPEC.md) · [TTS SPEC](tts/SPEC.md) · [前端 SPEC](frontend/SPEC.md)
+- [共享接口](modules/CONTRACTS.md) · [模块内测试规则](modules/TESTING.md) · [模块验收模板](modules/ACCEPTANCE_TEMPLATE.md)
+- [集成验收](integration/SPEC.md)：跨模块链路、全量回归与打包。
+- [旧阶段映射](modules/MIGRATION.md)：旧 S1–S8 要求与证据归属。
 
-- [跨平台项目说明](../aika-crossplatform/README.md)：运行方式、能力和限制。
-- [口语陪练 V1 开发计划](../aika-crossplatform/docs/ORAL_PRACTICE_V1_PLAN.md)：独立 Mode 设计，仅计划；排在 Voice Runtime 基础工作之后。
-- [下一步](../aika-crossplatform/docs/NEXT_STEPS.md)：新需求入口与历史验收记录。
-- [交接记录](../aika-crossplatform/docs/HANDOFF.md)：已有开发工作的上下文。
-- [实机测试记录](../aika-crossplatform/docs/FIELD_TEST_NOTES.md)：尚需验证的问题。
-- [整体开发方案](../aika-crossplatform/docs/DEVELOPMENT_PLAN.md)：当前执行计划与历史里程碑；最新优先级以文首 2026-09-10 更新为准。
+LLM-01 已提交自测证据，真实模型质量未执行、尚待审阅。本次先整理规范与 SPEC，不启动新阶段；小阶段只测试本模块，必须联调或大任务完成后才全流程调试。S1 的历史通过记录保留，不代表新模块已全部完成。
 
-## 角色与语音
+## 产品与计划
 
-- [角色包规范](../aika-crossplatform/docs/CHARACTER_PACK.md)
-- [角色设计模板](../aika-crossplatform/docs/CHARACTER_BRIEF_TEMPLATE.md)
-- [Live2D 工作流](../aika-crossplatform/docs/COMFYUI_LIVE2D_WORKFLOW.md)
-- [声音工坊](../aika-crossplatform/docs/VOICE_WORKSHOP.md)
+- [PRD v0.4（含最新开发规则）](PRD_V0.4.md) · [PRD 落地对照](PRD_ALIGNMENT.md)
+- [开发方案](archive/DEVELOPMENT_PLAN.md) · [下一步](archive/NEXT_STEPS.md)
+- [口语陪练细则](llm/further/ORAL_PRACTICE_V1_PLAN.md) · [交接记录](archive/HANDOFF.md) · [实机记录](stt/further/FIELD_TEST_NOTES.md)
+- [主工程运行说明](../aika-crossplatform/README.md)
 
-## 研究支线
+## 角色与后续能力
 
-- [研究路线](../aika-crossplatform/docs/AFFECT_RESEARCH_ROADMAP.md)
-- [情绪修正开发计划](../aika-crossplatform/docs/AFFECT_IMPLEMENTATION_PLAN.md)
-- [论文索引与下载](../aika-crossplatform/docs/research/affect/README.md)
+- [角色包](frontend/further/CHARACTER_PACK.md) · [角色模板](frontend/further/CHARACTER_BRIEF_TEMPLATE.md)
+- [Live2D 工作流](frontend/further/COMFYUI_LIVE2D_WORKFLOW.md) · [声音工坊](tts/further/VOICE_WORKSHOP.md)
 
-研究计划不代表实现完成、实验有效或论文已发表。
+## 研究资料与历史
 
-## 早期 Android 原型
+- [研究路线](archive/research/AFFECT_RESEARCH_ROADMAP.md) · [研究开发计划](archive/research/AFFECT_IMPLEMENTATION_PLAN.md) · [论文资料](archive/research/affect/README.md)
+- [旧阶段 SPEC](archive/stages/README.md) · [S1 验收证据](archive/stages/reports/S1_ACCEPTANCE.md) · [后置真人验收](archive/stages/HUMAN_ACCEPTANCE.md)
+- Android 原型：[构建](archive/ANDROID_PROTOTYPE.md) · [架构](archive/ARCHITECTURE.md) · [状态](archive/IMPLEMENTATION_STATUS.md)
 
-- [原型构建说明](ANDROID_PROTOTYPE.md)
-- [早期架构](ARCHITECTURE.md)
-- [早期实现状态](IMPLEMENTATION_STATUS.md)
+研究与历史文档不作为当前模块派发指令。论文原件仍保持 Git 忽略。
 
-此组文档对应根目录的 `app/` 和 Gradle 工程，不是当前 Tauri 版本状态。
+模块需求：[LLM PRD](llm/PRD.md) · [TTS PRD](tts/PRD.md) · [STT PRD](stt/PRD.md) · [前端 PRD](frontend/PRD.md)。Agent 自动读取根 [AGENTS.md](../AGENTS.md)。原始导入稿保留在 [归档](archive/PRD_V0.4_ORIGINAL.md)。

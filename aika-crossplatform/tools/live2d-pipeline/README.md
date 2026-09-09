@@ -7,4 +7,4 @@
 - `comfyui/`：Aika 专用工作流、表情预设、分层清单和安装脚本。
 - ComfyUI、PNG/PSD 和 Cubism 工程必须使用版本化文件名，不覆盖原始素材。
 
-完整流程见 [COMFYUI_LIVE2D_WORKFLOW.md](../../docs/COMFYUI_LIVE2D_WORKFLOW.md) 和 [comfyui/README.md](comfyui/README.md)。
+完整流程见 [COMFYUI_LIVE2D_WORKFLOW.md](../../../docs/frontend/further/COMFYUI_LIVE2D_WORKFLOW.md) 和 [comfyui/README.md](comfyui/README.md)。

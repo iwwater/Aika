@@ -1,6 +1,8 @@
 # 愛花 Aika
 
-[仓库首页](../README.md) · [文档导航](../docs/README.md) · [口语陪练 V1 计划](docs/ORAL_PRACTICE_V1_PLAN.md)
+当前开发按 LLM、STT、TTS、前端四模块进行。项目文档统一在根 [docs](../docs/README.md)，执行入口为 [模块 SPEC](../docs/modules/README.md)；小阶段仅测试本模块，跨模块联调另行验收。
+
+[仓库首页](../README.md) · [文档导航](../docs/README.md) · [口语陪练 V1 计划](../docs/llm/further/ORAL_PRACTICE_V1_PLAN.md)
 
 > 下方描述现有实现。普通口语陪练 V1 和情绪修正研究目前仅有计划，尚未落地。
 
@@ -38,18 +40,18 @@ Windows 安装包生成在 `src-tauri/target/release/bundle/`。
 
 ## 架构与个性化
 
-- [开发方案](docs/DEVELOPMENT_PLAN.md)：产品边界、架构和里程碑。
-- [角色包规范](docs/CHARACTER_PACK.md)：人格、Live2D 与声线资源的组合格式。
+- [开发方案](../docs/archive/DEVELOPMENT_PLAN.md)：产品边界、架构和里程碑。
+- [角色包规范](../docs/frontend/further/CHARACTER_PACK.md)：人格、Live2D 与声线资源的组合格式。
 - [角色视觉方向](tools/live2d-pipeline/character-brief.json)：未来赛博朋克 / 全息生命，界面与 Live2D 统一走这一套。
-- [声音工坊方案](docs/VOICE_WORKSHOP.md)：自主训练声线的安全、易用工作流。
+- [声音工坊方案](../docs/tts/further/VOICE_WORKSHOP.md)：自主训练声线的安全、易用工作流。
 - [声音工坊工具包](tools/voice-workshop/README.md)：环境检查、数据目录和配置模板。
-- [实机测试记录](docs/FIELD_TEST_NOTES.md)：当前问题、目标行为和修复优先级。
+- [实机测试记录](../docs/stt/further/FIELD_TEST_NOTES.md)：当前问题、目标行为和修复优先级。
 
 ## 当前限制
 
 - 没起本地服务时用 Windows Web Speech，识别可能经过微软在线服务。Live2D 尚未接入。
 - 聊天与语音字幕是「原话 + 中文意思」两层结构；关系状态按「相识天数 + 连续互动天数 + 消息总数」多因子计算，且没有衰减。
-- 本地识别（Silero VAD + whisper.cpp）已接通，需要自己起一个 whisper-server，见 docs/NEXT_STEPS.md。没起服务时退回系统语音识别，并且会在语音页上写明。
+- 本地识别（Silero VAD + whisper.cpp）已接通，需要自己起一个 whisper-server，见 [下一步](../docs/archive/NEXT_STEPS.md)。没起服务时退回系统语音识别，并且会在语音页上写明。
 - **Whisper 的语言检测是整段的**：一句话里中英混说时多半会统一按主语言转写，比系统识别强得多，但不是完美的混说识别。
 - 走本地识别时打断不丢字（音频留在环形缓冲里，段首往前回补 220 毫秒）；退回系统识别时仍会丢掉开头的一两个音节。
 - 她的回复走流式：第一句一确定就开口，不等整段生成完。中转站不支持流式时自动退回一次性返回。
@@ -60,4 +62,4 @@ Windows 安装包生成在 `src-tauri/target/release/bundle/`。
 - 手机端要手动开启（设置页「手机也能用」），**电脑不开机手机就用不了**；这一版手机上只能打字，看不到表情包，也收不到主动消息推送。
 - 使用模型平台 API 可能产生平台自身的调用费用，但应用不需要额外服务器。
 
-实现状态和下一步见 [docs/HANDOFF.md](docs/HANDOFF.md)。
+实现状态和下一步见 [docs/HANDOFF.md](../docs/archive/HANDOFF.md)。

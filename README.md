@@ -1,5 +1,7 @@
 # 愛花 · Aika
 
+当前开发按 LLM、STT、TTS、前端四模块进行。项目文档统一在根 [docs](docs/README.md)，执行入口为 [模块 SPEC](docs/modules/README.md)；小阶段仅测试本模块，跨模块联调另行验收。
+
 一个面向个人使用的语音对话伙伴，基于 **React、TypeScript 和 Tauri**。当前以 Windows 桌面端为主，支持日语、中文和英语聊天、连续语音、长期记忆及局域网手机访问。
 
 > 项目仍在开发中。普通口语陪练 V1 已有开发计划，尚未实现；情绪修正与人格研究是后续独立支线。
@@ -12,7 +14,7 @@
 - **桌面与手机**：Windows 系统托盘、可选主动消息，手机通过局域网连接运行中的电脑。
 - **角色表现**：受控语气标签、可配置表情包；Live2D 和自训练声线尚未完成。
 
-实现不等于所有设备都已验证。具体边界见 [跨平台项目说明](aika-crossplatform/README.md) 与 [实机测试记录](aika-crossplatform/docs/FIELD_TEST_NOTES.md)。
+实现不等于所有设备都已验证。具体边界见 [跨平台项目说明](aika-crossplatform/README.md) 与 [实机测试记录](docs/stt/further/FIELD_TEST_NOTES.md)。
 
 ## 快速开始
 
@@ -43,14 +45,16 @@ npm run tauri build
 
 ## 从哪里看
 
+产品需求见 [PRD v0.4](docs/PRD_V0.4.md)，工程映射见 [落地对照](docs/PRD_ALIGNMENT.md)。
+
 | 入口 | 内容 |
 | --- | --- |
 | [文档导航](docs/README.md) | 产品、开发、研究与旧原型文档 |
-| [当前执行计划](aika-crossplatform/docs/DEVELOPMENT_PLAN.md) | 当前推进 LLM 回复主线；语音真人验收后置 |
-| [口语陪练 V1 计划](aika-crossplatform/docs/ORAL_PRACTICE_V1_PLAN.md) | 独立陪练 Mode 设计，仅计划 |
-| [下一步](aika-crossplatform/docs/NEXT_STEPS.md) | 当前任务和历史验收记录 |
-| [情绪修正研究计划](aika-crossplatform/docs/AFFECT_IMPLEMENTATION_PLAN.md) | 候选论文问题、实验基线与开发顺序 |
-| [论文索引](aika-crossplatform/docs/research/affect/README.md) | 12 篇论文的来源、阅读优先级和本地下载方式 |
+| [当前执行计划](docs/archive/DEVELOPMENT_PLAN.md) | 当前推进 LLM 回复主线；语音真人验收后置 |
+| [口语陪练 V1 计划](docs/llm/further/ORAL_PRACTICE_V1_PLAN.md) | 独立陪练 Mode 设计，仅计划 |
+| [下一步](docs/archive/NEXT_STEPS.md) | 当前任务和历史验收记录 |
+| [情绪修正研究计划](docs/archive/research/AFFECT_IMPLEMENTATION_PLAN.md) | 候选论文问题、实验基线与开发顺序 |
+| [论文索引](docs/archive/research/affect/README.md) | 12 篇论文的来源、阅读优先级和本地下载方式 |
 
 ## 仓库结构
 
@@ -59,13 +63,12 @@ aika-crossplatform/     当前 React / Tauri 主项目
   src/                 界面、领域逻辑和服务
   src-tauri/           桌面能力、存储保险库和手机访问
   tools/               角色、Live2D 和声音工具
-  docs/                产品计划、交接与研究资料索引
 app/                   早期原生 Android 原型
-docs/                  总导航和早期原型文档
+docs/                  唯一文档根：PRD、模块 SPEC、验收、研究与历史
 gradle/                Android 原型构建工具
 ```
 
-保留旧原型的目录与构建路径，避免整理文档时破坏原有工程。其构建方法见 [Android 原型说明](docs/ANDROID_PROTOTYPE.md)。
+保留旧原型的目录与构建路径，避免整理文档时破坏原有工程。其构建方法见 [Android 原型说明](docs/archive/ANDROID_PROTOTYPE.md)。
 
 ## 数据与使用边界
 

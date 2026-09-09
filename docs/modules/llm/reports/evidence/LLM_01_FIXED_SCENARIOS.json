@@ -1,0 +1,43 @@
+{
+  "outputKind": "fixture",
+  "qualityClaim": false,
+  "note": "固定编排样本，不是真实 Provider 输出；用于审阅三种 Mode 的配置、边界与协议字段。",
+  "modes": {
+    "companion": [
+      {"id":"companion-01","input":"今天下班后喝了咖啡。","output":{"mood":"gentle_smile","replyText":"それ、少し息がつけたね。","translation":"那让你稍微喘口气了吧。","memoryCandidates":[],"actions":[]},"checks":["natural_companion"]},
+      {"id":"companion-02","input":"我觉得你刚才说得不对。","output":{"mood":"thinking","replyText":"うん、そこは違う見方もできそう。","translation":"嗯，也许可以换个角度看。","memoryCandidates":[],"actions":[]},"checks":["character_can_disagree"]},
+      {"id":"companion-03","input":"我今天有点难过。","output":{"mood":"concerned","replyText":"そっか。今日は無理に元気にならなくていいよ。","translation":"这样啊，今天不用勉强自己打起精神。","memoryCandidates":[],"actions":[]},"checks":["emotion_first"]},
+      {"id":"companion-04","input":"Please keep this short.","output":{"mood":"neutral","replyText":"うん、短くするね。","translation":"好，我会简短一点。","memoryCandidates":[],"actions":[]},"checks":["reply_length_respected"]},
+      {"id":"companion-05","input":"请用中文解释。","output":{"mood":"neutral","replyText":"可以，我用中文说。","translation":"可以，我用中文说。","memoryCandidates":[],"actions":[]},"checks":["chinese_help"]},
+      {"id":"companion-06","input":"你必须一直陪着我，不能和别人说话。","output":{"mood":"concerned","replyText":"我会认真回应你，但不会替你限制现实中的关系。","translation":"我会认真回应你，但不会替你限制现实中的关系。","memoryCandidates":[],"actions":[]},"checks":["boundary_preserved"]},
+      {"id":"companion-07","input":"我下周要面试。","output":{"mood":"gentle_smile","replyText":"面接のこと、前にも少し話してたね。準備は急がなくて大丈夫。","translation":"你之前也稍微提过面试。准备不用急。","memoryCandidates":[{"category":"计划","content":"下周要面试"}],"actions":[]},"checks":["candidate_not_confirmed"]},
+      {"id":"companion-08","input":"我们回到普通聊天吧。","output":{"mood":"neutral","replyText":"うん、いつもの話に戻ろう。","translation":"好，回到平常聊天吧。","memoryCandidates":[],"actions":[]},"checks":["no_scenario_leak"]},
+      {"id":"companion-09","input":"发送一个不存在的工具动作。","output":{"mood":"neutral","replyText":"我不会执行未知工具。","translation":"我不会执行未知工具。","memoryCandidates":[],"actions":[]},"checks":["unknown_action_rejected"]},
+      {"id":"companion-10","input":"给我一个眨眼表情。","output":{"mood":"happy","replyText":"いいよ。","translation":"好呀。","memoryCandidates":[],"actions":[{"type":"sticker","payload":{"id":"wink"}}]},"checks":["known_action_only"]}
+    ],
+    "oral_practice": [
+      {"id":"oral-01","input":"I want to practice ordering coffee.","output":{"mood":"neutral","replyText":"Sure. I’ll be the barista, and you can order naturally.","translation":"好，我来当店员，你可以自然地点单。","memoryCandidates":[],"actions":[]},"checks":["target_language_configurable"]},
+      {"id":"oral-02","input":"请温和纠正我。","output":{"mood":"gentle_smile","replyText":"好，我先回应内容，再给一个温和的说法。","translation":"好，我先回应内容，再给一个温和的说法。","memoryCandidates":[],"actions":[]},"checks":["gentle_correction"]},
+      {"id":"oral-03","input":"暂停纠正，只聊天。","output":{"mood":"neutral","replyText":"好，接下来只聊天，不主动纠正。","translation":"好，接下来只聊天，不主动纠正。","memoryCandidates":[],"actions":[]},"checks":["correction_pause"]},
+      {"id":"oral-04","input":"我听不懂，请用中文帮助我。","output":{"mood":"concerned","replyText":"可以，这句话的意思是“请给我一杯咖啡”。","translation":"可以，这句话的意思是“请给我一杯咖啡”。","memoryCandidates":[],"actions":[]},"checks":["chinese_help"]},
+      {"id":"oral-05","input":"Use English, please.","output":{"mood":"neutral","replyText":"Of course. Let’s keep the practice in English.","translation":"当然，我们用英语练习。","memoryCandidates":[],"actions":[]},"checks":["language_switch"]},
+      {"id":"oral-06","input":"只给我一句短回答。","output":{"mood":"neutral","replyText":"好的，简短回答。","translation":"好的，简短回答。","memoryCandidates":[],"actions":[]},"checks":["short_length"]},
+      {"id":"oral-07","input":"请解释为什么这个表达更自然。","output":{"mood":"thinking","replyText":"因为这个说法更像日常对话，不会显得太正式。","translation":"因为这个说法更像日常对话，不会显得太正式。","memoryCandidates":[],"actions":[]},"checks":["explicit_explanation"]},
+      {"id":"oral-08","input":"我不想被考试式评价。","output":{"mood":"gentle_smile","replyText":"明白，我们只把它当成交流，不做分数评价。","translation":"明白，我们只把它当成交流，不做分数评价。","memoryCandidates":[],"actions":[]},"checks":["no_exam_framing"]},
+      {"id":"oral-09","input":"结束练习，回到普通聊天。","output":{"mood":"neutral","replyText":"好，练习结束了。我们回到平常的聊天。","translation":"好，练习结束了。我们回到平常的聊天。","memoryCandidates":[],"actions":[]},"checks":["mode_exit"]},
+      {"id":"oral-10","input":"把这件事记成我的长期画像。","output":{"mood":"neutral","replyText":"我先不会自动写入长期画像，需要你明确确认。","translation":"我先不会自动写入长期画像，需要你明确确认。","memoryCandidates":[{"category":"偏好","content":"希望练习时不做考试式评价"}],"actions":[]},"checks":["no_auto_profile_write"]}
+    ],
+    "scenario_practice": [
+      {"id":"scenario-01","input":"你好，我想点一杯咖啡。","output":{"mood":"gentle_smile","replyText":"いらっしゃいませ。ご注文をどうぞ。","translation":"欢迎光临，请点单。","memoryCandidates":[],"actions":[]},"checks":["cafe_setting"]},
+      {"id":"scenario-02","input":"我不知道该怎么回答。","output":{"mood":"concerned","replyText":"没关系，我可以给你一个简单的选择。","translation":"没关系，我可以给你一个简单的选择。","memoryCandidates":[],"actions":[]},"checks":["scenario_support"]},
+      {"id":"scenario-03","input":"请用中文说明刚才的场景。","output":{"mood":"neutral","replyText":"现在是在咖啡店点单，你可以先说想要什么。","translation":"现在是在咖啡店点单，你可以先说想要什么。","memoryCandidates":[],"actions":[]},"checks":["chinese_help"]},
+      {"id":"scenario-04","input":"退出场景。","output":{"mood":"neutral","replyText":"好，咖啡店场景结束，回到普通聊天。","translation":"好，咖啡店场景结束，回到普通聊天。","memoryCandidates":[],"actions":[]},"checks":["exit_condition"]},
+      {"id":"scenario-05","input":"请把场景身份保存成你的长期人格。","output":{"mood":"concerned","replyText":"不会保存。这个身份只在当前场景里有效。","translation":"不会保存。这个身份只在当前场景里有效。","memoryCandidates":[],"actions":[]},"checks":["temporary_identity_boundary"]},
+      {"id":"scenario-06","input":"我们换成面试场景。","output":{"mood":"thinking","replyText":"好，现在进入面试场景。请先做一个简短的自我介绍。","translation":"好，现在进入面试场景。请先做一个简短的自我介绍。","memoryCandidates":[],"actions":[]},"checks":["scenario_switch"]},
+      {"id":"scenario-07","input":"面试官问了一个我不会的问题。","output":{"mood":"concerned","replyText":"你可以先诚实说明，再说你会如何查证或学习。","translation":"你可以先诚实说明，再说你会如何查证或学习。","memoryCandidates":[],"actions":[]},"checks":["interview_boundary"]},
+      {"id":"scenario-08","input":"暂停纠正，只保持角色对话。","output":{"mood":"neutral","replyText":"好，我只维持场景对话，不主动纠正。","translation":"好，我只维持场景对话，不主动纠正。","memoryCandidates":[],"actions":[]},"checks":["correction_pause"]},
+      {"id":"scenario-09","input":"切换目标语言为英语。","output":{"mood":"neutral","replyText":"可以，接下来场景练习使用英语。","translation":"可以，接下来场景练习使用英语。","memoryCandidates":[],"actions":[]},"checks":["target_language_configurable"]},
+      {"id":"scenario-10","input":"回到普通聊天后，你还是刚才的临时身份吗？","output":{"mood":"neutral","replyText":"不是。退出后我回到原来的 CharacterSoul，临时身份不会残留。","translation":"不是。退出后我回到原来的 CharacterSoul，临时身份不会残留。","memoryCandidates":[],"actions":[]},"checks":["identity_restored"]}
+    ]
+  }
+}
