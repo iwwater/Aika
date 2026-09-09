@@ -9,6 +9,10 @@ import {
 import { memoryLines, type MemoryRecord } from "../domain/memory";
 import { buildConversationInput, buildInstructions, buildProactiveInput } from "../domain/prompt";
 import {
+  DEFAULT_CHARACTER_SOUL, DEFAULT_MODE_CONFIG, exitScenarioMode, normalizeModeConfig,
+  type ModeConfig, type ModeId,
+} from "../domain/soul";
+import {
   canSend, chooseProactiveReason, DEFAULT_PROACTIVE_SETTINGS,
   type ProactiveReasonKind, type ProactiveSettings,
 } from "../domain/proactive";
@@ -111,6 +115,7 @@ export function useCompanionSession() {
   const [proactive, setProactiveState] = useState<ProactiveSettings>(DEFAULT_PROACTIVE_SETTINGS);
   const [memoryExtractionEnabled, setMemoryExtractionEnabledState] = useState(true);
   const [voiceBackend, setVoiceBackendState] = useState<VoiceBackendConfig>(DEFAULT_VOICE_BACKEND);
+  const [modeConfig, setModeConfigState] = useState<ModeConfig>(DEFAULT_MODE_CONFIG);
   /** 她能挑的表情包。目录为空时是空数组，提示词里一个字都不提。 */
   const [stickers, setStickers] = useState<Sticker[]>([]);
   const [sending, setSending] = useState(false);
@@ -162,7 +167,7 @@ export function useCompanionSession() {
 
       const [
         savedProvider, savedMessages, savedMemories, savedTimestamps, savedSummary,
-        rawProactive, rawExtraction, rawBackend, rawEndpoint,
+        rawProactive, rawExtraction, rawBackend, rawEndpoint, rawMode,
       ] = await Promise.all([
           loadProvider(storage, PROVIDER_PRESETS[1]),
           storage.listMessages(MESSAGE_WINDOW),
@@ -173,6 +178,7 @@ export function useCompanionSession() {
           storage.getSetting(SETTING_KEYS.memoryExtraction),
           storage.getSetting(SETTING_KEYS.voiceBackend),
           storage.getSetting(SETTING_KEYS.whisperEndpoint),
+          storage.getSetting(SETTING_KEYS.mode),
         ]);
       if (cancelled) return;
 
@@ -194,6 +200,13 @@ export function useCompanionSession() {
         backend: (rawBackend as VoiceBackendConfig["backend"]) || DEFAULT_VOICE_BACKEND.backend,
         whisperEndpoint: rawEndpoint || DEFAULT_VOICE_BACKEND.whisperEndpoint,
       });
+      if (rawMode) {
+        try {
+          setModeConfigState(normalizeModeConfig(JSON.parse(rawMode)));
+        } catch {
+          setModeConfigState(DEFAULT_MODE_CONFIG);
+        }
+      }
       setReady(true);
     }
 
@@ -349,7 +362,7 @@ export function useCompanionSession() {
       const context = buildContext(history);
       const reply = await streamChat(
         providerRef.current,
-        buildInstructions(context, DEFAULT_CHARACTER.systemPrompt, stickersRef.current),
+        buildInstructions(context, DEFAULT_CHARACTER_SOUL, stickersRef.current, modeConfig),
         [{ role: "user", content: buildConversationInput(content, context) }],
         (partial) => {
           if (request?.signal.aborted) return;
@@ -429,7 +442,7 @@ export function useCompanionSession() {
         request?.signal.removeEventListener("abort", onAbort);
       }
     }
-  }, [buildContext, connected, persist, runBackgroundMemoryWork]);
+  }, [buildContext, connected, modeConfig, persist, runBackgroundMemoryWork]);
 
   /** 主动消息。频率闸门与理由选择都在 domain/proactive.ts，这里只负责跑一次。 */
   const runProactiveTick = useCallback(async () => {
@@ -464,7 +477,7 @@ export function useCompanionSession() {
 
       const reply = await sendChat(
         providerRef.current,
-        buildInstructions(context, DEFAULT_CHARACTER.systemPrompt, stickersRef.current),
+        buildInstructions(context, DEFAULT_CHARACTER_SOUL, stickersRef.current, modeConfig),
         [{ role: "user", content: buildProactiveInput(context, reason) }],
         stickersRef.current.map((sticker) => sticker.id),
       );
@@ -480,7 +493,7 @@ export function useCompanionSession() {
     } finally {
       busyRef.current = false;
     }
-  }, [buildContext, connected, messages, persist, proactive, ready, timestamps]);
+  }, [buildContext, connected, messages, modeConfig, persist, proactive, ready, timestamps]);
 
   const proactiveRef = useRef(runProactiveTick);
   proactiveRef.current = runProactiveTick;
@@ -512,6 +525,20 @@ export function useCompanionSession() {
     await storageRef.current?.setSetting(SETTING_KEYS.whisperEndpoint, next.whisperEndpoint);
   }, []);
 
+  const setModeConfig = useCallback(async (next: ModeConfig) => {
+    const normalized = normalizeModeConfig(next);
+    setModeConfigState(normalized);
+    await storageRef.current?.setSetting(SETTING_KEYS.mode, JSON.stringify(normalized));
+  }, []);
+
+  const setMode = useCallback(async (mode: ModeId) => {
+    await setModeConfig({ ...modeConfig, mode });
+  }, [modeConfig, setModeConfig]);
+
+  const exitScenario = useCallback(async () => {
+    await setModeConfig(exitScenarioMode(modeConfig));
+  }, [modeConfig, setModeConfig]);
+
   const confirmMemory = useCallback(async (id: string) => {
     await storageRef.current?.setMemoryStatus(id, "confirmed");
     setMemories((current) => current.map((memory) => (
@@ -532,6 +559,7 @@ export function useCompanionSession() {
     memoryExtractionEnabled, setMemoryExtractionEnabled,
     proactive, setProactive,
     voiceBackend, setVoiceBackend,
+    modeConfig, setModeConfig, setMode, exitScenario,
     stickers,
     relationship, summary,
   };

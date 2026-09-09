@@ -1,8 +1,9 @@
 /**
  * 流式回复的增量解析。
  *
- * 她的回复是结构化的 `{japanese_text, chinese_translation}`，流式时到手的是一段
- * 还没闭合的 JSON。要让第一句尽快出声，就得在 JSON 写完之前把 `japanese_text`
+ * 她的回复是结构化的 `{replyText, translation}`，同时兼容旧的
+ * `{japanese_text, chinese_translation}`。流式时到手的是一段还没闭合的 JSON。
+ * 要让第一句尽快出声，就得在 JSON 写完之前把正文
  * 已经到手的那部分取出来——不能等 `JSON.parse` 能跑通。
  *
  * 容错方向和 parseCompanionReply 一致：拿不到结构就把整段当正文，宁可音色判错，
@@ -75,6 +76,14 @@ function readStringField(text: string, key: string): ScannedString | null {
   return readJsonString(text, cursor);
 }
 
+function readFirstStringField(text: string, keys: readonly string[]): ScannedString | null {
+  for (const key of keys) {
+    const value = readStringField(text, key);
+    if (value) return value;
+  }
+  return null;
+}
+
 /** 去掉模型偶尔加的代码围栏。流式时结尾的围栏还没来，只处理开头。 */
 function stripLeadingFence(text: string): string {
   return text.replace(/^\s*```(?:json)?\s*/i, "");
@@ -95,8 +104,8 @@ export function parsePartialReply(raw: string): PartialReply {
     return { japaneseText: trimmed, chineseTranslation: "", mood: normalizeMood(null), japaneseComplete: false };
   }
 
-  const japanese = readStringField(text, "japanese_text");
-  const chinese = readStringField(text, "chinese_translation");
+  const japanese = readFirstStringField(text, ["replyText", "reply_text", "japanese_text"]);
+  const chinese = readFirstStringField(text, ["translation", "chinese_translation"]);
   // 只认闭合了的语气：吐到一半的 "hap" 归一化会变成 neutral，随后又跳回 happy。
   const mood = readStringField(text, "mood");
 

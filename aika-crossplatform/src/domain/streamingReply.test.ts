@@ -79,4 +79,17 @@ describe("流式取语气", () => {
   it("纯文本回复也有语气字段，值是 neutral", () => {
     expect(parsePartialReply("おかえり").mood).toBe("neutral");
   });
+
+  it("先收到 canonical mood 和 replyText 时无需等完整 JSON", () => {
+    const partial = parsePartialReply('{"mood":"happy","replyText":"你好，今');
+    expect(partial.mood).toBe("happy");
+    expect(partial.japaneseText).toBe("你好，今");
+    expect(partial.japaneseComplete).toBe(false);
+  });
+
+  it("canonical translation 兼容 Unicode 转义分片", () => {
+    const partial = parsePartialReply('{"mood":"neutral","replyText":"\u4f60\u597d","translation":"こんにちは"}');
+    expect(partial.japaneseText).toBe("你好");
+    expect(partial.chineseTranslation).toBe("こんにちは");
+  });
 });

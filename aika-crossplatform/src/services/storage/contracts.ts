@@ -42,4 +42,5 @@ export const SETTING_KEYS = {
   memoryExtraction: "memory.extraction",
   voiceBackend: "voice.backend",
   whisperEndpoint: "voice.whisperEndpoint",
+  mode: "llm.mode",
 } as const;

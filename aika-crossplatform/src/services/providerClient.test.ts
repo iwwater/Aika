@@ -29,7 +29,7 @@ describe("sendChat", () => {
 
     const reply = await sendChat(baseConfig, "system", [{ role: "user", content: "你好" }]);
 
-    expect(reply).toEqual({ japaneseText: "こんにちは", chineseTranslation: "你好", mood: "neutral" });
+    expect(reply).toMatchObject({ japaneseText: "こんにちは", chineseTranslation: "你好", mood: "neutral", schemaVersion: 1 });
     expect(request.mock.calls[0][0]).toBe("https://example.com/v1/chat/completions");
     expect(JSON.parse(request.mock.calls[0][1].body).messages[0]).toEqual({ role: "system", content: "system" });
   });
@@ -37,7 +37,7 @@ describe("sendChat", () => {
   it("keeps a non-JSON reply as the japanese body instead of losing the turn", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ choices: [{ message: { content: "元気だよ" } }] })));
     await expect(sendChat(baseConfig, "system", [{ role: "user", content: "元気？" }]))
-      .resolves.toEqual({ japaneseText: "元気だよ", chineseTranslation: "", mood: "neutral" });
+      .resolves.toMatchObject({ japaneseText: "元気だよ", chineseTranslation: "", mood: "neutral", schemaVersion: 1 });
   });
 
   it("asks OpenAI Responses for the bilingual schema and parses its output", async () => {
@@ -75,6 +75,14 @@ describe("sendChat", () => {
   it("reports an empty response instead of showing a blank bubble", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ choices: [{ message: { content: "" } }] })));
     await expect(sendChat(baseConfig, "system", [{ role: "user", content: "hi" }])).rejects.toThrow("没有返回可显示的文本");
+  });
+
+  it("rejects a JSON object without visible reply text instead of showing raw protocol", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({
+      choices: [{ message: { content: '{"mood":"happy","actions":[]}' } }],
+    })));
+    await expect(sendChat(baseConfig, "system", [{ role: "user", content: "hi" }]))
+      .rejects.toThrow("没有返回可显示的文本");
   });
 
   it("把取消信号传给 Provider 请求", async () => {
@@ -134,7 +142,7 @@ describe("streamChat", () => {
     });
 
     expect(seen[0]).toBe("こん");
-    expect(reply).toEqual({ japaneseText: "こんにちは", chineseTranslation: "你好", mood: "neutral" });
+    expect(reply).toMatchObject({ japaneseText: "こんにちは", chineseTranslation: "你好", mood: "neutral", schemaVersion: 1 });
     expect(JSON.parse(request.mock.calls[0][1].body).stream).toBe(true);
   });
 
@@ -169,7 +177,7 @@ describe("streamChat", () => {
 
     const reply = await streamChat(baseConfig, "system", [{ role: "user", content: "hi" }], () => undefined);
 
-    expect(reply).toEqual({ japaneseText: "こんにちは", chineseTranslation: "你好", mood: "neutral" });
+    expect(reply).toMatchObject({ japaneseText: "こんにちは", chineseTranslation: "你好", mood: "neutral", schemaVersion: 1 });
     expect(JSON.parse(request.mock.calls[1][1].body).stream).toBeUndefined();
   });
 

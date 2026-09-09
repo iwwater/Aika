@@ -3,10 +3,15 @@ import { companionReplySchema, parseCompanionReply, replyDisplayText } from "./c
 
 describe("parseCompanionReply", () => {
   it("解析结构化双语输出", () => {
-    expect(parseCompanionReply('{"japanese_text":"おかえり","chinese_translation":"你回来了"}')).toEqual({
+    expect(parseCompanionReply('{"japanese_text":"おかえり","chinese_translation":"你回来了"}')).toMatchObject({
       japaneseText: "おかえり",
       chineseTranslation: "你回来了",
       mood: "neutral",
+      schemaVersion: 1,
+      replyText: "おかえり",
+      translation: "你回来了",
+      memoryCandidates: [],
+      actions: [],
     });
   });
 
@@ -21,19 +26,30 @@ describe("parseCompanionReply", () => {
   });
 
   it("模型没按格式返回时整段当作日语正文，不丢这一轮", () => {
-    expect(parseCompanionReply("今日はいい天気だね")).toEqual({
+    expect(parseCompanionReply("今日はいい天気だね")).toMatchObject({
       japaneseText: "今日はいい天気だね",
       chineseTranslation: "",
       mood: "neutral",
+      schemaVersion: 1,
+      replyText: "今日はいい天気だね",
+      translation: "",
+      memoryCandidates: [],
+      actions: [],
     });
   });
 
   it("JSON 里缺少日语正文时退回原文", () => {
-    expect(parseCompanionReply('{"chinese_translation":"只有翻译"}').japaneseText).toContain("只有翻译");
+    expect(parseCompanionReply('{"chinese_translation":"只有翻译"}')).toMatchObject({
+      japaneseText: "",
+      chineseTranslation: "只有翻译",
+      replyText: "",
+    });
   });
 
   it("空回复返回空字段", () => {
-    expect(parseCompanionReply("")).toEqual({ japaneseText: "", chineseTranslation: "", mood: "neutral" });
+    expect(parseCompanionReply("")).toMatchObject({
+      japaneseText: "", chineseTranslation: "", mood: "neutral", schemaVersion: 1,
+    });
   });
 });
 
@@ -47,8 +63,8 @@ describe("replyDisplayText", () => {
 describe("companionReplySchema", () => {
   it("没有表情包时不加 sticker 字段", () => {
     const schema = companionReplySchema() as any;
-    expect(Object.keys(schema.properties)).toEqual(["mood", "japanese_text", "chinese_translation"]);
-    expect(schema.required).toEqual(["mood", "japanese_text", "chinese_translation"]);
+    expect(Object.keys(schema.properties)).toEqual(["mood", "replyText", "translation", "memoryCandidates", "actions"]);
+    expect(schema.required).toEqual(["mood", "replyText", "translation", "memoryCandidates", "actions"]);
   });
 
   it("有表情包时 sticker 是枚举，且带一个空串表示不发", () => {
@@ -97,5 +113,44 @@ describe("mood 字段", () => {
 
   it("整段当正文的退路上也有语气，调用方不用判空", () => {
     expect(parseCompanionReply("おかえり").mood).toBe("neutral");
+  });
+});
+
+describe("ReplyEnvelopeV1 归一化", () => {
+  it("canonical 字段与 PRD snake_case 字段均能进入统一内部结构", () => {
+    const reply = parseCompanionReply(JSON.stringify({
+      mood: "not-a-real-mood",
+      replyText: "今天喝咖啡吗？",
+      translation: "今天要喝咖啡吗？",
+      memory_candidates: [{ category: "偏好", content: "喜欢手冲咖啡" }],
+      action: { type: "sticker", payload: { id: "wink" } },
+    }));
+    expect(reply).toMatchObject({
+      schemaVersion: 1,
+      replyText: "今天喝咖啡吗？",
+      translation: "今天要喝咖啡吗？",
+      mood: "neutral",
+      memoryCandidates: [{ category: "偏好", content: "喜欢手冲咖啡" }],
+      actions: [{ type: "sticker", payload: { id: "wink" } }],
+    });
+  });
+
+  it("旧 toolCalls 与未知动作只保留已知 sticker，不执行未知工具", () => {
+    const reply = parseCompanionReply(JSON.stringify({
+      japanese_text: "うん",
+      chinese_translation: "嗯",
+      emotion: "happy",
+      toolCalls: [
+        { type: "open_url", payload: { url: "https://unsafe.example" } },
+        { type: "sticker", payload: { id: "smile" } },
+      ],
+    }));
+    expect(reply.mood).toBe("happy");
+    expect(reply.actions).toEqual([{ type: "sticker", payload: { id: "smile" } }]);
+  });
+
+  it("半截或空 JSON 不伪造正文，provider 可将其判为失败", () => {
+    expect(parseCompanionReply('{"mood":"happy"}').replyText).toBe("");
+    expect(parseCompanionReply('{"actions":[]}')).toMatchObject({ replyText: "", actions: [] });
   });
 });

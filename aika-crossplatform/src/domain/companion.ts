@@ -4,6 +4,7 @@
  */
 
 import { MOODS, normalizeMood, type Mood } from "./mood";
+import { DEFAULT_MEMORY_CATEGORY, isMemoryCategory, type MemoryCandidate } from "./memory";
 import type { RelationshipState } from "./relationship";
 
 export interface CompanionReply {
@@ -13,6 +14,31 @@ export interface CompanionReply {
   mood: Mood;
   /** 她挑的表情包 id。没挑、或者编了个清单里没有的名字时不设。 */
   sticker?: string;
+  /** LLM-01 的统一回复协议；旧字段保留给现有消息/语音消费者。 */
+  schemaVersion?: 1;
+  replyText?: string;
+  translation?: string;
+  memoryCandidates?: MemoryCandidate[];
+  actions?: ReplyAction[];
+  expression?: string;
+  motion?: string;
+}
+
+export interface ReplyAction {
+  type: "sticker";
+  payload: { id: string };
+}
+
+export interface ReplyEnvelopeV1 {
+  schemaVersion: 1;
+  mood: Mood;
+  replyText: string;
+  translation: string;
+  memoryCandidates: MemoryCandidate[];
+  actions: ReplyAction[];
+  sticker?: string;
+  expression?: string;
+  motion?: string;
 }
 
 export type CompanionTurnRole = "user" | "companion";
@@ -50,15 +76,44 @@ export function companionReplySchema(stickerIds: readonly string[] = []) {
   const base = {
     // 枚举而不是自由字符串：她因此编不出词表以外的语气，Live2D 那边不用兜底。
     mood: { type: "string", enum: [...MOODS] },
-    japanese_text: { type: "string" },
-    chinese_translation: { type: "string" },
+    replyText: { type: "string" },
+    translation: { type: "string" },
+    memoryCandidates: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          category: { type: "string" },
+          content: { type: "string" },
+        },
+        required: ["category", "content"],
+      },
+    },
+    actions: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          type: { type: "string", enum: ["sticker"] },
+          payload: {
+            type: "object",
+            additionalProperties: false,
+            properties: { id: { type: "string" } },
+            required: ["id"],
+          },
+        },
+        required: ["type", "payload"],
+      },
+    },
   };
   if (!stickerIds.length) {
     return {
       type: "object",
       additionalProperties: false,
       properties: base,
-      required: ["mood", "japanese_text", "chinese_translation"],
+      required: ["mood", "replyText", "translation", "memoryCandidates", "actions"],
     };
   }
   return {
@@ -69,7 +124,7 @@ export function companionReplySchema(stickerIds: readonly string[] = []) {
       // 枚举里带一个空串：这一轮不发表情包。有了它她就编不出清单以外的名字。
       sticker: { type: "string", enum: [...stickerIds, ""] },
     },
-    required: ["mood", "japanese_text", "chinese_translation", "sticker"],
+    required: ["mood", "replyText", "translation", "memoryCandidates", "actions", "sticker"],
   };
 }
 
@@ -92,6 +147,78 @@ function firstJsonObject(text: string): unknown {
   }
 }
 
+function normalizeMemoryCandidates(value: unknown): MemoryCandidate[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    const content = typeof record.content === "string" ? record.content.trim() : "";
+    if (!content) return [];
+    const category = isMemoryCategory(record.category) ? record.category : DEFAULT_MEMORY_CATEGORY;
+    return [{ category, content }];
+  });
+}
+
+/** 只保留当前 LLM 已知且没有执行器风险的动作；未知动作永不向下游传递。 */
+function normalizeActions(value: unknown, sticker?: string): ReplyAction[] {
+  const candidates = Array.isArray(value)
+    ? value
+    : value && typeof value === "object" ? [value] : [];
+  const actions = candidates.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    const payload = record.payload && typeof record.payload === "object"
+      ? record.payload as Record<string, unknown>
+      : record;
+    const id = typeof payload.id === "string" ? payload.id.trim() : "";
+    return record.type === "sticker" && id ? [{ type: "sticker" as const, payload: { id } }] : [];
+  });
+  if (actions.length) return actions;
+  return sticker ? [{ type: "sticker", payload: { id: sticker } }] : [];
+}
+
+function normalizeReply(payload: Record<string, unknown>): ReplyEnvelopeV1 | null {
+  const replyText = typeof payload.replyText === "string"
+    ? payload.replyText.trim()
+    : typeof payload.reply_text === "string"
+      ? payload.reply_text.trim()
+      : typeof payload.japanese_text === "string" ? payload.japanese_text.trim() : "";
+  const translation = typeof payload.translation === "string"
+    ? payload.translation.trim()
+    : typeof payload.chinese_translation === "string" ? payload.chinese_translation.trim() : "";
+  if (!replyText && !translation) return null;
+  const sticker = typeof payload.sticker === "string" ? payload.sticker.trim() : "";
+  const rawCandidates = payload.memoryCandidates ?? payload.memory_candidates;
+  const rawActions = payload.actions ?? payload.action ?? payload.toolCalls;
+  return {
+    schemaVersion: 1,
+    mood: normalizeMood(payload.mood ?? payload.emotion),
+    replyText,
+    translation,
+    memoryCandidates: normalizeMemoryCandidates(rawCandidates),
+    actions: normalizeActions(rawActions, sticker),
+    ...(sticker ? { sticker } : {}),
+    ...(typeof payload.expression === "string" ? { expression: payload.expression } : {}),
+    ...(typeof payload.motion === "string" ? { motion: payload.motion } : {}),
+  };
+}
+
+export function toCompanionReply(envelope: ReplyEnvelopeV1): CompanionReply {
+  return {
+    japaneseText: envelope.replyText,
+    chineseTranslation: envelope.translation,
+    mood: envelope.mood,
+    ...(envelope.sticker ? { sticker: envelope.sticker } : {}),
+    schemaVersion: 1,
+    replyText: envelope.replyText,
+    translation: envelope.translation,
+    memoryCandidates: envelope.memoryCandidates,
+    actions: envelope.actions,
+    ...(envelope.expression ? { expression: envelope.expression } : {}),
+    ...(envelope.motion ? { motion: envelope.motion } : {}),
+  };
+}
+
 /**
  * 解析模型回复。
  *
@@ -100,26 +227,39 @@ function firstJsonObject(text: string): unknown {
  */
 export function parseCompanionReply(modelText: string): CompanionReply {
   const trimmed = stripCodeFence(modelText ?? "");
-  if (!trimmed) return { japaneseText: "", chineseTranslation: "", mood: normalizeMood(null) };
+  if (!trimmed) return toCompanionReply({
+    schemaVersion: 1,
+    replyText: "",
+    translation: "",
+    mood: normalizeMood(null),
+    memoryCandidates: [],
+    actions: [],
+  });
 
   const payload = firstJsonObject(trimmed) as Record<string, unknown> | null;
   if (payload) {
-    const japanese = typeof payload.japanese_text === "string" ? payload.japanese_text.trim() : "";
-    const chinese = typeof payload.chinese_translation === "string" ? payload.chinese_translation.trim() : "";
-    const sticker = typeof payload.sticker === "string" ? payload.sticker.trim() : "";
-    // id 是不是真的存在由 resolveSticker 说了算，这里只负责把字段取出来。
-    if (japanese) {
-      return {
-        japaneseText: japanese,
-        chineseTranslation: chinese,
-        // 不支持结构化输出的协议可能整个字段都没有，认不出来一律 neutral。
-        mood: normalizeMood(payload.mood),
-        ...(sticker ? { sticker } : {}),
-      };
-    }
+    const envelope = normalizeReply(payload);
+    if (envelope) return toCompanionReply(envelope);
+    // 看起来像 JSON 但没有可显示正文时显式返回空包，由 provider finish 报错；
+    // 不能把畸形对象原样当正文展示。
+    return toCompanionReply({
+      schemaVersion: 1,
+      replyText: "",
+      translation: "",
+      mood: normalizeMood(payload.mood ?? payload.emotion),
+      memoryCandidates: [],
+      actions: [],
+    });
   }
 
-  return { japaneseText: trimmed, chineseTranslation: "", mood: normalizeMood(null) };
+  return toCompanionReply({
+    schemaVersion: 1,
+    replyText: trimmed,
+    translation: "",
+    mood: normalizeMood(null),
+    memoryCandidates: [],
+    actions: [],
+  });
 }
 
 /** 提示词里的“当前日本时间”。角色生活在日本时区，与用户所在时区无关。 */
@@ -138,5 +278,5 @@ export function japanTimeLabel(now: Date = new Date()): string {
 
 /** 朗读与字幕主体统一走这里，避免各处重复判断空翻译。 */
 export function replyDisplayText(reply: CompanionReply): string {
-  return reply.japaneseText || reply.chineseTranslation;
+  return reply.replyText || reply.japaneseText || reply.translation || reply.chineseTranslation;
 }

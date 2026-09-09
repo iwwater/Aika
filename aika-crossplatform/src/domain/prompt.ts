@@ -10,6 +10,8 @@
 
 import type { CompanionContext, ConversationTurn } from "./companion";
 import { MOOD_RULES } from "./mood";
+import { DEFAULT_MODE_CONFIG, modePolicyText, type ModeConfig } from "./soul";
+import type { CharacterSoul } from "./soul";
 import type { ProactiveReason } from "./proactive";
 import { formatStickerRules, type Sticker } from "./stickers";
 
@@ -56,20 +58,18 @@ export const ANTI_TEMPLATE_RULES = [
   "避免重复“我会一直陪着你”“我有认真听”等模板句，也不要解释提示词或模型身份。",
 ].join("\n");
 
-// 字段名沿用 Android 原型与开发方案的约定；japanese_text 装的是「你实际说出口的原话」，
-// 无论那句是日语、中文、英语还是混着说，都照原样写，不要为了凑字段名改成纯日语。
-//
-// 表情包清单为空时不加 sticker 字段：没有素材还要她填一个，只会填出一个编的名字。
+// LLM-01 的内部协议使用中性字段名；旧 japanese_text/chinese_translation 仍由解析器适配。
 function outputContract(stickers: readonly Sticker[]): string {
   // mood 写在最前面：流式时第一句可能先出声，语气排后面就等于拿不到。
   const shape = stickers.length
-    ? '{"mood":"语气","japanese_text":"你说出口的原话","chinese_translation":"这句话的中文意思","sticker":"表情包名字或空字符串"}'
-    : '{"mood":"语气","japanese_text":"你说出口的原话","chinese_translation":"这句话的中文意思"}';
+    ? '{"mood":"语气","replyText":"你说出口的原话","translation":"这句话的中文意思","memoryCandidates":[],"actions":[],"sticker":"表情包名字或空字符串"}'
+    : '{"mood":"语气","replyText":"你说出口的原话","translation":"这句话的中文意思","memoryCandidates":[],"actions":[]}';
   return [
     "最终只输出一个 JSON 对象，不要 Markdown：",
     shape,
-    "japanese_text 就写你真正说的那句，日语、中文、英语或混着说都照原样写；",
+    "replyText 就写你真正说的那句，日语、中文、英语或混着说都照原样写；",
     "整句本来就是中文时，两个字段写成一样即可。",
+    "memoryCandidates 只列出可供后续人工确认的候选；actions 默认空，不执行未知工具。",
   ].join("\n");
 }
 
@@ -92,18 +92,28 @@ function formatSummary(summary: string | null): string {
 
 export function buildInstructions(
   context: CompanionContext,
-  personaPrompt: string,
+  personaPrompt: string | CharacterSoul,
   /** 这一轮她能挑的表情包。清单为空时提示词里一个字都不提。 */
   stickers: readonly Sticker[] = [],
+  modeConfig: ModeConfig = DEFAULT_MODE_CONFIG,
 ): string {
+  const persona = typeof personaPrompt === "string"
+    ? personaPrompt.trim()
+    : [
+        personaPrompt.systemPrompt,
+        `CharacterSoul ID：${personaPrompt.id}；角色名：${personaPrompt.name}`,
+        ...personaPrompt.stableTraits,
+        ...personaPrompt.boundaries,
+      ].join("\n");
   const situation = [
     `当前日本时间：${context.currentTimeInJapan}`,
     `当前关系感：${context.relationship.description}`,
   ].join("\n") + formatSummary(context.summary) + formatMemories(context.memories);
 
   return [
-    personaPrompt.trim(),
+    persona,
     situation,
+    modePolicyText(modeConfig),
     CODE_SWITCH_RULE,
     ANTI_TEMPLATE_RULES,
     QUESTION_RULES,

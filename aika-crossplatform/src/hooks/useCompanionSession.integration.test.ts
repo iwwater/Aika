@@ -125,6 +125,7 @@ vi.mock("../services/storage", () => ({
     provider: "provider",
     proactiveLastReason: "proactive.lastReason",
     proactiveLastSentAt: "proactive.lastSentAt",
+    mode: "llm.mode",
   },
 }));
 
@@ -342,5 +343,46 @@ describe("useCompanionSession voice persistence boundary", () => {
     expect(mocks.storage.rows.filter((message: ChatMessage) => (
       message.role === "assistant" && !message.error
     ))).toHaveLength(1);
+  });
+
+  it("模式配置写入 settings，重载后保留模式参数；退出场景清掉临时配置", async () => {
+    const render = () => useCompanionSession();
+    let harness = mocks.hook as HookHarness;
+    let session = harness.render(render);
+    await flushMicrotasks();
+    session = harness.rerender();
+
+    await session.setModeConfig({
+      schemaVersion: 1,
+      mode: "scenario_practice",
+      targetLanguage: "en-US",
+      correctionPreference: "gentle",
+      replyLength: "short",
+      scenario: {
+        scenarioId: "interview",
+        title: "面试",
+        setting: "会议室",
+        temporaryIdentity: "候选人",
+        goal: "完成自我介绍",
+        exitCondition: "用户说退出",
+      },
+    });
+    session = harness.rerender();
+    expect(session.modeConfig.mode).toBe("scenario_practice");
+    expect(JSON.parse((await mocks.storage.getSetting("llm.mode"))!).scenario.temporaryIdentity).toBe("候选人");
+
+    harness.cleanup();
+    mocks.hook = new HookHarness();
+    harness = mocks.hook as HookHarness;
+    session = harness.render(render);
+    await flushMicrotasks();
+    session = harness.rerender();
+    expect(session.modeConfig).toMatchObject({ mode: "scenario_practice", targetLanguage: "en-US" });
+
+    await session.exitScenario();
+    session = harness.rerender();
+    expect(session.modeConfig.mode).toBe("companion");
+    expect(session.modeConfig.scenario).toBeUndefined();
+    expect(JSON.parse((await mocks.storage.getSetting("llm.mode"))!).mode).toBe("companion");
   });
 });

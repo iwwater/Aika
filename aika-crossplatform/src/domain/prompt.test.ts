@@ -51,8 +51,8 @@ describe("buildInstructions", () => {
 
   it("要求结构化双语输出", () => {
     const instructions = buildInstructions(context(), persona);
-    expect(instructions).toContain("japanese_text");
-    expect(instructions).toContain("chinese_translation");
+    expect(instructions).toContain("replyText");
+    expect(instructions).toContain("translation");
   });
 
   it("注入时间、关系与记忆", () => {
@@ -67,6 +67,41 @@ describe("buildInstructions", () => {
 
   it("没有记忆时不出现空的记忆段落", () => {
     expect(buildInstructions(context(), persona)).not.toContain("可参考的长期记忆");
+  });
+
+  it("注入 oral_practice 的可配置语言与纠正策略", () => {
+    const instructions = buildInstructions(context(), persona, [], {
+      schemaVersion: 1,
+      mode: "oral_practice",
+      targetLanguage: "en-US",
+      correctionPreference: "gentle",
+      replyLength: "short",
+    });
+    expect(instructions).toContain("当前模式：oral_practice");
+    expect(instructions).toContain("en-US");
+    expect(instructions).toContain("纠正偏好：gentle");
+    expect(instructions).toContain("不要把目标语言写死成日语");
+  });
+
+  it("scenario_practice 只注入临时身份和退出条件，不改变角色 Soul", () => {
+    const instructions = buildInstructions(context(), persona, [], {
+      schemaVersion: 1,
+      mode: "scenario_practice",
+      targetLanguage: "ja-JP",
+      correctionPreference: "none",
+      replyLength: "normal",
+      scenario: {
+        scenarioId: "interview",
+        title: "面试",
+        setting: "会议室",
+        temporaryIdentity: "候选人",
+        goal: "完成自我介绍",
+        exitCondition: "用户说退出",
+      },
+    });
+    expect(instructions).toContain("临时身份：候选人");
+    expect(instructions).toContain("退出条件：用户说退出");
+    expect(instructions).toContain("不得残留到角色人格、关系或长期记忆");
   });
 });
 
@@ -185,7 +220,7 @@ describe("buildInstructions 的表情包规则", () => {
 describe("buildInstructions 的语气规则", () => {
   it("语气写在输出格式的第一个字段：流式时它要比正文先到", () => {
     const instructions = buildInstructions(context(), persona);
-    expect(instructions).toContain('{"mood":"语气","japanese_text"');
+    expect(instructions).toContain('{"mood":"语气","replyText"');
   });
 
   it("七个语气都带使用场景，并写明标的是她自己的状态", () => {
