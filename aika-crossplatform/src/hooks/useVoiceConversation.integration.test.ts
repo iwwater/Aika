@@ -64,6 +64,13 @@ class HookHarness {
     }
   }
 
+  /** Presenter 快照订阅：按槽位订阅一次，快照每次渲染实时读。 */
+  useSyncExternalStore(subscribe: (listener: () => void) => () => void, getSnapshot: () => unknown) {
+    const slot = this.take("store", undefined);
+    if (!slot.cleanup) slot.cleanup = subscribe(() => undefined);
+    return getSnapshot();
+  }
+
   cleanup() {
     for (const slot of this.slots) slot.cleanup?.();
     this.slots = [];
@@ -93,6 +100,7 @@ const mocks = vi.hoisted(() => {
     outputRequests: [],
     outputStops: 0,
     createInputEngine: vi.fn(),
+    voicePresenter: null,
   };
 
   state.input = {
@@ -131,6 +139,15 @@ vi.mock("react", () => ({
   useMemo: (factory: () => unknown, deps: readonly unknown[]) => mocks.hook.useMemo(factory, deps),
   useCallback: (factory: unknown, deps: readonly unknown[]) => mocks.hook.useCallback(factory, deps),
   useEffect: (effect: () => void | (() => void), deps: readonly unknown[]) => mocks.hook.useEffect(effect, deps),
+  useSyncExternalStore: (subscribe: (listener: () => void) => () => void, getSnapshot: () => unknown) =>
+    mocks.hook.useSyncExternalStore(subscribe, getSnapshot),
+}));
+
+// CORE-04：Hook 只经 useService 取 VoicePresenter，测试给出生产 Presenter。
+vi.mock("../app/kernelContext", () => ({
+  useService: (token: { key: string }) => (
+    token.key === "presentation.voice" ? mocks.voicePresenter : null
+  ),
 }));
 
 vi.mock("../services/voice/inputEngine", () => ({
@@ -150,6 +167,7 @@ vi.mock("../services/voice/micActivity", () => ({
 }));
 
 import { useVoiceConversation } from "./useVoiceConversation";
+import { createVoicePresenter } from "../presentation/voicePresenter";
 
 interface FakeStorage {
   records: string[];
@@ -230,6 +248,7 @@ describe("useVoiceConversation S1 orchestration", () => {
       setTimeout,
       clearTimeout,
     });
+    mocks.voicePresenter = createVoicePresenter();
   });
 
   afterEach(() => {

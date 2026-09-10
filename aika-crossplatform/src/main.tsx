@@ -2,6 +2,9 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { createAikaKernel } from "./app/composition";
+import { KernelProvider } from "./app/kernelContext";
+import type { AikaKernel } from "./kernel";
+import type { PresentationServices } from "./presentation/fallback";
 
 /**
  * 先装配再渲染。
@@ -11,18 +14,27 @@ import { createAikaKernel } from "./app/composition";
  * 而且没有任何报错。所以这里等内核 ready 再挂载。
  *
  * 装配失败也照样渲染：界面本身能显示存储故障，白屏什么都告诉不了用户。
+ * 这时内核不可用，展示层服务由组合根返回的同一批 Presenter 兜底。
  */
-function render() {
+async function boot() {
+  let kernel: AikaKernel | null = null;
+  let presentation: PresentationServices | null = null;
+  try {
+    const composition = await createAikaKernel();
+    kernel = composition.kernel;
+    presentation = composition.presentation;
+    if (!composition.report.ok) console.error("[aika] kernel failed to start", composition.report.failed);
+  } catch (error) {
+    console.error("[aika] composition threw", error);
+  }
+
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <React.StrictMode>
-      <App />
+      <KernelProvider kernel={kernel} presentation={presentation}>
+        <App />
+      </KernelProvider>
     </React.StrictMode>,
   );
 }
 
-void createAikaKernel()
-  .then(({ report }) => {
-    if (!report.ok) console.error("[aika] kernel failed to start", report.failed);
-  })
-  .catch((error) => console.error("[aika] composition threw", error))
-  .finally(render);
+void boot();

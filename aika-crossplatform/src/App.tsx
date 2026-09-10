@@ -13,7 +13,8 @@ import { PROVIDER_PRESETS, validateProvider, type ProviderConfig } from "./domai
 import { useCompanionSession } from "./hooks/useCompanionSession";
 import { useRemoteAccess } from "./hooks/useRemoteAccess";
 import { useVoiceConversation, type VoiceTurnHandler } from "./hooks/useVoiceConversation";
-import { testProvider } from "./services/providerClient";
+import { useService } from "./app/kernelContext";
+import { ProviderProbeToken } from "./services/runtime/tokens";
 import type { VoiceBackend } from "./services/voice/inputEngine";
 import { createWhisperClient } from "./services/voice/whisperClient";
 
@@ -21,6 +22,8 @@ const QUICK_STARTS = ["今天发生了一件小事…", "有点累，想随便�
 
 function App() {
   const session = useCompanionSession();
+  // 连接自检是 Provider 侧能力，经注册表取；App 不再直接 import providerClient。
+  const probeProvider = useService(ProviderProbeToken);
   const [draftProvider, setDraftProvider] = useState<ProviderConfig>(PROVIDER_PRESETS[1]);
   const [input, setInput] = useState("");
   const [showSettings, setShowSettings] = useState(false);
@@ -92,7 +95,7 @@ function App() {
     if (validation) return setStatus({ kind: "error", text: validation });
     setStatus({ kind: "testing", text: "正在连接…" });
     try {
-      setStatus({ kind: "ok", text: await testProvider(draftProvider) });
+      setStatus({ kind: "ok", text: await probeProvider(draftProvider) });
     } catch (error) {
       setStatus({ kind: "error", text: error instanceof Error ? error.message : String(error) });
     }

@@ -62,6 +62,18 @@ export class HookHarness {
     }
   }
 
+  /**
+   * Presenter 快照订阅。
+   *
+   * 真实 React 会在 subscribe 身份变化时重订阅；这里按槽位订阅一次，
+   * 快照每次渲染实时读，足以验证「订阅建立/清理」与「快照即取即用」。
+   */
+  useSyncExternalStore(subscribe: (listener: () => void) => () => void, getSnapshot: () => unknown) {
+    const slot = this.take("store", undefined);
+    if (!slot.cleanup) slot.cleanup = subscribe(() => undefined);
+    return getSnapshot();
+  }
+
   cleanup() {
     for (const slot of this.slots) slot.cleanup?.();
     this.slots = [];

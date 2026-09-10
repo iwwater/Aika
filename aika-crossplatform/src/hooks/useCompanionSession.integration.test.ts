@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HookHarness } from "./hookHarness";
 import type { ChatMessage } from "../domain/conversation";
 import type { CompanionReply } from "../domain/companion";
+import { createInMemoryMemoryStore } from "../services/memory/memoryStore";
 import type { MemoryRecord } from "../domain/memory";
 import type { VoiceTurnRequest } from "../domain/voiceRuntime";
 
@@ -11,6 +12,8 @@ const mocks = vi.hoisted(() => {
     storage: null,
     streamChat: vi.fn(),
     currentStream: null,
+    presenter: null,
+    tick: null,
     extractor: {
       extract: vi.fn(async () => [] as MemoryRecord[]),
       summarize: vi.fn(async () => ""),
@@ -29,6 +32,16 @@ vi.mock("react", () => ({
   useMemo: (factory: () => unknown, deps: readonly unknown[]) => mocks.hook.useMemo(factory, deps),
   useCallback: (factory: unknown, deps: readonly unknown[]) => mocks.hook.useCallback(factory, deps),
   useEffect: (effect: () => void | (() => void), deps: readonly unknown[]) => mocks.hook.useEffect(effect, deps),
+  useSyncExternalStore: (subscribe: (listener: () => void) => () => void, getSnapshot: () => unknown) =>
+    mocks.hook.useSyncExternalStore(subscribe, getSnapshot),
+}));
+
+// CORE-04：Hook 现在只经 useService 取 Presenter。测试直接给出生产 Presenter，
+// 于是同一批断言同时验证「Presenter 行为」与「Hook 只是订阅 + 派发」。
+vi.mock("../app/kernelContext", () => ({
+  useService: (token: { key: string }) => (
+    token.key === "presentation.companion" ? mocks.presenter : null
+  ),
 }));
 
 vi.mock("@tauri-apps/plugin-notification", () => ({
@@ -63,10 +76,10 @@ vi.mock("../services/providerClient", () => ({
 }));
 
 import { useCompanionSession } from "./useCompanionSession";
+import { createCompanionPresenter } from "../presentation/companionPresenter";
 import { createCompanionRuntime } from "../services/runtime/companionRuntime";
 import { createStreamChatProvider } from "../services/runtime/providerAdapter";
 import { createProviderSettings } from "../services/runtime/providerSettings";
-import { installRuntimeServices, resetInstalledRuntimeServices } from "../services/runtime/activeRuntime";
 import { PROVIDER_PRESETS } from "../domain/providers";
 
 const providerReply: CompanionReply = {
@@ -121,18 +134,16 @@ async function flushMicrotasks() {
 }
 
 /**
- * CORE-03-A：同一份测试跑新旧两条编排。
- *
- * 两条路径的行为差异只能靠这个跑出来，靠读代码是读不出来的——旧编排在 Hook 里，
- * 新编排在 CompanionRuntime 里，各写各的打断、迟到结果与落库。
+ * CORE-06：全仓只有一条编排路径。Runtime 直接注入 Presenter，不再有 legacy 分支，
+ * 也不再经 `activeRuntimeServices` 这个过渡槽——同一批断言现在只验这条唯一路径。
  */
-describe.each(["legacy", "kernel"] as const)("useCompanionSession voice persistence boundary (%s)", (orchestrator) => {
+describe("useCompanionSession voice persistence boundary", () => {
   beforeEach(() => {
     mocks.hook = new HookHarness();
     mocks.storage = createStorage();
     mocks.appended.length = 0;
-    mocks.extractor.extract.mockClear();
-    mocks.extractor.summarize.mockClear();
+    mocks.extractor.extract.mockReset().mockResolvedValue([]);
+    mocks.extractor.summarize.mockReset().mockResolvedValue("");
     mocks.streamChat.mockReset();
     mocks.streamChat.mockImplementation((...args: unknown[]) => {
       const promise = startStream();
@@ -140,27 +151,27 @@ describe.each(["legacy", "kernel"] as const)("useCompanionSession voice persiste
       return promise;
     });
 
-    resetInstalledRuntimeServices();
-    if (orchestrator === "kernel") {
-      // 直接装 Runtime，不经内核：这里验的是 Hook 的两条路径，
-      // 内核装配由 app/plugins/plugins.test.ts 负责。
-      const settings = createProviderSettings(PROVIDER_PRESETS[1]);
-      installRuntimeServices({
-        settings,
-        runtime: createCompanionRuntime({
-          provider: createStreamChatProvider({
-            getConfig: () => settings.get(),
-            getStickers: () => settings.getStickers(),
-          }),
-          storage: mocks.storage,
-        }),
-      });
-    }
+    const settings = createProviderSettings(PROVIDER_PRESETS[1]);
+    const runtime = createCompanionRuntime({
+      provider: createStreamChatProvider({
+        getConfig: () => settings.get(),
+        getStickers: () => settings.getStickers(),
+      }),
+      storage: mocks.storage,
+      timers: { setTimeout: (fn: () => void) => { mocks.deliveryTimeout = fn; return fn; }, clearTimeout: () => { mocks.deliveryTimeout = null; } },
+    });
+    mocks.tick = null;
+    mocks.presenter = createCompanionPresenter({
+      loadStorage: async () => mocks.storage,
+      notifier: { notify: async () => false },
+      runtime: { runtime, settings },
+      // 主动消息 tick 由注入的计时器驱动，测试不需要 stub window。
+      interval: { set: (fn: () => void) => { mocks.tick = fn; return 1; }, clear: () => { mocks.tick = null; } },
+    });
   });
 
   afterEach(() => {
     mocks.hook.cleanup();
-    resetInstalledRuntimeServices();
   });
 
   it("完整语音回复要等播放 drained 才落库并启动记忆；中断只留 interrupted", async () => {
@@ -447,4 +458,200 @@ describe.each(["legacy", "kernel"] as const)("useCompanionSession voice persiste
     expect(session.modeConfig).toMatchObject({ mode: "oral_practice", targetLanguage: "en-US" });
     expect(session.storageError).toBe("数据库读取失败");
   });
+  // CORE-06：以下用例原先只在 kernel 路径下跑，现在 kernel 就是唯一路径。
+  async function readySession() {
+      mocks.hook.render(() => useCompanionSession());
+      await flushMicrotasks();
+      return mocks.hook.rerender() as ReturnType<typeof useCompanionSession>;
+    }
+
+    it("新 submit 取消旧轮，旧 chunk 与结算不清除新轮 pending", async () => {
+      const session = await readySession();
+      const first = session.send("第一轮");
+      await flushMicrotasks();
+      const old = mocks.currentStream;
+      old.onPartial({ japaneseText: "旧片段", chineseTranslation: "", mood: "neutral" });
+      await flushMicrotasks();
+      expect(mocks.hook.rerender().messages.some((m: ChatMessage) => m.content === "旧片段")).toBe(true);
+      const second = session.send("第二轮");
+      await flushMicrotasks();
+      const next = mocks.currentStream;
+      expect(next).not.toBe(old);
+      await first;
+      expect(mocks.hook.rerender().sending).toBe(true);
+      expect(mocks.hook.rerender().messages.some((m: ChatMessage) => m.pending)).toBe(true);
+      old.onPartial({ japaneseText: "不许出现的迟到内容", chineseTranslation: "", mood: "neutral" });
+      old.resolve({ ...providerReply, japaneseText: "不许出现的迟到内容" });
+      next.resolve(providerReply);
+      await second;
+      expect(mocks.storage.rows.some((m: ChatMessage) => m.content.includes("迟到"))).toBe(false);
+      expect(mocks.hook.rerender().messages.some((m: ChatMessage) => m.pending)).toBe(false);
+      expect(mocks.hook.rerender().sending).toBe(false);
+    });
+
+    it.each(["failed", "timeout"])("语音 %s 保留 interrupted/unknown，重复回执不重复维护", async (ending) => {
+      const session = await readySession();
+      const request: VoiceTurnRequest = { turnId: 42, signal: new AbortController().signal };
+      const sent = session.send("语音", "voice", undefined, request);
+      await flushMicrotasks();
+      mocks.currentStream.resolve(providerReply);
+      await sent;
+      expect(mocks.storage.rows.filter((m: ChatMessage) => m.role === "assistant")).toHaveLength(0);
+      if (ending === "failed") request.onPlaybackFailed?.();
+      else mocks.deliveryTimeout();
+      for (let i = 0; i < 4; i++) await flushMicrotasks();
+      const rows = mocks.storage.rows.filter((m: ChatMessage) => m.role === "assistant" && !m.error);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ completion: "interrupted", playbackStatus: "unknown", turnId: 42 });
+      request.onPlaybackComplete?.();
+      await flushMicrotasks();
+      expect(mocks.extractor.extract).not.toHaveBeenCalled();
+      expect(mocks.hook.rerender().messages.some((m: ChatMessage) => m.pending)).toBe(false);
+    });
+
+    it("写库持续失败仍展示错误并释放发送状态，恢复存储后可重发", async () => {
+      const session = await readySession();
+      const append = mocks.storage.appendMessage;
+      mocks.storage.appendMessage = async () => { throw new Error("磁盘不可写"); };
+      const sent = session.send("第一轮");
+      await flushMicrotasks();
+      mocks.currentStream.resolve(providerReply);
+      await sent;
+      const failed = mocks.hook.rerender();
+      expect(failed.sending).toBe(false);
+      expect(failed.messages.some((m: ChatMessage) => m.error && m.content.includes("STORAGE_FAILED"))).toBe(true);
+      expect(failed.messages.some((m: ChatMessage) => m.pending)).toBe(false);
+      expect(mocks.extractor.extract).not.toHaveBeenCalled();
+      mocks.storage.appendMessage = append;
+      const retry = failed.send("重发");
+      await flushMicrotasks();
+      mocks.currentStream.resolve(providerReply);
+      await retry;
+      expect(mocks.storage.rows.some((m: ChatMessage) => m.role === "assistant" && !m.error)).toBe(true);
+    });
+
+    it("真实上下文预算失败可见，不请求 Provider，缩短输入后恢复", async () => {
+      const session = await readySession();
+      await session.send("字".repeat(40000));
+      const failed = mocks.hook.rerender();
+      expect(failed.messages.some((m: ChatMessage) => m.error && m.content.includes("预算"))).toBe(true);
+      expect(failed.sending).toBe(false);
+      expect(mocks.streamChat).not.toHaveBeenCalled();
+      const retry = failed.send("短句");
+      await flushMicrotasks();
+      mocks.currentStream.resolve(providerReply);
+      await retry;
+      expect(mocks.hook.rerender().sending).toBe(false);
+    });
+
+    it("抽取未完成也返回正文；关闭维护使在途候选和后续发送不写记忆", async () => {
+      const session = await readySession();
+      let finishExtraction!: (records: MemoryRecord[]) => void;
+      mocks.extractor.extract.mockImplementation(() => new Promise((resolve) => { finishExtraction = resolve; }));
+      mocks.storage.addMemories = vi.fn();
+      const sent = session.send("测试");
+      await flushMicrotasks();
+      mocks.currentStream.resolve(providerReply);
+      await sent;
+      expect(mocks.hook.rerender().sending).toBe(false);
+      expect(mocks.extractor.extract).toHaveBeenCalledTimes(1);
+      await session.setMemoryExtractionEnabled(false);
+      finishExtraction([{ id: "candidate", content: "喜欢咖啡", category: "preference" } as unknown as MemoryRecord]);
+      await flushMicrotasks();
+      expect(mocks.storage.addMemories).not.toHaveBeenCalled();
+      const next = mocks.hook.rerender().send("下一轮");
+      await flushMicrotasks();
+      mocks.currentStream.resolve(providerReply);
+      await next;
+      expect(mocks.extractor.extract).toHaveBeenCalledTimes(1);
+    });
+
+    it("摘要悬挂不阻塞正文，关闭维护后不保存迟到摘要", async () => {
+      for (let i = 0; i < 60; i++) mocks.storage.rows.push({
+        id: `history-${i}`, role: i % 2 ? "assistant" : "user", content: "历史", createdAt: 1000 + i, time: "00:00",
+      });
+      const session = await readySession();
+      let finishSummary!: (text: string) => void;
+      mocks.extractor.summarize.mockImplementation(() => new Promise((resolve) => { finishSummary = resolve; }));
+      mocks.storage.saveSummary = vi.fn();
+      const sent = session.send("测试");
+      await flushMicrotasks();
+      mocks.currentStream.resolve(providerReply);
+      await sent;
+      await flushMicrotasks();
+      expect(mocks.extractor.summarize).toHaveBeenCalledTimes(1);
+      expect(mocks.hook.rerender().sending).toBe(false);
+      await session.setMemoryExtractionEnabled(false);
+      finishSummary("迟到摘要");
+      await flushMicrotasks();
+      expect(mocks.storage.saveSummary).not.toHaveBeenCalled();
+    });
+
+    it("V2 候选走 Writeback 重试，下一轮重复候选不堆叠", async () => {
+      const store = createInMemoryMemoryStore();
+      mocks.storage.memoryV2 = store;
+      const session = await readySession();
+      mocks.extractor.extract.mockResolvedValue([{ content: "喜欢咖啡", category: "喜好" }]);
+      store.failNextSave = true;
+      const first = session.send("咖啡");
+      await flushMicrotasks();
+      mocks.currentStream.resolve(providerReply);
+      await first;
+      for (let i = 0; i < 3; i++) await flushMicrotasks();
+      expect((await store.load()).records).toHaveLength(0);
+      const second = mocks.hook.rerender().send("咖啡");
+      await flushMicrotasks();
+      mocks.currentStream.resolve(providerReply);
+      await second;
+      for (let i = 0; i < 5; i++) await flushMicrotasks();
+      const records = (await store.load()).records;
+      expect(records).toHaveLength(1);
+      expect(records[0].content).toBe("喜欢咖啡");
+      expect(records[0].sourceMessageIds.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("完整语音重复回执只启动一次后台维护", async () => {
+      const session = await readySession();
+      const request: VoiceTurnRequest = { turnId: 7, signal: new AbortController().signal };
+      const sent = session.send("测试", "voice", undefined, request);
+      await flushMicrotasks();
+      mocks.currentStream.resolve(providerReply);
+      await sent;
+      request.onPlaybackComplete?.();
+      request.onPlaybackComplete?.();
+      for (let i = 0; i < 4; i++) await flushMicrotasks();
+      request.onPlaybackComplete?.();
+      await flushMicrotasks();
+      expect(mocks.extractor.extract).toHaveBeenCalledTimes(1);
+    });
+
+    it("主动 tick 由 Runtime 落库，只产生 assistant 消息且遵守配额", async () => {
+      const tick = () => mocks.tick?.();
+      vi.spyOn(Date.prototype, "getHours").mockReturnValue(12);
+      try {
+        const session = await readySession();
+        await session.setProactive({ enabled: true, quietStartHour: 23, quietEndHour: 8 });
+        mocks.hook.rerender();
+        tick();
+        for (let i = 0; i < 4; i++) await flushMicrotasks();
+        expect(mocks.streamChat).toHaveBeenCalledTimes(1);
+        mocks.currentStream.resolve(providerReply);
+        for (let i = 0; i < 8; i++) await flushMicrotasks();
+        expect(mocks.storage.rows).toHaveLength(1);
+        expect(mocks.storage.rows[0]).toMatchObject({ role: "assistant", source: "proactive", runtimeTurnId: expect.any(String) });
+        mocks.hook.rerender();
+        tick();
+        await flushMicrotasks();
+        expect(mocks.streamChat).toHaveBeenCalledTimes(1);
+        mocks.storage.countProactiveSince = async () => 6;
+        tick();
+        await flushMicrotasks();
+        expect(mocks.streamChat).toHaveBeenCalledTimes(1);
+      } finally {
+        mocks.hook.cleanup();
+        vi.restoreAllMocks();
+        vi.unstubAllGlobals();
+      }
+  });
+
 });

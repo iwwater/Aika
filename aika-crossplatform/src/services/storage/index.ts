@@ -79,27 +79,10 @@ export function openBrowserStorage(): AikaStorage {
 }
 
 /**
- * 过渡转发。
- *
- * 与 secretStore 同理：默认是浏览器实现，**不再嗅探平台**；桌面宿主在启动时
- * 把 SQLite 的打开方式装上。CORE-06 删除本段与全部调用方。
+ * CORE-06：`openStorage()` 过渡转发已删除。存储只经 `StorageToken` 由宿主插件提供，
+ * 展示插件取出后注入 Presenter；装配失败时组合根注入一个必定失败的 loadStorage，
+ * 让界面显示故障而不是悄悄退回浏览器实现。
  */
-let installedOpener: (() => Promise<AikaStorage>) | null = null;
-
-export function installStorageOpener(opener: () => Promise<AikaStorage>): void {
-  installedOpener = opener;
-}
-
-/** 测试用：把过渡槽恢复到未安装状态。 */
-export function resetInstalledStorageOpener(): void {
-  installedOpener = null;
-}
-
-/** @deprecated 过渡用，改从注册表取 StorageToken；CORE-06 删除。 */
-export async function openStorage(): Promise<AikaStorage> {
-  if (installedOpener) return installedOpener();
-  return openBrowserStorage();
-}
 
 /** 供应商配置存 settings 表（不含 Key），Key 单独走保险库。 */
 export async function loadProvider(

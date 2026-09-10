@@ -95,9 +95,11 @@ export function createInsecureSecretStore(
 /**
  * 过渡转发。
  *
- * 还没改成从注册表取依赖的调用方（useCompanionSession、useRemoteAccess）继续用
- * 这个具名导出。默认是明文实现——**默认值不再靠嗅探平台得来**，而是由组合根在
- * 启动时把宿主提供的那个装上。CORE-06 删除本段与全部调用方。
+ * Presenter / Hook 都已改走 `SecretStoreToken` 注入；**仍在用它的只剩
+ * `useRemoteAccess`**（手机端访问口令的读写）。因此 CORE-06 没有删掉这一段——
+ * 删除的前提是「全仓已无调用方」，而它还有。等 Remote 插件化之后一并处理。
+ *
+ * 默认值是明文实现，不再靠嗅探平台得来；组合根启动时把宿主提供的那个装上。
  */
 let installed: SecretStore | null = null;
 

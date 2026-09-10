@@ -4,9 +4,15 @@ import { createProviderSettings } from "../../services/runtime/providerSettings"
 import { ProviderSettingsToken } from "../../services/runtime/tokens";
 import { memoryPlugin } from "./memoryPlugin";
 import { runtimePlugin, type RuntimePluginOptions } from "./runtimePlugin";
+import { stickersPlugin } from "./stickersPlugin";
+import { voicePlugin } from "./voicePlugin";
 
 export { memoryPlugin, noMemoryPlugin } from "./memoryPlugin";
 export { runtimePlugin, type RuntimePluginOptions } from "./runtimePlugin";
+export { presentationPlugin } from "./presentationPlugin";
+export { stickersPlugin } from "./stickersPlugin";
+export { voicePlugin, defaultSpeechEngines } from "./voicePlugin";
+export { sampleCapabilityPlugin, SampleCapabilityToken, type SampleCapability } from "./sampleCapabilityPlugin";
 
 /**
  * 当前 Provider 配置与表情包清单。
@@ -36,4 +42,21 @@ export function providerSettingsPlugin(
  */
 export function llmPlugins(options: RuntimePluginOptions = {}): AikaPlugin[] {
   return [providerSettingsPlugin(), memoryPlugin(), runtimePlugin(options)];
+}
+
+/**
+ * 应用默认装配的能力插件。
+ *
+ * CORE-05 的结论要能成立，这些插件必须真的被装上——只写不装就是死代码。语音与
+ * 表情包没有硬依赖，因此浏览器宿主也装得起；记忆与 Runtime 的宿主前置由宿主插件
+ * 保证（两个生产存储实现都带 memoryV2）。
+ */
+export function capabilityPlugins(options: RuntimePluginOptions = {}): AikaPlugin[] {
+  return [
+    providerSettingsPlugin(),
+    memoryPlugin(),
+    runtimePlugin(options),
+    voicePlugin(),
+    stickersPlugin(),
+  ];
 }

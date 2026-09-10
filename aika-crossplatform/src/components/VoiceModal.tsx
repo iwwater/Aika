@@ -9,7 +9,7 @@ interface VoiceModalProps {
   pending: string;
   interim: string;
   error: string;
-  captions: VoiceCaption[];
+  captions: readonly VoiceCaption[];
   speakingCaptionId: number | null;
   /** 正在念的那一句在字幕里的位置。只对正在说话的那一条字幕有效。 */
   speakingRange: CaptionRange | null;

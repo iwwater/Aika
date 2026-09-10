@@ -2,7 +2,7 @@ import { KernelError, type AikaPlugin } from "../../kernel";
 import { ContextSourcesToken } from "../../services/context/tokens";
 import { createMemorySource } from "../../services/memory/memorySource";
 import { createMemoryRepository } from "../../services/memory/memoryRepository";
-import { MemoryRepositoryToken } from "../../services/memory/tokens";
+import { MemoryAccessToken, MemoryRepositoryToken, type MemoryAccess } from "../../services/memory/tokens";
 import { StorageToken } from "../../services/storage/tokens";
 import { ClockToken } from "../../services/time/tokens";
 
@@ -24,7 +24,7 @@ export function memoryPlugin(): AikaPlugin {
     id: "llm.memory",
     version: "1.0.0",
     requires: [StorageToken, ClockToken],
-    provides: [MemoryRepositoryToken, ContextSourcesToken],
+    provides: [MemoryRepositoryToken, MemoryAccessToken, ContextSourcesToken],
     activate(context) {
       const storage = context.registrar.resolve(StorageToken);
       const clock = context.registrar.resolve(ClockToken);
@@ -40,15 +40,35 @@ export function memoryPlugin(): AikaPlugin {
         );
       }
 
+      // 删除联动可能有多方关心（摘要落库 + 界面清显示）。仓储的 onInvalidate 只有一个
+      // 回调位，所以由插件扇出；消费方订阅的是插件，不是各自再造一个仓储。
+      const listeners = new Set<() => void>();
       const repository = createMemoryRepository({
         store,
         clock: () => clock.now(),
         onInvalidate: async () => {
           await storage.deleteSummaries?.();
+          for (const listener of [...listeners]) {
+            try {
+              listener();
+            } catch {
+              // 一个界面订阅者抛错不影响其它消费者，也不影响删除本身。
+            }
+          }
         },
       });
+      const access: MemoryAccess = {
+        repository,
+        onInvalidate(listener) {
+          listeners.add(listener);
+          return () => {
+            listeners.delete(listener);
+          };
+        },
+      };
 
       context.registrar.provide(MemoryRepositoryToken, () => repository);
+      context.registrar.provide(MemoryAccessToken, () => access);
       context.registrar.provide(ContextSourcesToken, () => [createMemorySource(repository)]);
     },
   };

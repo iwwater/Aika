@@ -48,23 +48,6 @@ export function createDesktopNotifier(ports: DesktopNotifierPorts): Notifier {
 }
 
 /**
- * 过渡转发。useCompanionSession 还没接注册表，先用这个具名导出。
- * 默认什么都不做——**默认值不再靠嗅探平台得来**。CORE-06 删除本段。
+ * CORE-06：过渡转发已删除。通知只经 `NotifierToken` 由宿主插件提供，消费方由
+ * 组合根/展示插件经构造参数注入；没有通知能力的宿主注入 `createNoopNotifier()`。
  */
-let installed: Notifier | null = null;
-
-export function installNotifier(notifier: Notifier): void {
-  installed = notifier;
-}
-
-/** 测试用：把过渡槽恢复到未安装状态。 */
-export function resetInstalledNotifier(): void {
-  installed = null;
-}
-
-/** @deprecated 过渡用，改从注册表取 NotifierToken；CORE-06 删除。 */
-export function activeNotifier(): Notifier {
-  return installed ?? NOOP;
-}
-
-const NOOP: Notifier = { notify: async () => false };

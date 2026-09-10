@@ -1,10 +1,10 @@
+import { llmPlugins } from "./plugins";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AikaPlugin } from "../kernel";
 import { activeFetch, FetchToken, resetInstalledHttpFetch } from "../services/http";
-import { activeNotifier, NotifierToken, resetInstalledNotifier } from "../services/notification/notifier";
+import { NotifierToken } from "../services/notification/notifier";
 import { remoteAvailable, resetInstalledRemoteHost, type RemoteHost } from "../services/remote/bridge";
 import { RemoteHostToken } from "../services/remote/tokens";
-import { openStorage, resetInstalledStorageOpener } from "../services/storage";
 import type { AikaStorage } from "../services/storage/contracts";
 import { resetInstalledSecretStore, secretStore } from "../services/storage/secretStore";
 import { SecretStoreToken, SettingsToken, StorageToken } from "../services/storage/tokens";
@@ -41,9 +41,7 @@ async function realStorage(): Promise<AikaStorage> {
 
 afterEach(() => {
   resetInstalledSecretStore();
-  resetInstalledStorageOpener();
   resetInstalledHttpFetch();
-  resetInstalledNotifier();
   resetInstalledRemoteHost();
   vi.unstubAllGlobals();
 });
@@ -125,7 +123,7 @@ describe("宿主装配", () => {
 });
 
 describe("过渡转发", () => {
-  it("装配完成后旧具名导出指向宿主提供的实现", async () => {
+  it("尚未插件化的调用方拿到宿主提供的实现（密钥 / HTTP / 远程）", async () => {
     const storage = await realStorage();
     const host = fakeRemoteHost();
     const fetchImpl = vi.fn(async () => new Response("ok"));
@@ -136,7 +134,8 @@ describe("过渡转发", () => {
       ],
     });
 
-    expect(await openStorage()).toBe(storage);
+    // 存储只经 StorageToken 提供（CORE-06 删除了 openStorage 过渡转发）。
+    expect(kernel.registry.resolve(StorageToken)).toBe(storage);
     expect(await secretStore.secure()).toBe(false);
     expect(remoteAvailable()).toBe(true);
     await activeFetch("https://example.com", {});
@@ -155,11 +154,11 @@ describe("过渡转发", () => {
     await kernel.dispose();
   });
 
-  it("通知走 Notifier 端口；宿主没装就如实返回 false，不抛", async () => {
+  it("通知走 Notifier 端口；宿主没装通知能力时注入 no-op，返回 false 不抛", async () => {
     const storage = await realStorage();
     const { kernel } = await createAikaKernel({ hostPlugins: testHostPlugins({ storage }) });
 
-    expect(await activeNotifier().notify({ title: "t", body: "b" })).toBe(false);
+    expect(await kernel.registry.resolve(NotifierToken).notify({ title: "t", body: "b" })).toBe(false);
 
     await kernel.dispose();
   });
@@ -176,10 +175,32 @@ describe("过渡转发", () => {
     const storage = await realStorage();
     const plugins = testHostPlugins({ storage }).filter((plugin) => plugin.id !== "host.storage");
 
-    const { report } = await createAikaKernel({ hostPlugins: [...plugins, broken] });
+    const { report, presentation } = await createAikaKernel({ hostPlugins: [...plugins, broken] });
 
     expect(report.ok).toBe(false);
-    // 关键：不是拿到一个能用的 localStorage，而是抛出去让界面显示故障。
-    await expect(openStorage()).rejects.toThrow(/database is locked/);
+    // 关键：失败经同一条 storageError 通道显示出来，而不是拿到一个能用的 localStorage。
+    expect(presentation).not.toBeNull();
+    await presentation!.companion.start();
+    expect(presentation!.companion.getSnapshot().storageError).toMatch(/database is locked/);
+  });
+});
+
+describe("CORE-06 单一编排与旧设置兼容", () => {
+  it("旧库里残留的 core.orchestrator 被当作未知设置忽略，启动不报错", async () => {
+    const { db, executor } = openMemorySqlite();
+    const storage = await createSqliteStorage(executor);
+    // CORE-03 迁移期写过这个键；CORE-06 删掉旧编排后没有任何代码再读它。
+    await storage.setSetting("core.orchestrator", "legacy");
+
+    const { kernel, report } = await createAikaKernel({
+      hostPlugins: testHostPlugins({ storage }), featurePlugins: llmPlugins(),
+    });
+    try {
+      expect(report.ok).toBe(true);
+      expect(await storage.getSetting("core.orchestrator")).toBe("legacy");
+    } finally {
+      await kernel.dispose();
+      db.close();
+    }
   });
 });

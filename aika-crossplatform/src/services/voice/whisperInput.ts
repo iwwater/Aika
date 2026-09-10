@@ -29,6 +29,17 @@ export interface WhisperInputOptions {
   /** 本地服务地址。用函数取，设置页改完立刻生效，不用重建引擎。 */
   endpoint: () => string;
   vad?: Partial<VadSegmenterSettings>;
+  /**
+   * 测试注入：采集 / VAD 模型 / 转写客户端。生产不传，走真实实现。
+   *
+   * 加这个口子是为了让本地管线能和 Web Speech 跑同一份输入用例包——否则「两个引擎
+   * 的契约一致」只能靠读代码，而这正是端口一致性计划要消灭的东西。
+   */
+  ports?: {
+    capture?: () => AudioCapture;
+    vad?: () => VoiceActivityModel;
+    client?: (endpoint: () => string) => WhisperClient;
+  };
 }
 
 export function createWhisperInputEngine(options: WhisperInputOptions): SpeechInputEngine {
@@ -45,9 +56,9 @@ export function createWhisperInputEngine(options: WhisperInputOptions): SpeechIn
   const reorderer = createAsrSegmentReorderer<SpeechFinalResult & { errorMessage?: string }>();
 
   function ensure() {
-    if (!capture) capture = createAudioCapture();
-    if (!vad) vad = createSileroVad();
-    if (!client) client = createWhisperClient(options.endpoint);
+    if (!capture) capture = options.ports?.capture?.() ?? createAudioCapture();
+    if (!vad) vad = options.ports?.vad?.() ?? createSileroVad();
+    if (!client) client = options.ports?.client?.(options.endpoint) ?? createWhisperClient(options.endpoint);
   }
 
   async function transcribe(
@@ -91,7 +102,7 @@ export function createWhisperInputEngine(options: WhisperInputOptions): SpeechIn
     continuous: true,
 
     isAvailable() {
-      return createAudioCapture().isAvailable();
+      return (capture ?? options.ports?.capture?.() ?? createAudioCapture()).isAvailable();
     },
 
     async requestPermission() {

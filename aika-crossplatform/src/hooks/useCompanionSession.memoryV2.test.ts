@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => {
   const state: any = {
     hook: null,
     storage: null,
+    presenter: null,
     streamChat: vi.fn(),
   };
   state.openStorage = vi.fn(async () => state.storage);
@@ -31,6 +32,15 @@ vi.mock("react", () => ({
   useMemo: (factory: () => unknown, deps: readonly unknown[]) => mocks.hook.useMemo(factory, deps),
   useCallback: (factory: unknown, deps: readonly unknown[]) => mocks.hook.useCallback(factory, deps),
   useEffect: (effect: () => void | (() => void), deps: readonly unknown[]) => mocks.hook.useEffect(effect, deps),
+  useSyncExternalStore: (subscribe: (listener: () => void) => () => void, getSnapshot: () => unknown) =>
+    mocks.hook.useSyncExternalStore(subscribe, getSnapshot),
+}));
+
+// CORE-04：Hook 只经 useService 取 Presenter，测试给出生产 Presenter。
+vi.mock("../app/kernelContext", () => ({
+  useService: (token: { key: string }) => (
+    token.key === "presentation.companion" ? mocks.presenter : null
+  ),
 }));
 
 vi.mock("@tauri-apps/plugin-notification", () => ({
@@ -71,28 +81,24 @@ vi.mock("../services/providerClient", () => ({
 }));
 
 import { useCompanionSession } from "./useCompanionSession";
+import { createCompanionPresenter } from "../presentation/companionPresenter";
 import { createCompanionRuntime } from "../services/runtime/companionRuntime";
 import { createStreamChatProvider } from "../services/runtime/providerAdapter";
 import { createProviderSettings } from "../services/runtime/providerSettings";
-import { installRuntimeServices, resetInstalledRuntimeServices } from "../services/runtime/activeRuntime";
 import { PROVIDER_PRESETS } from "../domain/providers";
 import { createMemoryRepository } from "../services/memory/memoryRepository";
 import { createMemorySource } from "../services/memory/memorySource";
 
-/** CORE-03-A：同一份记忆测试跑新旧两条编排。 */
-let orchestrator: "legacy" | "kernel" = "legacy";
-
-function installOrchestrator() {
-  resetInstalledRuntimeServices();
-  if (orchestrator !== "kernel") return;
+/** CORE-06：只有一条编排路径，Runtime 直接注入 Presenter。 */
+function createRuntime() {
   const settings = createProviderSettings(PROVIDER_PRESETS[1]);
   // 记忆上下文源在生产上由 memoryPlugin 提供；这里按同样的方式接上，
-  // 否则 kernel 路径的提示词里不会有检索到的记忆，测的就不是同一件事了。
+  // 否则提示词里不会有检索到的记忆，测的就不是同一件事了。
   const store = mocks.storage.memoryV2;
   const sources = store
     ? [createMemorySource(createMemoryRepository({ store }))]
     : [];
-  installRuntimeServices({
+  return {
     settings,
     runtime: createCompanionRuntime({
       provider: createStreamChatProvider({
@@ -102,7 +108,7 @@ function installOrchestrator() {
       storage: mocks.storage,
       sources,
     }),
-  });
+  };
 }
 
 const providerReply: CompanionReply = {
@@ -161,7 +167,11 @@ function legacyMemory(overrides: Partial<MemoryRecord> = {}): MemoryRecord {
 
 async function render(): Promise<{ session: any; harness: HookHarness }> {
   const harness = mocks.hook as HookHarness;
-  installOrchestrator();
+  mocks.presenter = createCompanionPresenter({
+    loadStorage: async () => mocks.storage,
+    notifier: { notify: async () => false },
+    runtime: createRuntime(),
+  });
   harness.render(() => useCompanionSession());
   await flushMicrotasks();
   return { session: harness.rerender(), harness };
@@ -175,14 +185,9 @@ beforeEach(() => {
 
 afterEach(() => {
   mocks.hook.cleanup();
-  resetInstalledRuntimeServices();
 });
 
-describe.each(["legacy", "kernel"] as const)("记忆 V2 接入 (%s)", (mode) => {
-  beforeEach(() => {
-    orchestrator = mode;
-  });
-
+describe("记忆 V2 接入", () => {
   it("启动时把 V1 记忆迁进 V2，界面显示的是 V2 内容", async () => {
     const store = createInMemoryMemoryStore();
     mocks.storage = createStorage([legacyMemory()], store, null);

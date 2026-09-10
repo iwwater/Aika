@@ -1,14 +1,15 @@
 import { createKernel, type AikaKernel, type AikaPlugin, type KernelLogger, type KernelStartReport } from "../kernel";
+import { createNoopNotifier } from "../services/notification/notifier";
 import { installHttpFetch, FetchToken } from "../services/http";
-import { installNotifier, NotifierToken } from "../services/notification/notifier";
 import { installRemoteHost } from "../services/remote/bridge";
-import { installRuntimeServices, normalizeOrchestrator } from "../services/runtime/activeRuntime";
-import { ProviderSettingsToken, RuntimeToken } from "../services/runtime/tokens";
 import { RemoteHostToken } from "../services/remote/tokens";
-import { installStorageOpener } from "../services/storage";
+import { ProviderSettingsToken, RuntimeToken } from "../services/runtime/tokens";
 import { installSecretStore } from "../services/storage/secretStore";
-import { SecretStoreToken, SettingsToken, StorageToken } from "../services/storage/tokens";
-import { SETTING_KEYS } from "../services/storage/contracts";
+import { SecretStoreToken } from "../services/storage/tokens";
+import { createPresentationServices, type PresentationServiceDeps } from "../presentation/services";
+import type { PresentationServices } from "../presentation/fallback";
+import { capabilityPlugins } from "./plugins";
+import { presentationPlugin } from "./plugins/presentationPlugin";
 import { selectHostPlugins, type HostOptions } from "./hosts";
 
 /**
@@ -22,12 +23,14 @@ import { selectHostPlugins, type HostOptions } from "./hosts";
 export interface CompositionOptions extends HostOptions {
   /** 覆盖宿主插件；测试传 testHostPlugins(...)。不传就按平台选。 */
   hostPlugins?: readonly AikaPlugin[];
-  /** 业务能力插件。CORE-05 起会有内容，现在为空。 */
+  /** 业务能力插件；不传用 `capabilityPlugins()`。 */
   featurePlugins?: readonly AikaPlugin[];
+  /** 展示层依赖；测试可注入 fake Runtime / 假引擎。 */
+  presentation?: PresentationServiceDeps;
   logger?: KernelLogger;
   /**
-   * 是否给尚未改造的调用方装上过渡转发。
-   * 默认装。CORE-06 删掉过渡层后这个开关一并消失。
+   * 是否给尚未插件化的调用方（Remote 手机端、本地 Whisper）装上过渡转发。
+   * 默认装；`installLegacyPorts:false` 主要给不关心这些全局槽的测试用。
    */
   installLegacyPorts?: boolean;
 }
@@ -35,39 +38,51 @@ export interface CompositionOptions extends HostOptions {
 export interface Composition {
   kernel: AikaKernel;
   report: KernelStartReport;
+  /** 仅在内核启动失败时非空：交给 KernelProvider 兜底，界面仍能渲染并显示故障。 */
+  presentation: PresentationServices | null;
 }
 
 export async function createAikaKernel(options: CompositionOptions = {}): Promise<Composition> {
   const kernel = createKernel({ logger: options.logger });
 
   for (const plugin of options.hostPlugins ?? selectHostPlugins(options)) kernel.use(plugin);
-  for (const plugin of options.featurePlugins ?? []) kernel.use(plugin);
+  // 默认装配能力插件；测试或特殊宿主可显式覆盖。
+  for (const plugin of options.featurePlugins ?? capabilityPlugins()) kernel.use(plugin);
+  // 展示层在内核里也是普通插件：注册表提供实例，Hook 经 useService 取。
+  // 运行时用惰性闭包取：没人解析 Presenter 时不会顺带实例化 Runtime。
+  kernel.use(presentationPlugin({
+    resolveRuntime: () => {
+      const runtime = kernel.registry.tryResolve(RuntimeToken);
+      const settings = kernel.registry.tryResolve(ProviderSettingsToken);
+      return runtime && settings ? { runtime, settings } : null;
+    },
+  }));
 
   const report = await kernel.start();
   if (options.installLegacyPorts ?? true) {
-    if (report.ok) {
-      installLegacyForwarders(kernel);
-      await installOrchestrator(kernel);
-    } else {
-      installFailedStorageOpener(report);
-    }
+    if (report.ok) installLegacyForwarders(kernel);
+    // 启动失败时不装任何转发：兜底 Presenter 直接用抛错的 loadStorage 把故障显示出来。
   }
 
-  return { kernel, report };
+  // 成功时注册表就是唯一来源；失败时注册表不可用，才需要兜底实例。
+  const presentation = report.ok ? null : failedPresentation(report, options.presentation);
+
+  return { kernel, report, presentation };
 }
 
 /**
- * 把宿主提供的实现装进过渡转发槽。
+ * 尚未插件化的两处调用方的过渡入口。
  *
- * 改造前这些具名导出各自嗅探平台；现在它们的默认值是浏览器实现，由这里替换成
- * 宿主真正提供的那个。这是 CORE-06 的删除目标，不是长期设计。
+ * - Remote 手机端（`useRemoteAccess`）还要用宿主的密钥库存访问口令，并用远程宿主
+ *   接收手机请求；
+ * - 本地 Whisper 的 HTTP 出口走 `activeFetch`（Tauri 下走 plugin-http）。
+ *
+ * 它们都不属于对话编排，因此与 CORE-06 的「单一编排路径」无关；插件化留给后续
+ * Remote/语音插件 SPEC，不在这里顺手改名。
  */
 function installLegacyForwarders(kernel: AikaKernel): void {
   installSecretStore(kernel.registry.resolve(SecretStoreToken));
   installHttpFetch(kernel.registry.resolve(FetchToken));
-  installNotifier(kernel.registry.resolve(NotifierToken));
-  // 存储用惰性闭包：调用方什么时候要，什么时候去注册表拿同一个实例。
-  installStorageOpener(async () => kernel.registry.resolve(StorageToken));
 
   // 缺失是常态：浏览器宿主没有远程能力，这里就什么都不装，
   // remoteAvailable() 继续如实返回 false。
@@ -76,36 +91,24 @@ function installLegacyForwarders(kernel: AikaKernel): void {
 }
 
 /**
- * 启动失败时让存储调用方看见故障，而不是悄悄退回浏览器实现。
+ * 启动失败时的兜底 Presenter。
  *
- * 这是本次改造里最容易踩的坑：过渡转发的默认值是 localStorage，桌面端一旦
- * SQLite 打不开，若不做这一步，用户会以为一切正常，实际记忆全写进了
- * localStorage。改造前 openStorage 抛错会被 Hook 显示成 storageError，
- * 这个行为必须原样保住。
+ * 界面必须能渲染并告诉用户「本地存储打不开，这次的对话和记忆不会被保存」，
+ * 所以这里注入一个**必定失败**的 loadStorage，让错误经同一条 storageError 通道显示，
+ * 而不是悄悄退回浏览器实现、让用户以为一切正常。
  */
-function installFailedStorageOpener(report: KernelStartReport): void {
+function failedPresentation(
+  report: KernelStartReport,
+  override?: PresentationServiceDeps,
+): PresentationServices {
   const detail = report.failed[0];
-  installStorageOpener(() => Promise.reject(new Error(
-    detail ? `${detail.code}: ${detail.message}` : "kernel failed to start",
-  )));
-}
-
-/**
- * 按开关决定这次运行用哪条编排。
- *
- * 开关是 legacy、或者 Runtime 压根没装配（featurePlugins 里没有它），都不安装
- * 运行时服务——Hook 拿到 null 就走旧路径。这正是开关存在的意义：出问题时
- * 改一个设置就能退回去，不用 revert 代码。
- */
-async function installOrchestrator(kernel: AikaKernel): Promise<void> {
-  const runtime = kernel.registry.tryResolve(RuntimeToken);
-  if (!runtime) return;
-
-  const settings = kernel.registry.tryResolve(SettingsToken);
-  const mode = normalizeOrchestrator(await settings?.getRaw(SETTING_KEYS.orchestrator));
-  if (mode !== "kernel") return;
-
-  const providerSettings = kernel.registry.tryResolve(ProviderSettingsToken);
-  if (!providerSettings) return;
-  installRuntimeServices({ runtime, settings: providerSettings });
+  const message = detail ? `${detail.code}: ${detail.message}` : "kernel failed to start";
+  return createPresentationServices({
+    companion: override?.companion ?? {
+      loadStorage: () => Promise.reject(new Error(message)),
+      notifier: createNoopNotifier(),
+      runtime: null,
+    },
+    voice: override?.voice,
+  });
 }

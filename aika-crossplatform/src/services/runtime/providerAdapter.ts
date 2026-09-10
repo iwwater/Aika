@@ -12,8 +12,9 @@ import { buildConversationInput, buildInstructions } from "../../domain/prompt";
 import type { ProviderConfig } from "../../domain/providers";
 import { DEFAULT_CHARACTER_SOUL, type CharacterSoul } from "../../domain/soul";
 import type { Sticker } from "../../domain/stickers";
-import { isAbortError, streamChat } from "../providerClient";
+import { isAbortError, streamChat, testProvider } from "../providerClient";
 import type { ProviderStreamEvent, RuntimeGenerateInput, RuntimeProvider } from "./companionRuntime";
+import type { ProviderProbe } from "./tokens";
 
 export interface StreamChatProviderOptions {
   getConfig(): ProviderConfig;
@@ -51,6 +52,8 @@ async function* generateEvents(
     retrieved,
   ].filter((block) => block.trim().length > 0).join("\n\n");
 
+  if (input.signal.aborted) return;
+  const controller = new AbortController();
   const queue: ProviderStreamEvent[] = [];
   let notify: (() => void) | null = null;
   let finished = false;
@@ -60,6 +63,8 @@ async function* generateEvents(
     pending?.();
   };
   const onAbort = () => {
+    controller.abort();
+    queue.length = 0;
     finished = true;
     wake();
   };
@@ -70,8 +75,10 @@ async function* generateEvents(
       const reply = await streamChat(
         options.getConfig(),
         instructions,
-        [{ role: "user", content: buildConversationInput(input.context.query, companion) }],
+        [{ role: "user", content: input.source === "proactive"
+          ? input.context.query : buildConversationInput(input.context.query, companion) }],
         (partial) => {
+          if (controller.signal.aborted) return;
           queue.push({
             type: "delta",
             text: partial.japaneseText,
@@ -81,12 +88,12 @@ async function* generateEvents(
           wake();
         },
         stickers.map((sticker) => sticker.id),
-        { signal: input.signal },
+        { signal: controller.signal },
       );
-      queue.push({ type: "reply", reply: toEnvelope(reply) });
+      if (!controller.signal.aborted) queue.push({ type: "reply", reply: toEnvelope(reply) });
     } catch (error) {
       // 取消由 Runtime 判为 cancelled，这里不能把它当成 provider 错误。
-      if (input.signal.aborted || isAbortError(error)) return;
+      if (controller.signal.aborted || isAbortError(error)) return;
       queue.push({ type: "error", code: "PROVIDER_FAILED", retryable: true, message: messageOf(error) });
     } finally {
       finished = true;
@@ -104,6 +111,7 @@ async function* generateEvents(
       notify = null;
     }
   } finally {
+    controller.abort();
     input.signal.removeEventListener("abort", onAbort);
     void pump.catch(() => undefined);
   }
@@ -116,3 +124,11 @@ export function createStreamChatProvider(options: StreamChatProviderOptions): Ru
     },
   };
 }
+
+/**
+ * 设置页的「测试连接」。
+ *
+ * 它同样是 Provider 侧能力，放在适配器这一层，`App.tsx` 因此不再直接 import
+ * providerClient；全仓 providerClient 的调用方只剩本模块与记忆抽取。
+ */
+export const providerProbe: ProviderProbe = (config) => testProvider(config);

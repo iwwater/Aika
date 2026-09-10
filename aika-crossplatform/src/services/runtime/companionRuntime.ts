@@ -78,6 +78,7 @@ export type ProviderStreamEvent =
 
 export interface RuntimeGenerateInput {
   turnId: string;
+  source?: TurnSource;
   context: AgentContext;
   mode: ModeConfig;
   signal: AbortSignal;
@@ -502,7 +503,8 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
     emitTrace(turn, assembled, normalized);
 
     // 用户说过的话先落库：后面生成失败，这一句也不该丢。
-    await persist(turn, asked);
+    // 主动触发的提示词不是用户发言，不能混进用户历史。
+    if (turn.source !== "proactive") await persist(turn, asked);
     if (isStale(turn)) return;
 
     setState(turn, "generating");
@@ -511,6 +513,7 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
     try {
       for await (const event of options.provider.generate({
         turnId: turn.id,
+        source: turn.source,
         context: assembled.context,
         mode: turn.mode,
         signal: turn.controller.signal,
