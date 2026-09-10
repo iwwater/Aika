@@ -7,7 +7,7 @@
 - 输入：已服务化的 Runtime、Presenter、宿主能力；现有语音、记忆、表情包、Remote 四组能力。
 - 输出：四个能力插件、能力清单与降级规则、一个证明扩展点可用的示例插件。
 - 前置：CORE-04 通过。
-- 负责范围：`src/kernel/plugins/` 下的 voice / memory / stickers / remote 插件；能力可用性与降级判定；示例插件与扩展点测试；新增 `speechInput.conformance.ts`、`speechOutput.conformance.ts` 两份共用用例包。
+- 负责范围：`src/app/plugins/` 下的 voice / memory / stickers / remote 插件；能力可用性与降级判定；示例插件与扩展点测试；新增 `speechInput.conformance.ts`、`speechOutput.conformance.ts` 两份共用用例包。
 - 不做：**不实现抓屏、情感识别、Live2D、Three.js、Unity**；不做运行期热插拔、插件沙箱或第三方插件加载；不改各能力的既有算法。
 
 本 SPEC 的目的不是「把文件挪个位置」，而是给出一个可证伪的结论：**加一个新能力，需要改内核吗？** 如果需要，说明前四份 SPEC 没做到位。

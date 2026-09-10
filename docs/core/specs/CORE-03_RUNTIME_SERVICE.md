@@ -51,7 +51,7 @@ type OrchestratorMode = "legacy" | "kernel";
 - **记忆抽取与摘要。** 现在在 Hook 里 `await` 的抽取/摘要改由 `MemoryWriteback` 在正文结算后异步执行，不阻塞回复事件；关闭记忆维护时不得继续提交写入。触发阈值与幂等按 `writeback.ts` 已有实现，本 SPEC 只接线不改策略。
 - **失败可见。** Provider 报错、存储写入失败、上下文超预算（`CONTEXT_TOO_LARGE`）都要变成用户看得见的状态，不得静默吞掉后停在 pending。
 
-建议实现：新增 `plugins/runtimePlugin.ts`，声明 `requires` 为 storage / provider / clock / timers、`optional` 为 memory 与各 context source，`provides` 为 `RuntimeToken`；token 定义在 `services/runtime/tokens.ts`，不建汇总模块。Hook 内保留 legacy 分支直到 CORE-06 删除。
+建议实现：新增 `src/app/plugins/runtimePlugin.ts`，声明 `requires` 为 storage / provider / clock / timers、`optional` 为 memory 与各 context source，`provides` 为 `RuntimeToken`；token 定义在 `services/runtime/tokens.ts`，不建汇总模块。Hook 内保留 legacy 分支直到 CORE-06 删除。
 
 ## 实施内容与验收条件
 

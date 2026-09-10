@@ -7,7 +7,7 @@
 - 输入：运行宿主（Tauri 桌面 / 浏览器 dev / 测试）、已有存储与密钥实现。
 - 输出：三组宿主插件、`selectHostPlugins()`、组合根装配函数，以及分散在各模块的平台端口 token。
 - 前置：CORE-01 通过。不依赖 Runtime 是否已服务化。
-- 负责范围：新增 `src/kernel/hosts/`（只放宿主插件与平台判断）与 `src/kernel/composition.ts`；在 `services/storage/`、`services/remote/` 等各自目录下新增 `tokens.ts`；改造 `services/storage/index.ts` 的暴露方式；`useCompanionSession` 的通知改走 `Notifier` 服务；新增 `storage.conformance.ts`、`secretStore.conformance.ts` 两份共用用例包。
+- 负责范围：新增 `src/app/hosts/`（只放宿主插件与平台判断）与 `src/app/composition.ts`；在 `services/storage/`、`services/remote/` 等各自目录下新增 `tokens.ts`；改造 `services/storage/index.ts` 的暴露方式；`useCompanionSession` 的通知改走 `Notifier` 服务；新增 `storage.conformance.ts`、`secretStore.conformance.ts` 两份共用用例包。
 - 不做：**不定义 `HostCapabilities` 这类能力总表**，不建任何汇总 token 的桶文件；不改存储的 SQL、表结构与迁移逻辑；不改对话编排；不动语音与记忆的装配（留给 CORE-05）。
 
 ## 架构与接口设计
@@ -48,7 +48,7 @@ export function selectHostPlugins(): readonly AikaPlugin[];
 
 必须逐条满足的约束：
 
-- 平台判断只允许出现在 `src/kernel/hosts/index.ts` 的 `selectHostPlugins()` 里。全仓其它生产文件不得再出现 `__TAURI_INTERNALS__` 判断，宿主实现自身与测试除外。
+- 平台判断只允许出现在 `src/app/hosts/detect.ts` 里，`selectHostPlugins()` 据它选插件集合。全仓其它生产文件不得再出现 `__TAURI_INTERNALS__` 判断，宿主实现自身与测试除外。
 - **能力缺失即 token 不注册。** 浏览器宿主不注册 `RemoteHostToken`；消费方在 `optional` 里声明并 `tryResolve`，拿到 null 就降级、隐藏入口。不设 `host.remote?` 这类可选字段，也不注册一个「假装存在但会抛错」的实现。
 - `openStorage()` 的现有行为（Tauri 走 SQLite、否则 localStorage、首启做 localStorage→SQLite 迁移并清除明文 Key）**逐条保持不变**，只是改由宿主插件提供。迁移仍由 `MIGRATION_FLAG` 保证只跑一次；换装配方式不得导致重跑或跳过。
 - `secretStore` 从模块级单例导出改为经 token 提供，但保留原有具名导出作为转发并标注 deprecated，本阶段不要求所有调用方改完。
@@ -63,7 +63,7 @@ export function selectHostPlugins(): readonly AikaPlugin[];
 | --- | --- |
 | CORE-02-A | 三种宿主装配后可解析出 storage、secrets、settings、notifier、clock、timers；桌面宿主注册 `RemoteHostToken`、浏览器宿主不注册，消费方 `tryResolve` 拿到 null 后降级不报错 |
 | CORE-02-B | 存储行为不变：既有 `storageCompatibility.test.ts`、`sqliteStorage.test.ts`、`messagePersistence.test.ts` 在新装配下全部通过；localStorage→SQLite 迁移仍只跑一次，重复启动不重复写入，明文 Key 迁移后被清除 |
-| CORE-02-C | 平台判断收敛：静态扫描生产代码，`__TAURI_INTERNALS__` 只出现在 `src/kernel/hosts/` 之下，出现在别处即 FAIL |
+| CORE-02-C | 平台判断收敛：静态扫描生产代码，`__TAURI_INTERNALS__` 只出现在 `src/app/hosts/` 之下，出现在别处即 FAIL |
 | CORE-02-D | 无能力总表：静态扫描确认不存在 `HostCapabilities` 之类聚合接口，且没有任何文件导出跨越两个以上模块目录的 token；CORE-01-C 的内核零业务词汇扫描重跑仍通过 |
 | CORE-02-E | 通知降级：无权限 / 抛错 / 未注册 Notifier 三种情况下调用方拿到 false 或 null 并继续，消息落库与状态不受影响 |
 | CORE-02-F | 设置读写：坏 JSON、缺字段、未知模式值均回落默认值且不写回坏值；`SETTING_KEYS` 的每个键有读写往返测试 |

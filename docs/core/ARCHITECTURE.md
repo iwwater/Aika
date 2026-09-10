@@ -15,18 +15,22 @@
 ## 一、分层与依赖方向
 
 ```
-components / hosts        ← 只能向下依赖
+components                        ← 只能向下依赖
 presentation (Presenter)
-composition root + plugins
+app/ (composition root + hosts + plugins)
 services (runtime / storage / memory / voice / provider)
-domain (纯函数)           ← 谁都不依赖
-kernel                    ← 与上面所有层正交，不依赖任何一层
+domain (纯函数)                   ← 谁都不依赖
+kernel                            ← 与上面所有层正交，不依赖任何一层
 ```
+
+组合根与宿主插件放 `src/app/`，**不放 `src/kernel/`**：它们必须 import 具体实现，
+而内核一行业务代码都不能碰。这条在 CORE-02 执行时才暴露出来——早先把它们写进
+`src/kernel/hosts/` 会直接撞上 CORE-01-C 的扫描。
 
 - `src/kernel/` 不 import `src/domain/`、`src/services/`、`src/presentation/`、`react`、`@tauri-apps/*`，也不触碰 `window`/`document`/`localStorage`/`__TAURI_INTERNALS__`。它是一个可以整包搬去别的项目、不带一句本产品语义的模块。
 - `domain/` 同样不 import react 与平台 API。
 - `services/` 不 import `presentation/` 或 `components/`。
-- 平台差异只允许出现在组合根挑选宿主插件的那一个函数里。
+- 平台差异只允许出现在 `src/app/hosts/detect.ts` 里，由 CORE-02-C 的扫描守住。
 
 ## 二、服务标识与注册表
 
