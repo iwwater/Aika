@@ -2,10 +2,13 @@ import { createKernel, type AikaKernel, type AikaPlugin, type KernelLogger, type
 import { installHttpFetch, FetchToken } from "../services/http";
 import { installNotifier, NotifierToken } from "../services/notification/notifier";
 import { installRemoteHost } from "../services/remote/bridge";
+import { installRuntimeServices, normalizeOrchestrator } from "../services/runtime/activeRuntime";
+import { ProviderSettingsToken, RuntimeToken } from "../services/runtime/tokens";
 import { RemoteHostToken } from "../services/remote/tokens";
 import { installStorageOpener } from "../services/storage";
 import { installSecretStore } from "../services/storage/secretStore";
-import { SecretStoreToken, StorageToken } from "../services/storage/tokens";
+import { SecretStoreToken, SettingsToken, StorageToken } from "../services/storage/tokens";
+import { SETTING_KEYS } from "../services/storage/contracts";
 import { selectHostPlugins, type HostOptions } from "./hosts";
 
 /**
@@ -42,8 +45,12 @@ export async function createAikaKernel(options: CompositionOptions = {}): Promis
 
   const report = await kernel.start();
   if (options.installLegacyPorts ?? true) {
-    if (report.ok) installLegacyForwarders(kernel);
-    else installFailedStorageOpener(report);
+    if (report.ok) {
+      installLegacyForwarders(kernel);
+      await installOrchestrator(kernel);
+    } else {
+      installFailedStorageOpener(report);
+    }
   }
 
   return { kernel, report };
@@ -81,4 +88,24 @@ function installFailedStorageOpener(report: KernelStartReport): void {
   installStorageOpener(() => Promise.reject(new Error(
     detail ? `${detail.code}: ${detail.message}` : "kernel failed to start",
   )));
+}
+
+/**
+ * 按开关决定这次运行用哪条编排。
+ *
+ * 开关是 legacy、或者 Runtime 压根没装配（featurePlugins 里没有它），都不安装
+ * 运行时服务——Hook 拿到 null 就走旧路径。这正是开关存在的意义：出问题时
+ * 改一个设置就能退回去，不用 revert 代码。
+ */
+async function installOrchestrator(kernel: AikaKernel): Promise<void> {
+  const runtime = kernel.registry.tryResolve(RuntimeToken);
+  if (!runtime) return;
+
+  const settings = kernel.registry.tryResolve(SettingsToken);
+  const mode = normalizeOrchestrator(await settings?.getRaw(SETTING_KEYS.orchestrator));
+  if (mode !== "kernel") return;
+
+  const providerSettings = kernel.registry.tryResolve(ProviderSettingsToken);
+  if (!providerSettings) return;
+  installRuntimeServices({ runtime, settings: providerSettings });
 }

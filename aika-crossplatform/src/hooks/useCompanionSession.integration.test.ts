@@ -63,6 +63,11 @@ vi.mock("../services/providerClient", () => ({
 }));
 
 import { useCompanionSession } from "./useCompanionSession";
+import { createCompanionRuntime } from "../services/runtime/companionRuntime";
+import { createStreamChatProvider } from "../services/runtime/providerAdapter";
+import { createProviderSettings } from "../services/runtime/providerSettings";
+import { installRuntimeServices, resetInstalledRuntimeServices } from "../services/runtime/activeRuntime";
+import { PROVIDER_PRESETS } from "../domain/providers";
 
 const providerReply: CompanionReply = {
   japaneseText: "聞こえたよ。",
@@ -115,7 +120,13 @@ async function flushMicrotasks() {
   for (let index = 0; index < 10; index += 1) await Promise.resolve();
 }
 
-describe("useCompanionSession voice persistence boundary", () => {
+/**
+ * CORE-03-A：同一份测试跑新旧两条编排。
+ *
+ * 两条路径的行为差异只能靠这个跑出来，靠读代码是读不出来的——旧编排在 Hook 里，
+ * 新编排在 CompanionRuntime 里，各写各的打断、迟到结果与落库。
+ */
+describe.each(["legacy", "kernel"] as const)("useCompanionSession voice persistence boundary (%s)", (orchestrator) => {
   beforeEach(() => {
     mocks.hook = new HookHarness();
     mocks.storage = createStorage();
@@ -128,9 +139,29 @@ describe("useCompanionSession voice persistence boundary", () => {
       if (args[3]) mocks.currentStream.onPartial = args[3];
       return promise;
     });
+
+    resetInstalledRuntimeServices();
+    if (orchestrator === "kernel") {
+      // 直接装 Runtime，不经内核：这里验的是 Hook 的两条路径，
+      // 内核装配由 app/plugins/plugins.test.ts 负责。
+      const settings = createProviderSettings(PROVIDER_PRESETS[1]);
+      installRuntimeServices({
+        settings,
+        runtime: createCompanionRuntime({
+          provider: createStreamChatProvider({
+            getConfig: () => settings.get(),
+            getStickers: () => settings.getStickers(),
+          }),
+          storage: mocks.storage,
+        }),
+      });
+    }
   });
 
-  afterEach(() => mocks.hook.cleanup());
+  afterEach(() => {
+    mocks.hook.cleanup();
+    resetInstalledRuntimeServices();
+  });
 
   it("完整语音回复要等播放 drained 才落库并启动记忆；中断只留 interrupted", async () => {
     const render = () => useCompanionSession();
@@ -157,7 +188,10 @@ describe("useCompanionSession voice persistence boundary", () => {
     firstRequest.onPlaybackComplete?.();
     await flushMicrotasks();
     const completed = mocks.storage.rows.find((message: ChatMessage) => message.role === "assistant");
-    expect(completed?.completion).toBeUndefined();
+    // 断言的是「这条不是被打断的」这个契约，而不是某条实现恰好把字段留空。
+    // 旧编排不写 completion，Runtime 显式写 "complete"；两者经 SQLite 往返后
+    // 都会还原成 undefined（completion_status 默认 complete，只有 interrupted 会映射回来）。
+    expect(completed?.completion).not.toBe("interrupted");
     expect(completed?.playbackStatus).toBe("played");
     expect(mocks.extractor.extract).toHaveBeenCalledTimes(1);
 
@@ -198,7 +232,10 @@ describe("useCompanionSession voice persistence boundary", () => {
       japaneseComplete: false,
     });
     firstStream.resolve(providerReply);
-    await expect(firstSend).resolves.toEqual(providerReply);
+    // toMatchObject 而非 toEqual：断言的是回复内容一致，不是返回对象的字段
+    // 集合逐字相同。Runtime 侧的回复经 ReplyEnvelopeV1 还原，会多出协议里
+    // 的可选字段（sticker、memoryCandidates 等），内容并无差别。
+    await expect(firstSend).resolves.toMatchObject(providerReply);
     await flushMicrotasks();
 
     session = harness.rerender();
@@ -208,13 +245,17 @@ describe("useCompanionSession voice persistence boundary", () => {
     expect(mocks.storage.rows).toEqual(expect.arrayContaining([
       expect.objectContaining({ role: "assistant", source: "text", content: providerReply.japaneseText }),
     ]));
-    expect(mocks.streamChat.mock.calls[0][5]).toBeUndefined();
+    // 断言的是「这一轮没有语音回合号」，而不是「第六个参数整体为 undefined」。
+    // 旧编排文本轮不传 options；Runtime 总是带一个 AbortSignal，因此文本轮也能
+    // 在网络层被取消——这是能力增加，不是行为退化。
+    expect((mocks.streamChat.mock.calls[0][5] as { turnId?: number } | undefined)?.turnId)
+      .toBeUndefined();
 
     const secondSend = session.send("第二轮文本", "text");
     await flushMicrotasks();
     const secondStream = mocks.currentStream as { resolve: (reply: CompanionReply) => void };
     secondStream.resolve(providerReply);
-    await expect(secondSend).resolves.toEqual(providerReply);
+    await expect(secondSend).resolves.toMatchObject(providerReply);
     await flushMicrotasks();
     session = harness.rerender();
 
@@ -269,7 +310,7 @@ describe("useCompanionSession voice persistence boundary", () => {
     await flushMicrotasks();
     const recoveryStream = mocks.currentStream as { resolve: (reply: CompanionReply) => void };
     recoveryStream.resolve(providerReply);
-    await expect(recoverySend).resolves.toEqual(providerReply);
+    await expect(recoverySend).resolves.toMatchObject(providerReply);
     await flushMicrotasks();
 
     expect(mocks.storage.rows.filter((message: ChatMessage) => (

@@ -26,6 +26,7 @@ const SCHEMA = [
      sticker TEXT,
      mood TEXT,
      turn_id INTEGER,
+     runtime_turn_id TEXT,
      completion_status TEXT NOT NULL DEFAULT 'complete',
      playback_status TEXT
    )`,
@@ -60,6 +61,7 @@ const MIGRATIONS = [
   "ALTER TABLE messages ADD COLUMN turn_id INTEGER",
   "ALTER TABLE messages ADD COLUMN completion_status TEXT NOT NULL DEFAULT 'complete'",
   "ALTER TABLE messages ADD COLUMN playback_status TEXT",
+  "ALTER TABLE messages ADD COLUMN runtime_turn_id TEXT",
 ];
 
 interface MessageRow {
@@ -74,6 +76,7 @@ interface MessageRow {
   sticker: string | null;
   mood: string | null;
   turn_id: number | null;
+  runtime_turn_id: string | null;
   completion_status: string | null;
   playback_status: string | null;
 }
@@ -104,6 +107,7 @@ function toMessage(row: MessageRow): ChatMessage {
     sticker: row.sticker ?? undefined,
     mood: row.mood ? normalizeMood(row.mood) : undefined,
     turnId: row.turn_id ?? undefined,
+    runtimeTurnId: row.runtime_turn_id ?? undefined,
     ...(row.completion_status === "interrupted" ? { completion: "interrupted" as const } : {}),
     playbackStatus: row.playback_status === "played" ? "played" : undefined,
     source: row.source as MessageSource,
@@ -160,8 +164,8 @@ export async function createSqliteStorage(executor?: SqlExecutor): Promise<AikaS
       await db.execute(
         `INSERT OR REPLACE INTO messages
            (id, role, source, content, japanese_text, chinese_translation, created_at, is_error, sticker, mood,
-            turn_id, completion_status, playback_status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+            turn_id, runtime_turn_id, completion_status, playback_status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
         [
           message.id,
           message.role,
@@ -174,6 +178,7 @@ export async function createSqliteStorage(executor?: SqlExecutor): Promise<AikaS
           message.sticker ?? null,
           message.mood ?? null,
           message.turnId ?? null,
+          message.runtimeTurnId ?? null,
           message.completion ?? "complete",
           message.playbackStatus ?? null,
         ],

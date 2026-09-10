@@ -27,6 +27,14 @@ export interface ChatMessage extends ChatTurn {
   sticker?: string;
   /** 运行时关联的用户回合；旧消息没有此字段时仍按旧数据读取。 */
   turnId?: number;
+  /**
+   * CompanionRuntime 的轮次 id。
+   *
+   * 与上面的 `turnId` 是两回事，不要合并：`turnId` 是语音回合号（number），
+   * 已经落在库里；Runtime 用的是 uuid（string）。改写旧字段的语义会让已有数据
+   * 变成垃圾，所以这里新开一个字段，旧消息没有它是正常的，不要回填假值。
+   */
+  runtimeTurnId?: string;
   /** 这条消息是怎么来的。proactive 用于统计每日主动消息条数。 */
   source?: MessageSource;
   pending?: boolean;

@@ -59,4 +59,6 @@ export const SETTING_KEYS = {
   voiceBackend: "voice.backend",
   whisperEndpoint: "voice.whisperEndpoint",
   mode: "llm.mode",
+  /** CORE-03 迁移期开关：legacy | kernel。CORE-06 随旧路径一起删除。 */
+  orchestrator: "core.orchestrator",
 } as const;

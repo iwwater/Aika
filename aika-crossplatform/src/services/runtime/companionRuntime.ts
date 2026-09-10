@@ -42,6 +42,14 @@ export interface SubmitRequest {
   text: string;
   source: TurnSource;
   mode: ModeConfig;
+  /**
+   * 语音回合号，透传用。
+   *
+   * 它和 Runtime 自己的 turnId 是两回事：这个是 number，已经落在库里；Runtime
+   * 用的是 uuid。合并两者会让已有数据变成垃圾，所以只是原样带上，不参与任何
+   * 生命周期判定——判定一律用 Runtime 的 turnId 与 revision。
+   */
+  voiceTurnId?: number;
 }
 
 export interface TurnSettlement {
@@ -144,6 +152,8 @@ export const DEFAULT_DELIVERY_TIMEOUT_MS = 30_000;
 
 interface Turn {
   id: string;
+  /** 语音回合号，只用于落库时带上，不参与判定。 */
+  voiceTurnId?: number;
   /** 每次 submit 递增：晚到的旧轮回调靠它作废。 */
   revision: number;
   source: TurnSource;
@@ -217,6 +227,8 @@ function assistantMessage(
   return {
     ...base,
     completion,
+    runtimeTurnId: turn.id,
+    ...(turn.voiceTurnId === undefined ? {} : { turnId: turn.voiceTurnId }),
     ...(playbackStatus ? { playbackStatus } : {}),
   };
 }
@@ -359,7 +371,12 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
     await finishAsInterrupted(turn);
   }
 
-  function createTurn(query: string, source: TurnSource, mode: ModeConfig): Turn {
+  function createTurn(
+    query: string,
+    source: TurnSource,
+    mode: ModeConfig,
+    voiceTurnId?: number,
+  ): Turn {
     const controller = new AbortController();
     let resolve!: (settlement: TurnSettlement) => void;
     const done = new Promise<TurnSettlement>((settlePromise) => {
@@ -367,6 +384,7 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
     });
     return {
       id: idFactory(),
+      ...(voiceTurnId === undefined ? {} : { voiceTurnId }),
       revision: 0,
       source,
       mode,
@@ -428,6 +446,8 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
       createdAt: startedAt,
       time: formatClockTime(startedAt),
       source: turn.source,
+      runtimeTurnId: turn.id,
+      ...(turn.voiceTurnId === undefined ? {} : { turnId: turn.voiceTurnId }),
     };
 
     let history: ChatMessage[];
@@ -580,7 +600,7 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
       // 单会话最多一个活动轮：新的一句先把旧的取消掉，再生成新的 turnId。
       if (active && !active.settled) void cancelTurn(active);
 
-      const turn = createTurn(text, request.source, request.mode ?? DEFAULT_MODE_CONFIG);
+      const turn = createTurn(text, request.source, request.mode ?? DEFAULT_MODE_CONFIG, request.voiceTurnId);
       revision += 1;
       turn.revision = revision;
       active = turn;

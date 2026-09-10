@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { activeNotifier } from "../services/notification/notifier";
+import { activeRuntimeServices, type RuntimeServices } from "../services/runtime/activeRuntime";
 import { DEFAULT_CHARACTER } from "../domain/character";
-import type { CompanionReply } from "../domain/companion";
+import { toCompanionReply, type CompanionReply } from "../domain/companion";
 import {
   buildCompanionContext, companionMessage, formatClockTime, toCompanionTurns, userMessage,
   type ChatMessage, type MessageSource,
@@ -260,6 +261,31 @@ export function useCompanionSession() {
     await persistRef.current?.(message);
   }, []);
 
+  /**
+   * 把界面对齐到存储里的实际结果。
+   *
+   * kernel 编排下消息由 Runtime 写库，它用的是自己的 id 和时间戳；界面为了即时
+   * 反馈先画了一对乐观消息。不对齐的话界面和库里就是两套 id，重开会看到重复的
+   * 一轮。落库是权威，界面跟着它走。
+   */
+  const resyncMessages = useCallback(async (): Promise<ChatMessage[]> => {
+    const storage = storageRef.current;
+    if (!storage) return messagesRef.current;
+    const rows = await storage.listMessages(MESSAGE_WINDOW);
+    if (!rows.length) {
+      const empty = [welcomeMessage()];
+      setMessages(empty);
+      return empty;
+    }
+    // 开场白从来不落库。直接拿库里的结果覆盖，会让用户发出第一句话的瞬间
+    // 问候语凭空消失——重开时它本来就不在，但会话中途消失是另一回事。
+    const current = messagesRef.current;
+    const keepWelcome = current[0]?.id === "welcome";
+    const next = keepWelcome ? [current[0], ...rows] : rows;
+    setMessages(next);
+    return next;
+  }, []);
+
   /** 抽取候选记忆并压缩更早的对话。失败只记录，不打断聊天。 */
   const runBackgroundMemoryWork = useCallback(async (allMessages: ChatMessage[]) => {
     const storage = storageRef.current;
@@ -348,7 +374,7 @@ export function useCompanionSession() {
    * 走流式：气泡逐字长出来，语音页据此让第一句提前开口。
    * `onPartial` 是给语音页的额外出口——聊天气泡的更新在这里已经做掉了。
    */
-  const send = useCallback(async (
+  const sendViaLegacy = useCallback(async (
     content: string,
     source: MessageSource = "text",
     onPartial?: (partial: PartialReply) => void,
@@ -522,6 +548,170 @@ export function useCompanionSession() {
       }
     }
   }, [buildContext, connected, modeConfig, persist, runBackgroundMemoryWork]);
+
+  /**
+   * kernel 编排路径。
+   *
+   * 与旧路径最大的不同：turn 的生命周期、取消、落库全部由 CompanionRuntime 负责，
+   * 这里只做三件事——把用户操作交给 Runtime、把 Runtime 事件映射成界面状态、
+   * 在结算后用存储里的实际结果对齐界面。
+   *
+   * 「结算后重新读一次存储」不是偷懒。Runtime 生成的用户消息与回复消息有它自己的
+   * id 和时间戳，界面为了即时反馈先画了一对乐观消息；不对齐的话，界面和库里就是
+   * 两套 id，下次重开会看到重复的一轮。落库是权威，界面跟着它走。
+   *
+   * 语音轮在**生成完成时**就返回，不等交付回执：调用方要拿到回复才去启动播放，
+   * 等在这里会直接死锁。交付结算在后台继续，与旧路径的 deferredPlaybackCompletion
+   * 行为一致。
+   */
+  const sendViaKernel = useCallback(async (
+    services: RuntimeServices,
+    content: string,
+    source: MessageSource,
+    onPartial?: (partial: PartialReply) => void,
+    request?: VoiceTurnRequest,
+  ): Promise<CompanionReply | null> => {
+    if (!content || busyRef.current || !connected || request?.signal.aborted) return null;
+    busyRef.current = true;
+    setSending(true);
+
+    // Runtime 不认识 React，配置从这里同步过去。
+    services.settings.set(providerRef.current);
+    services.settings.setStickers(stickersRef.current);
+
+    const askedAt = Date.now();
+    const pendingId = crypto.randomUUID();
+    const optimisticAsked = userMessage(content, askedAt, request?.turnId);
+    const pending: ChatMessage = {
+      id: pendingId, role: "assistant", content: "",
+      createdAt: askedAt, time: formatClockTime(askedAt), pending: true, turnId: request?.turnId,
+    };
+    setMessages((current) => [...current, optimisticAsked, pending]);
+
+    let latestPartial: PartialReply = {
+      japaneseText: "", chineseTranslation: "", mood: "neutral", japaneseComplete: false,
+    };
+    let reply: CompanionReply | null = null;
+    let failureDetail = "";
+    let resolveGenerated!: () => void;
+    const generated = new Promise<void>((resolve) => {
+      resolveGenerated = resolve;
+    });
+
+    const handle = services.runtime.submit({
+      text: content, source, mode: modeConfig, voiceTurnId: request?.turnId,
+    });
+
+    const patchPending = (partial: PartialReply) => {
+      latestPartial = partial;
+      setMessages((current) => current.map((message) => (
+        message.id === pendingId
+          ? {
+              ...message,
+              content: partial.japaneseText,
+              japaneseText: partial.japaneseText,
+              chineseTranslation: partial.chineseTranslation,
+              mood: partial.mood,
+            }
+          : message
+      )));
+      onPartial?.(partial);
+    };
+
+    const unsubscribe = services.runtime.subscribe((event) => {
+      // 旧轮的迟到事件不许覆盖新消息。
+      if (event.turnId !== handle.turnId) return;
+      if (event.type === "replyDelta") {
+        patchPending({ ...latestPartial, japaneseText: event.cumulative, japaneseComplete: false });
+        return;
+      }
+      if (event.type === "generated") {
+        reply = toCompanionReply(event.reply);
+        patchPending({
+          japaneseText: reply.japaneseText,
+          chineseTranslation: reply.chineseTranslation ?? "",
+          mood: reply.mood ?? "neutral",
+          japaneseComplete: true,
+        });
+        resolveGenerated();
+        return;
+      }
+      if (event.type === "error") {
+        failureDetail = event.message || event.code;
+      }
+    });
+
+    const onAbort = () => services.runtime.cancel(handle.turnId);
+    request?.signal.addEventListener("abort", onAbort, { once: true });
+    if (request) {
+      // 播放进度由 TTS 侧给，Runtime 据此决定这轮算 complete 还是 interrupted。
+      //
+      // precision 用 confirmed 而不是 proxy：onPlaybackComplete 对应的是播放队列
+      // 的 drained——「交给它的文本全念完了」是确证的，不是估算。Runtime 只在
+      // confirmed 时才判 played，用 proxy 会把每一轮正常播完的语音都记成
+      // interrupted/unknown，与旧路径的行为不一致，也不符合事实。
+      // 真正拿不到播放范围的情况走 onPlaybackFailed，那条记 unknown。
+      request.onPlaybackComplete = () => services.runtime.reportDelivery({
+        turnId: handle.turnId, status: "complete", precision: "confirmed",
+      });
+      request.onPlaybackFailed = () => services.runtime.reportDelivery({
+        turnId: handle.turnId, status: "failed", precision: "unknown",
+      });
+    }
+
+    /** 结算之后把界面对齐到库里的实际结果，并按需要跑后台记忆工作。 */
+    const finish = async (settlement: Awaited<typeof handle.done>) => {
+      unsubscribe();
+      request?.signal.removeEventListener("abort", onAbort);
+
+      if (settlement.state === "failed") {
+        // Runtime 只负责把这轮判失败，它不写「发不出去」这种界面消息。
+        const failedAt = Date.now();
+        const failure: ChatMessage = {
+          id: pendingId, role: "assistant",
+          content: `这次没有发出去：${failureDetail || settlement.errorCode || "未知错误"}`,
+          turnId: request?.turnId, runtimeTurnId: handle.turnId,
+          createdAt: failedAt, time: formatClockTime(failedAt), error: true,
+        };
+        await persist(failure);
+      }
+
+      const rows = await resyncMessages();
+      if (settlement.state === "completed") void runBackgroundMemoryWork(rows);
+    };
+
+    try {
+      if (request) {
+        // 语音：生成完就把控制权交回去，交付结算在后台继续。
+        await Promise.race([generated, handle.done]);
+        void handle.done.then(finish).catch(() => undefined);
+      } else {
+        await finish(await handle.done);
+      }
+      return reply;
+    } finally {
+      busyRef.current = false;
+      setSending(false);
+    }
+  }, [connected, modeConfig, persist, resyncMessages, runBackgroundMemoryWork]);
+
+  /**
+   * 编排入口。
+   *
+   * 装了运行时服务就走 Runtime，否则走旧路径。开关在组合根读取，这里只看结果——
+   * 一次运行内不会变，中途切换会让在途轮次归属不清。
+   */
+  const send = useCallback((
+    content: string,
+    source: MessageSource = "text",
+    onPartial?: (partial: PartialReply) => void,
+    request?: VoiceTurnRequest,
+  ): Promise<CompanionReply | null> => {
+    const services = activeRuntimeServices();
+    return services
+      ? sendViaKernel(services, content, source, onPartial, request)
+      : sendViaLegacy(content, source, onPartial, request);
+  }, [sendViaKernel, sendViaLegacy]);
 
   /** 主动消息。频率闸门与理由选择都在 domain/proactive.ts，这里只负责跑一次。 */
   const runProactiveTick = useCallback(async () => {

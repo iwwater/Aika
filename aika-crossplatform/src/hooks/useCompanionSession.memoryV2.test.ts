@@ -71,6 +71,39 @@ vi.mock("../services/providerClient", () => ({
 }));
 
 import { useCompanionSession } from "./useCompanionSession";
+import { createCompanionRuntime } from "../services/runtime/companionRuntime";
+import { createStreamChatProvider } from "../services/runtime/providerAdapter";
+import { createProviderSettings } from "../services/runtime/providerSettings";
+import { installRuntimeServices, resetInstalledRuntimeServices } from "../services/runtime/activeRuntime";
+import { PROVIDER_PRESETS } from "../domain/providers";
+import { createMemoryRepository } from "../services/memory/memoryRepository";
+import { createMemorySource } from "../services/memory/memorySource";
+
+/** CORE-03-A：同一份记忆测试跑新旧两条编排。 */
+let orchestrator: "legacy" | "kernel" = "legacy";
+
+function installOrchestrator() {
+  resetInstalledRuntimeServices();
+  if (orchestrator !== "kernel") return;
+  const settings = createProviderSettings(PROVIDER_PRESETS[1]);
+  // 记忆上下文源在生产上由 memoryPlugin 提供；这里按同样的方式接上，
+  // 否则 kernel 路径的提示词里不会有检索到的记忆，测的就不是同一件事了。
+  const store = mocks.storage.memoryV2;
+  const sources = store
+    ? [createMemorySource(createMemoryRepository({ store }))]
+    : [];
+  installRuntimeServices({
+    settings,
+    runtime: createCompanionRuntime({
+      provider: createStreamChatProvider({
+        getConfig: () => settings.get(),
+        getStickers: () => settings.getStickers(),
+      }),
+      storage: mocks.storage,
+      sources,
+    }),
+  });
+}
 
 const providerReply: CompanionReply = {
   japaneseText: "浅煎りだよね。",
@@ -128,6 +161,7 @@ function legacyMemory(overrides: Partial<MemoryRecord> = {}): MemoryRecord {
 
 async function render(): Promise<{ session: any; harness: HookHarness }> {
   const harness = mocks.hook as HookHarness;
+  installOrchestrator();
   harness.render(() => useCompanionSession());
   await flushMicrotasks();
   return { session: harness.rerender(), harness };
@@ -139,9 +173,16 @@ beforeEach(() => {
   mocks.streamChat.mockResolvedValue(providerReply);
 });
 
-afterEach(() => mocks.hook.cleanup());
+afterEach(() => {
+  mocks.hook.cleanup();
+  resetInstalledRuntimeServices();
+});
 
-describe("记忆 V2 接入", () => {
+describe.each(["legacy", "kernel"] as const)("记忆 V2 接入 (%s)", (mode) => {
+  beforeEach(() => {
+    orchestrator = mode;
+  });
+
   it("启动时把 V1 记忆迁进 V2，界面显示的是 V2 内容", async () => {
     const store = createInMemoryMemoryStore();
     mocks.storage = createStorage([legacyMemory()], store, null);

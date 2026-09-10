@@ -110,6 +110,28 @@ export function runStorageConformance(harness: PortHarness<AikaStorage>): void {
       });
     });
 
+    it("runtimeTurnId 与旧 turnId 并存，读旧数据不回填假值", async () => {
+      await withStorage(async (storage) => {
+        // 新数据：两个 id 都在。它们是两回事——turnId 是语音回合号（number，
+        // 已经落在库里），runtimeTurnId 是 Runtime 的 uuid。
+        await storage.appendMessage(message("new", 100, {
+          turnId: 7,
+          runtimeTurnId: "run-abc",
+        }));
+        // 旧数据：只有 turnId，没有 runtimeTurnId。
+        await storage.appendMessage(message("old", 50, { turnId: 3 }));
+
+        const rows = await storage.listMessages(10);
+        const fresh = rows.find((item) => item.id === "new");
+        const legacy = rows.find((item) => item.id === "old");
+
+        expect(fresh).toMatchObject({ turnId: 7, runtimeTurnId: "run-abc" });
+        // 缺失就是缺失：不许回填空串、0 或任何占位值。
+        expect(legacy?.turnId).toBe(3);
+        expect(legacy?.runtimeTurnId).toBeUndefined();
+      });
+    });
+
     it("时间戳只统计非错误消息", async () => {
       await withStorage(async (storage) => {
         await storage.appendMessage(message("ok", 100));

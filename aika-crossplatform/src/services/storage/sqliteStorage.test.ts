@@ -41,7 +41,8 @@ describe("SQLite voice/message schema compatibility", () => {
     const second = await createSqliteStorage();
 
     const alterCalls = sqliteMock.execute.mock.calls.filter(([statement]) => statement.startsWith("ALTER TABLE"));
-    expect(alterCalls).toHaveLength(10);
+    // 6 条加列迁移 × 2 次开库；CORE-03 增加 runtime_turn_id 后由 10 变 12。
+    expect(alterCalls).toHaveLength(12);
 
     const old = await first.listMessages(20);
     expect(old[0]).toMatchObject({ id: "old-1", content: "旧消息" });
