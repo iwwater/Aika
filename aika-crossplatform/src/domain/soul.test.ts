@@ -39,6 +39,34 @@ describe("LLM-01 Soul 与 Mode", () => {
     expect(modePolicyText(exited)).not.toContain("临时身份：");
   });
 
+  it("规范化和退出都是纯函数，不改写传入配置", () => {
+    const input = {
+      schemaVersion: 0,
+      mode: "scenario_practice",
+      targetLanguage: "en-US",
+      correctionPreference: "gentle",
+      replyLength: "short",
+      scenario: {
+        scenarioId: "interview",
+        title: "面试",
+        setting: "会议室",
+        temporaryIdentity: "候选人",
+        goal: "完成自我介绍",
+        exitCondition: "用户说退出",
+      },
+    } as const;
+    const before = JSON.parse(JSON.stringify(input));
+
+    const normalized = normalizeModeConfig(input);
+    const exited = exitScenarioMode(normalized);
+
+    expect(input).toEqual(before);
+    expect(normalized.scenario?.temporaryIdentity).toBe("候选人");
+    expect(exited).not.toBe(normalized);
+    expect(normalized.mode).toBe("scenario_practice");
+    expect(normalized.scenario).toBeDefined();
+  });
+
   it("UserSoul 保留可追溯来源，LLM-01 不自动填充", () => {
     const soul: UserSoul = {
       ...EMPTY_USER_SOUL,

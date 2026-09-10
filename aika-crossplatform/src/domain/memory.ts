@@ -71,6 +71,196 @@ function normalizeForCompare(content: string): string {
   return content.trim().toLowerCase().replace(/[\s，。、,.!！?？~～]/g, "");
 }
 
+/* -------------------------------------------------------------------------- */
+/* LLM-03：Memory V2                                                           */
+/* -------------------------------------------------------------------------- */
+
+export const MEMORY_TYPES = ["fact", "preference", "event", "goal", "relationship"] as const;
+export type MemoryType = (typeof MEMORY_TYPES)[number];
+
+export const MEMORY_STATUS_V2 = ["candidate", "confirmed", "superseded"] as const;
+export type MemoryStatusV2 = (typeof MEMORY_STATUS_V2)[number];
+
+export type MemorySourceKind = "messages" | "legacy" | "userEdit";
+
+/**
+ * 带来源的记忆。
+ *
+ * V1 只有「内容与状态」，回答不了三个后来一定会问的问题：这句话从哪来、
+ * 还能不能当真、什么时候过期。V2 把这三件事都写成字段，并且**不伪造来源**——
+ * 迁移来的旧记录 `sourceMessageIds` 一律为空，宁可来源不明，也不能编一个。
+ */
+export interface MemoryRecordV2 {
+  schemaVersion: 2;
+  id: string;
+  type: MemoryType;
+  content: string;
+  sourceMessageIds: string[];
+  sourceKind: MemorySourceKind;
+  status: MemoryStatusV2;
+  /** [0,1]；null 表示未知，未知不能当高置信度用。 */
+  confidence: number | null;
+  /** [0,1]；旧数据没有这个字段，默认 0.5。 */
+  importance: number;
+  createdAt: number;
+  updatedAt: number;
+  lastConfirmedAt: number | null;
+  /** 只是「被读到」，不代表这条事实变新，也不代表它被确认。 */
+  lastAccessedAt: number | null;
+  validFrom: number | null;
+  validUntil: number | null;
+  supersedesId?: string;
+}
+
+/** 旧 category → 新 type。映射固定下来，迁移重跑才不会漂。 */
+const CATEGORY_TO_TYPE: Record<MemoryCategory, MemoryType> = {
+  日常: "event",
+  偏好: "preference",
+  计划: "goal",
+  人际: "relationship",
+  情绪: "fact",
+};
+
+/** 抽取候选的 category 走同一张映射表，避免两处各写一份。 */
+export function memoryTypeFromCategory(category: unknown): MemoryType {
+  return typeof category === "string" && isMemoryCategory(category)
+    ? CATEGORY_TO_TYPE[category]
+    : "fact";
+}
+
+/** 反向映射：V2 读出来给只认 category 的既有界面用。 */
+const TYPE_TO_CATEGORY: Record<MemoryType, MemoryCategory> = {
+  preference: "偏好",
+  goal: "计划",
+  relationship: "人际",
+  event: "日常",
+  fact: "日常",
+};
+
+export function memoryCategoryFromType(type: unknown): MemoryCategory {
+  return isMemoryType(type) ? TYPE_TO_CATEGORY[type] : DEFAULT_MEMORY_CATEGORY;
+}
+
+/**
+ * V2 → V1 视图。
+ *
+ * 界面与旧提示词路径只认 MemoryRecord；这里只做形状转换，
+ * 不把 V2 才有的字段（来源、有效期）凭空补出来。
+ */
+export function toLegacyMemoryRecord(record: MemoryRecordV2): MemoryRecord {
+  return {
+    id: record.id,
+    category: memoryCategoryFromType(record.type),
+    content: record.content,
+    status: record.status === "confirmed" ? "confirmed" : "pending",
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
+export function isMemoryType(value: unknown): value is MemoryType {
+  return typeof value === "string" && (MEMORY_TYPES as readonly string[]).includes(value);
+}
+
+export function isMemoryStatusV2(value: unknown): value is MemoryStatusV2 {
+  return typeof value === "string" && (MEMORY_STATUS_V2 as readonly string[]).includes(value);
+}
+
+function clamp01(value: number, fallback = 0.5): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(Math.max(value, 0), 1);
+}
+
+/**
+ * V1 → V2。
+ *
+ * 幂等：同一条旧记录重复迁移得到同一结果（id、时间戳、内容都不变），
+ * 因此可以在启动时反复执行。缺的来源不会补，重要性用默认值 0.5。
+ */
+export function migrateMemoryRecord(record: MemoryRecord): MemoryRecordV2 {
+  const status: MemoryStatusV2 = record.status === "confirmed" ? "confirmed" : "candidate";
+  return {
+    schemaVersion: 2,
+    id: record.id,
+    type: CATEGORY_TO_TYPE[record.category] ?? "fact",
+    content: record.content,
+    sourceMessageIds: [],
+    sourceKind: "legacy",
+    status,
+    confidence: null,
+    importance: 0.5,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    lastConfirmedAt: status === "confirmed" ? record.updatedAt : null,
+    lastAccessedAt: null,
+    validFrom: null,
+    validUntil: null,
+  };
+}
+
+export interface CreateMemoryV2Input {
+  content: string;
+  type?: MemoryType;
+  sourceMessageIds?: readonly string[];
+  sourceKind?: MemorySourceKind;
+  status?: MemoryStatusV2;
+  confidence?: number | null;
+  importance?: number;
+  now?: number;
+  id?: string;
+  validFrom?: number | null;
+  validUntil?: number | null;
+  supersedesId?: string;
+}
+
+function newId(): string {
+  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `mem-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+/** 建一条 V2 记忆。正文为空时返回 null，与 V1 的 createMemory 行为一致。 */
+export function createMemoryV2(input: CreateMemoryV2Input): MemoryRecordV2 | null {
+  const content = input.content.trim();
+  if (!content) return null;
+  const now = input.now ?? Date.now();
+  return {
+    schemaVersion: 2,
+    id: input.id ?? newId(),
+    type: isMemoryType(input.type) ? input.type : "fact",
+    content,
+    sourceMessageIds: [...new Set((input.sourceMessageIds ?? []).filter((id) => typeof id === "string" && id))],
+    sourceKind: input.sourceKind ?? "messages",
+    status: isMemoryStatusV2(input.status) ? input.status : "candidate",
+    confidence: input.confidence === null || input.confidence === undefined ? null : clamp01(input.confidence, 0.5),
+    importance: clamp01(input.importance ?? 0.5),
+    createdAt: now,
+    updatedAt: now,
+    lastConfirmedAt: input.status === "confirmed" ? now : null,
+    lastAccessedAt: null,
+    validFrom: input.validFrom ?? null,
+    validUntil: input.validUntil ?? null,
+    ...(input.supersedesId ? { supersedesId: input.supersedesId } : {}),
+  };
+}
+
+/** 内容指纹：删除后只留它做抑制标记，正文一个字都不留。 */
+export function memoryContentHash(content: string): string {
+  const normalized = normalizeForCompare(content);
+  let hash = 5381;
+  for (let index = 0; index < normalized.length; index += 1) {
+    hash = ((hash << 5) + hash + normalized.charCodeAt(index)) | 0;
+  }
+  return `h${(hash >>> 0).toString(16)}`;
+}
+
+/** 判断两条记忆是否重复，沿用 V1 的去重口径。 */
+export function isDuplicateMemoryV2(content: string, existing: readonly MemoryRecordV2[]): boolean {
+  const normalized = normalizeForCompare(content);
+  if (!normalized) return true;
+  return existing.some((record) => normalizeForCompare(record.content) === normalized);
+}
+
 /** 解析抽取模型返回的候选列表，格式错误时返回空数组而不是抛错。 */
 export function parseMemoryCandidates(modelText: string): MemoryCandidate[] {
   const trimmed = (modelText ?? "")

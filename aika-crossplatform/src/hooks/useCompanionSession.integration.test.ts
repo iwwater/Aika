@@ -1,84 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { HookHarness } from "./hookHarness";
 import type { ChatMessage } from "../domain/conversation";
 import type { CompanionReply } from "../domain/companion";
 import type { MemoryRecord } from "../domain/memory";
 import type { VoiceTurnRequest } from "../domain/voiceRuntime";
-
-class HookHarness {
-  private slots: Array<{ kind: string; value: any; deps?: readonly unknown[]; cleanup?: () => void }> = [];
-  private cursor = 0;
-  private renderFunction: (() => unknown) | null = null;
-  result: any;
-
-  render(renderFunction: () => unknown) {
-    this.renderFunction = renderFunction;
-    this.cursor = 0;
-    this.result = renderFunction();
-    return this.result;
-  }
-
-  rerender() {
-    if (!this.renderFunction) throw new Error("hook has not been rendered");
-    return this.render(this.renderFunction);
-  }
-
-  useRef(initial: unknown) {
-    const slot = this.take("ref", { current: initial });
-    return slot.value;
-  }
-
-  useState(initial: unknown) {
-    const slot = this.take("state", typeof initial === "function" ? (initial as () => unknown)() : initial);
-    const setState = (next: unknown) => {
-      slot.value = typeof next === "function"
-        ? (next as (value: unknown) => unknown)(slot.value)
-        : next;
-    };
-    return [slot.value, setState] as const;
-  }
-
-  useMemo(factory: () => unknown, deps: readonly unknown[] | undefined) {
-    const slot = this.take("memo", undefined);
-    if (!slot.deps || !sameDeps(slot.deps, deps)) {
-      slot.value = factory();
-      slot.deps = deps;
-    }
-    return slot.value;
-  }
-
-  useCallback(factory: unknown, deps: readonly unknown[] | undefined) {
-    return this.useMemo(() => factory, deps);
-  }
-
-  useEffect(effect: () => void | (() => void), deps: readonly unknown[] | undefined) {
-    const slot = this.take("effect", undefined);
-    if (!slot.deps || !sameDeps(slot.deps, deps)) {
-      slot.cleanup?.();
-      const cleanup = effect();
-      slot.cleanup = typeof cleanup === "function" ? cleanup : undefined;
-      slot.deps = deps;
-    }
-  }
-
-  cleanup() {
-    for (const slot of this.slots) slot.cleanup?.();
-    this.slots = [];
-  }
-
-  private take(kind: string, initial: unknown) {
-    const current = this.slots[this.cursor];
-    if (current && current.kind !== kind) throw new Error(`hook order changed: ${current.kind} -> ${kind}`);
-    const slot = current ?? { kind, value: initial };
-    this.slots[this.cursor] = slot;
-    this.cursor += 1;
-    return slot;
-  }
-}
-
-function sameDeps(left: readonly unknown[], right: readonly unknown[] | undefined) {
-  if (!right || left.length !== right.length) return false;
-  return left.every((value, index) => Object.is(value, right[index]));
-}
 
 const mocks = vi.hoisted(() => {
   const state: any = {
@@ -217,6 +142,9 @@ describe("useCompanionSession voice persistence boundary", () => {
     const firstController = new AbortController();
     const firstRequest: VoiceTurnRequest = { turnId: 1, signal: firstController.signal };
     const firstSend = session.send("第一轮", "voice", undefined, firstRequest);
+    // LLM-03：send 现在要先按本轮 query 检索记忆，再发起 Provider 请求，
+    // 所以这里必须等微任务推进到流真正建立之后才能拿到 onPartial。
+    await flushMicrotasks();
     const firstStream = mocks.currentStream as { resolve: (reply: CompanionReply) => void; onPartial: (partial: any) => void };
     firstStream.onPartial({ japaneseText: "聞こえたよ。", chineseTranslation: "", mood: "neutral", japaneseComplete: false });
     firstStream.resolve(providerReply);
@@ -236,6 +164,7 @@ describe("useCompanionSession voice persistence boundary", () => {
     const secondController = new AbortController();
     const secondRequest: VoiceTurnRequest = { turnId: 2, signal: secondController.signal };
     const secondSend = session.send("第二轮", "voice", undefined, secondRequest);
+    await flushMicrotasks();
     const secondStream = mocks.currentStream as { resolve: (reply: CompanionReply) => void };
     secondStream.resolve(providerReply);
     await secondSend;
@@ -257,6 +186,7 @@ describe("useCompanionSession voice persistence boundary", () => {
     session = harness.rerender();
 
     const firstSend = session.send("第一轮文本", "text");
+    await flushMicrotasks();
     const firstStream = mocks.currentStream as {
       resolve: (reply: CompanionReply) => void;
       onPartial: (partial: any) => void;
@@ -281,6 +211,7 @@ describe("useCompanionSession voice persistence boundary", () => {
     expect(mocks.streamChat.mock.calls[0][5]).toBeUndefined();
 
     const secondSend = session.send("第二轮文本", "text");
+    await flushMicrotasks();
     const secondStream = mocks.currentStream as { resolve: (reply: CompanionReply) => void };
     secondStream.resolve(providerReply);
     await expect(secondSend).resolves.toEqual(providerReply);
@@ -335,6 +266,7 @@ describe("useCompanionSession voice persistence boundary", () => {
     ))).toHaveLength(2);
 
     const recoverySend = session.send("恢复轮", "text");
+    await flushMicrotasks();
     const recoveryStream = mocks.currentStream as { resolve: (reply: CompanionReply) => void };
     recoveryStream.resolve(providerReply);
     await expect(recoverySend).resolves.toEqual(providerReply);
@@ -384,5 +316,94 @@ describe("useCompanionSession voice persistence boundary", () => {
     expect(session.modeConfig.mode).toBe("companion");
     expect(session.modeConfig.scenario).toBeUndefined();
     expect(JSON.parse((await mocks.storage.getSetting("llm.mode"))!).mode).toBe("companion");
+  });
+
+  it("模式保存失败时保留原配置并暴露错误，不伪称退出场景成功", async () => {
+    const render = () => useCompanionSession();
+    const harness = mocks.hook as HookHarness;
+    let session = harness.render(render);
+    await flushMicrotasks();
+    session = harness.rerender();
+
+    await session.setModeConfig({
+      schemaVersion: 1,
+      mode: "scenario_practice",
+      targetLanguage: "en-US",
+      correctionPreference: "gentle",
+      replyLength: "short",
+      scenario: {
+        scenarioId: "interview",
+        title: "面试",
+        setting: "会议室",
+        temporaryIdentity: "候选人",
+        goal: "完成自我介绍",
+        exitCondition: "用户说退出",
+      },
+    });
+    session = harness.rerender();
+    const before = JSON.parse(JSON.stringify(session.modeConfig));
+    const saved = await mocks.storage.getSetting("llm.mode");
+    const originalSetSetting = mocks.storage.setSetting;
+    mocks.storage.setSetting = vi.fn(async (key: string, value: string) => {
+      if (key === "llm.mode") throw new Error("磁盘只读");
+      return originalSetSetting(key, value);
+    });
+
+    await expect(session.exitScenario()).rejects.toThrow("磁盘只读");
+    session = harness.rerender();
+
+    expect(session.modeConfig).toEqual(before);
+    expect(await mocks.storage.getSetting("llm.mode")).toBe(saved);
+    expect(session.storageError).toContain("模式设置保存失败：磁盘只读");
+
+    mocks.storage.setSetting = originalSetSetting;
+    await session.exitScenario();
+    session = harness.rerender();
+    expect(session.modeConfig.mode).toBe("companion");
+    expect(session.storageError).toBe("");
+  });
+
+  it("连续两次模式保存失败后成功，只清理模式错误并保留其它存储错误", async () => {
+    let failInitialRead = true;
+    const originalGetSetting = mocks.storage.getSetting;
+    mocks.storage.getSetting = vi.fn(async (key: string) => {
+      if (failInitialRead && key === "voice.backend") throw new Error("数据库读取失败");
+      return originalGetSetting(key);
+    });
+
+    const render = () => useCompanionSession();
+    const harness = mocks.hook as HookHarness;
+    let session = harness.render(render);
+    await flushMicrotasks();
+    failInitialRead = false;
+    session = harness.rerender();
+    expect(session.storageError).toContain("数据库读取失败");
+
+    const originalSetSetting = mocks.storage.setSetting;
+    let failureMessage = "quota-A";
+    mocks.storage.setSetting = vi.fn(async (key: string, value: string) => {
+      if (key === "llm.mode") throw new Error(failureMessage);
+      return originalSetSetting(key, value);
+    });
+    const nextMode = {
+      schemaVersion: 1 as const,
+      mode: "oral_practice" as const,
+      targetLanguage: "en-US" as const,
+      correctionPreference: "gentle" as const,
+      replyLength: "short" as const,
+    };
+
+    await expect(session.setModeConfig(nextMode)).rejects.toThrow("quota-A");
+    failureMessage = "quota-B";
+    await expect(session.setModeConfig(nextMode)).rejects.toThrow("quota-B");
+    session = harness.rerender();
+    expect(session.storageError).toContain("quota-A");
+    expect(session.storageError).toContain("quota-B");
+
+    mocks.storage.setSetting = originalSetSetting;
+    await session.setModeConfig(nextMode);
+    session = harness.rerender();
+    expect(session.modeConfig).toMatchObject({ mode: "oral_practice", targetLanguage: "en-US" });
+    expect(session.storageError).toBe("数据库读取失败");
   });
 });

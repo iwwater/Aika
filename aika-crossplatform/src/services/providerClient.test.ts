@@ -85,6 +85,17 @@ describe("sendChat", () => {
       .rejects.toThrow("没有返回可显示的文本");
   });
 
+  it("canonical replyText 为 null 时不回退旧正文，生产 Provider 显式失败", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({
+      choices: [{ message: { content: JSON.stringify({
+        replyText: null,
+        japanese_text: "旧正文不应显示",
+      }) } }],
+    })));
+    await expect(sendChat(baseConfig, "system", [{ role: "user", content: "hi" }]))
+      .rejects.toThrow("没有返回可显示的文本");
+  });
+
   it("把取消信号传给 Provider 请求", async () => {
     const controller = new AbortController();
     const request = vi.fn().mockResolvedValue(jsonResponse({ choices: [{ message: { content: replyJson } }] }));
@@ -130,8 +141,8 @@ function sseResponse(lines: string[]) {
 describe("streamChat", () => {
   it("边收边回调，最后返回解析好的完整回复", async () => {
     const request = vi.fn().mockResolvedValue(sseResponse([
-      'data: {"choices":[{"delta":{"content":"{\\"japanese_text\\":\\"こん"}}]}',
-      'data: {"choices":[{"delta":{"content":"にちは\\",\\"chinese_translation\\":\\"你好\\"}"}}]}',
+      'data: {"choices":[{"delta":{"content":"{\\"replyText\\":\\"こん"}}]}',
+      'data: {"choices":[{"delta":{"content":"にちは\\",\\"translation\\":\\"你好\\"}"}}]}',
       "data: [DONE]",
     ]));
     vi.stubGlobal("fetch", request);
@@ -144,6 +155,27 @@ describe("streamChat", () => {
     expect(seen[0]).toBe("こん");
     expect(reply).toMatchObject({ japaneseText: "こんにちは", chineseTranslation: "你好", mood: "neutral", schemaVersion: 1 });
     expect(JSON.parse(request.mock.calls[0][1].body).stream).toBe(true);
+  });
+
+  it("旧正文先到、canonical 后到时下游增量不回退且不重复", async () => {
+    const deltas = [
+      '{"japanese_text":"旧正文。",',
+      '"replyText":"新正文。"}',
+    ];
+    const request = vi.fn().mockResolvedValue(sseResponse([
+      ...deltas.map((content) => `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}`),
+      "data: [DONE]",
+    ]));
+    vi.stubGlobal("fetch", request);
+
+    const seen: string[] = [];
+    const reply = await streamChat(baseConfig, "system", [{ role: "user", content: "你好" }], (partial) => {
+      seen.push(partial.japaneseText);
+    });
+
+    expect(seen).toEqual(["新正文。"]);
+    expect(reply.japaneseText).toBe("新正文。");
+    expect(seen[seen.length - 1]).toBe(reply.japaneseText);
   });
 
   it("认得 Anthropic 的 content_block_delta", async () => {
@@ -199,6 +231,16 @@ describe("streamChat", () => {
       .rejects.toThrow("connection reset");
   });
 
+  it("流在不完整 JSON 结束时失败，不把协议残片当普通正文", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(sseResponse([
+      'data: {"choices":[{"delta":{"content":"{\\"replyText\\":\\"hi\\""}}]}',
+      "data: [DONE]",
+    ])));
+
+    await expect(streamChat(baseConfig, "system", [{ role: "user", content: "hi" }], () => undefined))
+      .rejects.toThrow("没有返回可显示的文本");
+  });
+
   it("流是空的时候退回非流式", async () => {
     const request = vi.fn()
       .mockResolvedValueOnce(sseResponse(["data: [DONE]"]))
@@ -216,7 +258,7 @@ describe("streamChat", () => {
         if (sent) return;
         sent = true;
         stream.enqueue(new TextEncoder().encode(
-          'data: {"choices":[{"delta":{"content":"{\\"japanese_text\\":\\"こん"}}]}\n',
+          'data: {"choices":[{"delta":{"content":"{\\"replyText\\":\\"こん"}}]}\n',
         ));
       },
     }), { status: 200 });

@@ -6,7 +6,12 @@ import {
   buildCompanionContext, companionMessage, formatClockTime, toCompanionTurns, userMessage,
   type ChatMessage, type MessageSource,
 } from "../domain/conversation";
-import { memoryLines, type MemoryRecord } from "../domain/memory";
+import {
+  createMemoryV2, memoryLines, memoryTypeFromCategory, toLegacyMemoryRecord,
+  type MemoryRecord, type MemoryRecordV2,
+} from "../domain/memory";
+import { MEMORY_TYPE_LABELS } from "../domain/memoryRetrieval";
+import { createMemoryRepository, type MemoryRepository } from "../services/memory/memoryRepository";
 import { buildConversationInput, buildInstructions, buildProactiveInput } from "../domain/prompt";
 import {
   DEFAULT_CHARACTER_SOUL, DEFAULT_MODE_CONFIG, exitScenarioMode, normalizeModeConfig,
@@ -65,6 +70,16 @@ function replacePendingMessage(
   return current.map((message) => (message.id === pendingId ? replacement : message));
 }
 
+function appendVisibleError(current: string, next: string): string {
+  if (!current) return next;
+  if (current.split("\n").includes(next)) return current;
+  return `${current}\n${next}`;
+}
+
+function removeVisibleError(current: string, target: string): string {
+  return current.split("\n").filter((line) => line !== target).join("\n");
+}
+
 function interruptedMessage(
   partial: PartialReply,
   pendingId: string,
@@ -89,6 +104,11 @@ function interruptedMessage(
     createdAt,
     time: formatClockTime(createdAt),
   };
+}
+
+/** V2 记录 → 界面列表：隐藏被取代的，其余转成 V1 视图。 */
+function visibleMemories(records: readonly MemoryRecordV2[]): MemoryRecord[] {
+  return records.filter((record) => record.status !== "superseded").map(toLegacyMemoryRecord);
 }
 
 async function notify(title: string, body: string) {
@@ -121,6 +141,8 @@ export function useCompanionSession() {
   const [sending, setSending] = useState(false);
 
   const storageRef = useRef<AikaStorage | null>(null);
+  /** LLM-03：有 V2 存储时用它做检索、写入与删除联动；没有则退回 V1 路径。 */
+  const memoryRepositoryRef = useRef<MemoryRepository | null>(null);
   const providerRef = useRef(provider);
   providerRef.current = provider;
   const stickersRef = useRef(stickers);
@@ -130,6 +152,7 @@ export function useCompanionSession() {
   const busyRef = useRef(false);
   const requestSeqRef = useRef(0);
   const activeRequestRef = useRef<number | null>(null);
+  const modeSaveErrorsRef = useRef(new Set<string>());
   const persistedMessageIdsRef = useRef(new Set<string>());
   const persistRef = useRef<((message: ChatMessage) => Promise<void>) | null>(null);
   if (!persistRef.current) {
@@ -190,7 +213,25 @@ export function useCompanionSession() {
       setKeyIsSecure(await secretStore.secure());
       setProviderState(savedProvider);
       setMessages(savedMessages.length ? savedMessages : [welcomeMessage()]);
-      setMemories(savedMemories);
+
+      // LLM-03：先建 V2 仓储并迁入旧记忆，再决定界面列表。
+      // 迁移幂等，重复启动不会重复；旧摘要无法溯源，删除记忆时整段作废。
+      if (storage.memoryV2) {
+        const repository = createMemoryRepository({
+          store: storage.memoryV2,
+          onInvalidate: async () => {
+            await storage.deleteSummaries?.();
+            if (cancelled) return;
+            setSummary(null);
+            setSummaryCoversUntil(0);
+          },
+        });
+        memoryRepositoryRef.current = repository;
+        if (savedMemories.length) await repository.migrateLegacy(savedMemories);
+        setMemories(visibleMemories(await repository.list()));
+      } else {
+        setMemories(savedMemories);
+      }
       setTimestamps(savedTimestamps);
       setSummary(savedSummary?.content ?? null);
       setSummaryCoversUntil(savedSummary?.coversUntil ?? 0);
@@ -225,11 +266,32 @@ export function useCompanionSession() {
     if (!storage || !memoryExtractionEnabled) return;
 
     try {
-      const turns = toCompanionTurns(allMessages.slice(-4));
+      const recent = allMessages.slice(-4);
+      const turns = toCompanionTurns(recent);
       const extracted = await extractor.extract(turns, memories);
       if (extracted.length) {
-        await storage.addMemories(extracted);
-        setMemories((current) => [...current, ...extracted]);
+        const repository = memoryRepositoryRef.current;
+        if (repository) {
+          // 带上来源消息 id：这既是「两份独立证据」的判据，也是删除联动的依据。
+          const sourceMessageIds = recent.map((message) => message.id).filter(Boolean);
+          const now = Date.now();
+          const candidates = extracted.flatMap((record) => {
+            const candidate = createMemoryV2({
+              content: record.content,
+              type: memoryTypeFromCategory(record.category),
+              sourceMessageIds,
+              sourceKind: "messages",
+              status: "candidate",
+              now,
+            });
+            return candidate ? [candidate] : [];
+          });
+          await repository.upsert(candidates);
+          setMemories(visibleMemories(await repository.list()));
+        } else {
+          await storage.addMemories(extracted);
+          setMemories((current) => [...current, ...extracted]);
+        }
       }
     } catch {
       // 抽取失败不影响这一轮对话，下一轮会再试。
@@ -253,15 +315,32 @@ export function useCompanionSession() {
     }
   }, [extractor, memories, memoryExtractionEnabled, summary, summaryCoversUntil]);
 
-  const buildContext = useCallback((history: ChatMessage[], now = Date.now()) => (
-    buildCompanionContext({
+  const buildContext = useCallback(async (
+    history: ChatMessage[],
+    now = Date.now(),
+    options: { query?: string; recentFallback?: boolean } = {},
+  ) => {
+    const repository = memoryRepositoryRef.current;
+    let memoriesForPrompt: string[];
+    if (!repository) {
+      // 没有 V2 存储：保持原来的「最近记忆全量注入」。
+      memoriesForPrompt = memoryLines(memories);
+    } else if (options.query?.trim()) {
+      // 有 query 就按检索结果注入；无相关命中就是不注入，不硬扯无关记忆。
+      const hits = await repository.retrieve({ text: options.query, now, limit: 8, tokenBudget: 400 });
+      memoriesForPrompt = hits.map((hit) => `${MEMORY_TYPE_LABELS[hit.record.type]}：${hit.record.content}`);
+    } else {
+      // 主动消息没有 query：用最近记忆当「想起对方」的素材。
+      memoriesForPrompt = options.recentFallback ? memoryLines(memories) : [];
+    }
+    return buildCompanionContext({
       messages: history,
-      memories: memoryLines(memories),
+      memories: memoriesForPrompt,
       summary,
       timestamps,
       now,
-    })
-  ), [memories, summary, timestamps]);
+    });
+  }, [memories, summary, timestamps]);
 
   /**
    * 发一轮。
@@ -359,7 +438,7 @@ export function useCompanionSession() {
 
     try {
       // 上下文不含刚发出的这一句：它作为「用户刚刚说」单独交给提示词。
-      const context = buildContext(history);
+      const context = await buildContext(history, Date.now(), { query: content });
       const reply = await streamChat(
         providerRef.current,
         buildInstructions(context, DEFAULT_CHARACTER_SOUL, stickersRef.current, modeConfig),
@@ -465,7 +544,7 @@ export function useCompanionSession() {
 
     busyRef.current = true;
     try {
-      const context = buildContext(messages, now);
+      const context = await buildContext(messages, now, { recentFallback: true });
       const lastUserAt = [...messages].reverse().find((message) => message.role === "user")?.createdAt ?? null;
       const reason = chooseProactiveReason({
         recentTurns: context.recentTurns,
@@ -527,8 +606,36 @@ export function useCompanionSession() {
 
   const setModeConfig = useCallback(async (next: ModeConfig) => {
     const normalized = normalizeModeConfig(next);
+    const storage = storageRef.current;
+    if (!storage) {
+      const failure = new Error("模式设置保存失败：本地存储尚未准备好");
+      modeSaveErrorsRef.current.add(failure.message);
+      setStorageError((current) => appendVisibleError(current, failure.message));
+      throw failure;
+    }
+    try {
+      // 只有持久化成功后才确认新的内存状态；失败时保留原配置，
+      // 避免界面看起来已经切换但重载后悄悄回滚。
+      await storage.setSetting(SETTING_KEYS.mode, JSON.stringify(normalized));
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      const failure = new Error(`模式设置保存失败：${detail}`);
+      modeSaveErrorsRef.current.add(failure.message);
+      setStorageError((current) => appendVisibleError(current, failure.message));
+      throw failure;
+    }
+    const modeSaveErrors = modeSaveErrorsRef.current;
+    if (modeSaveErrors.size) {
+      modeSaveErrorsRef.current = new Set<string>();
+      setStorageError((current) => {
+        let next = current;
+        for (const modeSaveError of modeSaveErrors) {
+          next = removeVisibleError(next, modeSaveError);
+        }
+        return next;
+      });
+    }
     setModeConfigState(normalized);
-    await storageRef.current?.setSetting(SETTING_KEYS.mode, JSON.stringify(normalized));
   }, []);
 
   const setMode = useCallback(async (mode: ModeId) => {
@@ -540,6 +647,16 @@ export function useCompanionSession() {
   }, [modeConfig, setModeConfig]);
 
   const confirmMemory = useCallback(async (id: string) => {
+    const repository = memoryRepositoryRef.current;
+    if (repository) {
+      const record = (await repository.list()).find((item) => item.id === id);
+      if (record) {
+        // 确认是用户的动作，不是抽取的结果：这里写 confirmed 并记下确认时间。
+        await repository.upsert([{ ...record, status: "confirmed", lastConfirmedAt: Date.now() }]);
+        setMemories(visibleMemories(await repository.list()));
+        return;
+      }
+    }
     await storageRef.current?.setMemoryStatus(id, "confirmed");
     setMemories((current) => current.map((memory) => (
       memory.id === id ? { ...memory, status: "confirmed", updatedAt: Date.now() } : memory
@@ -547,6 +664,13 @@ export function useCompanionSession() {
   }, []);
 
   const deleteMemory = useCallback(async (id: string) => {
+    const repository = memoryRepositoryRef.current;
+    if (repository) {
+      // forget 会落下抑制标记并触发摘要失效；被删的来源之后不会让记忆复活。
+      await repository.forget(id);
+      setMemories(visibleMemories(await repository.list()));
+      return;
+    }
     await storageRef.current?.deleteMemory(id);
     setMemories((current) => current.filter((memory) => memory.id !== id));
   }, []);

@@ -1,6 +1,7 @@
 import type { ChatMessage } from "../../domain/conversation";
 import type { MemoryRecord, MemoryStatus } from "../../domain/memory";
 import type { SessionSummary } from "../../domain/summary";
+import type { MemoryV2Store } from "../memory/memoryStore";
 
 /**
  * 持久化边界。
@@ -12,6 +13,14 @@ import type { SessionSummary } from "../../domain/summary";
  */
 export interface AikaStorage {
   readonly kind: "sqlite" | "local";
+
+  /**
+   * LLM-03 记忆 V2 端口。
+   *
+   * 可选：老实现与测试 fake 不提供它，调用方必须能退回 V1 的
+   * `listMemories/addMemories/...`。桌面端与浏览器端都会提供。
+   */
+  readonly memoryV2?: MemoryV2Store;
 
   /** 最近 limit 条消息，按时间正序。 */
   listMessages(limit: number): Promise<ChatMessage[]>;
@@ -29,6 +38,13 @@ export interface AikaStorage {
 
   latestSummary(): Promise<SessionSummary | null>;
   saveSummary(summary: SessionSummary): Promise<void>;
+  /**
+   * 让已有摘要整体失效（LLM-03 删除记忆时用）。
+   *
+   * 摘要没有可用的消息溯源，删掉某条记忆后无法只摘掉其中一句，
+   * 因此保守地整段作废，下一轮再压缩一次。老实现可以不提供。
+   */
+  deleteSummaries?(): Promise<void>;
 
   getSetting(key: string): Promise<string | null>;
   setSetting(key: string, value: string): Promise<void>;

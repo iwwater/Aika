@@ -1,6 +1,7 @@
 import type { ChatMessage } from "../../domain/conversation";
 import type { MemoryRecord, MemoryStatus } from "../../domain/memory";
 import type { SessionSummary } from "../../domain/summary";
+import { browserBackend, createLocalMemoryStore } from "../memory/localMemoryStore";
 import type { AikaStorage } from "./contracts";
 
 /**
@@ -25,10 +26,11 @@ function read<T>(key: string, fallback: T): T {
   }
 }
 
-function write(key: string, value: unknown) {
+function write(key: string, value: unknown, throwOnError = false) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
-  } catch {
+  } catch (error) {
+    if (throwOnError) throw error;
     // 写不进去就算了：这是开发期回退，不该让界面崩掉。
   }
 }
@@ -36,6 +38,8 @@ function write(key: string, value: unknown) {
 export function createLocalStorage(): AikaStorage {
   return {
     kind: "local",
+    // 浏览器降级：整份快照一次替换，写失败就抛错，旧快照不动。
+    memoryV2: createLocalMemoryStore(browserBackend()),
 
     async listMessages(limit) {
       return read<ChatMessage[]>(KEYS.messages, []).slice(-limit);
@@ -97,12 +101,18 @@ export function createLocalStorage(): AikaStorage {
       write(KEYS.summaries, [...read<SessionSummary[]>(KEYS.summaries, []), summary]);
     },
 
+    async deleteSummaries() {
+      write(KEYS.summaries, []);
+    },
+
     async getSetting(key) {
       return read<Record<string, string>>(KEYS.settings, {})[key] ?? null;
     },
 
     async setSetting(key, value) {
-      write(KEYS.settings, { ...read<Record<string, string>>(KEYS.settings, {}), [key]: value });
+      // ModeStore 依赖这个 Promise 判断“保存是否成功”；设置不能静默吞掉
+      // quota/security 错误，否则 UI 会确认一个重载后消失的模式。
+      write(KEYS.settings, { ...read<Record<string, string>>(KEYS.settings, {}), [key]: value }, true);
     },
   };
 }

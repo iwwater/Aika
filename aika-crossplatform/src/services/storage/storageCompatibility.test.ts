@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { createLocalStorage } from "./localStorageStorage";
 
-function installLocalStorage() {
+function installLocalStorage(throwOnSet = false) {
   const values = new Map<string, string>();
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => values.get(key) ?? null,
-    setItem: (key: string, value: string) => values.set(key, value),
+    setItem: (key: string, value: string) => {
+      if (throwOnSet) throw new Error("quota exceeded");
+      values.set(key, value);
+    },
     removeItem: (key: string) => values.delete(key),
   });
 }
@@ -27,5 +30,13 @@ describe("browser storage compatibility", () => {
     expect(messages[0].turnId).toBeUndefined();
     expect(messages[0].completion).toBeUndefined();
     expect(messages[0].playbackStatus).toBeUndefined();
+  });
+
+  it("设置写入失败时传播错误，供模式保存边界拒绝确认", async () => {
+    installLocalStorage(true);
+    const storage = createLocalStorage();
+
+    await expect(storage.setSetting("llm.mode", "{}"))
+      .rejects.toThrow("quota exceeded");
   });
 });

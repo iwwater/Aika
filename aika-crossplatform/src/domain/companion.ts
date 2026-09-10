@@ -177,22 +177,36 @@ function normalizeActions(value: unknown, sticker?: string): ReplyAction[] {
   return sticker ? [{ type: "sticker", payload: { id: sticker } }] : [];
 }
 
+function hasOwn(payload: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(payload, key);
+}
+
 function normalizeReply(payload: Record<string, unknown>): ReplyEnvelopeV1 | null {
-  const replyText = typeof payload.replyText === "string"
-    ? payload.replyText.trim()
-    : typeof payload.reply_text === "string"
-      ? payload.reply_text.trim()
-      : typeof payload.japanese_text === "string" ? payload.japanese_text.trim() : "";
-  const translation = typeof payload.translation === "string"
-    ? payload.translation.trim()
-    : typeof payload.chinese_translation === "string" ? payload.chinese_translation.trim() : "";
+  // canonical 字段一旦存在就锁定，即使值为 null/非 string 也不能静默回退旧字段；
+  // 这样 provider 才能把违反协议的回复显式判失败，而不是混用两套正文。
+  const replyValue = hasOwn(payload, "replyText")
+    ? payload.replyText
+    : hasOwn(payload, "reply_text") ? payload.reply_text : payload.japanese_text;
+  const translationValue = hasOwn(payload, "translation")
+    ? payload.translation
+    : payload.chinese_translation;
+  if ((hasOwn(payload, "replyText") && typeof replyValue !== "string")
+    || (hasOwn(payload, "translation") && typeof translationValue !== "string")) {
+    return null;
+  }
+  const replyText = typeof replyValue === "string" ? replyValue.trim() : "";
+  const translation = typeof translationValue === "string" ? translationValue.trim() : "";
   if (!replyText && !translation) return null;
   const sticker = typeof payload.sticker === "string" ? payload.sticker.trim() : "";
-  const rawCandidates = payload.memoryCandidates ?? payload.memory_candidates;
-  const rawActions = payload.actions ?? payload.action ?? payload.toolCalls;
+  const rawCandidates = hasOwn(payload, "memoryCandidates")
+    ? payload.memoryCandidates
+    : payload.memory_candidates;
+  const rawActions = hasOwn(payload, "actions")
+    ? payload.actions
+    : hasOwn(payload, "action") ? payload.action : payload.toolCalls;
   return {
     schemaVersion: 1,
-    mood: normalizeMood(payload.mood ?? payload.emotion),
+    mood: normalizeMood(hasOwn(payload, "mood") ? payload.mood : payload.emotion),
     replyText,
     translation,
     memoryCandidates: normalizeMemoryCandidates(rawCandidates),
@@ -247,6 +261,20 @@ export function parseCompanionReply(modelText: string): CompanionReply {
       replyText: "",
       translation: "",
       mood: normalizeMood(payload.mood ?? payload.emotion),
+      memoryCandidates: [],
+      actions: [],
+    });
+  }
+
+  // 结构化协议一旦以 JSON object 开头却没有闭合/通过校验，不能把协议残片
+  // 当普通正文显示。这样 provider 的 finish() 才能把坏回复显式判失败，
+  // 也不会把半截 JSON 落成一条看似成功的消息。
+  if (trimmed.startsWith("{")) {
+    return toCompanionReply({
+      schemaVersion: 1,
+      replyText: "",
+      translation: "",
+      mood: normalizeMood(null),
       memoryCandidates: [],
       actions: [],
     });

@@ -2,6 +2,7 @@ import Database from "@tauri-apps/plugin-sql";
 import { formatClockTime, type ChatMessage, type MessageSource } from "../../domain/conversation";
 import { isMemoryCategory, type MemoryRecord } from "../../domain/memory";
 import { normalizeMood } from "../../domain/mood";
+import { createSqliteMemoryStore, ensureMemorySchema } from "../memory/sqliteMemoryStore";
 import type { AikaStorage } from "./contracts";
 
 /**
@@ -134,8 +135,13 @@ export async function createSqliteStorage(): Promise<AikaStorage> {
     }
   }
 
+  // 记忆 V2 表与 FTS 索引。FTS 建不出来时降级为全量检索，不影响记忆读写，
+  // 所以这里只需要拿到「索引有没有」，不需要让整个存储启动失败。
+  const { fts } = await ensureMemorySchema(db);
+
   return {
     kind: "sqlite",
+    memoryV2: createSqliteMemoryStore(db, { fts }),
 
     async listMessages(limit) {
       const rows = await db.select<MessageRow[]>(
@@ -239,6 +245,10 @@ export async function createSqliteStorage(): Promise<AikaStorage> {
         "INSERT INTO summaries (content, covers_until, created_at) VALUES ($1, $2, $3)",
         [summary.content, summary.coversUntil, summary.createdAt],
       );
+    },
+
+    async deleteSummaries() {
+      await db.execute("DELETE FROM summaries");
     },
 
     async getSetting(key) {

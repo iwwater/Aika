@@ -314,6 +314,25 @@ export async function streamChat(
   options: ProviderRequestOptions = {},
 ): Promise<CompanionReply> {
   let raw = "";
+  let lastPartial: PartialReply | null = null;
+
+  function emitPartial(partial: PartialReply) {
+    if (!partial.japaneseText && !partial.chineseTranslation
+      && partial.mood === "neutral" && !partial.japaneseComplete) {
+      return;
+    }
+    // Provider chunk 在字段结束符/翻译到达时可能不再增加正文；不把相同快照
+    // 重复发给字幕/TTS 下游，且允许 mood/translation 等其它字段单独更新。
+    if (lastPartial
+      && lastPartial.japaneseText === partial.japaneseText
+      && lastPartial.chineseTranslation === partial.chineseTranslation
+      && lastPartial.mood === partial.mood
+      && lastPartial.japaneseComplete === partial.japaneseComplete) {
+      return;
+    }
+    lastPartial = partial;
+    onPartial(partial);
+  }
 
   try {
     const response = await post(prepare(config, systemPrompt, history, "companion-reply", true, stickerIds), options);
@@ -321,7 +340,7 @@ export async function streamChat(
       const delta = deltaOf(config, payload);
       if (!delta) return;
       raw += delta;
-      onPartial(parsePartialReply(raw));
+      emitPartial(parsePartialReply(raw));
     }, options.signal);
   } catch (error) {
     if (options.signal?.aborted || isAbortError(error)) throw (options.signal?.aborted ? abortError() : error);

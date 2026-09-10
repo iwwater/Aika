@@ -123,7 +123,11 @@ function normalizeScenario(value: unknown): ScenarioConfig {
     temporaryIdentity: asString(raw.temporaryIdentity, DEFAULT_SCENARIO.temporaryIdentity),
     goal: asString(raw.goal, DEFAULT_SCENARIO.goal),
     exitCondition: asString(raw.exitCondition, DEFAULT_SCENARIO.exitCondition),
-    targetLanguage: normalizeChoice(raw.targetLanguage, ["ja-JP", "zh-CN", "en-US"], DEFAULT_SCENARIO.targetLanguage!),
+    targetLanguage: normalizeChoice(
+      raw.targetLanguage,
+      ["ja-JP", "zh-CN", "en-US"] as const,
+      DEFAULT_SCENARIO.targetLanguage ?? "ja-JP",
+    ),
   };
 }
 
@@ -132,8 +136,10 @@ export function isModeId(value: unknown): value is ModeId {
 }
 
 export function normalizeModeConfig(value: unknown): ModeConfig {
-  const raw = typeof value === "string"
-    ? { mode: value }
+  // 显式标注成 Partial<ModeConfig>：否则「字符串简写」这一支会被推断成一个
+  // 只有 mode 的独立对象类型，后面访问 targetLanguage 等处都会因为联合类型报错。
+  const raw: Partial<ModeConfig> = typeof value === "string"
+    ? { mode: value as ModeId }
     : value && typeof value === "object" ? value as Partial<ModeConfig> : {};
   const mode = isModeId(raw.mode) ? raw.mode : DEFAULT_MODE_CONFIG.mode;
   const targetLanguage = normalizeChoice(raw.targetLanguage, ["ja-JP", "zh-CN", "en-US"], DEFAULT_MODE_CONFIG.targetLanguage);
@@ -160,6 +166,9 @@ export function modePolicyText(config: ModeConfig): string {
     "CharacterSoul 的角色 ID、稳定人格和边界在所有模式中保持不变。",
     "模式配置不能覆盖 CharacterSoul，也不能把临时身份写入 CharacterSoul 或长期记忆。",
     `目标语言策略：${mode.targetLanguage}；回复长度：${mode.replyLength}。`,
+    `本轮语言优先级：用户明确的语言要求 > 当前 Mode 的目标语言（${mode.targetLanguage}） > 角色的自然多语习惯。`,
+    "用户明确要求中文、英语或日语时，直接按该要求写 replyText；translation 不能代替 replyText 的语言。",
+    "memoryCandidates 只是供后续确认的候选，不等于已写入 UserSoul；没有实际持久化结果，不要说“记下了”“已保存”或“会记住”。",
   ];
   if (mode.mode === "companion") {
     return ["当前模式：companion（普通陪伴聊天）。", "自然回应用户，不主动进行语言教学或反馈。", ...common].join("\n");
@@ -169,6 +178,7 @@ export function modePolicyText(config: ModeConfig): string {
       "当前模式：oral_practice（口语练习）。",
       `纠正偏好：${mode.correctionPreference}。只有在设置允许时才纠正，并先回应交流内容。`,
       "练习目标语言可配置，不要把目标语言写死成日语。",
+      "当前输入是文本，不能判断发音、口音、音量或实际口语表现；只依据用户提供的文字给表达、词汇、语法或场景反馈，不声称听见或纠正未提供的发音。",
       ...common,
     ].join("\n");
   }

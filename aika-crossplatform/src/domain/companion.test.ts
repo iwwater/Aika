@@ -135,6 +135,65 @@ describe("ReplyEnvelopeV1 归一化", () => {
     });
   });
 
+  it("同一回复同时含新旧字段时 canonical 优先，不能拼接两套正文", () => {
+    const reply = parseCompanionReply(JSON.stringify({
+      mood: "happy",
+      emotion: "sad",
+      replyText: "canonical 正文",
+      reply_text: "legacy 正文",
+      japanese_text: "old 正文",
+      translation: "canonical 翻译",
+      chinese_translation: "legacy 翻译",
+      memoryCandidates: [],
+      memory_candidates: [{ category: "偏好", content: "旧候选" }],
+      actions: [],
+      action: { type: "sticker", payload: { id: "legacy-sticker" } },
+    }));
+
+    expect(reply).toMatchObject({
+      mood: "happy",
+      replyText: "canonical 正文",
+      translation: "canonical 翻译",
+      memoryCandidates: [],
+      actions: [],
+    });
+    expect(reply.japaneseText).not.toContain("legacy");
+    expect(reply.chineseTranslation).not.toContain("legacy");
+  });
+
+  it("canonical 空正文也不回退到旧正文", () => {
+    const reply = parseCompanionReply(JSON.stringify({
+      replyText: "",
+      japanese_text: "旧正文不应覆盖 canonical 空值",
+      translation: "",
+      chinese_translation: "",
+    }));
+    expect(reply.replyText).toBe("");
+    expect(reply.japaneseText).toBe("");
+    expect(reply.chineseTranslation).toBe("");
+  });
+
+  it("canonical 非 string 存在时显式失败，不回退到旧正文", () => {
+    const reply = parseCompanionReply(JSON.stringify({
+      replyText: null,
+      japanese_text: "旧正文不应显示",
+      translation: "",
+    }));
+    expect(reply.replyText).toBe("");
+    expect(reply.japaneseText).toBe("");
+    expect(reply.chineseTranslation).toBe("");
+  });
+
+  it("嵌套字段不影响顶层 canonical 归一", () => {
+    const reply = parseCompanionReply(JSON.stringify({
+      memoryCandidates: [{ replyText: "嵌套资料" }],
+      actions: [{ type: "sticker", payload: { replyText: "嵌套动作" } }],
+      replyText: "顶层正文",
+      translation: "顶层翻译",
+    }));
+    expect(reply).toMatchObject({ replyText: "顶层正文", translation: "顶层翻译" });
+  });
+
   it("旧 toolCalls 与未知动作只保留已知 sticker，不执行未知工具", () => {
     const reply = parseCompanionReply(JSON.stringify({
       japanese_text: "うん",

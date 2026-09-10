@@ -41,6 +41,7 @@ describe("buildInstructions", () => {
 
   it("输出契约允许原话是任意一种语言或混说", () => {
     expect(buildInstructions(context(), persona)).toContain("日语、中文、英语或混着说都照原样写");
+    expect(buildInstructions(context(), persona)).toContain("replyText 本身必须使用该语言");
   });
 
   it("保留反模板句规则", () => {
@@ -81,6 +82,32 @@ describe("buildInstructions", () => {
     expect(instructions).toContain("en-US");
     expect(instructions).toContain("纠正偏好：gentle");
     expect(instructions).toContain("不要把目标语言写死成日语");
+    expect(instructions).toContain("不能判断发音、口音、音量或实际口语表现");
+    expect(instructions).toContain("不声称听见或纠正未提供的发音");
+  });
+
+  it("用户本轮语言要求优先于 Mode 默认目标语言", () => {
+    const instructions = buildInstructions(context(), persona, [], {
+      schemaVersion: 1,
+      mode: "companion",
+      targetLanguage: "ja-JP",
+      correctionPreference: "none",
+      replyLength: "normal",
+    });
+    expect(instructions).toContain("用户明确的语言要求 > 当前 Mode 的目标语言（ja-JP）");
+    expect(instructions).toContain("translation 不能代替 replyText 的语言");
+  });
+
+  it("候选画像不冒充已经持久化", () => {
+    const instructions = buildInstructions(context(), persona);
+    expect(instructions).toContain("memoryCandidates 只是供后续确认的候选，不等于已写入 UserSoul");
+    expect(instructions).toContain("没有实际持久化结果，不要说“记下了”“已保存”或“会记住”");
+  });
+
+  it("不为提问编造当前身体或物理环境经历", () => {
+    const instructions = buildInstructions(context(), persona);
+    expect(instructions).toContain("除非 Mode/场景明确提供，不要凭空声称当前身体动作、物理环境");
+    expect(instructions).not.toContain("先说你自己的事，再问对方的");
   });
 
   it("scenario_practice 只注入临时身份和退出条件，不改变角色 Soul", () => {
@@ -165,7 +192,7 @@ describe("提问规则：她可以问，但不能带人机味", () => {
   it("要求问题挂在具体的东西上", () => {
     const instructions = buildInstructions(context(), persona);
     expect(instructions).toContain("提问必须挂在具体的东西上");
-    expect(instructions).toContain("先说你自己的事，再问对方的");
+    expect(instructions).toContain("先接住用户刚说的具体内容或情绪，再决定是否延伸");
   });
 
   it("点名禁掉万能问句", () => {
@@ -213,7 +240,7 @@ describe("buildInstructions 的表情包规则", () => {
   it("反模板句与提问规则不受影响", () => {
     const instructions = buildInstructions(context(), persona, stickers);
     expect(instructions).toContain("避免重复“我会一直陪着你”");
-    expect(instructions).toContain("先说你自己的事，再问对方的。");
+    expect(instructions).toContain("先接住用户刚说的具体内容或情绪，再决定是否延伸");
   });
 });
 
