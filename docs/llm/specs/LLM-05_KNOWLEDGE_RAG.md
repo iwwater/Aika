@@ -10,6 +10,59 @@
 - 负责范围：本地知识导入、FTS 索引、检索服务与 Context adapter。
 - 不做：不做知识图谱、向量库、网络爬取和全流程语音调试。
 
+## 架构与接口设计
+
+```mermaid
+flowchart LR
+  D[Markdown / JSON] --> C[Chunk + Metadata]
+  C --> V[Versioned Staging Index]
+  V --> A[Atomic Activate]
+  Q[Query + Character + Stage] --> F[Access Filter]
+  A --> F
+  F --> B[BM25 Top K]
+  B --> X[Context Knowledge]
+```
+
+```ts
+interface KnowledgeDocument {
+  id: string;
+  sourcePath: string;
+  contentHash: string;
+  version: number;
+  characterId: string;
+  type: "character" | "world" | "oral" | "scenario";
+  tags: string[];
+  unlockStage: "new" | "familiar" | "close";
+}
+interface KnowledgeChunk {
+  id: string;
+  documentId: string;
+  section: string;
+  text: string;
+  order: number;
+}
+interface KnowledgeQuery {
+  text: string;
+  characterId: string;
+  stage: KnowledgeDocument["unlockStage"];
+  mode: ModeId;
+  limit: number;
+  tokenBudget: number;
+}
+interface KnowledgeIndex {
+  importDocuments(paths: readonly string[]): Promise<{ version: number; count: number }>;
+  removeDocument(id: string): Promise<void>;
+  retrieve(query: KnowledgeQuery): Promise<readonly KnowledgeHit[]>;
+}
+// KnowledgeHit = chunk + document metadata + normalized score + source citation。
+```
+
+现有关系枚举若不同，边界显式映射，不修改关系评分。角色/解锁过滤必须在 Top-K 之前；缓存键包括 indexVersion、characterId、stage、mode、归一 query、limit、budget。文档更新先写 staging 索引，事务切换 activeVersion 后才对查询可见；失败保留旧版。删除同步索引、缓存与来源引用。
+
+默认按标题/段落切分，超长段限定尺寸并保留 section；相同内容哈希不重复导入。中文/日文使用统一词法归一与切分策略，英语采用词边界；索引和查询必须共用实现，不假定空格分词够用。
+
+检索超时/空结果返回带原因的空知识 section，LLM 回复可继续。引文引用 documentId/chunkId/version，文档内部指令永远是资料，不变成 Runtime 命令。LLM-05-A/B/C 使用临时索引和固定资料验证，不读取私人文件或外部知识服务。
+
 ## 实施内容与验收条件
 
 交付 Markdown/JSON 切块、来源/type/tags/unlockStage、FTS/BM25 检索和 Context 注入，覆盖 character/world/oral/scenario；过滤先于 Top-K，关系阶段进入缓存键。无图谱/向量库。

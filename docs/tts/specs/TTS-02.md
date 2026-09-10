@@ -1,5 +1,9 @@
 # TTS-02 · 停止与交付状态
 
+## 架构与接口依据
+
+本 SPEC 必须实现 [模块架构与接口](../ARCHITECTURE.md) 中对应阶段的端口、事件、状态与错误语义；通过 adapter 兼容现有实现。下方 AC 同时验证这些契约，无需启动其他真实模块。
+
 需求与边界见 [模块 PRD](../PRD.md)，依赖遵循 [共享契约](../../modules/CONTRACTS.md)。
 
 交付幂等 stop(turnId)、旧 generation 屏蔽、语言和风格白名单、进度精度标注。

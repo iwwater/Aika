@@ -10,6 +10,60 @@
 - 负责范围：domain/memory、services/memory、services/storage 的记忆接口与迁移。
 - 不做：不新增模型实时分析调用、向量库或全产品界面。
 
+## 架构与接口设计
+
+```mermaid
+flowchart LR
+  Q[Query] --> F[Eligibility Filter]
+  F --> R[FTS / Lexical Rank]
+  R --> B[Budgeted Top K]
+  B --> C[Memory Context]
+  W[Correct / Delete] --> T[Atomic Storage Update]
+  T --> I[Index / Summary / Soul invalidation]
+```
+
+```ts
+interface MemoryRecordV2 {
+  schemaVersion: 2;
+  id: string;
+  type: "fact" | "preference" | "event" | "goal" | "relationship";
+  content: string;
+  sourceMessageIds: string[];
+  sourceKind: "messages" | "legacy" | "userEdit";
+  status: "candidate" | "confirmed" | "superseded";
+  confidence: number | null; // [0,1]；null=unknown
+  importance: number; // [0,1]，旧数据默认0.5
+  createdAt: number;
+  updatedAt: number;
+  lastConfirmedAt: number | null;
+  lastAccessedAt: number | null;
+  validFrom: number | null;
+  validUntil: number | null;
+  supersedesId?: string;
+}
+interface MemoryQuery { text: string; now: number; limit: number; tokenBudget: number; }
+interface MemoryHit {
+  record: MemoryRecordV2;
+  score: number;
+  reasons: string[];
+  temporalStatus: "current" | "past";
+}
+interface MemoryRepository {
+  retrieve(query: MemoryQuery): Promise<MemoryHit[]>;
+  upsert(records: readonly MemoryRecordV2[]): Promise<void>;
+  supersede(oldId: string, next: MemoryRecordV2): Promise<void>;
+  forget(id: string): Promise<void>;
+}
+```
+
+过滤排除 superseded；过期 event 可标 past，其它过期事实不作当前事实。检索分数归一后默认 `0.7*relevance + 0.2*recency + 0.1*importance`，recency 使用实际事件/确认/创建时间，不能因刚访问就变新事实。算法、归一方式和阈值在代码中版本化；先固定测试集再校准阈值，无相关匹配返回空集。
+
+SQLite 存储、FTS 索引与替代关系须事务化；localStorage 降级采用单次快照替换，失败保持旧快照。原 pending→candidate，保留旧 category 映射，不伪造 sourceMessageIds。迁移版本在事务最后更新，重复运行幂等。
+
+forget 原子清除记录/索引，失效相关摘要、Soul 和缓存，保存最小来源抑制标记防止旧来源重新抽取；不保留已删除正文在抑制记录。无法溯源的旧摘要保守失效。用户新明确输入可成为新来源，不因内容相同永久禁止用户重新记忆。
+
+User Soul 使用 LLM-01 的 SourcedValue；自动晋升要求两个不同 sourceMessageIds 的相容证据；批次重放不算第二份证据。用户编辑/纠正优先，候选置信度不等于确认。LLM-03-B/C 覆盖事务失败、恢复、删除与后台重试。
+
 ## 实施内容与验收条件
 
 交付来源/类型/重要度/置信度/有效期/访问时间及 candidate/confirmed/superseded 状态；SQLite FTS5/BM25+recency+importance，浏览器可见词法降级。去重、更正、删除联动摘要/画像；原始重复来源不能让删除记忆复活。至少两轮独立证据才自动晋升画像，明确用户纠正可直接生效。

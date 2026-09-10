@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "愛花 Aika 一轮语音对话数据流",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [1070, 500],
+    "views": [
+      { "id": "voice-up", "label": "语音上行", "focus": ["mic", "vad", "asr", "turn"], "note": "从麦克风音频到一轮可提交的话。" },
+      { "id": "memory-join", "label": "记忆汇入", "focus": ["recall", "ctx", "llm"], "note": "长期记忆与历史一起进入提示词。" },
+      { "id": "reply-down", "label": "回复下行", "focus": ["llm", "parse", "tts", "caption", "store"], "note": "流式回复同时驱动朗读、字幕与落库。" }
+    ]
+  },
+  "stages": [
+    { "label": "采集" },
+    { "label": "识别" },
+    { "label": "组装" },
+    { "label": "生成" },
+    { "label": "交付" }
+  ],
+  "nodes": [
+    { "id": "mic", "type": "external", "label": "麦克风音频", "sublabel": "16 kHz", "stage": 0, "row": 1 },
+    { "id": "vad", "type": "backend", "label": "VAD 分段", "sublabel": "Silero · 512 帧", "stage": 1, "row": 1 },
+    { "id": "asr", "type": "backend", "label": "ASR 转写", "sublabel": "whisper-server", "stage": 1, "row": 2 },
+    { "id": "recall", "type": "database", "label": "长期记忆检索", "sublabel": "BM25 · top-8", "stage": 2, "row": 0 },
+    { "id": "ctx", "type": "backend", "label": "上下文与提示词", "sublabel": "Context · instructions", "stage": 2, "row": 1 },
+    { "id": "turn", "type": "backend", "label": "回合判定", "sublabel": "turnEnd", "stage": 2, "row": 2 },
+    { "id": "llm", "type": "external", "label": "LLM Provider", "sublabel": "SSE 流式", "stage": 3, "row": 0 },
+    { "id": "parse", "type": "backend", "label": "回复解析", "sublabel": "PartialReply → Reply", "stage": 3, "row": 1 },
+    { "id": "tts", "type": "backend", "label": "TTS 队列", "sublabel": "逐句合成", "stage": 4, "row": 0 },
+    { "id": "caption", "type": "frontend", "label": "字幕高亮", "sublabel": "随朗读进度", "stage": 4, "row": 1 },
+    { "id": "store", "type": "database", "label": "本地落库", "sublabel": "SQLite", "stage": 4, "row": 2 }
+  ],
+  "flows": [
+    { "id": "mic-audio", "from": "mic", "to": "vad", "label": "音频帧", "classification": "PCM 流", "variant": "emphasis" },
+    { "id": "speech-segments", "from": "vad", "to": "asr", "label": "语音段", "classification": "含 preroll" },
+    { "id": "transcript", "from": "asr", "to": "turn", "label": "转写文本", "classification": "ASR 保序" },
+    { "id": "committed-turn", "from": "turn", "to": "ctx", "label": "待提交回合", "classification": "回合边界" },
+    { "id": "recalled-memory", "from": "recall", "to": "ctx", "label": "相关记忆", "classification": "BM25 排名", "variant": "dashed" },
+    { "id": "request-body", "from": "ctx", "to": "llm", "label": "请求体", "classification": "上下文快照" },
+    { "id": "sse-delta", "from": "llm", "to": "parse", "label": "SSE 增量", "classification": "流式 JSON", "variant": "emphasis" },
+    { "id": "sentences", "from": "parse", "to": "tts", "label": "分句文本", "classification": "逐句朗读" },
+    { "id": "final-reply", "from": "parse", "to": "store", "label": "完整回复", "classification": "双语 + 语气" },
+    { "id": "caption-timing", "from": "tts", "to": "caption", "label": "朗读进度", "classification": "逐句高亮" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "上行：从声音到一轮话", "items": ["16 kHz 音频分帧后经 Silero VAD 切段", "whisper-server 转写，turnEnd 判定是否说完", "本地识别不可用时回退系统 Web Speech"] },
+    { "dot": "amber", "title": "中间：记忆与上下文", "items": ["长期记忆按 BM25 取 top-8", "与历史、关系状态、语气规则合成请求体", "记忆抽取与摘要走后台任务"] },
+    { "dot": "emerald", "title": "下行：一份解析，多处消费", "items": ["SSE 增量边到边解析，首句确定即合成", "同一份结果驱动朗读、字幕与 SQLite 落库", "播放回执决定记 complete 或 interrupted"] }
+  ]
+}

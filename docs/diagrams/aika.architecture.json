@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "愛花 Aika 应用架构",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "views": [
+      { "id": "conversation-path", "label": "对话主链路", "focus": ["user", "ui", "hooks", "domain", "services", "tauri"], "note": "从用户输入一路到 Tauri 宿主的一条主路径。" },
+      { "id": "voice-and-models", "label": "语音与模型边界", "focus": ["services", "llm", "whisper", "webspeech"], "note": "四协议 LLM，以及可替换的识别与合成引擎。" },
+      { "id": "local-store", "label": "本地存储与密钥", "focus": ["services", "db", "tauri", "secrets"], "note": "业务数据与 API Key 分开存放。" },
+      { "id": "lan-access", "label": "局域网手机访问", "focus": ["mobile", "tauri", "hooks"], "note": "手机只是一块屏幕，数据仍留在本机。" }
+    ]
+  },
+  "components": [
+    { "id": "user", "type": "external", "label": "用户", "sublabel": "语音 / 文字", "pos": [30, 420], "size": [120, 60] },
+    { "id": "ui", "type": "frontend", "label": "界面层", "sublabel": "React 组件", "tag": "App / VoiceModal", "pos": [230, 420], "size": [140, 64] },
+    { "id": "hooks", "type": "frontend", "label": "会话编排", "sublabel": "React Hooks", "tag": "useCompanionSession", "pos": [430, 420], "size": [150, 64] },
+    { "id": "domain", "type": "backend", "label": "领域逻辑", "sublabel": "纯函数 · 无 IO", "tag": "prompt / memory", "pos": [640, 420], "size": [150, 64] },
+    { "id": "services", "type": "backend", "label": "服务适配", "sublabel": "IO 边界", "tag": "provider / voice", "pos": [850, 420], "size": [150, 64] },
+    { "id": "tauri", "type": "cloud", "label": "Tauri 宿主", "sublabel": "Rust · IPC · 托盘", "tag": "remote / secret", "pos": [1090, 420], "size": [150, 64] },
+    { "id": "secrets", "type": "security", "label": "DPAPI 密钥库", "sublabel": "secrets.json", "tag": "API Key", "pos": [850, 570], "size": [150, 64] },
+    { "id": "db", "type": "database", "label": "aika.db", "sublabel": "SQLite 本地库", "tag": "chat / memory", "pos": [1090, 570], "size": [150, 64] },
+    { "id": "webspeech", "type": "external", "label": "Web Speech", "sublabel": "系统识别 / 合成", "tag": "回退链路", "pos": [370, 140], "size": [150, 64] },
+    { "id": "whisper", "type": "external", "label": "whisper-server", "sublabel": "本地进程", "tag": ":8080", "pos": [610, 140], "size": [150, 64] },
+    { "id": "llm", "type": "external", "label": "LLM Provider", "sublabel": "OpenAI / Claude", "tag": "四协议", "pos": [850, 140], "size": [150, 64] },
+    { "id": "mobile", "type": "external", "label": "手机浏览器", "sublabel": "局域网页面", "tag": "token 鉴权", "pos": [1090, 140], "size": [150, 64] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Windows 桌面 · Tauri 应用", "wraps": ["ui", "hooks", "domain", "services", "tauri", "secrets", "db"] }
+  ],
+  "connections": [
+    { "id": "user-to-ui", "from": "user", "to": "ui", "label": "说话 / 打字", "variant": "emphasis" },
+    { "id": "ui-to-hooks", "from": "ui", "to": "hooks", "label": "用户操作" },
+    { "id": "hooks-to-domain", "from": "hooks", "to": "domain", "label": "组装上下文" },
+    { "id": "domain-to-services", "from": "domain", "to": "services", "label": "调用适配" },
+    { "id": "services-to-llm", "from": "services", "to": "llm", "label": "HTTPS + SSE", "fromSide": "top", "toSide": "bottom", "labelAt": [970, 250] },
+    { "id": "services-to-whisper", "from": "services", "to": "whisper", "label": "POST /inference", "fromSide": "top", "toSide": "bottom", "labelAt": [800, 302] },
+    { "id": "services-to-webspeech", "from": "services", "to": "webspeech", "label": "系统识别 / 合成", "fromSide": "top", "toSide": "bottom", "labelAt": [560, 302] },
+    { "id": "services-to-tauri", "from": "services", "to": "tauri", "label": "IPC" },
+    { "id": "tauri-to-db", "from": "tauri", "to": "db", "label": "tauri-plugin-sql", "fromSide": "bottom", "toSide": "top", "labelAt": [1165, 527] },
+    { "id": "services-to-secrets", "from": "services", "to": "secrets", "label": "DPAPI 加解密", "fromSide": "bottom", "toSide": "top", "labelAt": [925, 527] },
+    { "id": "mobile-to-tauri", "from": "mobile", "to": "tauri", "label": "局域网 HTTP", "fromSide": "bottom", "toSide": "top", "labelAt": [1165, 310] }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "分层前端", "items": ["界面层只做展示与交互，不直接调用模型", "Hooks 承担会话编排，领域层保持纯函数、无 IO", "服务层是唯一的 IO 边界：协议、语音、存储"] },
+    { "dot": "emerald", "title": "Tauri 宿主能力", "items": ["常驻系统托盘，支撑主动消息", "remote.rs 提供局域网 HTTP 与 token 鉴权", "secret_store.rs 用 Windows DPAPI 加密 API Key"] },
+    { "dot": "violet", "title": "可替换边界", "items": ["LLM 支持 OpenAI Responses / 兼容 / Anthropic / Gemini", "STT 走本地 whisper-server，缺服务时回退 Web Speech", "TTS 由 speechSynthesis 逐句合成，接口可换自训声线"] }
+  ]
+}

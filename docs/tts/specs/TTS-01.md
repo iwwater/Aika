@@ -1,5 +1,9 @@
 # TTS-01 · 分句与队列
 
+## 架构与接口依据
+
+本 SPEC 必须实现 [模块架构与接口](../ARCHITECTURE.md) 中对应阶段的端口、事件、状态与错误语义；通过 adapter 兼容现有实现。下方 AC 同时验证这些契约，无需启动其他真实模块。
+
 需求与边界见 [模块 PRD](../PRD.md)，依赖遵循 [共享契约](../../modules/CONTRACTS.md)。
 
 交付 sentenceId/turnId、逐句语言/风格、队列顺序、started/completed/drained/error 事件。

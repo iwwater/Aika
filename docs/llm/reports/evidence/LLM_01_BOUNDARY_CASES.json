@@ -1,0 +1,92 @@
+{
+  "spec": "LLM-01",
+  "evidenceKind": "targeted-test-observation",
+  "source": "production-decoder-provider-path-and-fake-storage-tests",
+  "realModelQuality": "blocked",
+  "realModelBlockReason": "DashScope/qwen-plus authorization is confirmed in the prior task history, but the current Aika safe store has no retrievable provider configuration; no unrelated credential was used.",
+  "cases": [
+    {
+      "id": "canonical-over-legacy",
+      "status": "pass",
+      "fixture": {
+        "replyText": "canonical 正文",
+        "reply_text": "legacy 正文",
+        "japanese_text": "old 正文",
+        "translation": "canonical 翻译",
+        "chinese_translation": "legacy 翻译"
+      },
+      "observed": "ReplyEnvelopeV1 uses canonical replyText/translation without concatenating legacy values."
+    },
+    {
+      "id": "canonical-empty-does-not-fallback",
+      "status": "pass",
+      "fixture": {
+        "replyText": "",
+        "japanese_text": "旧正文不应覆盖 canonical 空值",
+        "translation": "",
+        "chinese_translation": ""
+      },
+      "observed": "An explicitly present canonical empty field remains empty."
+    },
+    {
+      "id": "canonical-invalid-does-not-fallback",
+      "status": "pass",
+      "fixture": {
+        "replyText": null,
+        "japanese_text": "旧正文不应显示"
+      },
+      "observed": "The production parser returns an empty invalid envelope and Provider finish rejects it."
+    },
+    {
+      "id": "legacy-first-canonical-later",
+      "status": "pass",
+      "chunks": ["{\"japanese_text\":\"旧正文。\",", "\"replyText\":\"新正文。\"}"],
+      "observed": "Downstream streamChat emits only 新正文。 once; it never emits the legacy prefix or a rollback."
+    },
+    {
+      "id": "nested-field-is-ignored",
+      "status": "pass",
+      "fixture": {
+        "memoryCandidates": [{"replyText": "嵌套资料"}],
+        "replyText": "顶层正文"
+      },
+      "observed": "Only the top-level replyText is selected by the incremental decoder."
+    },
+    {
+      "id": "unicode-escape-across-chunks",
+      "status": "pass",
+      "chunks": ["{\"replyText\":\"\\u4f", "60\\u597d\"}"],
+      "observed": "The incremental decoder emits no partial replacement and then emits 你好 once the escapes are complete."
+    },
+    {
+      "id": "unicode-surrogate-pair-across-chunks",
+      "status": "pass",
+      "chunks": ["{\"replyText\":\"前\\uD83D", "\\uDE00后\"}"],
+      "observed": "The first downstream snapshot is 前; the complete snapshot is 前😀后, with no isolated surrogate emitted."
+    },
+    {
+      "id": "mode-save-failure",
+      "status": "pass",
+      "storage": "fake AikaStorage whose llm.mode write throws 磁盘只读",
+      "observed": "The previous scenario config and persisted value remain unchanged; the hook rejects and exposes the save error."
+    },
+    {
+      "id": "mode-save-retry-clears-only-mode-error",
+      "status": "pass",
+      "storage": "fake AikaStorage: llm.mode fails quota-A, then quota-B, then succeeds; an unrelated read error is already visible",
+      "observed": "A successful retry commits companion mode, clears both mode-save errors, and preserves the unrelated storage error."
+    },
+    {
+      "id": "browser-settings-write-failure",
+      "status": "pass",
+      "storage": "localStorage adapter whose setItem throws quota exceeded",
+      "observed": "AikaStorage.setSetting propagates the write failure instead of falsely confirming persistence."
+    },
+    {
+      "id": "incomplete-json-at-stream-end",
+      "status": "pass",
+      "source": "fake OpenAI-compatible SSE",
+      "observed": "An unterminated JSON object is rejected as no visible reply instead of being stored as raw protocol text."
+    }
+  ]
+}

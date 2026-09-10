@@ -1,0 +1,246 @@
+{
+  "spec": "LLM-03",
+  "kind": "retrieval-fixture",
+  "algorithm": "lexical-bm25-v1",
+  "note": "固定记忆库与固定问题集。用于 LLM-03-A：15 个有答案问题要求 Top-5 命中，5 个无答案问题要求返回空集。记忆与问题均为 fixture，不代表任何真实用户数据。",
+  "now": 1788998400000,
+  "topK": 5,
+  "tokenBudget": 400,
+  "memories": [
+    {
+      "schemaVersion": 2, "id": "m01", "type": "preference", "content": "喝咖啡只喝浅烘焙，不加糖",
+      "sourceMessageIds": ["msg-01"], "sourceKind": "messages", "status": "confirmed",
+      "confidence": 0.9, "importance": 0.8, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": 1788393600000, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m02", "type": "preference", "content": "甘いものより塩気のあるお菓子が好き",
+      "sourceMessageIds": ["msg-02"], "sourceKind": "messages", "status": "confirmed",
+      "confidence": 0.8, "importance": 0.6, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": 1788393600000, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m03", "type": "preference", "content": "prefers dark chocolate over milk chocolate",
+      "sourceMessageIds": ["msg-03"], "sourceKind": "messages", "status": "confirmed",
+      "confidence": 0.7, "importance": 0.6, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": 1788393600000, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m04", "type": "fact", "content": "工作是前端工程师，主要写 React 和 TypeScript",
+      "sourceMessageIds": ["msg-04"], "sourceKind": "messages", "status": "confirmed",
+      "confidence": 0.9, "importance": 0.8, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": 1788393600000, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m05", "type": "fact", "content": "通勤電車で30分、朝は7時に起きる",
+      "sourceMessageIds": ["msg-05"], "sourceKind": "messages", "status": "candidate",
+      "confidence": 0.6, "importance": 0.5, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": null, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m06", "type": "fact", "content": "works remotely on Mondays and Fridays",
+      "sourceMessageIds": ["msg-06"], "sourceKind": "messages", "status": "confirmed",
+      "confidence": 0.8, "importance": 0.7, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": 1788393600000, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m07", "type": "event", "content": "上周末去了镰仓海边散步",
+      "sourceMessageIds": ["msg-07"], "sourceKind": "messages", "status": "confirmed",
+      "confidence": 0.8, "importance": 0.5, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": 1788393600000, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m08", "type": "event", "content": "先月、京都に出張した",
+      "sourceMessageIds": ["msg-08"], "sourceKind": "messages", "status": "candidate",
+      "confidence": 0.6, "importance": 0.4, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": null, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m09", "type": "event", "content": "ran a half marathon in March",
+      "sourceMessageIds": ["msg-09"], "sourceKind": "messages", "status": "confirmed",
+      "confidence": 0.7, "importance": 0.6, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": 1788393600000, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m10", "type": "goal", "content": "明年想考日语 N1",
+      "sourceMessageIds": ["msg-10"], "sourceKind": "messages", "status": "confirmed",
+      "confidence": 0.9, "importance": 0.9, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": 1788393600000, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m11", "type": "goal", "content": "来年までに英語でプレゼンできるようになりたい",
+      "sourceMessageIds": ["msg-11"], "sourceKind": "messages", "status": "candidate",
+      "confidence": 0.6, "importance": 0.7, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": null, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m12", "type": "goal", "content": "planning to move to Yokohama next spring",
+      "sourceMessageIds": ["msg-12"], "sourceKind": "messages", "status": "candidate",
+      "confidence": 0.5, "importance": 0.6, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": null, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m13", "type": "relationship", "content": "有个妹妹在大阪读大学",
+      "sourceMessageIds": ["msg-13"], "sourceKind": "messages", "status": "confirmed",
+      "confidence": 0.8, "importance": 0.7, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": 1788393600000, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m14", "type": "relationship", "content": "同僚の佐藤さんとよくランチに行く",
+      "sourceMessageIds": ["msg-14"], "sourceKind": "messages", "status": "candidate",
+      "confidence": 0.6, "importance": 0.5, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": null, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m15", "type": "relationship", "content": "his mother lives in Sapporo",
+      "sourceMessageIds": ["msg-15"], "sourceKind": "messages", "status": "confirmed",
+      "confidence": 0.8, "importance": 0.6, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": 1788393600000, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m16", "type": "fact", "content": "养了一只叫豆豆的橘猫",
+      "sourceMessageIds": ["msg-16"], "sourceKind": "messages", "status": "confirmed",
+      "confidence": 0.9, "importance": 0.8, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": 1788393600000, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m17", "type": "fact", "content": "実家で柴犬を飼っている",
+      "sourceMessageIds": ["msg-17"], "sourceKind": "messages", "status": "candidate",
+      "confidence": 0.6, "importance": 0.5, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": null, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m18", "type": "fact", "content": "allergic to peanuts",
+      "sourceMessageIds": ["msg-18"], "sourceKind": "messages", "status": "confirmed",
+      "confidence": 0.95, "importance": 0.95, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": 1788393600000, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m19", "type": "fact", "content": "每天睡前读三十分钟书",
+      "sourceMessageIds": ["msg-19"], "sourceKind": "messages", "status": "confirmed",
+      "confidence": 0.7, "importance": 0.6, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": 1788393600000, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m20", "type": "fact", "content": "週末はたいてい映画を一本見る",
+      "sourceMessageIds": ["msg-20"], "sourceKind": "messages", "status": "candidate",
+      "confidence": 0.5, "importance": 0.4, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": null, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m21", "type": "fact", "content": "cycles to the gym twice a week",
+      "sourceMessageIds": ["msg-21"], "sourceKind": "messages", "status": "candidate",
+      "confidence": 0.6, "importance": 0.5, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": null, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m22", "type": "preference", "content": "讨厌下雨天，因为鞋子会湿",
+      "sourceMessageIds": ["msg-22"], "sourceKind": "messages", "status": "confirmed",
+      "confidence": 0.7, "importance": 0.5, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": 1788393600000, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m23", "type": "preference", "content": "人混みが苦手",
+      "sourceMessageIds": ["msg-23"], "sourceKind": "messages", "status": "candidate",
+      "confidence": 0.5, "importance": 0.5, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": null, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m24", "type": "preference", "content": "dislikes noisy bars",
+      "sourceMessageIds": ["msg-24"], "sourceKind": "messages", "status": "candidate",
+      "confidence": 0.5, "importance": 0.4, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": null, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m25", "type": "fact", "content": "生日是十一月三号",
+      "sourceMessageIds": ["msg-25"], "sourceKind": "messages", "status": "confirmed",
+      "confidence": 0.9, "importance": 0.8, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": 1788393600000, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m26", "type": "fact", "content": "出身は福岡",
+      "sourceMessageIds": ["msg-26"], "sourceKind": "messages", "status": "candidate",
+      "confidence": 0.6, "importance": 0.5, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": null, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m27", "type": "fact", "content": "graduated from Kyoto University",
+      "sourceMessageIds": ["msg-27"], "sourceKind": "messages", "status": "candidate",
+      "confidence": 0.6, "importance": 0.5, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": null, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m28", "type": "goal", "content": "存钱想去冰岛看极光",
+      "sourceMessageIds": ["msg-28"], "sourceKind": "messages", "status": "candidate",
+      "confidence": 0.5, "importance": 0.6, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": null, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m29", "type": "event", "content": "attended a jazz concert last month",
+      "sourceMessageIds": ["msg-29"], "sourceKind": "messages", "status": "candidate",
+      "confidence": 0.5, "importance": 0.4, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": null, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m30", "type": "preference", "content": "爱听爵士乐，尤其是钢琴三重奏",
+      "sourceMessageIds": ["msg-30"], "sourceKind": "messages", "status": "confirmed",
+      "confidence": 0.8, "importance": 0.6, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": 1788393600000, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m31", "type": "fact", "content": "右膝盖去年受过伤，跑步要小心",
+      "sourceMessageIds": ["msg-31"], "sourceKind": "messages", "status": "confirmed",
+      "confidence": 0.9, "importance": 0.9, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": 1788393600000, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m32", "type": "fact", "content": "speaks Mandarin, Japanese and English",
+      "sourceMessageIds": ["msg-32"], "sourceKind": "messages", "status": "confirmed",
+      "confidence": 0.9, "importance": 0.7, "createdAt": 1788393600000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": 1788393600000, "lastAccessedAt": null, "validFrom": null, "validUntil": null
+    },
+    {
+      "schemaVersion": 2, "id": "m33", "type": "preference", "content": "以前住在涩谷",
+      "sourceMessageIds": ["msg-33"], "sourceKind": "messages", "status": "confirmed",
+      "confidence": 0.8, "importance": 0.7, "createdAt": 1787000000000, "updatedAt": 1788134400000,
+      "lastConfirmedAt": 1787000000000, "lastAccessedAt": null,
+      "validFrom": 1787000000000, "validUntil": 1788134400000
+    },
+    {
+      "schemaVersion": 2, "id": "m34", "type": "event", "content": "去年去了北海道",
+      "sourceMessageIds": ["msg-34"], "sourceKind": "messages", "status": "confirmed",
+      "confidence": 0.8, "importance": 0.5, "createdAt": 1787000000000, "updatedAt": 1788566400000,
+      "lastConfirmedAt": 1787000000000, "lastAccessedAt": null,
+      "validFrom": 1787000000000, "validUntil": 1788566400000
+    },
+    {
+      "schemaVersion": 2, "id": "m35", "type": "preference", "content": "喜欢拿铁",
+      "sourceMessageIds": ["msg-35"], "sourceKind": "messages", "status": "superseded",
+      "confidence": 0.4, "importance": 0.4, "createdAt": 1787000000000, "updatedAt": 1788393600000,
+      "lastConfirmedAt": null, "lastAccessedAt": null, "validFrom": null, "validUntil": null,
+      "supersedesId": null
+    }
+  ],
+  "questions": [
+    { "id": "q01", "language": "zh", "text": "他平时喝什么咖啡", "expectHitIds": ["m01"], "expectEmpty": false },
+    { "id": "q02", "language": "ja", "text": "お菓子は甘いものと塩気のあるものどちらが好き", "expectHitIds": ["m02"], "expectEmpty": false },
+    { "id": "q03", "language": "en", "text": "which chocolate does she prefer", "expectHitIds": ["m03"], "expectEmpty": false },
+    { "id": "q04", "language": "zh", "text": "他在哪里上班，做什么工作", "expectHitIds": ["m04"], "expectEmpty": false },
+    { "id": "q05", "language": "ja", "text": "朝は何時に起きる", "expectHitIds": ["m05"], "expectEmpty": false },
+    { "id": "q06", "language": "en", "text": "on which days does he work remotely", "expectHitIds": ["m06"], "expectEmpty": false },
+    { "id": "q07", "language": "zh", "text": "上个周末他去了哪里", "expectHitIds": ["m07"], "expectEmpty": false },
+    { "id": "q08", "language": "ja", "text": "先月どこに出張した", "expectHitIds": ["m08"], "expectEmpty": false },
+    { "id": "q09", "language": "en", "text": "did she run a marathon", "expectHitIds": ["m09"], "expectEmpty": false },
+    { "id": "q10", "language": "zh", "text": "他想考什么日语等级", "expectHitIds": ["m10"], "expectEmpty": false },
+    { "id": "q11", "language": "ja", "text": "英語で何ができるようになりたい", "expectHitIds": ["m11"], "expectEmpty": false },
+    { "id": "q12", "language": "en", "text": "where is she planning to move", "expectHitIds": ["m12"], "expectEmpty": false },
+    { "id": "q13", "language": "zh", "text": "他养的橘猫叫什么", "expectHitIds": ["m16"], "expectEmpty": false },
+    { "id": "q14", "language": "en", "text": "is he allergic to anything", "expectHitIds": ["m18"], "expectEmpty": false },
+    { "id": "q15", "language": "zh", "text": "他睡前有什么习惯", "expectHitIds": ["m19"], "expectEmpty": false },
+    { "id": "q16", "language": "zh", "text": "他平时滑雪吗", "expectHitIds": [], "expectEmpty": true },
+    { "id": "q17", "language": "zh", "text": "他平时聊棒球比赛吗", "expectHitIds": [], "expectEmpty": true },
+    { "id": "q18", "language": "en", "text": "does she play the violin", "expectHitIds": [], "expectEmpty": true },
+    { "id": "q19", "language": "en", "text": "does he own a car", "expectHitIds": [], "expectEmpty": true },
+    { "id": "q20", "language": "zh", "text": "他住在涩谷吗", "expectHitIds": [], "expectEmpty": true }
+  ]
+}

@@ -1,5 +1,9 @@
 # STT-01 · 输入契约与识别适配
 
+## 架构与接口依据
+
+本 SPEC 必须实现 [模块架构与接口](../ARCHITECTURE.md) 中对应阶段的端口、事件、状态与错误语义；通过 adapter 兼容现有实现。下方 AC 同时验证这些契约，无需启动其他真实模块。
+
 需求与边界见 [模块 PRD](../PRD.md)，依赖遵循 [共享契约](../../modules/CONTRACTS.md)。
 
 交付 start/stop/cancel/dispose 生命周期，Whisper 自动语言与 Web Speech 可见降级；分段 ID、时间戳和来源精度。
