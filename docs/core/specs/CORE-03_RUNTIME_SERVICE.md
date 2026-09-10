@@ -1,6 +1,6 @@
 # CORE-03 · Runtime 服务化与编排单一化
 
-状态：未开始。
+状态：A–I 九条 AC 自测 PASS，默认 kernel，显式 legacy 可回退；待审阅。证据见 [验收报告](../reports/CORE-03_ACCEPTANCE.md)。
 
 ## 目标与边界
 

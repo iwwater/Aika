@@ -1,6 +1,6 @@
 # CORE-04 · Presenter 层与 Hook 降级
 
-状态：未开始。
+状态：A–F 六条 AC 自测 PASS；默认 kernel，显式 legacy 仍可回退；待审阅。证据见 [验收报告](../reports/CORE-04_ACCEPTANCE.md)。
 
 ## 目标与边界
 

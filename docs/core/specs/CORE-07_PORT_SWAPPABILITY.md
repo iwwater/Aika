@@ -1,6 +1,6 @@
 # CORE-07 · 端口一致性与实现可替换性收口
 
-状态：未开始。
+状态：已自测。A–F 六条 AC：五个双实现端口（storage / secrets / memory / provider / speech-in）与 ContextSource 的矩阵、突变验证、零改动证据均 PASS；**输出侧（SpeechOutputEngine）BLOCKED**——SPEC 前置 CORE-05-G 因缺第二实现未整体 PASS，矩阵该格只有单实现可比。证据见 [验收报告](../reports/CORE-07_ACCEPTANCE.md)。
 
 ## 目标与边界
 

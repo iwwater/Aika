@@ -1,6 +1,6 @@
 # CORE-05 · 插件契约与能力注册
 
-状态：未开始。
+状态：A–F 自测 PASS；G 的输入侧 PASS、输出侧 **BLOCKED**（SPEC 指定的 `stash@{0}` 在仓库中不存在，第二个输出引擎无法取回）；待审阅。证据见 [验收报告](../reports/CORE-05_ACCEPTANCE.md)。
 
 ## 目标与边界
 
