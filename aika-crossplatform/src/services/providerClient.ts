@@ -1,4 +1,4 @@
-import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import { activeFetch } from "./http";
 import { companionReplySchema, parseCompanionReply, type CompanionReply } from "../domain/companion";
 import type { ChatTurn } from "../domain/conversation";
 import type { ProviderConfig } from "../domain/providers";
@@ -40,10 +40,6 @@ export function isAbortError(error: unknown): boolean {
 
 function throwIfAborted(signal?: AbortSignal) {
   if (signal?.aborted) throw abortError();
-}
-
-function activeFetch(input: string, init: RequestInit): Promise<Response> {
-  return "__TAURI_INTERNALS__" in globalThis ? tauriFetch(input, init) : globalThis.fetch(input, init);
 }
 
 async function readError(response: Response): Promise<string> {

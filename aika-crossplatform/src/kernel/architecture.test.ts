@@ -68,8 +68,13 @@ const FORBIDDEN_GLOBALS = [
   /__TAURI_INTERNALS__/,
 ];
 
-/** CORE-01-D 的白名单：组合根、插件 activate、useService。CORE-01 阶段还没有。 */
-const RESOLVE_WHITELIST: string[] = [];
+/** CORE-01-D 的白名单：组合根、插件 activate、useService。 */
+const RESOLVE_WHITELIST: string[] = [
+  "app/composition.ts",
+];
+
+/** CORE-02-C：平台判断只允许出现在这个目录下。 */
+const HOST_DIR = "app/hosts/";
 
 describe("内核边界门禁", () => {
   it("扫描到了内核源码，门禁不是空跑", () => {
@@ -115,6 +120,16 @@ describe("内核边界门禁", () => {
       const rel = relative(SRC_DIR, file).replace(/\\/g, "/");
       if (RESOLVE_WHITELIST.includes(rel)) continue;
       if (/\bregistry\s*\.\s*(try)?[Rr]esolve\s*\(/.test(read(file))) offenders.push(rel);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("平台判断只出现在宿主目录里", () => {
+    const offenders: string[] = [];
+    for (const file of productionSources) {
+      const rel = relative(SRC_DIR, file).replace(/\\/g, "/");
+      if (rel.startsWith(HOST_DIR)) continue;
+      if (/__TAURI_INTERNALS__/.test(read(file))) offenders.push(rel);
     }
     expect(offenders).toEqual([]);
   });

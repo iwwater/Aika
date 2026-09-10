@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
+import { activeNotifier } from "../services/notification/notifier";
 import { DEFAULT_CHARACTER } from "../domain/character";
 import type { CompanionReply } from "../domain/companion";
 import {
@@ -111,14 +111,14 @@ function visibleMemories(records: readonly MemoryRecordV2[]): MemoryRecord[] {
   return records.filter((record) => record.status !== "superseded").map(toLegacyMemoryRecord);
 }
 
+/**
+ * 通知走 Notifier 端口，不再在这里嗅探平台。
+ *
+ * Notifier.notify 承诺永不抛错、失败返回 false，所以这里也不需要 try/catch：
+ * 通知失败不该影响消息本身——消息已经落库，用户打开窗口就能看到。
+ */
 async function notify(title: string, body: string) {
-  try {
-    if (!("__TAURI_INTERNALS__" in globalThis)) return;
-    const granted = (await isPermissionGranted()) || (await requestPermission()) === "granted";
-    if (granted) sendNotification({ title, body });
-  } catch {
-    // 通知失败不该影响消息本身：消息已经落库，用户打开窗口就能看到。
-  }
+  await activeNotifier().notify({ title, body });
 }
 
 export function useCompanionSession() {

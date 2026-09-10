@@ -3,19 +3,15 @@ import type { ProviderConfig } from "../../domain/providers";
 import { normalizeStoredProvider } from "../../domain/providers";
 import { SETTING_KEYS, type AikaStorage } from "./contracts";
 import { createLocalStorage } from "./localStorageStorage";
-import { providerKeyName, secretStore } from "./secretStore";
+import { providerKeyName, secretStore, type SecretStore } from "./secretStore";
 import { createSqliteStorage } from "./sqliteStorage";
 
 export { SETTING_KEYS, type AikaStorage } from "./contracts";
-export { providerKeyName, secretStore } from "./secretStore";
+export { providerKeyName, secretStore, type SecretStore } from "./secretStore";
 
 const LEGACY_MESSAGES_KEY = "aika.messages.v1";
 const LEGACY_PROVIDER_KEY = "aika.provider.v1";
 const MIGRATION_FLAG = "migrated.localStorage.v1";
-
-function inTauri(): boolean {
-  return "__TAURI_INTERNALS__" in globalThis;
-}
 
 function readLegacy<T>(key: string): T | null {
   try {
@@ -33,8 +29,11 @@ function readLegacy<T>(key: string): T | null {
  * 关系状态因此不会凭空虚高，只是把那段历史压成一天。
  *
  * API Key 是唯一会被删除的东西：把它留在 localStorage 就等于这次迁移白做。
+ *
+ * 幂等由 MIGRATION_FLAG 保证。CORE-02 把它从 openStorage 内部提出来交给宿主插件
+ * 调用，语义一字未动——换装配方式不允许导致它重跑或被跳过。
  */
-async function migrateLegacy(storage: AikaStorage): Promise<void> {
+export async function migrateLegacy(storage: AikaStorage, secrets: SecretStore): Promise<void> {
   if (await storage.getSetting(MIGRATION_FLAG)) return;
 
   const legacyMessages = readLegacy<ChatMessage[]>(LEGACY_MESSAGES_KEY);
@@ -58,7 +57,7 @@ async function migrateLegacy(storage: AikaStorage): Promise<void> {
     const { apiKey, ...rest } = legacyProvider;
     await storage.setSetting(SETTING_KEYS.provider, JSON.stringify(rest));
     if (apiKey) {
-      await secretStore.set(providerKeyName(legacyProvider.id), apiKey);
+      await secrets.set(providerKeyName(legacyProvider.id), apiKey);
       // 只有确认写进保险库之后才清掉明文。
       localStorage.removeItem(LEGACY_PROVIDER_KEY);
     }
@@ -67,11 +66,39 @@ async function migrateLegacy(storage: AikaStorage): Promise<void> {
   await storage.setSetting(MIGRATION_FLAG, String(Date.now()));
 }
 
-export async function openStorage(): Promise<AikaStorage> {
-  if (!inTauri()) return createLocalStorage();
+/** 桌面存储：SQLite + 一次性遗留迁移。宿主插件用。 */
+export async function openDesktopStorage(secrets: SecretStore): Promise<AikaStorage> {
   const storage = await createSqliteStorage();
-  await migrateLegacy(storage);
+  await migrateLegacy(storage, secrets);
   return storage;
+}
+
+/** 浏览器存储。宿主插件用。 */
+export function openBrowserStorage(): AikaStorage {
+  return createLocalStorage();
+}
+
+/**
+ * 过渡转发。
+ *
+ * 与 secretStore 同理：默认是浏览器实现，**不再嗅探平台**；桌面宿主在启动时
+ * 把 SQLite 的打开方式装上。CORE-06 删除本段与全部调用方。
+ */
+let installedOpener: (() => Promise<AikaStorage>) | null = null;
+
+export function installStorageOpener(opener: () => Promise<AikaStorage>): void {
+  installedOpener = opener;
+}
+
+/** 测试用：把过渡槽恢复到未安装状态。 */
+export function resetInstalledStorageOpener(): void {
+  installedOpener = null;
+}
+
+/** @deprecated 过渡用，改从注册表取 StorageToken；CORE-06 删除。 */
+export async function openStorage(): Promise<AikaStorage> {
+  if (installedOpener) return installedOpener();
+  return openBrowserStorage();
 }
 
 /** 供应商配置存 settings 表（不含 Key），Key 单独走保险库。 */

@@ -2,7 +2,7 @@ import Database from "@tauri-apps/plugin-sql";
 import { formatClockTime, type ChatMessage, type MessageSource } from "../../domain/conversation";
 import { isMemoryCategory, type MemoryRecord } from "../../domain/memory";
 import { normalizeMood } from "../../domain/mood";
-import { createSqliteMemoryStore, ensureMemorySchema } from "../memory/sqliteMemoryStore";
+import { createSqliteMemoryStore, ensureMemorySchema, type SqlExecutor } from "../memory/sqliteMemoryStore";
 import type { AikaStorage } from "./contracts";
 
 /**
@@ -124,8 +124,13 @@ function toMemory(row: MemoryRow): MemoryRecord {
   };
 }
 
-export async function createSqliteStorage(): Promise<AikaStorage> {
-  const db = await Database.load(DB_URL);
+/**
+ * @param executor 注入 SQL 执行器。生产不传，走 Tauri 的 plugin-sql；
+ * 端口一致性用例包传 node:sqlite 执行器，让**同一份生产代码**在真实 SQLite 上跑。
+ * SQL、表结构与迁移逻辑一字未改。
+ */
+export async function createSqliteStorage(executor?: SqlExecutor): Promise<AikaStorage> {
+  const db = executor ?? await Database.load(DB_URL);
   for (const statement of SCHEMA) await db.execute(statement);
   for (const statement of MIGRATIONS) {
     try {
