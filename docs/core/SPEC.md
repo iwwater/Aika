@@ -1,6 +1,6 @@
 # CORE SPEC 执行索引
 
-需求见 [模块 PRD](PRD.md)，方案与拆分依据见 [重构计划书](REFACTOR_PLAN.md)，接口见 [内核架构](ARCHITECTURE.md)。每次只下发一份；相关测试在本模块完成，不依赖真实 STT/TTS 服务或设备。
+需求见 [模块 PRD](PRD.md)，方案与拆分依据见 [重构计划书](REFACTOR_PLAN.md)，接口见 [内核架构](ARCHITECTURE.md)，端口可替换性增量见 [端口一致性增量计划](CONFORMANCE_PLAN.md)。每次只下发一份；相关测试在本模块完成，不依赖真实 STT/TTS 服务或设备。
 
 | SPEC | 交付 | 前置 | 状态 |
 | --- | --- | --- | --- |
@@ -10,5 +10,6 @@
 | [CORE-04](specs/CORE-04_PRESENTER_ADAPTER.md) | Presenter 层，Hook 降级为 Adapter | CORE-03 | 未开始 |
 | [CORE-05](specs/CORE-05_PLUGIN_CAPABILITY.md) | 插件契约、既有能力插件化、扩展点验证 | CORE-04 | 未开始 |
 | [CORE-06](specs/CORE-06_DECOMMISSION.md) | 旧路径下线、开关移除、共享契约更新 | CORE-05 | 未开始 |
+| [CORE-07](specs/CORE-07_PORT_SWAPPABILITY.md) | 端口一致性与实现可替换性收口 | CORE-06 | 未开始 |
 
-CORE-01 已有 [验收报告](reports/CORE-01_ACCEPTANCE.md)：只新增 `src/kernel/`，现有文件零改动，内核 token 实例数为 0。CORE-03 是本模块的风险集中点：它把 `useCompanionSession.send()` 里的编排换成已验收的 `CompanionRuntime`。在它通过之前，其余 SPEC 不得声称「编排已统一」。CORE-06 未执行则本模块不算完成——两条路径长期共存是最坏的中间态。
+CORE-01 已有 [验收报告](reports/CORE-01_ACCEPTANCE.md)：只新增 `src/kernel/`，现有文件零改动，内核 token 实例数为 0。CORE-03 是本模块的风险集中点：它把 `useCompanionSession.send()` 里的编排换成已验收的 `CompanionRuntime`。在它通过之前，其余 SPEC 不得声称「编排已统一」。CORE-06 未执行则本模块不算完成——两条路径长期共存是最坏的中间态。CORE-07 回答的是另一个问题：CORE-05 证明「加能力不改内核」，CORE-07 证明「换实现不改消费侧」；后者才说明这些端口的抽象是对的。

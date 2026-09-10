@@ -7,7 +7,7 @@
 - 输入：注册表里的 provider、storage、memory、context sources、clock、timers；用户提交的文本与语音回合请求。
 - 输出：注册表中唯一的 `CompanionRuntime` 服务；`useCompanionSession` 改为消费 Runtime 事件；编排开关与迁移证据。
 - 前置：CORE-02 通过。
-- 负责范围：`services/runtime/*` 的装配、`services/memory/memorySource|writeback` 的接入、`hooks/useCompanionSession.ts` 的 `send()` 迁移、消息落库字段兼容。
+- 负责范围：`services/runtime/*` 的装配、`services/memory/memorySource|writeback` 的接入、`hooks/useCompanionSession.ts` 的 `send()` 迁移、消息落库字段兼容；新增 `provider.conformance.ts`、`memoryStore.conformance.ts`、`contextSource.conformance.ts` 三份共用用例包。
 - 不做：不改 `CompanionRuntime` 已验收的 turn 状态机语义；不改 Provider 协议解析；不重构 UI 组件（留给 CORE-04）；不新增外部工具或动作。
 
 这是本模块唯一的高风险 SPEC。它要处理的是一个事实：**`createCompanionRuntime`、`createMemorySource`、`createMemoryWriteback` 目前都没有生产调用方**，应用真正在跑的是 `useCompanionSession.ts:351` 那个约 330 行的 `send()`。两条路径的行为差异必须靠测试暴露，而不是靠阅读判断。
@@ -66,6 +66,8 @@ type OrchestratorMode = "legacy" | "kernel";
 | CORE-03-E | 后台维护：抽取与摘要不阻塞正文事件；关闭记忆维护后不再提交写入；重复触发不重复写入（复用 `writeback.test.ts` 与 `memoryRepository.test.ts`） |
 | CORE-03-F | 错误可见：Provider 失败、存储失败、`CONTEXT_TOO_LARGE` 各自产生可展示错误且能再次发送，不残留 busy/pending |
 | CORE-03-G | 唯一编排：kernel 模式下静态扫描确认 `hooks/` 不再调用 `streamChat`/`sendChat`（legacy 分支除外，且该分支被开关明确隔离并标注将于 CORE-06 删除） |
+| CORE-03-H | Provider 可替换：openai-responses / openai-compatible / anthropic / gemini 四种协议跑**同一份** `RuntimeProvider` 用例包全绿，流式增量顺序、错误码与取消语义一致；用例包只用协议 fixture，不发真实请求 |
+| CORE-03-I | 记忆与上下文源可替换：`sqliteMemoryStore` 与 `localMemoryStore` 跑同一份用例包全绿；`ContextSource` 用例包至少覆盖 `memorySource` 与一个确定性 stub，超时/抛错的降级行为在两者上一致 |
 
 ## 模块内执行与交付
 
@@ -73,5 +75,7 @@ type OrchestratorMode = "legacy" | "kernel";
 2. 对本次修改的生产逻辑准备定向测试名单。只 mock 外部依赖，不 mock 本模块被验收逻辑；无需启动其他模块。
 3. 报告每条 AC 的测试文件/样本、真实命令及退出码，质量样本标明实际模型或 fixture。证据不足保留 NOT RUN/BLOCKED，不能降低门槛。
 4. 交付 `../reports/CORE-03_ACCEPTANCE.md`；原任务审阅证据。只在 [集成触发条件](../../integration/SPEC.md) 满足时安排全流程调试，当前小 SPEC 不默认跑全仓测试或产品打包。
+
+CORE-03-H/I 的用例包形状见 [端口一致性增量计划](../CONFORMANCE_PLAN.md)：只测契约层面可观测的行为，不新造接口。`ContextSource` 只有一个真实实现，其可替换性证据弱于其他端口，报告里如实标注、不与两个真实实现的端口混为一谈。
 
 本 SPEC 改变共享契约（消息字段与 Runtime 消费方），按 [集成 SPEC](../../integration/SPEC.md) 在 INT-01 登记受影响消费者：前端桥接、Remote 手机入口、LLM-04 后台维护。共享规则见 [模块测试规则](../../modules/TESTING.md)；输入输出遵循 [共享契约](../../modules/CONTRACTS.md)。

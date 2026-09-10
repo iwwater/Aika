@@ -7,7 +7,7 @@
 - 输入：运行宿主（Tauri 桌面 / 浏览器 dev / 测试）、已有存储与密钥实现。
 - 输出：三组宿主插件、`selectHostPlugins()`、组合根装配函数，以及分散在各模块的平台端口 token。
 - 前置：CORE-01 通过。不依赖 Runtime 是否已服务化。
-- 负责范围：新增 `src/kernel/hosts/`（只放宿主插件与平台判断）与 `src/kernel/composition.ts`；在 `services/storage/`、`services/remote/` 等各自目录下新增 `tokens.ts`；改造 `services/storage/index.ts` 的暴露方式；`useCompanionSession` 的通知改走 `Notifier` 服务。
+- 负责范围：新增 `src/kernel/hosts/`（只放宿主插件与平台判断）与 `src/kernel/composition.ts`；在 `services/storage/`、`services/remote/` 等各自目录下新增 `tokens.ts`；改造 `services/storage/index.ts` 的暴露方式；`useCompanionSession` 的通知改走 `Notifier` 服务；新增 `storage.conformance.ts`、`secretStore.conformance.ts` 两份共用用例包。
 - 不做：**不定义 `HostCapabilities` 这类能力总表**，不建任何汇总 token 的桶文件；不改存储的 SQL、表结构与迁移逻辑；不改对话编排；不动语音与记忆的装配（留给 CORE-05）。
 
 ## 架构与接口设计
@@ -67,6 +67,7 @@ export function selectHostPlugins(): readonly AikaPlugin[];
 | CORE-02-D | 无能力总表：静态扫描确认不存在 `HostCapabilities` 之类聚合接口，且没有任何文件导出跨越两个以上模块目录的 token；CORE-01-C 的内核零业务词汇扫描重跑仍通过 |
 | CORE-02-E | 通知降级：无权限 / 抛错 / 未注册 Notifier 三种情况下调用方拿到 false 或 null 并继续，消息落库与状态不受影响 |
 | CORE-02-F | 设置读写：坏 JSON、缺字段、未知模式值均回落默认值且不写回坏值；`SETTING_KEYS` 的每个键有读写往返测试 |
+| CORE-02-G | 实现可替换：`sqliteStorage` 与 `localStorageStorage`、两种 `SecretStore` 实现各自跑**同一份**用例包全绿；`unsupported` 声明与实际行为一致（声明不支持的确实以约定方式不支持，未声明的必须支持）；用例包不断言 SQL 语句或 localStorage 键名 |
 
 ## 模块内执行与交付
 
@@ -75,4 +76,4 @@ export function selectHostPlugins(): readonly AikaPlugin[];
 3. 报告每条 AC 的测试文件/样本、真实命令及退出码，质量样本标明实际模型或 fixture。证据不足保留 NOT RUN/BLOCKED，不能降低门槛。
 4. 交付 `../reports/CORE-02_ACCEPTANCE.md`；原任务审阅证据。只在 [集成触发条件](../../integration/SPEC.md) 满足时安排全流程调试，当前小 SPEC 不默认跑全仓测试或产品打包。
 
-共享规则见 [模块测试规则](../../modules/TESTING.md)；输入输出遵循 [共享契约](../../modules/CONTRACTS.md)。
+CORE-02-G 的用例包形状与「不许稀释」的三条对策见 [端口一致性增量计划](../CONFORMANCE_PLAN.md)；本阶段只落地存储与密钥两份，不新造接口。共享规则见 [模块测试规则](../../modules/TESTING.md)；输入输出遵循 [共享契约](../../modules/CONTRACTS.md)。
