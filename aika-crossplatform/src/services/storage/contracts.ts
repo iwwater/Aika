@@ -82,6 +82,8 @@ export const SETTING_KEYS = {
   /** Trace 开关（LLM-07）。默认值按构建取，持久化后以库里的为准。 */
   traceEnabled: "trace.enabled",
   traceIncludeText: "trace.includeText",
+  /** 开发者模式（FE-09）。关着时标题栏没有工作台入口。 */
+  devMode: "devtools.enabled",
   /**
    * CORE-03 迁移期用过 `core.orchestrator = legacy | kernel`。CORE-06 删除旧编排后
    * 这个 key 不再被读写；旧库里残留的值会被当作普通未知设置忽略，不报错、不迁移。

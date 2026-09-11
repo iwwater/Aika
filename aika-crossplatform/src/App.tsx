@@ -1,7 +1,7 @@
 import { FormEvent, useCallback, useRef, useState } from "react";
 import {
   Bell, BellOff, Bot, Check, ChevronDown, KeyRound, Languages, LoaderCircle, MessageCircleMore,
-  Mic, PanelRightClose, RefreshCw, SendHorizontal, Settings2, Smartphone, Sparkles, Trash2, Volume2, X,
+  Bug, Mic, PanelRightClose, RefreshCw, SendHorizontal, Settings2, Smartphone, Sparkles, Trash2, Volume2, X,
 } from "lucide-react";
 import "./App.css";
 import { AvatarPlaceholder } from "./components/AvatarPlaceholder";
@@ -10,10 +10,12 @@ import { MessageBody } from "./components/MessageBody";
 import { MessageSticker } from "./components/MessageSticker";
 import { MessageTranslation } from "./components/MessageTranslation";
 import { VoiceModal } from "./components/VoiceModal";
+import { DevToolsPage } from "./pages/DevToolsPage";
 import { DEFAULT_CHARACTER } from "./domain/character";
 import { preferredRecognitionLanguage } from "./domain/language";
 import { PROVIDER_PRESETS, validateProvider, type ProviderConfig } from "./domain/providers";
 import { useCompanionSession } from "./hooks/useCompanionSession";
+import { useDevTools } from "./hooks/useDevTools";
 import { useRemoteAccess } from "./hooks/useRemoteAccess";
 import { useVoiceConversation, type VoiceTurnHandler } from "./hooks/useVoiceConversation";
 import { useService } from "./app/kernelContext";
@@ -25,6 +27,8 @@ const QUICK_STARTS = ["今天发生了一件小事…", "有点累，想随便�
 
 function App() {
   const session = useCompanionSession();
+  const devTools = useDevTools();
+  const [showDevTools, setShowDevTools] = useState(false);
   // 连接自检是 Provider 侧能力，经注册表取；App 不再直接 import providerClient。
   const probeProvider = useService(ProviderProbeToken);
   // 模型列表拉取同为 Provider 侧能力，走端口。
@@ -188,12 +192,26 @@ function App() {
       <header className="titlebar">
         <div className="brand"><span className="brand-mark"><Sparkles size={17} /></span><span>{DEFAULT_CHARACTER.name}</span><span className="brand-subtitle">Aika</span></div>
         <div className="titlebar-actions">
+          {devTools.devMode && (
+            <button
+              className={`icon-button ${showDevTools ? "active" : ""}`}
+              title="调试工作台"
+              onClick={() => setShowDevTools((value) => !value)}
+            >
+              <Bug size={18} />
+            </button>
+          )}
           <button className="icon-button" title="设置" onClick={openSettings}><Settings2 size={18} /></button>
           <button className="icon-button sidebar-toggle" title="切换侧栏" onClick={() => setShowSidebar((value) => !value)}><PanelRightClose size={18} /></button>
         </div>
       </header>
 
-      <section className={`workspace ${showSidebar ? "" : "sidebar-hidden"}`}>
+      {showDevTools && <DevToolsPage devTools={devTools} onClose={() => setShowDevTools(false)} />}
+
+      <section
+        className={`workspace ${showSidebar ? "" : "sidebar-hidden"}`}
+        hidden={showDevTools}
+      >
         <aside className="companion-panel">
           <div className="ambient ambient-one" /><div className="ambient ambient-two" />
           <div className="avatar-stage">
@@ -483,6 +501,23 @@ function App() {
                 </div>
               </>
             )}
+            <div className="settings-divider" />
+            <div className="modal-heading"><div><p className="eyebrow">Developer</p><h3>开发者模式</h3></div></div>
+            <p className="modal-intro">打开之后标题栏会多一个入口，进去能看到每一轮对话在内部都发生了什么——组装了什么上下文、请求发给了谁、首 token 多久到、哪一步失败了。只写本机，不发往任何地方。</p>
+            <div className="toggle-row">
+              <button
+                className={`toggle ${devTools.devMode ? "on" : ""}`}
+                onClick={() => void devTools.setDevMode(!devTools.devMode)}
+              >
+                <Bug size={15} /><span>{devTools.devMode ? "已开启" : "开启开发者模式"}</span>
+              </button>
+              <span className="toggle-hint">
+                {devTools.available
+                  ? "Trace 的两个开关在工作台里面。"
+                  : "当前装配没有 Trace 能力，工作台会显示未启用。"}
+              </span>
+            </div>
+
             <div className="modal-actions"><button className="secondary-button" onClick={handleTest} disabled={status.kind === "testing"}>测试连接</button><button className="primary-button" onClick={handleSave}>保存并使用</button></div>
           </section>
         </div>

@@ -247,3 +247,48 @@ mark.speaking { color: var(--cyan); background: rgba(55,230,255,.14); border-rad
 .model-fetch-note.ok { color: var(--lime); }
 .model-fetch-note.error { color: #ffb8d1; }
 .model-select { margin-top: 8px; }
+
+/* ── 调试工作台（FE-09） ───────────────────────────────────────────────── */
+.devtools { display: flex; flex-direction: column; flex: 1; min-height: 0; background: rgba(7,12,22,.6); }
+.devtools-head { display: flex; align-items: center; gap: 14px; height: 52px; padding: 0 18px; border-bottom: 1px solid var(--line); }
+.devtools-title { display: flex; align-items: center; gap: 7px; color: var(--ink); font-size: 13px; }
+.devtools-tabs { display: flex; gap: 6px; margin-left: 8px; }
+.devtools-tabs button { padding: 5px 12px; border: 1px solid var(--line-soft); border-radius: 8px; color: var(--muted); background: transparent; font-size: 12px; transition: .2s; }
+.devtools-tabs button.active { color: var(--cyan); border-color: rgba(55,230,255,.35); background: rgba(55,230,255,.08); }
+.devtools-close { margin-left: auto; color: var(--muted); background: transparent; border: 0; }
+.devtools-empty { padding: 28px 20px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.devtools-empty strong { display: block; margin-bottom: 6px; color: var(--ink); font-size: 13px; }
+.devtools-switches { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.devtools-switches label { display: flex; gap: 10px; align-items: flex-start; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.devtools-switches label strong { display: block; color: var(--ink); font-size: 13px; }
+.devtools-note { color: var(--muted); font-size: 11px; }
+
+.trace-page { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 18px 28px; }
+.trace-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; color: var(--muted); font-size: 11px; }
+.trace-toolbar button { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border: 1px solid var(--line-soft); border-radius: 7px; color: var(--muted); background: rgba(255,255,255,.04); font-size: 11px; }
+.trace-error { color: #ffb8d1; }
+.trace-turns { display: flex; flex-direction: column; gap: 8px; }
+.trace-turn { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: rgba(19,29,49,.6); cursor: pointer; transition: .2s; }
+.trace-turn:hover { border-color: rgba(55,230,255,.3); }
+.trace-turn.active { border-color: rgba(55,230,255,.5); background: rgba(55,230,255,.06); }
+.trace-turn.failed { border-color: rgba(255,77,146,.35); }
+.trace-turn header { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; font-size: 11px; }
+.trace-turn header code { color: var(--muted); }
+.trace-status { padding: 2px 7px; border-radius: 5px; background: rgba(55,230,255,.12); color: var(--cyan); }
+.trace-status.unfinished { background: rgba(255,196,77,.14); color: #ffc44d; }
+.trace-model { margin-left: auto; color: var(--muted); }
+.trace-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); gap: 8px; margin: 0; }
+.trace-metrics dt { color: var(--muted); font-size: 10px; }
+.trace-metrics dd { margin: 2px 0 0; color: var(--ink); font-size: 12px; }
+.trace-errorcode { margin: 8px 0 0; color: #ffb8d1; font-size: 11px; }
+.trace-kinds { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.trace-kinds span { padding: 1px 6px; border-radius: 4px; background: rgba(255,255,255,.05); color: var(--muted); font-size: 10px; }
+.trace-detail { margin-top: 18px; }
+.trace-detail h3, .trace-raw h3 { margin: 0 0 8px; color: var(--ink); font-size: 12px; }
+.trace-detail ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.trace-detail li { display: flex; gap: 10px; align-items: baseline; font-size: 11px; }
+.trace-offset { min-width: 64px; color: var(--cyan); }
+.trace-kind { min-width: 76px; color: var(--ink); }
+.trace-detail code { color: var(--muted); word-break: break-all; }
+.trace-raw { margin-top: 20px; }
+.trace-raw pre { max-height: 240px; overflow: auto; margin: 0; padding: 10px; border: 1px solid var(--line-soft); border-radius: 8px; background: rgba(0,0,0,.35); color: var(--muted); font-size: 10px; line-height: 1.6; white-space: pre; }

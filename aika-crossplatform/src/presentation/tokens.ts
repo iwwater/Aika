@@ -1,6 +1,7 @@
 import { token } from "../kernel";
 import type { CompanionPresenter } from "./companionPresenter";
 import type { VoicePresenter } from "./voicePresenter";
+import type { DevToolsPresenter } from "./devToolsPresenter";
 
 /**
  * 展示层服务标识。
@@ -13,3 +14,10 @@ import type { VoicePresenter } from "./voicePresenter";
  */
 export const CompanionPresenterToken = token<CompanionPresenter>("presentation.companion");
 export const VoicePresenterToken = token<VoicePresenter>("presentation.voice");
+/**
+ * 工作台 Presenter（FE-09）。
+ *
+ * 它**总是**注册，即使没装 Trace 能力——页面要能显示「Trace 未启用」，
+ * 而不是连入口都消失让用户以为功能不存在。缺失的是 sink，不是这个 Presenter。
+ */
+export const DevToolsPresenterToken = token<DevToolsPresenter>("presentation.devtools");

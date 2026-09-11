@@ -6,10 +6,11 @@ import { ProviderSettingsToken, RuntimeToken, type RuntimeServices } from "../..
 import { StorageToken } from "../../services/storage/tokens";
 import { StickerLibraryToken } from "../../services/stickers/tokens";
 import { SpeechEnginesToken } from "../../services/voice/tokens";
-import { TraceRecorderToken } from "../../services/trace/tokens";
+import { TraceRecorderToken, TraceSettingsToken, TraceSinkToken } from "../../services/trace/tokens";
 import { createCompanionPresenter } from "../../presentation/companionPresenter";
 import { createVoicePresenter } from "../../presentation/voicePresenter";
-import { CompanionPresenterToken, VoicePresenterToken } from "../../presentation/tokens";
+import { createDevToolsPresenter } from "../../presentation/devToolsPresenter";
+import { CompanionPresenterToken, DevToolsPresenterToken, VoicePresenterToken } from "../../presentation/tokens";
 
 /**
  * 展示层插件。
@@ -45,9 +46,9 @@ export function presentationPlugin(options: PresentationPluginOptions = {}): Aik
       StorageToken, NotifierToken,
       RuntimeToken, ProviderSettingsToken,
       MemoryAccessToken, StickerLibraryToken, SpeechEnginesToken,
-      TraceRecorderToken,
+      TraceRecorderToken, TraceSinkToken, TraceSettingsToken,
     ],
-    provides: [CompanionPresenterToken, VoicePresenterToken],
+    provides: [CompanionPresenterToken, VoicePresenterToken, DevToolsPresenterToken],
     activate(context) {
       const storage = context.registrar.tryResolve(StorageToken);
       const notifier = context.registrar.tryResolve(NotifierToken);
@@ -55,6 +56,8 @@ export function presentationPlugin(options: PresentationPluginOptions = {}): Aik
       const stickers = context.registrar.tryResolve(StickerLibraryToken);
       const engines = context.registrar.tryResolve(SpeechEnginesToken);
       const trace = context.registrar.tryResolve(TraceRecorderToken);
+      const traceSink = context.registrar.tryResolve(TraceSinkToken);
+      const traceSettings = context.registrar.tryResolve(TraceSettingsToken);
 
       context.registrar.provide(VoicePresenterToken, () => createVoicePresenter({
         ...(engines
@@ -77,6 +80,16 @@ export function presentationPlugin(options: PresentationPluginOptions = {}): Aik
         ...(memoryAccess ? { memoryAccess } : {}),
         ...(stickers ? { loadStickers: stickers } : {}),
         ...(trace ? { trace } : {}),
+      }), { disposer: (value) => value.dispose() });
+
+      // 工作台 Presenter 总是注册：没装 Trace 时它负责显示「未启用」，
+      // 而不是让入口凭空消失（那会被读成「这个功能不存在」）。
+      context.registrar.provide(DevToolsPresenterToken, () => createDevToolsPresenter({
+        sink: traceSink ?? null,
+        settings: traceSettings ?? null,
+        loadStorage: storage
+          ? async () => storage
+          : async () => { throw new Error("本地存储尚未装配，开发者设置无法保存"); },
       }), { disposer: (value) => value.dispose() });
     },
   };
