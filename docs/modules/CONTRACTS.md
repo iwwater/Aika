@@ -64,6 +64,17 @@
 
 语义边界（写进用例包，不只是约定）：未知 id 静默忽略、重复删幂等、空数组是 no-op；删除后 `listMessageTimestamps` / `countMessagesSince` / `countProactiveSince` 跟着变；**不**连带作废摘要、**不**连带删记忆——与 `clearMessages()` 的连带作废明确区分。`RuntimeStorage`（`companionRuntime.ts` 里的窄接口）不含删除能力，保持不变。
 
+### v1 之后的追加（2026-09-12，LLM-06/07 Trace，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `TraceSinkToken` / `TraceRecorderToken` / `TraceSettingsToken` | `services/trace/tokens.ts` | 全是新增注册。Trace 是**可选能力**：不装 `tracePlugin` 时这三个 token 根本不注册，消费方在 `optional` 里声明并 `tryResolve`，拿到 null 退回 `NO_TRACE` | `runtimePlugin`（目前唯一消费者）；后续工作台页面 |
+| `CompanionRuntimeOptions.trace` | `services/runtime/companionRuntime.ts` | 可选入参，不传等于 `NO_TRACE`。既有 `onTrace` / `TurnTrace` 语义**一字未改**——Trace 是并行的第二条路，不是替换 | 只有 `runtimePlugin` 传它 |
+| `AikaStorage.sqlExecutor` | `services/storage/contracts.ts` | **可选**成员，沿用 `memoryV2?` 的「能力缺失即不提供」模式：SQLite 实现有，localStorage 实现没有并在用例包里如实声明 `unsupported`。拿到它的代码负责自己的表，不许改别人的表、不许绕过既有方法改消息与记忆 | Trace 落盘；后续存储浏览页 |
+| `SETTING_KEYS.traceEnabled` / `traceIncludeText` | 同上 | 新增键。旧库里没有这两个键时用按构建取的默认值（开发开、生产关；读不到构建标记按关） | 设置页（F2 未做） |
+
+Trace 事件协议本身（`domain/trace.ts` 的 `TraceEventV1`）自带 `schemaVersion`，后续加字段先冻结已有字段再扩展。**apiKey 永不入 Trace**：不是靠过滤，而是没有任何事件带 key 字段，且 `provider_request.endpoint` 的 query string 整段砍掉。
+
 INT-01 的兼容检查项：云端合成一旦在设置页可选，`createOutputEngine` 的 `note` / `degraded` 必须送到界面，降级当错误显示——现在这两个值在 `defaultSpeechEngines` 里被丢弃。
 
 ## 详细接口入口
