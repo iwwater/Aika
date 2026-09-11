@@ -77,6 +77,8 @@
 
 | `PluginRecord.requires` / `optional` / `provides` | `kernel/diagnostics.ts` | 诊断输出新增三个必填字段（CORE-09），都是 token **key 字符串**——不给 token 实例，拿到实例等于能绕过注册表 resolve。登记时记录，所以 `pending`/`failed`/`skipped` 的插件也带着声明。插件契约 `AikaPlugin` 未改 | 对 `describe().plugins` 做深相等断言的测试（仓库内一处，已更新）；F6 数据流图 |
 
+| `TraceEventKind` 增加 `"reply"` | `domain/trace.ts` | 联合类型加一个成员（LLM-09），既有七种事件字段未动。对 kind 做**穷举**的地方必须补分支——仓库内两处（`traceView` 的标签表、`TracePage` 的摘要 switch），都已补，且因为是穷举而不是带 default 的兜底，漏不掉 | 任何消费 Trace 事件的页面与统计 |
+
 Trace 事件协议本身（`domain/trace.ts` 的 `TraceEventV1`）自带 `schemaVersion`，后续加字段先冻结已有字段再扩展。**apiKey 永不入 Trace**：不是靠过滤，而是没有任何事件带 key 字段，且 `provider_request.endpoint` 的 query string 整段砍掉。
 
 INT-01 的兼容检查项：云端合成一旦在设置页可选，`createOutputEngine` 的 `note` / `degraded` 必须送到界面，降级当错误显示——现在这两个值在 `defaultSpeechEngines` 里被丢弃。
