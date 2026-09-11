@@ -76,7 +76,7 @@ waku 是本地优先个人 Agent（Python，四支柱：Harness / Loop / Memory 
 | 撤回 | 删除单条消息并从后续上下文剔除；assistant 消息撤回同时撤销其记忆候选 | 需要存储层补删除接口 |
 | 重新生成 | 对最后一轮 user 消息重发，替换上一条 assistant 回复 | 复用 `session.send`，turnId 屏蔽迟到结果已有 |
 | Rewind | 选任意历史消息"回到这里"：截断其后的消息与派生数据（摘要不回滚，标注 gap） | 需定义截断语义与 SQLite 级联，单独 SPEC |
-| 重试失败轮 | error 气泡上直接重试按钮 | **不是小改**：失败气泡由 presenter `persist()` 落库，而 storage 契约只有 `deleteMemory`，删除消息的端口需新增（含 conformance + sqlite/localStorage 两处实现） |
+| 重试失败轮 | error 气泡上直接重试按钮 | **已交付**（CORE-08 + FE-05）。原判断「小改」是错的：失败气泡由 presenter `persist()` 落库，storage 契约当时只有 `deleteMemory`，需先新增删除消息端口（含 conformance + sqlite/localStorage 两处实现）；撤回/重新生成/Rewind 现在都可以复用这个端口 |
 
 ### F2 开发者模式入口（frontend + app 装配）
 
@@ -146,7 +146,7 @@ waku 是本地优先个人 Agent（Python，四支柱：Harness / Loop / Memory 
 
 | 里程碑 | 内容 | 出口 AC（示例） |
 | --- | --- | --- |
-| M0 | §0.1 双语修复 + 重试按钮 | 复现用例：replyText==translation 时不显示次级字幕；单测覆盖。**双语修复已由 FE-04 交付**；重试按钮经查证不是小改（storage 契约无删除消息接口，失败气泡已落库），单独立项 |
+| M0 | §0.1 双语修复 + 重试按钮 | 复现用例：replyText==translation 时不显示次级字幕；单测覆盖。**已交付**：双语修复 [FE-04](frontend/specs/FE-04.md)；重试按钮拆成 [CORE-08](core/specs/CORE-08_MESSAGE_DELETION.md)（`deleteMessages` 端口）+ [FE-05](frontend/specs/FE-05.md)（先删再投），因为它不是小改 |
 | M1 | F1 其余交互（发音/撤回/重生成/Rewind） | fake Runtime 下逐项 AC；SQLite 截断语义有测试 |
 | M2 | F3 Trace 协议 + fake sink 全链单测；F2 开发者入口 | 事件 schema 版本化；脱敏用例；sink 故障不影响主链路 |
 | M3 | F4/F5/F6 工作台页面（读 M2 数据） | 用 harness 回放数据驱动页面，不依赖真实模型 |
