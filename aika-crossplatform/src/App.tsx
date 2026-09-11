@@ -6,6 +6,7 @@ import {
 import "./App.css";
 import { AvatarPlaceholder } from "./components/AvatarPlaceholder";
 import { MessageSticker } from "./components/MessageSticker";
+import { MessageTranslation } from "./components/MessageTranslation";
 import { VoiceModal } from "./components/VoiceModal";
 import { DEFAULT_CHARACTER } from "./domain/character";
 import { preferredRecognitionLanguage } from "./domain/language";
@@ -232,9 +233,7 @@ function App() {
                         {(message.japaneseText ?? message.content).split("\n").map((line, index) => (
                           <span key={`${message.id}-${index}`}>{line}</span>
                         ))}
-                        {showTranslation && message.chineseTranslation && (
-                          <span className="translation">{message.chineseTranslation}</span>
-                        )}
+                        <MessageTranslation message={message} visible={showTranslation} />
                         <MessageSticker id={message.sticker} stickers={session.stickers} />
                       </>
                     )}

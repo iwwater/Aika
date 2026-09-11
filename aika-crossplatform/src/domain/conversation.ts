@@ -84,6 +84,29 @@ export function companionMessage(
   };
 }
 
+/**
+ * 次级字幕的显示值。空串表示这一条不该有第二层。
+ *
+ * 模型经常把 replyText 和 translation 返回同一句：提示词的输出契约本来就允许
+ * 「整句本来就是中文时两个字段写成一样」，而 openai-compatible 协议不支持
+ * json_schema，双语全靠约定。渲染侧只看 showTranslation 开关的结果，就是同一句话
+ * 连着显示两遍。
+ *
+ * 判定只看「是不是同一句」，**不看语言**：纯汉字的日语（「大丈夫」「了解」）在
+ * detectLanguage 眼里是 zh，按语言去掉字幕会把真正需要翻译的那几句一起去掉。
+ */
+export function displayTranslation(message: ChatMessage): string {
+  const translation = message.chineseTranslation?.trim() ?? "";
+  if (!translation) return "";
+  const body = message.japaneseText ?? message.content;
+  return sentenceKey(body) === sentenceKey(translation) ? "" : translation;
+}
+
+/** 同句比较键。空白、标点和英文大小写的差别不算两句话。 */
+function sentenceKey(text: string): string {
+  return text.replace(/[\s\p{P}\p{S}]/gu, "").toLowerCase();
+}
+
 /** 送进提示词的历史。Aika 的历史只带日语正文，不带中文翻译，避免占用上下文。 */
 export function toCompanionTurns(messages: readonly ChatMessage[]): ConversationTurn[] {
   return messages

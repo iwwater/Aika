@@ -6,7 +6,7 @@
  * 完整取舍见 DEVELOPMENT_PLAN 的 M7。
  */
 
-import type { ChatMessage } from "./conversation";
+import { displayTranslation, type ChatMessage } from "./conversation";
 
 /** 默认端口。挑一个不常被占的高位端口，用户可改。 */
 export const REMOTE_DEFAULT_PORT = 8765;
@@ -54,13 +54,17 @@ export function normalizePort(value: unknown): number | null {
 export function toRemoteMessages(messages: readonly ChatMessage[]): RemoteMessage[] {
   return messages
     .filter((message) => !message.pending)
-    .map((message) => ({
-      role: message.role,
-      text: message.japaneseText ?? message.content,
-      ...(message.chineseTranslation ? { translation: message.chineseTranslation } : {}),
-      time: message.time,
-      ...(message.error ? { error: true } : {}),
-    }));
+    .map((message) => {
+      // 与桌面气泡共用同一条判定：同一句话不在手机上也显示两遍。
+      const translation = displayTranslation(message);
+      return {
+        role: message.role,
+        text: message.japaneseText ?? message.content,
+        ...(translation ? { translation } : {}),
+        time: message.time,
+        ...(message.error ? { error: true } : {}),
+      };
+    });
 }
 
 /** 取出手机发来的那句话。取不出来就返回空串，由调用方回一条明确的错误。 */

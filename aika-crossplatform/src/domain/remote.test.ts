@@ -34,6 +34,15 @@ describe("toRemoteMessages", () => {
     const [remote] = toRemoteMessages([message({ chineseTranslation: "" })]);
     expect(remote.translation).toBeUndefined();
   });
+
+  it("翻译和正文是同一句时不带这个字段", () => {
+    // 手机和桌面共用 displayTranslation，同一句话不在手机上显示两遍
+    const [remote] = toRemoteMessages([
+      message({ japaneseText: "今天有点累", content: "今天有点累", chineseTranslation: "今天有点累。" }),
+    ]);
+    expect(remote.text).toBe("今天有点累");
+    expect(remote.translation).toBeUndefined();
+  });
 });
 
 describe("parseSendText", () => {
