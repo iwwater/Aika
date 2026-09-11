@@ -8,6 +8,7 @@
 - [LLM SPEC](llm/SPEC.md) · [STT SPEC](stt/SPEC.md) · [TTS SPEC](tts/SPEC.md) · [前端 SPEC](frontend/SPEC.md)
 - [CORE SPEC](core/SPEC.md)：运行时内核与装配层，方案见 [重构计划书](core/REFACTOR_PLAN.md)、接口见 [内核架构](core/ARCHITECTURE.md)。
 - [共享接口](modules/CONTRACTS.md) · [模块内测试规则](modules/TESTING.md) · [模块验收模板](modules/ACCEPTANCE_TEMPLATE.md)
+- [调试工作台 · 进度与未完成项](WORKBENCH_PROGRESS.md)：F1～F6 已交付什么、FE-10 停在哪、F7/F8/F9 还没开始，以及全局未验证项。
 - [集成验收](integration/SPEC.md)：跨模块链路、全量回归与打包。
 - [旧阶段映射](modules/MIGRATION.md)：旧 S1–S8 要求与证据归属。
 
