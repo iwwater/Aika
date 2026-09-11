@@ -73,8 +73,8 @@ waku 是本地优先个人 Agent（Python，四支柱：Harness / Loop / Memory 
 | --- | --- | --- |
 | 双语对照修复 | 见 §0.1 | hotfix 级 |
 | 点击发音 | 点气泡/句子调 TTS 朗读；复用现有 `outputEngine`/cloudTtsOutput，走字幕高亮同一套 speakingRange | 语音链路已有，缺 UI 入口 |
-| 撤回 | 删除单条消息并从后续上下文剔除；assistant 消息撤回同时撤销其记忆候选 | 需要存储层补删除接口 |
-| 重新生成 | 对最后一轮 user 消息重发，替换上一条 assistant 回复 | 复用 `session.send`，turnId 屏蔽迟到结果已有 |
+| 撤回 | 删除单条消息并从后续上下文剔除；assistant 消息撤回同时撤销其记忆候选 | **已交付**（[FE-06](frontend/specs/FE-06.md)）。实际按整轮删除（只删一行会留下半轮）；记忆联动只撤未确认的候选，confirmed 保留，理由见 [验收报告](frontend/reports/FE-06_ACCEPTANCE.md) |
+| 重新生成 | 对最后一轮 user 消息重发，替换上一条 assistant 回复 | **已交付**（FE-06）。不限于最后一轮，任一成功气泡都可；与重试同一条「先删再投」路径 |
 | Rewind | 选任意历史消息"回到这里"：截断其后的消息与派生数据（摘要不回滚，标注 gap） | 需定义截断语义与 SQLite 级联，单独 SPEC |
 | 重试失败轮 | error 气泡上直接重试按钮 | **已交付**（CORE-08 + FE-05）。原判断「小改」是错的：失败气泡由 presenter `persist()` 落库，storage 契约当时只有 `deleteMemory`，需先新增删除消息端口（含 conformance + sqlite/localStorage 两处实现）；撤回/重新生成/Rewind 现在都可以复用这个端口 |
 
@@ -147,7 +147,7 @@ waku 是本地优先个人 Agent（Python，四支柱：Harness / Loop / Memory 
 | 里程碑 | 内容 | 出口 AC（示例） |
 | --- | --- | --- |
 | M0 | §0.1 双语修复 + 重试按钮 | 复现用例：replyText==translation 时不显示次级字幕；单测覆盖。**已交付**：双语修复 [FE-04](frontend/specs/FE-04.md)；重试按钮拆成 [CORE-08](core/specs/CORE-08_MESSAGE_DELETION.md)（`deleteMessages` 端口）+ [FE-05](frontend/specs/FE-05.md)（先删再投），因为它不是小改 |
-| M1 | F1 其余交互（发音/撤回/重生成/Rewind） | fake Runtime 下逐项 AC；SQLite 截断语义有测试 |
+| M1 | F1 其余交互（发音/撤回/重生成/Rewind） | fake Runtime 下逐项 AC；SQLite 截断语义有测试。**撤回/重新生成已交付**（FE-06）；发音与 Rewind 未开始，Rewind 需要「按时间截断」端口而不只是按 id 删除 |
 | M2 | F3 Trace 协议 + fake sink 全链单测；F2 开发者入口 | 事件 schema 版本化；脱敏用例；sink 故障不影响主链路 |
 | M3 | F4/F5/F6 工作台页面（读 M2 数据） | 用 harness 回放数据驱动页面，不依赖真实模型 |
 | M4 | F7 记忆管理页；F8/F9 视需要后置 | 管理操作有契约测试；统计口径有单测 |
@@ -170,4 +170,4 @@ waku 是本地优先个人 Agent（Python，四支柱：Harness / Loop / Memory 
 1. Rewind 对滚动摘要的处理：接受"摘要不回滚 + 标注 gap"，还是要求摘要可重建？
 2. 生产构建 Trace 默认开还是关？（建议默认关，崩溃时引导用户临时打开）
 3. F8 SQLite 控制台是否只读？（建议只读，写操作只走应用内接口）
-4. 撤回是否需要同步清除已入库的记忆候选？（建议是，撤回=该轮从未发生）
+4. ~~撤回是否需要同步清除已入库的记忆候选？~~ **已回答（FE-06）**：采纳但收窄——来源有交集且仍为 `candidate` 的走 `forget()`，`confirmed` 一律保留（用户明确留下的不能因一次撤回悄悄消失）。收窄理由：抽取输入是最近 4 条消息，一条记忆的来源常跨两轮，「来源有交集」是宽判据。V1 记忆路径无来源字段，不假装联动。
