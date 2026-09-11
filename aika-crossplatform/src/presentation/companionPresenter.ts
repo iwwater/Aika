@@ -1,8 +1,9 @@
 import { DEFAULT_CHARACTER } from "../domain/character";
 import { toCompanionReply, type CompanionReply } from "../domain/companion";
 import {
-  buildCompanionContext, companionMessage, formatClockTime, retryableTurn, toCompanionTurns, userMessage,
-  type ChatMessage, type MessageSource,
+  buildCompanionContext, companionMessage, formatClockTime, messageTurn, regeneratableTurn, retryableTurn,
+  toCompanionTurns, userMessage, WELCOME_MESSAGE_ID,
+  type ChatMessage, type MessageSource, type MessageTurn,
 } from "../domain/conversation";
 import {
   createMemoryV2, memoryLines, memoryTypeFromCategory, toLegacyMemoryRecord,
@@ -107,6 +108,14 @@ export interface CompanionPresenter {
    * 直接重投会留下两条相同的用户消息。这里先整轮删掉，再用同一句原话提交。
    */
   retry(messageId: string): Promise<CompanionReply | null>;
+  /** 对已经成功的那一轮换一个回复。机制与 retry 相同，入口不同。 */
+  regenerate(messageId: string): Promise<CompanionReply | null>;
+  /**
+   * 撤回这一轮。
+   *
+   * 连带遗忘由它喂出来的**未确认**候选记忆；用户确认过的一律保留。
+   */
+  withdraw(messageId: string): Promise<void>;
   setProvider(next: ProviderConfig): Promise<void>;
   setProactive(next: ProactiveSettings): Promise<void>;
   setMemoryExtractionEnabled(enabled: boolean): Promise<void>;
@@ -147,7 +156,7 @@ function startOfToday(now: number): number {
 
 function welcomeMessage(now: number): ChatMessage {
   return {
-    id: "welcome",
+    id: WELCOME_MESSAGE_ID,
     role: "assistant",
     content: DEFAULT_CHARACTER.greeting,
     japaneseText: DEFAULT_CHARACTER.greeting,
@@ -414,7 +423,7 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
     // 开场白从来不落库。直接拿库里的结果覆盖，会让用户发出第一句话的瞬间
     // 问候语凭空消失——重开时它本来就不在，但会话中途消失是另一回事。
     const current = messages;
-    const keepWelcome = current[0]?.id === "welcome";
+    const keepWelcome = current[0]?.id === WELCOME_MESSAGE_ID;
     const next = keepWelcome ? [current[0], ...rows] : [...rows];
     setMessages(next);
     return next;
@@ -689,27 +698,89 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
   }
 
   /**
-   * 重跑失败的那一轮。
+   * 从存储和界面上删掉这一轮。
    *
-   * 顺序是「先删再投」，不能反过来：Runtime 每轮新建 id 重新持久化用户消息，
-   * 先投后删就有一个窗口里库里存在两条相同的用户消息，而删除的是哪一条也说不清。
-   *
-   * 删存储失败就不重投：留着那条失败气泡，用户还能再点一次，
-   * 比让界面和库对不上要好。
+   * 顺序是「先删再投／先删再遗忘」，不能反过来：Runtime 每轮新建 id 重新持久化
+   * 用户消息，先投后删就有一个窗口里库里存在两条相同的用户消息，而删除的是哪一条
+   * 也说不清。删失败就把这一轮留在原处，界面和库不许对不上。
    */
-  async function retry(messageId: string): Promise<CompanionReply | null> {
-    if (sending) return null;
-    const turn = retryableTurn(messages, messageId);
-    if (!turn) return null;
+  async function dropTurn(turn: MessageTurn): Promise<boolean> {
     try {
       await storage?.deleteMessages(turn.ids);
     } catch (error) {
       setStorageError(error instanceof Error ? error.message : String(error));
-      return null;
+      return false;
     }
     const doomed = new Set(turn.ids);
     patchMessages((current) => current.filter((message) => !doomed.has(message.id)));
+    return true;
+  }
+
+  /**
+   * 重跑一轮：先整轮删掉，再用同一句原话重投。
+   *
+   * 重试与重新生成走的是同一条路径，区别只在谁有资格进来（domain 的两个判定）。
+   */
+  async function resubmitTurn(turn: MessageTurn | null): Promise<CompanionReply | null> {
+    if (sending || !turn) return null;
+    if (!await dropTurn(turn)) return null;
     return send(turn.text, turn.source);
+  }
+
+  async function retry(messageId: string): Promise<CompanionReply | null> {
+    return resubmitTurn(retryableTurn(messages, messageId));
+  }
+
+  async function regenerate(messageId: string): Promise<CompanionReply | null> {
+    return resubmitTurn(regeneratableTurn(messages, messageId));
+  }
+
+  /**
+   * 撤回这一轮。
+   *
+   * 开场白不可撤回：它从来不落库，删它只是让问候语在这次会话里凭空消失。
+   *
+   * 删完要自己刷新 timestamps——关系状态是按它现算的，而撤回后面没有新的一轮
+   * 来顺带对齐存储（重投有，所以那条路径不需要）。
+   */
+  async function withdraw(messageId: string): Promise<void> {
+    if (sending) return;
+    const turn = messageTurn(messages, messageId);
+    if (!turn || turn.ids.includes(WELCOME_MESSAGE_ID)) return;
+    if (!await dropTurn(turn)) return;
+    try {
+      if (storage) timestamps = [...await storage.listMessageTimestamps()];
+    } catch (error) {
+      setStorageError(error instanceof Error ? error.message : String(error));
+    }
+    await forgetCandidatesFrom(turn.ids);
+    commit();
+  }
+
+  /**
+   * 撤回连带遗忘：来源与被撤回消息有交集、且用户还没确认过的候选。
+   *
+   * 只删 `candidate` 是刻意的。抽取输入是最近 4 条消息（见 runBackgroundMemoryWork），
+   * 一条记忆的来源常常跨两轮，所以「来源有交集」是个宽判据；用它无差别删除会牵连
+   * 别的轮次。用户确认过的记忆是他明确说过要留的，不能因为一次撤回悄悄消失。
+   *
+   * V1 记忆路径没有来源字段，溯源不了，就什么都不做——不假装联动。
+   */
+  async function forgetCandidatesFrom(ids: readonly string[]): Promise<void> {
+    const repository = memoryRepository;
+    if (!repository) return;
+    const doomed = new Set(ids);
+    try {
+      const linked = (await repository.list()).filter((record) => (
+        record.status === "candidate" && record.sourceMessageIds.some((id) => doomed.has(id))
+      ));
+      if (!linked.length) return;
+      for (const record of linked) await repository.forget(record.id);
+      memories = visibleMemories(await repository.list());
+    } catch (error) {
+      // 记忆联动失败不能把已经删掉的消息变回来；如实报出去，消息侧保持已撤回。
+      setStorageError(error instanceof Error ? error.message : String(error));
+    }
   }
 
   /** 主动消息。频率闸门与理由选择都在 domain/proactive.ts，这里只负责跑一次。 */
@@ -889,6 +960,8 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
       if (runtimeServices && kernelTurnId) runtimeServices.runtime.cancel(kernelTurnId);
     },
     retry,
+    regenerate,
+    withdraw,
     setProvider,
     setProactive,
     setMemoryExtractionEnabled,

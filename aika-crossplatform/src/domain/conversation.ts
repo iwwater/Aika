@@ -47,6 +47,14 @@ export interface ChatMessage extends ChatTurn {
 
 export type MessageSource = "text" | "voice" | "proactive";
 
+/**
+ * 开场白的固定 id。
+ *
+ * 它是唯一一条**从来不落库**的消息，所以任何删除类操作都要认得它：删掉它只是让
+ * 问候语在这次会话里凭空消失，重开又回来。Presenter 与界面共用这一个常量。
+ */
+export const WELCOME_MESSAGE_ID = "welcome";
+
 export function formatClockTime(createdAt: number): string {
   return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(new Date(createdAt));
 }
@@ -107,26 +115,50 @@ function sentenceKey(text: string): string {
   return text.replace(/[\s\p{P}\p{S}]/gu, "").toLowerCase();
 }
 
-/** 一次可重跑的失败轮：要删掉哪几行，用哪句原话重投。 */
-export interface RetryableTurn {
-  /** 该轮在库里留下的全部消息 id，重投前要先删掉。 */
+/** 一轮消息：它在库里留下哪几行，用户当初说了什么。 */
+export interface MessageTurn {
+  /** 该轮在库里留下的全部消息 id。撤回删这些，重投前也先删这些。 */
   ids: string[];
-  /** 用户当初说的那句话。 */
+  /** 用户当初说的那句话。主动消息轮没有用户发言，为空串。 */
   text: string;
   /** 原轮来源。语音轮重投时仍标 voice，不伪装成打字。 */
   source: MessageSource;
 }
 
+/** FE-05 的名字保留：可重试的那一轮，形状与 MessageTurn 相同。 */
+export type RetryableTurn = MessageTurn;
+
 /**
- * 找出失败气泡对应的那一轮。不可重试时返回 null。
- *
- * 为什么要连用户那条一起删：`CompanionRuntime` 在生成前就把用户那句话落库了
- * （「后面生成失败，这一句也不该丢」），而 `submit()` 每轮都新建 id 重新持久化。
- * 只删失败气泡就重投，库里会留下两条一模一样的用户消息。
+ * 找出一条消息所属的那一轮。找不到该消息时返回 null。
  *
  * 归组按 `runtimeTurnId`：Runtime 给用户消息写 turn.id，Presenter 给失败气泡写
- * handle.turnId，同一轮的两行天然同号。旧数据没有这个字段，回退到「失败气泡之前
- * 最近的那条用户消息」——这是那些行唯一还能用的线索。
+ * handle.turnId，同一轮的几行天然同号。旧数据没有这个字段，回退到「这条消息之前
+ * 最近的那条用户消息」——那些行唯一还能用的线索。
+ *
+ * 为什么重投前要把用户那条一起删：`CompanionRuntime` 在生成前就把用户那句话落库了
+ * （「后面生成失败，这一句也不该丢」），而 `submit()` 每轮都新建 id 重新持久化。
+ * 只删 assistant 那条就重投，库里会留下两条一模一样的用户消息。
+ */
+export function messageTurn(
+  messages: readonly ChatMessage[],
+  messageId: string,
+): MessageTurn | null {
+  const index = messages.findIndex((message) => message.id === messageId);
+  const target = index < 0 ? undefined : messages[index];
+  if (!target) return null;
+
+  const sameTurn = target.runtimeTurnId
+    ? messages.filter((message) => message.runtimeTurnId === target.runtimeTurnId)
+    : [target];
+  const asked = sameTurn.find((message) => message.role === "user")
+    // 旧数据回退：往前找最近一条用户消息。
+    ?? messages.slice(0, index).reverse().find((message) => message.role === "user");
+  const ids = [...new Set([...sameTurn.map((message) => message.id), ...(asked ? [asked.id] : [])])];
+  return { ids, text: asked?.content.trim() ? asked.content : "", source: asked?.source ?? target.source ?? "text" };
+}
+
+/**
+ * 可重试的失败轮。不可重试时返回 null。
  *
  * 主动消息轮没有用户发言，重投无从谈起，返回 null 让界面不给入口。
  */
@@ -134,20 +166,26 @@ export function retryableTurn(
   messages: readonly ChatMessage[],
   failureId: string,
 ): RetryableTurn | null {
-  const index = messages.findIndex((message) => message.id === failureId);
-  const failure = index < 0 ? undefined : messages[index];
+  const failure = messages.find((message) => message.id === failureId);
   if (!failure || failure.role !== "assistant" || !failure.error) return null;
+  const turn = messageTurn(messages, failureId);
+  return turn?.text ? turn : null;
+}
 
-  const sameTurn = failure.runtimeTurnId
-    ? messages.filter((message) => message.runtimeTurnId === failure.runtimeTurnId)
-    : [failure];
-  const asked = sameTurn.find((message) => message.role === "user")
-    // 旧数据回退：往前找最近一条用户消息。
-    ?? messages.slice(0, index).reverse().find((message) => message.role === "user");
-  if (!asked?.content.trim()) return null;
-
-  const ids = [...new Set([...sameTurn.map((message) => message.id), asked.id, failure.id])];
-  return { ids, text: asked.content, source: asked.source ?? "text" };
+/**
+ * 可重新生成的那一轮。机制与重试完全相同，区别只在入口长在成功的气泡上。
+ *
+ * 失败气泡走重试，不在这里出第二个按钮；还在生成中的那条也不给——
+ * 要换回复先让这一轮结束，或者取消它。
+ */
+export function regeneratableTurn(
+  messages: readonly ChatMessage[],
+  messageId: string,
+): MessageTurn | null {
+  const target = messages.find((message) => message.id === messageId);
+  if (!target || target.role !== "assistant" || target.error || target.pending) return null;
+  const turn = messageTurn(messages, messageId);
+  return turn?.text ? turn : null;
 }
 
 /** 送进提示词的历史。Aika 的历史只带日语正文，不带中文翻译，避免占用上下文。 */

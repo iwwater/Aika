@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildCompanionContext, companionMessage, displayTranslation, retryableTurn, toCompanionTurns, userMessage,
+  buildCompanionContext, companionMessage, displayTranslation, messageTurn, regeneratableTurn, retryableTurn,
+  toCompanionTurns, userMessage, WELCOME_MESSAGE_ID,
   type ChatMessage,
 } from "./conversation";
 
@@ -115,6 +116,77 @@ describe("retryableTurn", () => {
         error: true, runtimeTurnId: "run-1", source: "proactive" },
     ];
     expect(retryableTurn(messages, "failure")).toBeNull();
+  });
+});
+
+describe("messageTurn", () => {
+  /** 一轮成功的对话在库里留下的两行，同号。 */
+  function okTurn(): ChatMessage[] {
+    return [
+      { id: "asked", role: "user", content: "今天有点累", createdAt: NOW, time: "12:00",
+        source: "text", runtimeTurnId: "run-1" },
+      { id: "replied", role: "assistant", content: "おつかれ", japaneseText: "おつかれ",
+        chineseTranslation: "辛苦了", createdAt: NOW + 1, time: "12:00", runtimeTurnId: "run-1" },
+    ];
+  }
+
+  it("从任一行都能找回整轮：assistant 进、user 进，结果一样", () => {
+    const messages = okTurn();
+    expect(messageTurn(messages, "replied")).toEqual({ ids: ["asked", "replied"], text: "今天有点累", source: "text" });
+    expect(messageTurn(messages, "asked")?.ids).toEqual(["asked", "replied"]);
+  });
+
+  it("主动消息轮没有用户原话：ids 有它自己，text 是空串", () => {
+    const messages: ChatMessage[] = [
+      { id: "push", role: "assistant", content: "在做什么呢", createdAt: NOW, time: "12:00",
+        source: "proactive", runtimeTurnId: "run-9" },
+    ];
+    expect(messageTurn(messages, "push")).toEqual({ ids: ["push"], text: "", source: "proactive" });
+  });
+
+  it("找不到这条消息就是 null，不猜", () => {
+    expect(messageTurn(okTurn(), "不存在")).toBeNull();
+  });
+});
+
+describe("regeneratableTurn", () => {
+  function turn(overrides: Partial<ChatMessage> = {}): ChatMessage[] {
+    return [
+      { id: "asked", role: "user", content: "今天有点累", createdAt: NOW, time: "12:00",
+        source: "text", runtimeTurnId: "run-1" },
+      { id: "replied", role: "assistant", content: "おつかれ", createdAt: NOW + 1, time: "12:00",
+        runtimeTurnId: "run-1", ...overrides },
+    ];
+  }
+
+  it("成功的回复可以重新生成，删整轮后用原话重投", () => {
+    expect(regeneratableTurn(turn(), "replied")).toEqual({
+      ids: ["asked", "replied"], text: "今天有点累", source: "text",
+    });
+  });
+
+  it("失败气泡走重试，不在这里出第二个按钮", () => {
+    expect(regeneratableTurn(turn({ error: true }), "replied")).toBeNull();
+  });
+
+  it("还在生成中的那条不给：先让这一轮结束或取消它", () => {
+    expect(regeneratableTurn(turn({ pending: true }), "replied")).toBeNull();
+  });
+
+  it("用户消息与主动消息轮都不可重新生成", () => {
+    expect(regeneratableTurn(turn(), "asked")).toBeNull();
+    const proactive: ChatMessage[] = [
+      { id: "push", role: "assistant", content: "在做什么呢", createdAt: NOW, time: "12:00",
+        source: "proactive", runtimeTurnId: "run-9" },
+    ];
+    expect(regeneratableTurn(proactive, "push")).toBeNull();
+  });
+
+  it("开场白不可重新生成：它前面没有用户原话", () => {
+    const messages: ChatMessage[] = [
+      { id: WELCOME_MESSAGE_ID, role: "assistant", content: "你回来了", createdAt: NOW, time: "12:00", source: "text" },
+    ];
+    expect(regeneratableTurn(messages, WELCOME_MESSAGE_ID)).toBeNull();
   });
 });
 

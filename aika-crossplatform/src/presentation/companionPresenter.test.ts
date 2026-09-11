@@ -6,6 +6,9 @@ import type {
   CompanionRuntime, RuntimeEvent, SubmitRequest, TurnSettlement,
 } from "../services/runtime/companionRuntime";
 import { createProviderSettings } from "../services/runtime/providerSettings";
+import { createMemoryRepository } from "../services/memory/memoryRepository";
+import { createInMemoryMemoryStore } from "../services/memory/memoryStore";
+import { createMemoryV2 } from "../domain/memory";
 import { createCompanionPresenter, type CompanionPresenter } from "./companionPresenter";
 
 /**
@@ -153,18 +156,48 @@ function envelope(replyText: string, translation = ""): ReplyEnvelopeV1 {
   };
 }
 
-function setup() {
+/**
+ * 记忆侧用**生产仓储**跑在内存 store 上，不手搓假仓储：
+ * 撤回联动要验的是 forget 的真实语义（落抑制标记、状态判定），假的证明不了。
+ */
+function setup(options: { memories?: readonly ReturnType<typeof createMemoryV2>[] } = {}) {
   const storage = createStorage();
   const fake = createFakeRuntime();
   const settings = createProviderSettings(PROVIDER_PRESETS[1]);
+  const seeded = (options.memories ?? []).flatMap((record) => (record ? [record] : []));
+  const store = createInMemoryMemoryStore(seeded.length ? { initial: { records: seeded } } : {});
+  const repository = createMemoryRepository({ store });
   const presenter: CompanionPresenter = createCompanionPresenter({
     loadStorage: async () => storage,
     notifier: { notify: async () => false },
     loadStickers: async () => [],
     extractor: { extract: async () => [], summarize: async () => "" },
     runtime: { runtime: fake.runtime, settings },
+    ...(options.memories ? { memoryAccess: { repository, onInvalidate: () => () => undefined } } : {}),
   });
-  return { presenter, storage, fake };
+  return { presenter, storage, fake, repository };
+}
+
+/**
+ * 把一轮的两行按真实形状落进 fake 存储。
+ *
+ * 真 Runtime 自己落库（生成前落用户消息、完成后落回复），fake Runtime 不落；
+ * 撤回/重新生成验的正是「库里那几行怎么消失」，所以这里得先有行。
+ */
+function seedTurnRows(
+  storage: ReturnType<typeof createStorage>,
+  runtimeTurnId: string,
+  askedAt = 1000,
+): { askedId: string; repliedId: string } {
+  storage.rows.push({
+    id: "asked-1", role: "user", content: "你好", source: "text",
+    createdAt: askedAt, time: "00:00", runtimeTurnId,
+  });
+  storage.rows.push({
+    id: "replied-1", role: "assistant", content: "こんにちは", japaneseText: "こんにちは",
+    chineseTranslation: "你好", source: "text", createdAt: askedAt + 1, time: "00:00", runtimeTurnId,
+  });
+  return { askedId: "asked-1", repliedId: "replied-1" };
 }
 
 async function flush(): Promise<void> {
@@ -294,6 +327,107 @@ describe("CompanionPresenter 无 React 驱动", () => {
     expect(ctx.fake.submitted).toEqual([first.turnId, second.turnId]);
     // 失败气泡还在，用户之后仍可重试。
     expect(ctx.presenter.getSnapshot().messages.some((message) => message.id === failure!.id)).toBe(true);
+  });
+
+  it("重新生成：成功的那一轮也走先删再投，库里不留重复用户消息", async () => {
+    await ctx.presenter.start();
+    const sent = ctx.presenter.send("你好");
+    const first = ctx.fake.last();
+    const rows = seedTurnRows(ctx.storage, first.turnId);
+    ctx.fake.generated(first.turnId, envelope("こんにちは", "你好"));
+    ctx.fake.settle(first.turnId, { state: "completed", persisted: true });
+    await sent;
+    await flush();
+    expect(ctx.presenter.getSnapshot().messages.some((message) => message.id === rows.repliedId)).toBe(true);
+
+    const again = ctx.presenter.regenerate(rows.repliedId);
+    await flush();
+
+    expect(ctx.storage.rows).toHaveLength(0);
+
+    const second = ctx.fake.last();
+    expect(second.turnId).not.toBe(first.turnId);
+    expect(second.request.text).toBe("你好");
+    ctx.fake.generated(second.turnId, envelope("やあ", "嘿"));
+    ctx.fake.settle(second.turnId, { state: "completed", persisted: true });
+    await again;
+    await flush();
+    expect(ctx.storage.rows.filter((row) => row.role === "user")).toHaveLength(0);
+  });
+
+  it("撤回：整轮从存储与界面消失，timestamps 跟着刷新", async () => {
+    await ctx.presenter.start();
+    const sent = ctx.presenter.send("你好");
+    const turn = ctx.fake.last();
+    const rows = seedTurnRows(ctx.storage, turn.turnId);
+    ctx.fake.generated(turn.turnId, envelope("こんにちは", "你好"));
+    ctx.fake.settle(turn.turnId, { state: "completed", persisted: true });
+    await sent;
+    await flush();
+    expect(ctx.presenter.getSnapshot().relationship.totalMessageCount).toBeGreaterThan(0);
+
+    await ctx.presenter.withdraw(rows.repliedId);
+    await flush();
+
+    expect(ctx.storage.rows).toHaveLength(0);
+    const snapshot = ctx.presenter.getSnapshot();
+    expect(snapshot.messages.some((message) => message.id === rows.repliedId)).toBe(false);
+    expect(snapshot.messages.some((message) => message.id === rows.askedId)).toBe(false);
+    // 撤回后面没有新的一轮来顺带对齐存储，所以 timestamps 必须当场刷新。
+    expect(snapshot.relationship.totalMessageCount).toBe(0);
+  });
+
+  it("撤回：开场白删不掉——它从来不落库", async () => {
+    await ctx.presenter.start();
+    await ctx.presenter.withdraw("welcome");
+    await flush();
+    expect(ctx.presenter.getSnapshot().messages.some((message) => message.id === "welcome")).toBe(true);
+  });
+
+  it("撤回连带记忆：来源有交集的候选被遗忘，确认过的保留", async () => {
+    const candidate = createMemoryV2({
+      content: "最近很累", type: "fact", sourceMessageIds: ["asked-1"], status: "candidate",
+    });
+    const confirmed = createMemoryV2({
+      content: "喜欢咖啡", type: "preference", sourceMessageIds: ["asked-1"], status: "confirmed",
+    });
+    const unrelated = createMemoryV2({
+      content: "在东京住", type: "fact", sourceMessageIds: ["别轮的消息"], status: "candidate",
+    });
+    const local = setup({ memories: [candidate, confirmed, unrelated] });
+    await local.presenter.start();
+
+    const sent = local.presenter.send("你好");
+    const turn = local.fake.last();
+    const rows = seedTurnRows(local.storage, turn.turnId);
+    local.fake.generated(turn.turnId, envelope("こんにちは", "你好"));
+    local.fake.settle(turn.turnId, { state: "completed", persisted: true });
+    await sent;
+    await flush();
+
+    await local.presenter.withdraw(rows.repliedId);
+    await flush();
+
+    const left = (await local.repository.list()).map((record) => record.content);
+    // 未确认的候选跟着这一轮消失；用户确认过的那条不许被悄悄删掉。
+    expect(new Set(left)).toEqual(new Set(["喜欢咖啡", "在东京住"]));
+    expect(left).not.toContain("最近很累");
+    local.presenter.dispose();
+  });
+
+  it("撤回：没有 V2 仓库时只删消息，不报错也不假装联动了", async () => {
+    await ctx.presenter.start();
+    const sent = ctx.presenter.send("你好");
+    const turn = ctx.fake.last();
+    const rows = seedTurnRows(ctx.storage, turn.turnId);
+    ctx.fake.generated(turn.turnId, envelope("こんにちは", "你好"));
+    ctx.fake.settle(turn.turnId, { state: "completed", persisted: true });
+    await sent;
+    await flush();
+
+    await expect(ctx.presenter.withdraw(rows.repliedId)).resolves.toBeUndefined();
+    expect(ctx.presenter.getSnapshot().storageError).toBe("");
+    expect(ctx.storage.rows).toHaveLength(0);
   });
 
   it("取消：交给 Runtime 取消，界面不再认为这一轮仍在进行", async () => {

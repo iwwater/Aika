@@ -84,9 +84,14 @@ button { border: 0; cursor: pointer; }
 .message-row.error .message-bubble { color: #ffb8d1; border-color: rgba(255,77,146,.4); background: rgba(40,10,26,.85); }
 .message-row.error .message-bubble::before { background: var(--magenta); }
 .translation { color: var(--muted); font-size: 11px; border-top: 1px solid var(--line-soft); padding-top: 7px; }
-.message-retry { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; margin-top: 2px; padding: 4px 9px; border: 1px solid rgba(255,77,146,.4); border-radius: 7px; color: #ffb8d1; background: rgba(255,77,146,.1); font-size: 11px; transition: .2s; }
-.message-retry:hover:not(:disabled) { border-color: rgba(255,77,146,.7); background: rgba(255,77,146,.18); }
-.message-retry:disabled { opacity: .45; cursor: default; }
+.message-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 3px; opacity: 0; transition: opacity .2s; }
+.message-row:hover .message-actions, .message-actions:focus-within { opacity: 1; }
+.message-actions button { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border: 1px solid var(--line-soft); border-radius: 7px; color: var(--muted); background: rgba(255,255,255,.04); font-size: 10px; transition: .2s; }
+.message-actions button:hover:not(:disabled) { color: var(--ink); border-color: rgba(55,230,255,.35); background: rgba(55,230,255,.1); }
+.message-actions button:disabled { opacity: .4; cursor: default; }
+.message-row.error .message-actions { opacity: 1; }
+.message-row.error .message-actions button { color: #ffb8d1; border-color: rgba(255,77,146,.4); background: rgba(255,77,146,.1); }
+.message-row.error .message-actions button:hover:not(:disabled) { border-color: rgba(255,77,146,.7); background: rgba(255,77,146,.18); }
 .typing { display: flex; gap: 4px; padding: 5px 3px; }
 .typing i { width: 5px; height: 5px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); animation: bounce 1s infinite alternate; }
 .typing i:nth-child(2) { animation-delay: .2s; }
