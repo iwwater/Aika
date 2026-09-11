@@ -56,6 +56,14 @@
 
 `defaultSpeechEngines()` 同时增加了两个可选入参（输出配置、`HttpFetch`）。默认 `DEFAULT_VOICE_OUTPUT.output = "system"`，不传参时装出来的仍是 `webSpeechOutput`，生产装配行为不变。
 
+### v1 之后的追加（2026-09-12，CORE-08，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `AikaStorage.deleteMessages(ids)` | `services/storage/contracts.ts` | **必选**方法，两个实现都提供（`sqliteStorage`、`localStorageStorage`）。既有成员语义一字未改；没有调用方的代码不受影响 | 目前无生产消费者（FE 侧重试/撤回/Rewind 的前置）；`AikaStorage` 的任何新 fake 必须实现它，`storage.conformance.ts` 会验 |
+
+语义边界（写进用例包，不只是约定）：未知 id 静默忽略、重复删幂等、空数组是 no-op；删除后 `listMessageTimestamps` / `countMessagesSince` / `countProactiveSince` 跟着变；**不**连带作废摘要、**不**连带删记忆——与 `clearMessages()` 的连带作废明确区分。`RuntimeStorage`（`companionRuntime.ts` 里的窄接口）不含删除能力，保持不变。
+
 INT-01 的兼容检查项：云端合成一旦在设置页可选，`createOutputEngine` 的 `note` / `degraded` 必须送到界面，降级当错误显示——现在这两个值在 `defaultSpeechEngines` 里被丢弃。
 
 ## 详细接口入口
