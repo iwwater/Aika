@@ -188,6 +188,37 @@ export function regeneratableTurn(
   return turn?.text ? turn : null;
 }
 
+/** 一次回退：从锚点之后删到最新。 */
+export interface RewindPlan {
+  /** 要删掉的消息 id。锚点自己不在里面——「回到这里」是留下它。 */
+  ids: string[];
+  /** 锚点的时间戳。摘要要不要标 gap 按它和 coversUntil 比。 */
+  anchorAt: number;
+}
+
+/**
+ * 算出「回到这里」要删掉哪些消息。不可回退时返回 null。
+ *
+ * 不需要「按时间截断」的存储端口：`listMessages` 返回的是**最近** N 条，
+ * 锚点既然在已加载的窗口里，它之后的消息必然也都在窗口里，按 id 删就够。
+ *
+ * 三种情况不给回退：开场白（从来不落库，而且「回到开场白」等于清空整个对话，
+ * 破坏面太大）、锚点之后什么都没有（回退等于什么都不做）、锚点不存在。
+ */
+export function rewindPlan(
+  messages: readonly ChatMessage[],
+  anchorId: string,
+): RewindPlan | null {
+  if (anchorId === WELCOME_MESSAGE_ID) return null;
+  const index = messages.findIndex((message) => message.id === anchorId);
+  if (index < 0) return null;
+  const ids = messages.slice(index + 1)
+    .map((message) => message.id)
+    .filter((id) => id !== WELCOME_MESSAGE_ID);
+  if (!ids.length) return null;
+  return { ids, anchorAt: messages[index].createdAt };
+}
+
 /** 送进提示词的历史。Aika 的历史只带日语正文，不带中文翻译，避免占用上下文。 */
 export function toCompanionTurns(messages: readonly ChatMessage[]): ConversationTurn[] {
   return messages

@@ -2,7 +2,7 @@ import { DEFAULT_CHARACTER } from "../domain/character";
 import { toCompanionReply, type CompanionReply } from "../domain/companion";
 import {
   buildCompanionContext, companionMessage, formatClockTime, messageTurn, regeneratableTurn, retryableTurn,
-  toCompanionTurns, userMessage, WELCOME_MESSAGE_ID,
+  rewindPlan, toCompanionTurns, userMessage, WELCOME_MESSAGE_ID,
   type ChatMessage, type MessageSource, type MessageTurn,
 } from "../domain/conversation";
 import {
@@ -56,6 +56,8 @@ import { DEFAULT_VOICE_BACKEND, type VoiceBackendConfig } from "../services/voic
  */
 
 const MESSAGE_WINDOW = 200;
+/** 回退后追加到摘要末尾的一行。她据此知道这段历史不完整。 */
+const REWIND_GAP_NOTE = "（用户把对话回退到了更早的位置，这段摘要里可能包含已经不存在的内容。）";
 const PROACTIVE_TICK_MS = 60_000;
 
 export interface CompanionViewModel {
@@ -116,6 +118,12 @@ export interface CompanionPresenter {
    * 连带遗忘由它喂出来的**未确认**候选记忆；用户确认过的一律保留。
    */
   withdraw(messageId: string): Promise<void>;
+  /**
+   * 回到这一条：截断它之后的全部消息与派生数据。
+   *
+   * 摘要不回滚，只在它覆盖到被删范围时标一个 gap——理由见实现处注释。
+   */
+  rewind(messageId: string): Promise<void>;
   setProvider(next: ProviderConfig): Promise<void>;
   setProactive(next: ProactiveSettings): Promise<void>;
   setMemoryExtractionEnabled(enabled: boolean): Promise<void>;
@@ -698,20 +706,20 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
   }
 
   /**
-   * 从存储和界面上删掉这一轮。
+   * 从存储和界面上删掉这些消息。
    *
    * 顺序是「先删再投／先删再遗忘」，不能反过来：Runtime 每轮新建 id 重新持久化
    * 用户消息，先投后删就有一个窗口里库里存在两条相同的用户消息，而删除的是哪一条
    * 也说不清。删失败就把这一轮留在原处，界面和库不许对不上。
    */
-  async function dropTurn(turn: MessageTurn): Promise<boolean> {
+  async function dropMessages(ids: readonly string[]): Promise<boolean> {
     try {
-      await storage?.deleteMessages(turn.ids);
+      await storage?.deleteMessages(ids);
     } catch (error) {
       setStorageError(error instanceof Error ? error.message : String(error));
       return false;
     }
-    const doomed = new Set(turn.ids);
+    const doomed = new Set(ids);
     patchMessages((current) => current.filter((message) => !doomed.has(message.id)));
     return true;
   }
@@ -723,7 +731,7 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
    */
   async function resubmitTurn(turn: MessageTurn | null): Promise<CompanionReply | null> {
     if (sending || !turn) return null;
-    if (!await dropTurn(turn)) return null;
+    if (!await dropMessages(turn.ids)) return null;
     return send(turn.text, turn.source);
   }
 
@@ -747,14 +755,63 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
     if (sending) return;
     const turn = messageTurn(messages, messageId);
     if (!turn || turn.ids.includes(WELCOME_MESSAGE_ID)) return;
-    if (!await dropTurn(turn)) return;
+    if (!await dropMessages(turn.ids)) return;
+    await refreshTimestamps();
+    await forgetCandidatesFrom(turn.ids);
+    commit();
+  }
+
+  /**
+   * 关系状态按 timestamps 现算，删完必须自己刷新。
+   * 重投路径不需要：后面那一轮结算时会顺带对齐存储。
+   */
+  async function refreshTimestamps(): Promise<void> {
     try {
       if (storage) timestamps = [...await storage.listMessageTimestamps()];
     } catch (error) {
       setStorageError(error instanceof Error ? error.message : String(error));
     }
-    await forgetCandidatesFrom(turn.ids);
+  }
+
+  /**
+   * 回到这一条：截断它之后的全部消息。
+   *
+   * 界面侧会先要一次确认（删的量可能很大且不可撤销），所以这里不再问，直接执行。
+   */
+  async function rewind(messageId: string): Promise<void> {
+    if (sending) return;
+    const plan = rewindPlan(messages, messageId);
+    if (!plan) return;
+    if (!await dropMessages(plan.ids)) return;
+    await refreshTimestamps();
+    await forgetCandidatesFrom(plan.ids);
+    await markSummaryGap(plan.anchorAt);
     commit();
+  }
+
+  /**
+   * 回退之后给摘要标一个 gap，而不是回滚它。
+   *
+   * 摘要没有可用的消息溯源（只记了 coversUntil），没法只摘掉其中一句；整段作废
+   * 又会让每次回退都触发一次重新压缩。所以留着它，但标明这段历史被回退过——
+   * 否则她会把摘要里已经不存在的事当成真发生过。
+   *
+   * 回退点不比摘要覆盖范围早时什么都不做：那些被摘要覆盖的消息一条都没删。
+   *
+   * 先 deleteSummaries 再存：sqlite 侧的 latestSummary 按 covers_until 排序取一条，
+   * 同 coversUntil 追加一行的话拿回来的可能还是旧那条。
+   */
+  async function markSummaryGap(anchorAt: number): Promise<void> {
+    if (!storage || !summary || anchorAt >= summaryCoversUntil) return;
+    if (summary.includes(REWIND_GAP_NOTE)) return;
+    const content = `${summary}\n${REWIND_GAP_NOTE}`;
+    try {
+      await storage.deleteSummaries?.();
+      await storage.saveSummary({ content, coversUntil: summaryCoversUntil, createdAt: Date.now() });
+      summary = content;
+    } catch (error) {
+      setStorageError(error instanceof Error ? error.message : String(error));
+    }
   }
 
   /**
@@ -962,6 +1019,7 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
     retry,
     regenerate,
     withdraw,
+    rewind,
     setProvider,
     setProactive,
     setMemoryExtractionEnabled,

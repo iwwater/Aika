@@ -32,6 +32,7 @@ export function useCompanionSession() {
   const retry = useCallback((messageId: string) => presenter.retry(messageId), [presenter]);
   const regenerate = useCallback((messageId: string) => presenter.regenerate(messageId), [presenter]);
   const withdraw = useCallback((messageId: string) => presenter.withdraw(messageId), [presenter]);
+  const rewind = useCallback((messageId: string) => presenter.rewind(messageId), [presenter]);
   const setProvider = useCallback((next: ProviderConfig) => presenter.setProvider(next), [presenter]);
   const setProactive = useCallback((next: ProactiveSettings) => presenter.setProactive(next), [presenter]);
   const setMemoryExtractionEnabled = useCallback(
@@ -55,6 +56,7 @@ export function useCompanionSession() {
     retry,
     regenerate,
     withdraw,
+    rewind,
     setProvider,
     setProactive,
     setMemoryExtractionEnabled,
@@ -65,7 +67,7 @@ export function useCompanionSession() {
     confirmMemory,
     deleteMemory,
   }), [
-    snapshot, send, retry, regenerate, withdraw, setProvider, setProactive, setMemoryExtractionEnabled, setVoiceBackend,
+    snapshot, send, retry, regenerate, withdraw, rewind, setProvider, setProactive, setMemoryExtractionEnabled, setVoiceBackend,
     setModeConfig, setMode, exitScenario, confirmMemory, deleteMemory,
   ]);
 }

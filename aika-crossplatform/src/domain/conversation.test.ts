@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCompanionContext, companionMessage, displayTranslation, messageTurn, regeneratableTurn, retryableTurn,
-  toCompanionTurns, userMessage, WELCOME_MESSAGE_ID,
+  rewindPlan, toCompanionTurns, userMessage, WELCOME_MESSAGE_ID,
   type ChatMessage,
 } from "./conversation";
 
@@ -187,6 +187,47 @@ describe("regeneratableTurn", () => {
       { id: WELCOME_MESSAGE_ID, role: "assistant", content: "你回来了", createdAt: NOW, time: "12:00", source: "text" },
     ];
     expect(regeneratableTurn(messages, WELCOME_MESSAGE_ID)).toBeNull();
+  });
+});
+
+describe("rewindPlan", () => {
+  function history(): ChatMessage[] {
+    return [
+      { id: WELCOME_MESSAGE_ID, role: "assistant", content: "你回来了", createdAt: NOW - 5000, time: "11:58", source: "text" },
+      { id: "u1", role: "user", content: "第一句", createdAt: NOW - 4000, time: "11:59", source: "text", runtimeTurnId: "run-1" },
+      { id: "a1", role: "assistant", content: "うん", createdAt: NOW - 3000, time: "11:59", runtimeTurnId: "run-1" },
+      { id: "u2", role: "user", content: "第二句", createdAt: NOW - 2000, time: "12:00", source: "text", runtimeTurnId: "run-2" },
+      { id: "a2", role: "assistant", content: "そうだね", createdAt: NOW - 1000, time: "12:00", runtimeTurnId: "run-2" },
+    ];
+  }
+
+  it("锚点保留，它之后的全部要删", () => {
+    expect(rewindPlan(history(), "a1")).toEqual({ ids: ["u2", "a2"], anchorAt: NOW - 3000 });
+  });
+
+  it("回退到用户那句：这一轮的回复也在删除范围里", () => {
+    expect(rewindPlan(history(), "u2")?.ids).toEqual(["a2"]);
+  });
+
+  it("锚点之后什么都没有时不给回退", () => {
+    expect(rewindPlan(history(), "a2")).toBeNull();
+  });
+
+  it("开场白不是回退目标：回到它等于清空整个对话", () => {
+    expect(rewindPlan(history(), WELCOME_MESSAGE_ID)).toBeNull();
+  });
+
+  it("开场白永远不在删除范围里——它从来不落库", () => {
+    const withWelcomeLater: ChatMessage[] = [
+      { id: "u1", role: "user", content: "第一句", createdAt: NOW - 4000, time: "11:59", source: "text" },
+      { id: WELCOME_MESSAGE_ID, role: "assistant", content: "你回来了", createdAt: NOW - 3000, time: "11:59", source: "text" },
+      { id: "a1", role: "assistant", content: "うん", createdAt: NOW - 2000, time: "12:00" },
+    ];
+    expect(rewindPlan(withWelcomeLater, "u1")?.ids).toEqual(["a1"]);
+  });
+
+  it("锚点不存在就是 null，不猜", () => {
+    expect(rewindPlan(history(), "不存在")).toBeNull();
   });
 });
 

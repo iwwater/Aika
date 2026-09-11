@@ -249,6 +249,7 @@ function App() {
                           onRetry={(id) => void session.retry(id)}
                           onRegenerate={(id) => void session.regenerate(id)}
                           onWithdraw={(id) => void session.withdraw(id)}
+                          onRewind={(id) => void session.rewind(id)}
                         />
                       </>
                     )}
