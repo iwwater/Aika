@@ -1,6 +1,6 @@
 # CORE-05 · 插件契约与能力注册
 
-状态：A–F 自测 PASS；G 的输入侧 PASS、输出侧 **BLOCKED**（SPEC 指定的 `stash@{0}` 在仓库中不存在，第二个输出引擎无法取回）；待审阅。证据见 [验收报告](../reports/CORE-05_ACCEPTANCE.md)。
+状态：A–G 自测 PASS；待审阅。证据见 [验收报告](../reports/CORE-05_ACCEPTANCE.md)。G 的输出侧原为 BLOCKED，2026-09-11 从 `stash@{0}` 的未跟踪提交 `dee8f4b` 取回 `cloudTtsOutput` 后解除（当初「stash 不存在」的判断是错的，`git stash show` 只列已跟踪改动）。
 
 ## 目标与边界
 
@@ -56,4 +56,4 @@ flowchart TB
 3. 报告每条 AC 的测试文件/样本、真实命令及退出码，质量样本标明实际模型或 fixture。证据不足保留 NOT RUN/BLOCKED，不能降低门槛。
 4. 交付 `../reports/CORE-05_ACCEPTANCE.md`；原任务审阅证据。只在 [集成触发条件](../../integration/SPEC.md) 满足时安排全流程调试，当前小 SPEC 不默认跑全仓测试或产品打包。
 
-CORE-05-G 的第二个输出实现来自 `stash@{0}` 的 `cloudTtsOutput`：按 [端口一致性增量计划](../CONFORMANCE_PLAN.md) 先经 `git stash branch feat/tts-output` 独立整理，再作为被测实现进来，不直接 pop 回主线。共享规则见 [模块测试规则](../../modules/TESTING.md)；输入输出遵循 [共享契约](../../modules/CONTRACTS.md)。
+CORE-05-G 的第二个输出实现来自 `stash@{0}` 的 `cloudTtsOutput`。实际取回方式：stash 里同时还有 Live2D 流水线等无关改动，整包落地会把它们混进提交，因此**没有** `git stash branch`、**没有** pop，只从未跟踪提交 `dee8f4b` 单独取语音输出那一组文件，stash 本身保持原样不动——与计划里「不直接 pop 回主线」的意图一致。共享规则见 [模块测试规则](../../modules/TESTING.md)；输入输出遵循 [共享契约](../../modules/CONTRACTS.md)。

@@ -19,7 +19,7 @@
 | `AikaStorage` | `sqliteStorage`、`localStorageStorage` | 2 个 |
 | `MemoryV2Store` | `sqliteMemoryStore`、`localMemoryStore` | 2 个 |
 | `SpeechInputEngine` | `webSpeechInput`、`whisperInput` | 2 个 |
-| `SpeechOutputEngine` | `webSpeechOutput` | 1 个；第 2 个 `cloudTtsOutput` 在 `stash@{0}` 里 |
+| `SpeechOutputEngine` | `webSpeechOutput`、`cloudTtsOutput` | 2 个（第 2 个 2026-09-11 从 `stash@{0}` 取回，见第六节） |
 | `RuntimeProvider` | `providerAdapter` 覆盖 4 种协议（openai-responses / openai-compatible / anthropic / gemini） | 1 个适配器 4 条分支 |
 | `ContextSource` | `memorySource` | 1 个 |
 | `SecretStore` | 单个对象内部 `inTauri()` 分叉 | 0 个真正可替换的实现 |
@@ -78,21 +78,28 @@ export function runSpeechInputConformance(harness: PortHarness<SpeechInputEngine
 | `AikaStorage`、`SecretStore` | CORE-02（本来就在拆宿主插件） | **CORE-02-G** 两种存储实现与两种密钥实现跑同一份用例包全绿；`unsupported` 声明与实际行为一致 |
 | `RuntimeProvider` | CORE-03（本来就在接 Runtime） | **CORE-03-H** 4 种协议 fixture 跑同一份 provider 用例包全绿，流式增量、错误码、取消语义一致 |
 | `MemoryV2Store`、`ContextSource` | CORE-03（本来就在接记忆与上下文源） | **CORE-03-I** 两种记忆存储跑同一份用例包全绿；ContextSource 用例包至少覆盖真实实现与一个确定性 stub |
-| `SpeechInputEngine`、`SpeechOutputEngine` | CORE-05（本来就在做语音插件化） | **CORE-05-G** 两种输入引擎、两种输出引擎跑同一份用例包全绿（输出引擎的第二实现由 `stash@{0}` 的 `cloudTtsOutput` 提供） |
+| `SpeechInputEngine`、`SpeechOutputEngine` | CORE-05（本来就在做语音插件化） | **CORE-05-G** 两种输入引擎、两种输出引擎跑同一份用例包全绿（输出引擎的第二实现由 `stash@{0}` 的 `cloudTtsOutput` 提供）—— **已完成** |
 
 只有一份**新增** SPEC：[CORE-07](specs/CORE-07_PORT_SWAPPABILITY.md)，排在 CORE-06 之后。它不写新实现、不改接口、不动消费侧，只做两件事：跑替换矩阵，给结论。
 
 `ContextSource` 只有一个真实实现，用例包自带一个确定性 stub 作为第二个被测对象——这一点在结论里要如实标注为「用例包已建立，可替换性证据弱于其他端口」，不能和有两个真实实现的端口混为一谈。
 
-## 六、`stash@{0}` 在这里有了归宿
+## 六、`stash@{0}` 在这里有了归宿（2026-09-11 已落地）
 
-那批语音输出改造（`cloudTtsOutput`、`outputEngine`、`speakable`、`speechQueue` 扩展）正好是 `SpeechOutputEngine` 的第二个真实实现。按之前说定的：CORE-01 完成后把它变成独立分支
+那批语音输出改造（`cloudTtsOutput`、`outputEngine`、`speakable`、`speechQueue` 扩展）正好是 `SpeechOutputEngine` 的第二个真实实现。原计划是 CORE-01 完成后把它变成独立分支：
 
 ```bash
-git stash branch feat/tts-output stash@{0}
+git stash branch feat/tts-output stash@{0}   # ← 最终没有这么做，原因见下
 ```
 
-在 CORE-05 之前按独立 SPEC 整理，然后它作为 CORE-05-G 的第二个被测实现进来。这样它既不污染 CORE 的基础 commit，也不会烂在 stash 里。
+**实际做法与计划的出入，如实记录。**
+
+1. CORE-05 / CORE-07 首次执行时判定「stash 不存在」，据此把输出侧标了 BLOCKED。这个判断是错的：`git stash show` 只列**已跟踪**改动，而 `cloudTtsOutput` 是未跟踪文件，藏在 stash 的第三个父提交 `dee8f4b` 里。用 `git log --all -S"cloudTts"` 一次就能找到。
+2. 没有走 `git stash branch`，也没有 pop。stash 里同时还躺着 Live2D 流水线脚本、AIRI 移植笔记、`App.tsx` / `useVoiceConversation` 的 UI 改动等与本增量无关的东西；整包落地会把无关改动混进提交，正是 AGENTS.md 禁止的。改为**只从 `dee8f4b` 取语音输出那一组文件**，其余留在 stash 里原样不动，stash 未 drop。
+3. 取回后并入的是 HEAD 版本，不是 stash 版本：`contracts.ts` 与 `speechQueue.ts` 在 CORE 阶段已经加了 `turnId` / `SpeechQueueDrainResult`，这些保留，stash 那边的 `prefetch?` / `speed` 手工并入。
+4. 唯一一处对 stash 原文的改动：`cloudTtsOutput` / `outputEngine` 的 HTTP 出口改为可注入（默认仍是 `activeFetch`），好让用例包和替换矩阵按本计划的约定不依赖过渡转发。
+
+结论：它既没有污染 CORE 的基础 commit，也没有烂在 stash 里；stash 剩下的部分（Live2D、UI）仍待各自模块认领。
 
 ## 七、明确不做
 

@@ -41,7 +41,7 @@ CORE-04 把会话/语音编排从 `hooks/` 搬进 `src/presentation/`，Hook 降
 
 ## CORE-05 消费者兼容登记（INT-01 待执行）
 
-CORE-05 完成能力插件化与扩展点验证；模块证据见 [CORE-05 验收报告](../core/reports/CORE-05_ACCEPTANCE.md)。其中 CORE-05-G 的输出侧 **BLOCKED**：SPEC 指定的第二输出实现来自 `stash@{0}`，但该 stash 在当前仓库不存在。
+CORE-05 完成能力插件化与扩展点验证；模块证据见 [CORE-05 验收报告](../core/reports/CORE-05_ACCEPTANCE.md)。其中 CORE-05-G 的输出侧原为 BLOCKED，2026-09-11 取回第二输出实现 `cloudTtsOutput` 后解除；该实现全部证据走假 `HttpFetch`，**真实云 TTS 仍是 NOT RUN**。
 
 | 兼容增量 | 受影响消费者 | INT-01 检查 |
 | --- | --- | --- |
@@ -64,6 +64,6 @@ CORE-06 删除生产编排路径并冻结共享契约，按 SPEC 属于 INT-01 �
 | `openStorage` / `activeNotifier` 过渡转发删除；运行时与通知改为构造参数注入 | 展示层、宿主插件 | 装配失败时界面经兜底 Presenter 显示存储故障，不退回浏览器实现、不白屏 |
 | `providerClient` 调用方收敛为 Runtime 适配器 + 记忆抽取；`testProvider` 改为 `ProviderProbeToken` | 设置页、LLM 适配层 | 设置页「测试连接」仍工作；无第二处 Provider 出口 |
 | `docs/modules/CONTRACTS.md` 新增内核契约（v1） | 全部模块 | 逐条核对注册表/插件、`resolve` 位置、token 分散所有权、能力缺失降级、`runtimeTurnId` 并存规则 |
-| `cloudTtsOutput` 仍缺失（CORE-05-G 输出侧 BLOCKED） | TTS 桥接 | 第二输出实现恢复后补跑 `speechOutput.conformance.test.ts` |
+| 云端合成没有用户入口，`note` / `degraded` 被丢弃；真实云 TTS 未试听 | TTS 桥接 | 设置页接上后做一次真实试听，验证音质、延迟与计费，并确认降级当错误显示 |
 
 以上集成检查均为 NOT RUN；本次没有启动真实模型、音频设备、云 TTS 或 Tauri 产品构建，也未执行全量回归与打包（按 INT-03 另行安排）。

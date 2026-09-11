@@ -1,7 +1,7 @@
 # CORE-06 验收报告 · 旧路径下线与契约冻结
 
 - SPEC：[CORE-06_DECOMMISSION.md](../specs/CORE-06_DECOMMISSION.md)，AC A–E 共五项。
-- 前置：CORE-05 模块自测（G 输出侧 BLOCKED，与本次无关）。
+- 前置：CORE-05 模块自测（执行本阶段时 G 输出侧为 BLOCKED，与本次无关；该项已于 2026-09-11 解除）。
 - 状态：**A–E 自测 PASS，模块待审阅；触发 INT-01（跨模块文本链路验证待排期）**。
 - 依赖：测试宿主 + 真实 SQLite 存储 + fake Runtime / fake STT / fake TTS；没有启动真实模型、音频设备或产品构建。
 
@@ -82,7 +82,7 @@ npx vitest run src/app/plugins/capabilityPlugins.test.ts src/app/plugins/plugins
 
 - CORE-01…06 工程实现完成并各自通过模块自测；**模块验收与集成验收未通过**，等待原任务审阅与 INT-01。
 - 两条路径共存的中间态已消除：运行时、展示层、能力插件都通过注册表 + 构造参数连接，`resolve()` 收敛到白名单三处。
-- 仍有明确后置项：**CORE-05-G 输出侧**缺第二输出实现（`cloudTtsOutput`，SPEC 指定的 `stash@{0}` 不存在），保持 BLOCKED；**INT-01** 由本次触发，需在真实宿主验证文本链路；真实模型质量、真人语音、Tauri 打包仍为 NOT RUN/DEFERRED。
+- 仍有明确后置项：~~**CORE-05-G 输出侧**缺第二输出实现，保持 BLOCKED~~（2026-09-11 取回 `cloudTtsOutput` 后解除，见 [CORE-05 报告](CORE-05_ACCEPTANCE.md)）；**INT-01** 由本次触发，需在真实宿主验证文本链路；真实模型质量、真人语音、真实云 TTS、Tauri 打包仍为 NOT RUN/DEFERRED。
 - 下一份：CORE-07（端口一致性与实现可替换性收口），不属本报告范围。
 
 ## 其他

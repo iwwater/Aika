@@ -44,6 +44,20 @@
 
 版本：以上为 v1，随 CORE-06 冻结。旧库中残留的 `core.orchestrator` 设置值会被当作未知设置忽略，不报错、不迁移。变更这些契约须记录版本、兼容方式与受影响消费者，并在 INT-01 安排消费者兼容测试。
 
+### v1 之后的追加（2026-09-11，向后兼容，不改 v1 语义）
+
+补齐 CORE-05-G 输出侧时动了 TTS 侧的接口。三处都是**可选追加**，没有改变任何已有字段的语义，现有消费方不改一行也照常工作：
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `SpeechOutputEngine.prefetch?(request)` | `services/voice/contracts.ts` | 可选方法。调用方一律写 `engine.prefetch?.(…)`，没实现就是没有这一步；系统合成不实现它 | `speechQueue`（唯一调用方）；两个输出引擎 |
+| `VoiceEngineKind` 增加 `"cloud-tts"` | 同上 | 联合类型加一个成员，既有成员不变 | 任何对 `kind` 做穷举的地方（当前只有测试与诊断显示） |
+| `SpeechQueueOptions.speed?` | `services/voice/speechQueue.ts` | 可选。不设时等于 1，`rate` 计算结果与此前逐字相同 | `defaultSpeechEngines`；`VoicePresenter` 经 `createQueue` 间接使用 |
+
+`defaultSpeechEngines()` 同时增加了两个可选入参（输出配置、`HttpFetch`）。默认 `DEFAULT_VOICE_OUTPUT.output = "system"`，不传参时装出来的仍是 `webSpeechOutput`，生产装配行为不变。
+
+INT-01 的兼容检查项：云端合成一旦在设置页可选，`createOutputEngine` 的 `note` / `degraded` 必须送到界面，降级当错误显示——现在这两个值在 `defaultSpeechEngines` 里被丢弃。
+
 ## 详细接口入口
 
 LLM 各自的 `docs/llm/specs/LLM-01…05` 文件内写明实现级接口；[STT](../stt/ARCHITECTURE.md)、[TTS](../tts/ARCHITECTURE.md)、[前端](../frontend/ARCHITECTURE.md) 按共享架构文件引用对应阶段。代码块是拟定逻辑契约，现有类型通过兼容 adapter 映射；不能以名称尚未存在推断已实现，也不要机械新增重复接口。
