@@ -46,6 +46,8 @@
 
 ### 输出侧解除 BLOCKED 的补记（2026-09-11）
 
+逐文件的改动清单见 [CORE-05-G 输出侧变更记录](CORE-05G_OUTPUT_CHANGE_RECORD.md)；本节只给结论与证据。
+
 **先更正一条事实。** 本报告原先写「`git stash list` 为空，stash 在当前仓库不存在」，这是错的。`stash@{0}`（`6d8a487`，`On master: backup-before-overwrite-2026-09-10`）一直在，`cloudTtsOutput` 在它的**未跟踪文件提交** `dee8f4b` 里——`git stash show` 只列已跟踪改动，所以第一次查的时候没看见它。原判断基于错误的检索，不是基于事实。
 
 ```text

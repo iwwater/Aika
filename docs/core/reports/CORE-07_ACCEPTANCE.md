@@ -6,7 +6,7 @@
 - `aika-crossplatform/src/app/swapMatrix.ts` —— 矩阵驱动（不 import vitest，不是生产代码路径）
 - `aika-crossplatform/src/app/ports.swapMatrix.test.ts` —— 七个端口 × 各自实现的替换矩阵
 
-**2026-09-11 的补齐执行**关闭了输出侧那条 BLOCKED，这次动了生产代码——取回第二个输出实现是解除阻塞的唯一办法，不动就只能一直挂着。改动范围如实列出：新增 `services/voice/{speakable,cloudTtsOutput,outputEngine}.ts`；`contracts.ts` 追加 `"cloud-tts"` 与可选 `prefetch?`；`speechQueue.ts` 追加可选 `speed` 与预取；`webSpeechOutput.ts` 改用共用的 `speakableText`；`app/plugins/voicePlugin.ts` 的 `defaultSpeechEngines` 改为经 `createOutputEngine` 选择（默认仍是系统合成，不传参时行为一个字不变）。消费侧（`presentationPlugin` / `VoicePresenter` / Hook / `App.tsx`）零改动。
+**2026-09-11 的补齐执行**（逐文件清单见 [CORE-05-G 输出侧变更记录](CORE-05G_OUTPUT_CHANGE_RECORD.md)）关闭了输出侧那条 BLOCKED，这次动了生产代码——取回第二个输出实现是解除阻塞的唯一办法，不动就只能一直挂着。改动范围如实列出：新增 `services/voice/{speakable,cloudTtsOutput,outputEngine}.ts`；`contracts.ts` 追加 `"cloud-tts"` 与可选 `prefetch?`；`speechQueue.ts` 追加可选 `speed` 与预取；`webSpeechOutput.ts` 改用共用的 `speakableText`；`app/plugins/voicePlugin.ts` 的 `defaultSpeechEngines` 改为经 `createOutputEngine` 选择（默认仍是系统合成，不传参时行为一个字不变）。消费侧（`presentationPlugin` / `VoicePresenter` / Hook / `App.tsx`）零改动。
 
 ## 前置状态（如实记录）
 
