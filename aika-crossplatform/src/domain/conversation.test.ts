@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildCompanionContext, companionMessage, displayTranslation, messageTurn, regeneratableTurn, retryableTurn,
-  rewindPlan, toCompanionTurns, userMessage, WELCOME_MESSAGE_ID,
+  buildCompanionContext, companionMessage, displayTranslation, isSameSentence, messageTurn, regeneratableTurn,
+  retryableTurn, rewindPlan, toCompanionTurns, userMessage, WELCOME_MESSAGE_ID,
   type ChatMessage,
 } from "./conversation";
 
@@ -116,6 +116,30 @@ describe("retryableTurn", () => {
         error: true, runtimeTurnId: "run-1", source: "proactive" },
     ];
     expect(retryableTurn(messages, "failure")).toBeNull();
+  });
+});
+
+describe("isSameSentence", () => {
+  it("空白、标点、英文大小写的差别不算两句话", () => {
+    expect(isSameSentence("今天有点累", "今天有点累")).toBe(true);
+    expect(isSameSentence("今天有点累。", "今天有点累")).toBe(true);
+    expect(isSameSentence("今天 有点累", "今天有点累！")).toBe(true);
+    expect(isSameSentence("I had a long day", "i had a long day.")).toBe(true);
+  });
+
+  it("不同的话就是不同", () => {
+    expect(isSameSentence("おかえり", "你回来了")).toBe(false);
+    expect(isSameSentence("大丈夫", "没事的")).toBe(false);
+  });
+
+  it("显示侧与 Trace 侧同源：displayTranslation 走的是同一个判定", () => {
+    // 两处各写一份的话，界面说「重复」而统计说「不重复」这种事迟早发生。
+    const message = companionMessage(
+      { japaneseText: "今天有点累。", chineseTranslation: "今天有点累", mood: "neutral" },
+      NOW,
+    );
+    expect(isSameSentence("今天有点累。", "今天有点累")).toBe(true);
+    expect(displayTranslation(message)).toBe("");
   });
 });
 

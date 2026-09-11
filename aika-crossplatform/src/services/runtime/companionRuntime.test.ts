@@ -487,7 +487,7 @@ describe("LLM-07 · Trace 事件序列", () => {
     return [...await sink.query({})];
   }
 
-  it("一轮走完：四个事件按序到达，seq 从 1 连续", async () => {
+  it("一轮走完：五个事件按序到达，seq 从 1 连续", async () => {
     const { harness, sink, tick } = traced();
     const handle = harness.submit("你好");
     await flush();
@@ -502,10 +502,11 @@ describe("LLM-07 · Trace 事件序列", () => {
     await flush();
 
     const recorded = await events(sink);
+    // reply 排在 provider_stream_meta 与 turn_end 之间（LLM-09）。
     expect(recorded.map((event) => event.kind)).toEqual([
-      "turn_start", "context_assemble", "provider_stream_meta", "turn_end",
+      "turn_start", "context_assemble", "provider_stream_meta", "reply", "turn_end",
     ]);
-    expect(recorded.map((event) => event.seq)).toEqual([1, 2, 3, 4]);
+    expect(recorded.map((event) => event.seq)).toEqual([1, 2, 3, 4, 5]);
     expect(recorded.every((event) => event.turnId === handle.turnId)).toBe(true);
   });
 
@@ -635,5 +636,94 @@ describe("LLM-07 · Trace 事件序列", () => {
       expect(Array.isArray(assemble.retrievedSources)).toBe(true);
       expect(assemble.historyDropped).toBe(0);
     }
+  });
+});
+
+describe("LLM-09 · reply 事件", () => {
+  function traced() {
+    let now = NOW;
+    const sink = createMemoryTraceSink(100);
+    const recorder = createTraceRecorder({ sink, clock: () => now, policy: () => ({ includeText: false }) });
+    const harness = setup({ clock: { now: () => now }, trace: recorder });
+    return { harness, sink, tick: (ms: number) => { now += ms; } };
+  }
+
+  async function replyEvent(sink: ReturnType<typeof createMemoryTraceSink>) {
+    const [event] = await sink.query({ kind: "reply" });
+    return event;
+  }
+
+  it("正文与翻译是同一句时标出来——这是 §0.1 那个退化的可统计形式", async () => {
+    const { harness, sink } = traced();
+    const handle = harness.submit("今天有点累");
+    await flush();
+    // qwen-plus 触发本次修复的那一轮：两个字段返回同一句中文（仅差句末标点）
+    harness.controls[0].finish({ replyText: "今天有点累。", translation: "今天有点累" });
+    await handle.done;
+    await flush();
+
+    const event = await replyEvent(sink);
+    if (event?.kind === "reply") {
+      expect(event.translationDuplicatesReply).toBe(true);
+      expect(event.replyChars).toBe(6);
+      expect(event.translationChars).toBe(5);
+    } else {
+      expect.unreachable("回包成型就该有一条 reply 事件");
+    }
+    harness.runtime.dispose();
+  });
+
+  it("正常双语不算退化；空翻译也不算", async () => {
+    const ok = traced();
+    const okHandle = ok.harness.submit("你好");
+    await flush();
+    ok.harness.controls[0].finish({ replyText: "こんにちは", translation: "你好" });
+    await okHandle.done;
+    await flush();
+    const okEvent = await replyEvent(ok.sink);
+    if (okEvent?.kind === "reply") expect(okEvent.translationDuplicatesReply).toBe(false);
+    ok.harness.runtime.dispose();
+
+    const empty = traced();
+    const emptyHandle = empty.harness.submit("你好");
+    await flush();
+    empty.harness.controls[0].finish({ replyText: "こんにちは", translation: "" });
+    await emptyHandle.done;
+    await flush();
+    const emptyEvent = await replyEvent(empty.sink);
+    // 没有翻译不是「重复」，是「没有」。
+    if (emptyEvent?.kind === "reply") expect(emptyEvent.translationDuplicatesReply).toBe(false);
+    empty.harness.runtime.dispose();
+  });
+
+  it("mood / sticker / actions 与回包一致；没挑表情包时是 null", async () => {
+    const { harness, sink } = traced();
+    const handle = harness.submit("你好");
+    await flush();
+    harness.controls[0].finish({ replyText: "こんにちは", translation: "你好", mood: "happy" });
+    await handle.done;
+    await flush();
+
+    const event = await replyEvent(sink);
+    if (event?.kind === "reply") {
+      expect(event.mood).toBe("happy");
+      expect(event.sticker).toBeNull();
+      expect(event.actions).toEqual([]);
+    }
+    harness.runtime.dispose();
+  });
+
+  it("失败轮没有回包，就不发 reply 事件——不发空壳", async () => {
+    const { harness, sink } = traced();
+    const handle = harness.submit("你好");
+    await flush();
+    harness.controls[0].fail("PROVIDER_FAILED");
+    await handle.done;
+    await flush();
+
+    expect(await sink.query({ kind: "reply" })).toEqual([]);
+    // 但 turn_end 仍然有：失败也是一种结束。
+    expect(await sink.query({ kind: "turn_end" })).toHaveLength(1);
+    harness.runtime.dispose();
   });
 });

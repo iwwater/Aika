@@ -18,6 +18,7 @@ export type TraceEventKind =
   | "context_assemble"
   | "provider_request"
   | "provider_stream_meta"
+  | "reply"
   | "memory_extract"
   | "tts"
   | "turn_end";
@@ -76,6 +77,24 @@ export type TraceEventV1 =
     /** 首个 token 到达耗时。没收到过任何 chunk 时是 null，不写 0。 */
     firstTokenMs: number | null;
     chunks: number;
+  })
+  | (TraceEventBase & {
+    kind: "reply";
+    mood: string;
+    replyChars: number;
+    translationChars: number;
+    /**
+     * 正文与翻译是同一句。
+     *
+     * 协议上合法（两个字段都是非空 string），语义上退化——同一句话被显示两遍。
+     * 记成布尔而不是记正文：这样它不受正文开关影响，在任何脱敏设置下都能统计，
+     * 而它恰恰是最需要长期盯的一项（规划文档 §0.1 的「长效手段」）。
+     */
+    translationDuplicatesReply: boolean;
+    /** 她挑的表情包。没挑时是 null，不是空串。 */
+    sticker: string | null;
+    /** 动作种类，不含载荷。当前只有 sticker 一种。 */
+    actions: string[];
   })
   | (TraceEventBase & {
     kind: "memory_extract";

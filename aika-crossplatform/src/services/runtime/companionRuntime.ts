@@ -13,7 +13,7 @@
  */
 
 import { toCompanionReply, type ReplyEnvelopeV1 } from "../../domain/companion";
-import { companionMessage, formatClockTime, type ChatMessage } from "../../domain/conversation";
+import { companionMessage, formatClockTime, isSameSentence, type ChatMessage } from "../../domain/conversation";
 import {
   normalizeHistoryMessages,
   type AgentContext, type ContextAssemblyResult, type ContextBudget, type DroppedSource,
@@ -629,6 +629,18 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
       return;
     }
     turn.reply = reply;
+    // 回包成型就记一条：mood / sticker / actions 是 F5 要展示的东西，
+    // translationDuplicatesReply 是 §0.1 那个退化的可统计形式。
+    trace.record(turn.id, {
+      kind: "reply",
+      mood: reply.mood,
+      replyChars: reply.replyText.length,
+      translationChars: reply.translation.length,
+      translationDuplicatesReply: Boolean(reply.replyText && reply.translation)
+        && isSameSentence(reply.replyText, reply.translation),
+      sticker: reply.sticker ?? null,
+      actions: [...new Set(reply.actions.map((action) => action.type))],
+    });
     emit(turn, { type: "generated", reply });
 
     if (turn.source === "voice") {

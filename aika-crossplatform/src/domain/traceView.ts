@@ -103,6 +103,7 @@ const KIND_LABELS: Record<TraceEventKind, string> = {
   context_assemble: "组装上下文",
   provider_request: "发出请求",
   provider_stream_meta: "流式统计",
+  reply: "回包",
   memory_extract: "记忆抽取",
   tts: "语音播放",
   turn_end: "结束",

@@ -107,10 +107,20 @@ export function displayTranslation(message: ChatMessage): string {
   const translation = message.chineseTranslation?.trim() ?? "";
   if (!translation) return "";
   const body = message.japaneseText ?? message.content;
-  return sentenceKey(body) === sentenceKey(translation) ? "" : translation;
+  return isSameSentence(body, translation) ? "" : translation;
 }
 
-/** 同句比较键。空白、标点和英文大小写的差别不算两句话。 */
+/**
+ * 两段文字是不是同一句。空白、标点和英文大小写的差别不算两句话。
+ *
+ * **全仓唯一实现**：气泡要不要显示次级字幕（FE-04）与 Trace 要不要把这一轮标成
+ * 语义退化（LLM-09）用的是同一个判定。两处各写一份的话，界面说「重复」而统计说
+ * 「不重复」这种事迟早发生。
+ */
+export function isSameSentence(left: string, right: string): boolean {
+  return sentenceKey(left) === sentenceKey(right);
+}
+
 function sentenceKey(text: string): string {
   return text.replace(/[\s\p{P}\p{S}]/gu, "").toLowerCase();
 }

@@ -109,6 +109,15 @@ function summarizeStep(event: import("../domain/trace").TraceEventV1): string {
       return `${event.protocol} · ${event.model} · ${event.endpoint}`;
     case "provider_stream_meta":
       return `首 token ${event.firstTokenMs === null ? "—" : `${event.firstTokenMs}ms`} · ${event.chunks} chunk`;
+    case "reply":
+      return [
+        event.mood,
+        `正文 ${event.replyChars} 字`,
+        `翻译 ${event.translationChars} 字`,
+        event.translationDuplicatesReply ? "⚠ 正文与翻译同句" : null,
+        event.sticker ? `表情包 ${event.sticker}` : null,
+        ...event.actions,
+      ].filter(Boolean).join(" · ");
     case "memory_extract":
       return event.failed ? "抽取失败" : `候选 ${event.candidates}`;
     case "tts":
