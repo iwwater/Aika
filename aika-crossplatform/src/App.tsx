@@ -6,6 +6,7 @@ import {
 import "./App.css";
 import { AvatarPlaceholder } from "./components/AvatarPlaceholder";
 import { MessageActions } from "./components/MessageActions";
+import { MessageBody } from "./components/MessageBody";
 import { MessageSticker } from "./components/MessageSticker";
 import { MessageTranslation } from "./components/MessageTranslation";
 import { VoiceModal } from "./components/VoiceModal";
@@ -231,15 +232,20 @@ function App() {
                     {/* 流式：字一开始长出来就不再显示三个点 */}
                     {message.pending && !message.content ? <span className="typing"><i /><i /><i /></span> : (
                       <>
-                        {(message.japaneseText ?? message.content).split("\n").map((line, index) => (
-                          <span key={`${message.id}-${index}`}>{line}</span>
-                        ))}
+                        <MessageBody
+                          id={message.id}
+                          text={message.japaneseText ?? message.content}
+                          range={voice.speakingMessageId === message.id ? voice.speakingRange : null}
+                        />
                         <MessageTranslation message={message} visible={showTranslation} />
                         <MessageSticker id={message.sticker} stickers={session.stickers} />
                         <MessageActions
                           message={message}
                           messages={messages}
                           sending={sending}
+                          speaking={voice.speakingMessageId === message.id}
+                          canSpeak={!voice.isOpen}
+                          onSpeak={(id) => voice.speakMessage(id, message.japaneseText ?? message.content)}
                           onRetry={(id) => void session.retry(id)}
                           onRegenerate={(id) => void session.regenerate(id)}
                           onWithdraw={(id) => void session.withdraw(id)}

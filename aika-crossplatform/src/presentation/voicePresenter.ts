@@ -1,7 +1,7 @@
 import { createAsrSegmentReorderer } from "../domain/asrSegments";
 import { locateSentence, type CaptionRange } from "../domain/captionHighlight";
 import { replyDisplayText, type CompanionReply } from "../domain/companion";
-import { createSentenceEmitter } from "../domain/sentences";
+import { createSentenceEmitter, splitIntoSentences } from "../domain/sentences";
 import type { PartialReply } from "../domain/streamingReply";
 import { mergeFragment, shouldSubmit } from "../domain/turnEnd";
 import {
@@ -74,6 +74,8 @@ export interface VoiceViewModel {
   captions: readonly VoiceCaption[];
   speakingCaptionId: number | null;
   speakingRange: CaptionRange | null;
+  /** 聊天页里正在被朗读的那条消息；没有在朗读时为 null。 */
+  speakingMessageId: string | null;
   backendNote: string;
 }
 
@@ -90,6 +92,15 @@ export interface VoicePresenter {
   open(): Promise<void>;
   close(): void;
   interruptAndListen(reason?: "barge-in" | "button", audioStartAt?: number): void;
+  /**
+   * 朗读聊天页里的一条消息。
+   *
+   * 与语音会话共用同一个输出队列与引擎——机器只有一套嗓子。所以会话开着时不接这个
+   * 请求（说话权归会话），同一条再点一次则是停止。
+   */
+  speakMessage(messageId: string, text: string): void;
+  /** 停止朗读。不影响语音会话自己的播放。 */
+  stopSpeaking(): void;
   sendNow(): void;
   clearPending(): void;
   diagnostics(): VoiceDiagnostics;
@@ -138,6 +149,10 @@ export function createVoicePresenter(deps: VoicePresenterDeps = {}): VoicePresen
   let captions: VoiceCaption[] = [];
   let speakingCaptionId: number | null = null;
   let speakingRange: CaptionRange | null = null;
+  /** 聊天页朗读：正在念哪条消息、原文是什么、高亮找到哪儿了。 */
+  let speakingMessageId: string | null = null;
+  let bubbleText = "";
+  let bubbleFrom = 0;
   let backendNote = "";
 
   let input: SpeechInputEngine | null = null;
@@ -543,6 +558,55 @@ export function createVoicePresenter(deps: VoicePresenterDeps = {}): VoicePresen
     setSpeakingRange(null);
   }
 
+  /** 聊天页朗读的状态清理。语音会话的字幕状态不在这里动。 */
+  function clearBubblePlayback(): void {
+    speakingMessageId = null;
+    bubbleText = "";
+    bubbleFrom = 0;
+    setSpeakingRange(null);
+  }
+
+  function speakMessage(messageId: string, text: string): void {
+    if (disposed) return;
+    // 会话开着时说话权归会话：这里入队会 begin 掉正在播的那一轮，
+    // 让那一轮的交付回执永远等不到，只能靠超时兜底。
+    if (isOpen) return;
+    // 同一条再点一次，用户的意思只可能是「别念了」，不是重头再念一遍。
+    if (speakingMessageId === messageId) {
+      stopSpeaking();
+      return;
+    }
+    const sentences = splitIntoSentences(text ?? "");
+    if (!sentences.length) return;
+
+    bubbleText = text;
+    bubbleFrom = 0;
+    speakingMessageId = messageId;
+    setSpeakingRange(null);
+    queue.speak(sentences, {
+      // 念到哪句就亮到哪句；找不到范围就不亮，宁可没有高亮也不能亮错位置。
+      onSentence: (_index, sentence) => {
+        if (speakingMessageId !== messageId) return;
+        const range = locateSentence(bubbleText, sentence, bubbleFrom);
+        if (range) bubbleFrom = range.end;
+        setSpeakingRange(range);
+      },
+      onDrained: () => {
+        if (speakingMessageId === messageId) clearBubblePlayback();
+      },
+      // 单句失败不打断整段：队列会继续念下一句，但得让用户看见。
+      onError: (message) => {
+        if (speakingMessageId === messageId) setError(`语音播放失败：${message}`);
+      },
+    });
+  }
+
+  function stopSpeaking(): void {
+    if (!speakingMessageId) return;
+    queue.stop();
+    clearBubblePlayback();
+  }
+
   function appendCaption(speaker: VoiceCaption["speaker"], text: string, translation?: string): number {
     captionId += 1;
     const caption: VoiceCaption = { id: captionId, speaker, text, translation };
@@ -765,6 +829,7 @@ export function createVoicePresenter(deps: VoicePresenterDeps = {}): VoicePresen
         captions,
         speakingCaptionId,
         speakingRange,
+        speakingMessageId,
         backendNote,
       });
       dirty = false;
@@ -790,6 +855,8 @@ export function createVoicePresenter(deps: VoicePresenterDeps = {}): VoicePresen
     },
     open,
     close,
+    speakMessage,
+    stopSpeaking,
     interruptAndListen,
     sendNow,
     clearPending,

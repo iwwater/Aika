@@ -72,3 +72,23 @@ export function splitCaption(text: string, range: CaptionRange | null): CaptionP
     after: text.slice(range.end),
   };
 }
+
+/**
+ * 按行切开，再把高亮落到它所在的那一行。
+ *
+ * 聊天气泡是按行渲染的（每行一个子元素），而 range 是整段文本的下标；
+ * 不换算到行内坐标，高亮就会落在别的行上。跨行的句子只亮它在本行的那一截。
+ */
+export function splitCaptionLines(text: string, range: CaptionRange | null): CaptionParts[] {
+  let offset = 0;
+  return text.split("\n").map((line) => {
+    const lineStart = offset;
+    // +1 补回被 split 吃掉的那个换行，否则后面每一行都会偏移。
+    offset += line.length + 1;
+    if (!range) return { before: line, match: "", after: "" };
+    const start = Math.max(range.start - lineStart, 0);
+    const end = Math.min(range.end - lineStart, line.length);
+    if (start >= end) return { before: line, match: "", after: "" };
+    return splitCaption(line, { start, end });
+  });
+}

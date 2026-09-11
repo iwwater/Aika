@@ -46,6 +46,11 @@ export function useVoiceConversation(
     (reason?: "barge-in" | "button", audioStartAt?: number) => presenter.interruptAndListen(reason, audioStartAt),
     [presenter],
   );
+  const speakMessage = useCallback(
+    (messageId: string, text: string) => presenter.speakMessage(messageId, text),
+    [presenter],
+  );
+  const stopSpeaking = useCallback(() => presenter.stopSpeaking(), [presenter]);
   const sendNow = useCallback(() => presenter.sendNow(), [presenter]);
   const clearPending = useCallback(() => presenter.clearPending(), [presenter]);
 
@@ -53,10 +58,12 @@ export function useVoiceConversation(
     ...snapshot,
     open,
     close,
+    speakMessage,
+    stopSpeaking,
     interruptAndListen,
     sendNow,
     clearPending,
     diagnostics: presenter.diagnostics(),
     exportDiagnostics: () => presenter.exportDiagnostics(),
-  }), [snapshot, presenter, open, close, interruptAndListen, sendNow, clearPending]);
+  }), [snapshot, presenter, open, close, speakMessage, stopSpeaking, interruptAndListen, sendNow, clearPending]);
 }

@@ -4,6 +4,7 @@ import type { CompanionReply } from "../domain/companion";
 import type { PartialReply } from "../domain/streamingReply";
 import type { SpeechFinalResult, VoiceTurnRequest } from "../domain/voiceRuntime";
 import { createVoicePresenter, type VoiceTimers } from "./voicePresenter";
+import { locateSentence } from "../domain/captionHighlight";
 
 /**
  * CORE-04-E：语音打断在 Presenter 内编排，用 fake STT/TTS 验收。
@@ -62,6 +63,12 @@ function createOutput() {
   return {
     engine,
     stopCount: () => stops,
+    /** 交给引擎的句子，按顺序。 */
+    texts: () => requests.map((entry) => entry.request.text),
+    /** 让某一句合成失败，用来验「单句失败不打断整段」。 */
+    failAt(index: number, message: string) {
+      requests[index]?.events.onError?.(message);
+    },
     drain() {
       for (const entry of requests) entry.events.onEnd?.();
     },
@@ -226,5 +233,98 @@ describe("VoicePresenter 打断编排（fake STT/TTS）", () => {
     presenter.close();
     expect(presenter.getSnapshot()).toBe(snapshot);
     expect(notifications).toBe(0);
+  });
+});
+
+describe("VoicePresenter 聊天页朗读（fake TTS）", () => {
+  const TEXT = "おかえり。今日はどうだった？";
+
+  function setup() {
+    const output = createOutput();
+    const presenter = createVoicePresenter({
+      createInputEngine: async () => ({ engine: createInput().engine, note: "fake", degraded: false }),
+      outputEngine: output.engine,
+      createMonitor: () => createMonitor().monitor,
+      timers: createTimers().port,
+    });
+    return { output, presenter };
+  }
+
+  it("点朗读：按句入队，高亮落在正在念的那句，念完自动清空", () => {
+    const { output, presenter } = setup();
+
+    presenter.speakMessage("m1", TEXT);
+
+    expect(presenter.getSnapshot().speakingMessageId).toBe("m1");
+    // 两句都进了队列，第一句已经交给引擎。
+    expect(output.texts()).toEqual(["おかえり。"]);
+    expect(presenter.getSnapshot().speakingRange).toEqual(locateSentence(TEXT, "おかえり。"));
+
+    // 第一句念完，队列续上第二句，高亮跟着走。
+    output.drain();
+    expect(output.texts()).toEqual(["おかえり。", "今日はどうだった？"]);
+
+    presenter.dispose();
+  });
+
+  it("念完整段：状态与高亮都清空，不留一条永远亮着的消息", () => {
+    const { output, presenter } = setup();
+    presenter.speakMessage("m1", TEXT);
+    output.drain();
+    output.drain();
+
+    const snapshot = presenter.getSnapshot();
+    expect(snapshot.speakingMessageId).toBeNull();
+    expect(snapshot.speakingRange).toBeNull();
+    presenter.dispose();
+  });
+
+  it("同一条再点一次＝停止：引擎收到 stop，状态清空，不重头念", () => {
+    const { output, presenter } = setup();
+    presenter.speakMessage("m1", TEXT);
+    const before = output.texts().length;
+    // queue.speak 自带 begin，begin 会先 stop 掉上一轮，所以基线不是 0。
+    const stopsBefore = output.stopCount();
+
+    presenter.speakMessage("m1", TEXT);
+
+    expect(output.stopCount()).toBe(stopsBefore + 1);
+    expect(output.texts()).toHaveLength(before);
+    expect(presenter.getSnapshot().speakingMessageId).toBeNull();
+    expect(presenter.getSnapshot().speakingRange).toBeNull();
+    presenter.dispose();
+  });
+
+  it("语音会话开着时不接朗读：说话权归会话", async () => {
+    const { output, presenter } = setup();
+    await presenter.open();
+    const before = output.texts().length;
+
+    presenter.speakMessage("m1", TEXT);
+
+    expect(output.texts()).toHaveLength(before);
+    expect(presenter.getSnapshot().speakingMessageId).toBeNull();
+    presenter.dispose();
+  });
+
+  it("单句合成失败：用户看得见，但整段不停", () => {
+    const { output, presenter } = setup();
+    presenter.speakMessage("m1", TEXT);
+
+    output.failAt(0, "引擎没声音");
+
+    expect(presenter.getSnapshot().error).toContain("引擎没声音");
+    // 失败那句之后队列继续念下一句，不是整段作废。
+    expect(output.texts()).toEqual(["おかえり。", "今日はどうだった？"]);
+    expect(presenter.getSnapshot().speakingMessageId).toBe("m1");
+    presenter.dispose();
+  });
+
+  it("空文本不入队，也不把状态改成正在朗读", () => {
+    const { output, presenter } = setup();
+    presenter.speakMessage("m1", "   ");
+    expect(output.texts()).toEqual([]);
+    expect(presenter.getSnapshot().speakingMessageId).toBeNull();
+    presenter.dispose();
   });
 });

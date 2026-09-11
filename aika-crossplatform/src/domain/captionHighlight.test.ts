@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { locateSentence, splitCaption } from "./captionHighlight";
+import { locateSentence, splitCaption, splitCaptionLines } from "./captionHighlight";
 import { splitIntoSentences } from "./sentences";
 
 describe("locateSentence", () => {
@@ -64,5 +64,41 @@ describe("splitCaption", () => {
   it("区间越界时不切，宁可不高亮也不能把字幕切错", () => {
     // 字幕在流式过程中会被整段替换，旧区间可能超出新文本
     expect(splitCaption("うん。", { start: 0, end: 99 })).toEqual({ before: "うん。", match: "", after: "" });
+  });
+});
+
+describe("splitCaptionLines", () => {
+  const text = "第一行\n第二行正在念\n第三行";
+
+  it("高亮只落在它所在那一行，别的行不亮", () => {
+    const range = locateSentence(text, "第二行正在念");
+    expect(range).not.toBeNull();
+    const lines = splitCaptionLines(text, range);
+    expect(lines).toEqual([
+      { before: "第一行", match: "", after: "" },
+      { before: "", match: "第二行正在念", after: "" },
+      { before: "第三行", match: "", after: "" },
+    ]);
+  });
+
+  it("range 为 null 时每行都原样返回", () => {
+    expect(splitCaptionLines(text, null)).toEqual([
+      { before: "第一行", match: "", after: "" },
+      { before: "第二行正在念", match: "", after: "" },
+      { before: "第三行", match: "", after: "" },
+    ]);
+  });
+
+  it("跨行的范围只亮它在本行的那一截", () => {
+    // 从「第二行」跨到「第三行」的一段
+    const lines = splitCaptionLines(text, { start: 4, end: text.length });
+    expect(lines[0]).toEqual({ before: "第一行", match: "", after: "" });
+    expect(lines[1]).toEqual({ before: "", match: "第二行正在念", after: "" });
+    expect(lines[2]).toEqual({ before: "", match: "第三行", after: "" });
+  });
+
+  it("单行文本行为与 splitCaption 一致", () => {
+    const range = locateSentence("只有一行", "一行");
+    expect(splitCaptionLines("只有一行", range)).toEqual([splitCaption("只有一行", range)]);
   });
 });
