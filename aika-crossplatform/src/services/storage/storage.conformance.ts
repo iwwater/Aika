@@ -18,7 +18,7 @@ import type { AikaStorage } from "./contracts";
  */
 
 /** 可选能力。实现要么支持并通过对应用例，要么在 unsupported 里明说。 */
-export const STORAGE_OPTIONAL = ["memoryV2", "deleteSummaries"] as const;
+export const STORAGE_OPTIONAL = ["memoryV2", "deleteSummaries", "sqlExecutor"] as const;
 export type StorageOptional = (typeof STORAGE_OPTIONAL)[number];
 
 export interface PortHarness<T> {
@@ -282,6 +282,20 @@ export function runStorageConformance(harness: PortHarness<AikaStorage>): void {
         await storage.saveSummary({ content: "摘要", coversUntil: 100, createdAt: 100 });
         await storage.deleteSummaries?.();
         expect(await storage.latestSummary()).toBeNull();
+      });
+    });
+
+    it(`sqlExecutor：${supports("sqlExecutor") ? "声明支持就必须真能执行 SQL" : "声明不支持就必须真的不在"}`, async () => {
+      await withStorage(async (storage) => {
+        if (!supports("sqlExecutor")) {
+          expect(storage.sqlExecutor).toBeUndefined();
+          return;
+        }
+        // 自带表的消费者（Trace 落盘、存储浏览页）要的就是「能建自己的表」。
+        await storage.sqlExecutor?.execute("CREATE TABLE IF NOT EXISTS conformance_probe (id TEXT PRIMARY KEY)");
+        await storage.sqlExecutor?.execute("INSERT OR REPLACE INTO conformance_probe (id) VALUES ($1)", ["x"]);
+        const rows = await storage.sqlExecutor?.select<{ id: string }[]>("SELECT id FROM conformance_probe");
+        expect(rows).toEqual([{ id: "x" }]);
       });
     });
 

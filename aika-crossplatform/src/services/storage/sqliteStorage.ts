@@ -151,6 +151,8 @@ export async function createSqliteStorage(executor?: SqlExecutor): Promise<AikaS
   return {
     kind: "sqlite",
     memoryV2: createSqliteMemoryStore(db, { fts }),
+    // Trace 落盘等「自带表」的消费者从这里拿执行器，各自建表、各自清理。
+    sqlExecutor: db,
 
     async listMessages(limit) {
       const rows = await db.select<MessageRow[]>(

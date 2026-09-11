@@ -26,6 +26,8 @@ function installLocalStorage(): () => void {
 
 runStorageConformance({
   name: "localStorageStorage",
+  // 浏览器回退没有 SQL 引擎，如实声明不支持，而不是造一个假执行器。
+  unsupported: ["sqlExecutor"],
   async create() {
     const restore = installLocalStorage();
     return {

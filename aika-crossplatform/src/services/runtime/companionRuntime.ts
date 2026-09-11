@@ -23,6 +23,7 @@ import { computeRelationship, deriveRelationshipSignals } from "../../domain/rel
 import { DEFAULT_CHARACTER_SOUL, DEFAULT_MODE_CONFIG, type CharacterSoul, type ModeConfig, type UserSoul } from "../../domain/soul";
 import type { SessionSummary } from "../../domain/summary";
 import type { PlaybackStatus } from "../../domain/voiceRuntime";
+import { NO_TRACE, type TraceRecorder } from "../trace/traceRecorder";
 import {
   createContextAssembler, ContextTooLargeError,
   type ContextAssembler, type ContextSource, type TimerPort,
@@ -147,6 +148,14 @@ export interface CompanionRuntimeOptions {
   deliveryTimeoutMs?: number;
   idFactory?: () => string;
   onTrace?: (trace: TurnTrace) => void;
+  /**
+   * Trace 记录器（LLM-06/07）。
+   *
+   * 与既有 `onTrace` 并行存在而不是替换它：`onTrace` 只发一次降级摘要，Trace 是
+   * 带时序、可落盘、可查询的事件流。没装 Trace 能力时传 `NO_TRACE`（默认），
+   * 调用点因此不需要写 `?.`。
+   */
+  trace?: TraceRecorder;
 }
 
 export const DEFAULT_DELIVERY_TIMEOUT_MS = 30_000;
@@ -167,6 +176,9 @@ interface Turn {
   cancelled: boolean;
   persistFailed: boolean;
   fragmentPersisted: boolean;
+  startedAt: number;
+  /** 上下文装配的估算 prompt token。装配失败时仍是 null，不写 0。 */
+  estimatedPromptTokens: number | null;
   draftText: string;
   translation: string;
   mood: Mood;
@@ -241,6 +253,7 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
     clearTimeout: (handle: unknown) => clearTimeout(handle as ReturnType<typeof setTimeout>),
   };
   const idFactory = options.idFactory ?? defaultIdFactory;
+  const trace = options.trace ?? NO_TRACE;
   const timeZone = options.timeZone ?? defaultTimeZone();
   const characterSoul = options.characterSoul ?? DEFAULT_CHARACTER_SOUL;
   const historyLimit = options.historyLimit ?? 200;
@@ -296,6 +309,16 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
     if (turn.settled) return;
     turn.settled = true;
     clearDeliveryTimer(turn);
+    // settle 是所有终态的唯一漏斗（完成/失败/取消都从这里过），
+    // 所以 turn_end 只需要挂在这一处，不会漏也不会重。
+    trace.record(turn.id, {
+      kind: "turn_end",
+      status: state === "completed" ? "completed" : state === "failed" ? "failed" : "cancelled",
+      durationMs: clock.now() - turn.startedAt,
+      ...(errorCode ? { errorCode } : {}),
+      tokens: { estimatedPrompt: turn.estimatedPromptTokens, reportedTotal: null },
+    });
+    trace.endTurn(turn.id);
     setState(turn, state);
     const settlement: TurnSettlement = {
       state,
@@ -397,6 +420,8 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
       cancelled: false,
       persistFailed: false,
       fragmentPersisted: false,
+      startedAt: clock.now(),
+      estimatedPromptTokens: null,
       draftText: "",
       translation: "",
       mood: normalizeMood(null),
@@ -436,10 +461,32 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
       historyDropped: history.droppedCount,
       historyRepaired: history.repairedCount,
     });
+    turn.estimatedPromptTokens = assembled.estimatedTokens;
+    trace.record(turn.id, {
+      kind: "context_assemble",
+      estimatedTokens: assembled.estimatedTokens,
+      droppedSources: assembled.droppedSources.map((dropped) => ({
+        source: dropped.source, section: dropped.section, reason: dropped.reason,
+      })),
+      historyDropped: history.droppedCount,
+      historyRepaired: history.repairedCount,
+      // 真进了上下文的来源：被丢掉的那些不算「检索到了」，所以读的是装配结果而不是请求。
+      retrievedSources: [...new Set([
+        ...assembled.context.memories,
+        ...assembled.context.knowledge,
+        ...assembled.context.environment,
+      ].map((snippet) => snippet.source))],
+    });
   }
 
   async function run(turn: Turn): Promise<void> {
     const startedAt = clock.now();
+    trace.record(turn.id, {
+      kind: "turn_start",
+      source: turn.source,
+      mode: turn.mode.mode,
+      text: turn.query,
+    });
     const asked: ChatMessage = {
       id: idFactory(),
       role: "user",
@@ -510,6 +557,9 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
     setState(turn, "generating");
 
     let failure: { code: string; retryable: boolean; message?: string } | null = null;
+    // 一片都没收到时 firstTokenMs 保持 null，不写 0——0 会被读成「快到不可思议」。
+    let chunks = 0;
+    let firstChunkAt: number | null = null;
     try {
       for await (const event of options.provider.generate({
         turnId: turn.id,
@@ -524,6 +574,8 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
           return;
         }
         if (event.type === "delta") {
+          chunks += 1;
+          firstChunkAt ??= clock.now();
           const cumulative = event.text ?? "";
           const delta = cumulative.startsWith(turn.draftText)
             ? cumulative.slice(turn.draftText.length)
@@ -553,6 +605,14 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
       failure = { code: "PROVIDER_FAILED", retryable: true, message: messageOf(error) };
       emit(turn, { type: "error", code: "PROVIDER_FAILED", retryable: true, message: messageOf(error) });
     }
+
+    // 放在这里而不是成功分支里：取消与失败也需要知道「收到了几片、首片多久到」，
+    // 那正是排查卡顿与空回复最有用的两个数字。
+    trace.record(turn.id, {
+      kind: "provider_stream_meta",
+      firstTokenMs: firstChunkAt === null ? null : firstChunkAt - startedAt,
+      chunks,
+    });
 
     if (isStale(turn) || turn.controller.signal.aborted) {
       await finishAsInterrupted(turn);

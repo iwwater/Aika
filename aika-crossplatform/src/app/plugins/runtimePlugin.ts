@@ -6,6 +6,8 @@ import {
   ProviderModelsToken, ProviderProbeToken, ProviderSettingsToken, ProviderToken, RuntimeToken,
 } from "../../services/runtime/tokens";
 import { StorageToken } from "../../services/storage/tokens";
+import { TraceRecorderToken } from "../../services/trace/tokens";
+import { NO_TRACE } from "../../services/trace/traceRecorder";
 import { ClockToken, TimersToken } from "../../services/time/tokens";
 
 /**
@@ -33,6 +35,9 @@ export function runtimePlugin(options: RuntimePluginOptions = {}): AikaPlugin {
     id: "llm.runtime",
     version: "1.0.0",
     requires: [StorageToken, ClockToken, TimersToken, ProviderSettingsToken, ContextSourcesToken],
+    // Trace 是可选能力：没装 tracePlugin 时 tryResolve 拿到 null，退回 NO_TRACE。
+    // 「能力缺失即 token 不注册」，所以这里不需要任何运行时开关分支。
+    optional: [TraceRecorderToken],
     provides: [ProviderToken, RuntimeToken, ProviderProbeToken, ProviderModelsToken],
     activate(context) {
       const storage = context.registrar.resolve(StorageToken);
@@ -40,6 +45,7 @@ export function runtimePlugin(options: RuntimePluginOptions = {}): AikaPlugin {
       const timers = context.registrar.resolve(TimersToken);
       const settings = context.registrar.resolve(ProviderSettingsToken);
       const sources = context.registrar.resolve(ContextSourcesToken);
+      const trace = context.registrar.tryResolve(TraceRecorderToken) ?? NO_TRACE;
 
       const provider = createStreamChatProvider({
         getConfig: () => settings.get(),
@@ -55,6 +61,7 @@ export function runtimePlugin(options: RuntimePluginOptions = {}): AikaPlugin {
         historyLimit: options.historyLimit,
         deliveryTimeoutMs: options.deliveryTimeoutMs,
         onTrace: options.onTrace,
+        trace,
       });
 
       context.registrar.provide(ProviderToken, () => provider);

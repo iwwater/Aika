@@ -5,6 +5,10 @@ import type { ReplyEnvelopeV1 } from "../../domain/companion";
 import { DEFAULT_MODE_CONFIG } from "../../domain/soul";
 import type { SessionSummary } from "../../domain/summary";
 import type { ContextSource, TimerPort } from "../context/contextAssembler";
+import { createMemoryTraceSink } from "../trace/memoryTraceSink";
+import { createTraceRecorder } from "../trace/traceRecorder";
+import type { TraceEventV1 } from "../../domain/trace";
+import type { TraceSink } from "../trace/contracts";
 import {
   createCompanionRuntime,
   type CompanionRuntimeOptions, type ProviderStreamEvent, type RuntimeEvent, type RuntimeProvider,
@@ -461,5 +465,175 @@ describe("LLM-02-D · 交付回执与旧消息", () => {
       .toEqual(["旧消息一", "古い返事"]);
     expect(harness.controls[0].context.query).toBe("新的一句");
     expect(harness.storage.messages.filter((message) => message.content === "旧消息一")).toHaveLength(1);
+  });
+});
+
+describe("LLM-07 · Trace 事件序列", () => {
+  /** 会走的时钟：durationMs 与 firstTokenMs 只有在时钟真的动时才有意义。 */
+  function traced(options: { enabled?: boolean; includeText?: boolean; sink?: TraceSink } = {}) {
+    let now = NOW;
+    const sink = options.sink ?? createMemoryTraceSink(100);
+    const recorder = createTraceRecorder({
+      sink,
+      clock: () => now,
+      isEnabled: () => options.enabled ?? true,
+      policy: () => ({ includeText: options.includeText ?? false }),
+    });
+    const harness = setup({ clock: { now: () => now }, trace: recorder });
+    return { harness, sink, tick: (ms: number) => { now += ms; } };
+  }
+
+  async function events(sink: TraceSink): Promise<TraceEventV1[]> {
+    return [...await sink.query({})];
+  }
+
+  it("一轮走完：四个事件按序到达，seq 从 1 连续", async () => {
+    const { harness, sink, tick } = traced();
+    const handle = harness.submit("你好");
+    await flush();
+    tick(120);
+    harness.controls[0].push("こん");
+    await flush();
+    harness.controls[0].push("こんにちは");
+    await flush();
+    tick(30);
+    harness.controls[0].finish({ replyText: "こんにちは", translation: "你好" });
+    await handle.done;
+    await flush();
+
+    const recorded = await events(sink);
+    expect(recorded.map((event) => event.kind)).toEqual([
+      "turn_start", "context_assemble", "provider_stream_meta", "turn_end",
+    ]);
+    expect(recorded.map((event) => event.seq)).toEqual([1, 2, 3, 4]);
+    expect(recorded.every((event) => event.turnId === handle.turnId)).toBe(true);
+  });
+
+  it("stream_meta：chunk 数是真实片数，firstTokenMs 是首片耗时", async () => {
+    const { harness, sink, tick } = traced();
+    const handle = harness.submit("你好");
+    await flush();
+    tick(200);
+    harness.controls[0].push("こん");
+    await flush();
+    tick(50);
+    harness.controls[0].push("こんにちは");
+    await flush();
+    harness.controls[0].finish({ replyText: "こんにちは", translation: "你好" });
+    await handle.done;
+    await flush();
+
+    const meta = (await events(sink)).find((event) => event.kind === "provider_stream_meta");
+    expect(meta?.kind).toBe("provider_stream_meta");
+    if (meta?.kind === "provider_stream_meta") {
+      expect(meta.chunks).toBe(2);
+      expect(meta.firstTokenMs).toBe(200);
+    }
+  });
+
+  it("一片都没收到时 firstTokenMs 是 null，不是 0", async () => {
+    const { harness, sink } = traced();
+    const handle = harness.submit("你好");
+    await flush();
+    harness.controls[0].fail("PROVIDER_FAILED");
+    await handle.done;
+    await flush();
+
+    const meta = (await events(sink)).find((event) => event.kind === "provider_stream_meta");
+    if (meta?.kind === "provider_stream_meta") {
+      // 0 会被读成「快到不可思议」；null 才是「没有这个数」。
+      expect(meta.firstTokenMs).toBeNull();
+      expect(meta.chunks).toBe(0);
+    }
+  });
+
+  it("turn_end：失败轮带 errorCode，取消轮标 cancelled，durationMs 算得出", async () => {
+    const failed = traced();
+    const failedHandle = failed.harness.submit("你好");
+    await flush();
+    failed.tick(500);
+    failed.harness.controls[0].fail("PROVIDER_FAILED");
+    await failedHandle.done;
+    await flush();
+
+    const end = (await events(failed.sink)).find((event) => event.kind === "turn_end");
+    if (end?.kind === "turn_end") {
+      expect(end.status).toBe("failed");
+      expect(end.errorCode).toBe("PROVIDER_FAILED");
+      expect(end.durationMs).toBe(500);
+      // provider 还没上报 usage，就如实写 null，不拿估算值冒充实际用量。
+      expect(end.tokens.reportedTotal).toBeNull();
+      expect(end.tokens.estimatedPrompt).toBeGreaterThan(0);
+    }
+
+    const cancelled = traced();
+    const cancelledHandle = cancelled.harness.submit("你好");
+    await flush();
+    cancelled.harness.runtime.cancel(cancelledHandle.turnId);
+    await cancelledHandle.done;
+    await flush();
+
+    const cancelledEnd = (await events(cancelled.sink)).find((event) => event.kind === "turn_end");
+    if (cancelledEnd?.kind === "turn_end") expect(cancelledEnd.status).toBe("cancelled");
+  });
+
+  it("正文开关：关时 turn_start.text 是 null，开时是原话", async () => {
+    const off = traced({ includeText: false });
+    off.harness.submit("今天有点累");
+    await flush();
+    const hidden = (await events(off.sink)).find((event) => event.kind === "turn_start");
+    if (hidden?.kind === "turn_start") expect(hidden.text).toBeNull();
+
+    const on = traced({ includeText: true });
+    on.harness.submit("今天有点累");
+    await flush();
+    const shown = (await events(on.sink)).find((event) => event.kind === "turn_start");
+    if (shown?.kind === "turn_start") expect(shown.text).toBe("今天有点累");
+  });
+
+  it("关掉开关：一轮跑完一个事件都没有", async () => {
+    const { harness, sink } = traced({ enabled: false });
+    const handle = harness.submit("你好");
+    await flush();
+    harness.controls[0].finish({ replyText: "こんにちは", translation: "你好" });
+    await handle.done;
+    await flush();
+
+    expect(await events(sink)).toEqual([]);
+  });
+
+  it("旁路：sink 每次 append 都抛错，这一轮照样完整完成", async () => {
+    const exploding: TraceSink = {
+      append() { throw new Error("sink 炸了"); },
+      tail: async () => [],
+      query: async () => [],
+      flush: async () => undefined,
+    };
+    const { harness } = traced({ sink: exploding });
+    const handle = harness.submit("你好");
+    await flush();
+    harness.controls[0].push("こんにちは");
+    await flush();
+    harness.controls[0].finish({ replyText: "こんにちは", translation: "你好" });
+
+    // 关键断言：Trace 全程在抛，对话仍然正常结算并落库。
+    expect(await handle.done).toEqual({ state: "completed", persisted: true });
+    expect(harness.storage.assistantMessages).toHaveLength(1);
+  });
+
+  it("context_assemble 报的是真进了上下文的来源", async () => {
+    const { harness, sink } = traced();
+    const handle = harness.submit("你好");
+    await flush();
+    harness.controls[0].finish({ replyText: "こんにちは", translation: "你好" });
+    await handle.done;
+    await flush();
+
+    const assemble = (await events(sink)).find((event) => event.kind === "context_assemble");
+    if (assemble?.kind === "context_assemble") {
+      expect(assemble.estimatedTokens).toBeGreaterThan(0);
+      expect(Array.isArray(assemble.retrievedSources)).toBe(true);
+      expect(assemble.historyDropped).toBe(0);
+    }
   });
 });

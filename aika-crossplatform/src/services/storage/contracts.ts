@@ -2,6 +2,7 @@ import type { ChatMessage } from "../../domain/conversation";
 import type { MemoryRecord, MemoryStatus } from "../../domain/memory";
 import type { SessionSummary } from "../../domain/summary";
 import type { MemoryV2Store } from "../memory/memoryStore";
+import type { SqlExecutor } from "../memory/sqliteMemoryStore";
 
 /**
  * 持久化边界。
@@ -21,6 +22,17 @@ export interface AikaStorage {
    * `listMemories/addMemories/...`。桌面端与浏览器端都会提供。
    */
   readonly memoryV2?: MemoryV2Store;
+
+  /**
+   * 底层 SQL 执行器。**可选**：只有 SQLite 实现有，localStorage 实现没有。
+   *
+   * 为什么要把它露出来：Trace 落盘（LLM-07）与后续的存储浏览页需要在同一个库里
+   * 建自己的表，而它们不属于 `AikaStorage` 的业务语义——把 trace 的读写塞进这个
+   * 接口才是真的越界。露出执行器让它们各自管自己的表，而不是让这个接口无限长大。
+   *
+   * 拿到它的代码负责自己的表：不许改别人的表，也不许绕过上面的方法改消息与记忆。
+   */
+  readonly sqlExecutor?: SqlExecutor;
 
   /** 最近 limit 条消息，按时间正序。 */
   listMessages(limit: number): Promise<ChatMessage[]>;
@@ -67,6 +79,9 @@ export const SETTING_KEYS = {
   voiceBackend: "voice.backend",
   whisperEndpoint: "voice.whisperEndpoint",
   mode: "llm.mode",
+  /** Trace 开关（LLM-07）。默认值按构建取，持久化后以库里的为准。 */
+  traceEnabled: "trace.enabled",
+  traceIncludeText: "trace.includeText",
   /**
    * CORE-03 迁移期用过 `core.orchestrator = legacy | kernel`。CORE-06 删除旧编排后
    * 这个 key 不再被读写；旧库里残留的值会被当作普通未知设置忽略，不报错、不迁移。

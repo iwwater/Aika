@@ -54,9 +54,6 @@ export type TraceEventV1 =
     historyRepaired: number;
     /** 真进了上下文的来源名。空数组表示这一轮没注入任何检索结果。 */
     retrievedSources: string[];
-    instructionsChars: number;
-    /** 最终 instructions 的摘要。脱敏关掉正文时是 null。 */
-    instructionsDigest: string | null;
   })
   | (TraceEventBase & {
     kind: "provider_request";
@@ -65,6 +62,14 @@ export type TraceEventV1 =
     /** 去掉 query string 的 endpoint。Gemini 把 key 放在 ?key= 里，不砍就等于把 key 写进日志。 */
     endpoint: string;
     requestChars: number;
+    instructionsChars: number;
+    /**
+     * 最终 instructions 的摘要。脱敏关掉正文时是 null。
+     *
+     * 挂在这里而不是 context_assemble：instructions 是 provider 适配器用装配结果
+     * 拼出来的，装配阶段还不存在这个字符串。放在拿不到它的事件上只能拿别的字段凑。
+     */
+    instructionsDigest: string | null;
   })
   | (TraceEventBase & {
     kind: "provider_stream_meta";
@@ -156,11 +161,14 @@ export function redactTraceEvent(
   policy: TraceRedactionPolicy = DEFAULT_TRACE_REDACTION,
 ): TraceEventV1 {
   if (event.kind === "provider_request") {
-    return { ...event, endpoint: redactEndpoint(event.endpoint) };
+    // endpoint 的 query 无论开关都砍掉；instructions 摘要才受开关控制。
+    const endpoint = redactEndpoint(event.endpoint);
+    return policy.includeText
+      ? { ...event, endpoint }
+      : { ...event, endpoint, instructionsDigest: null };
   }
   if (policy.includeText) return event;
   if (event.kind === "turn_start") return { ...event, text: null };
-  if (event.kind === "context_assemble") return { ...event, instructionsDigest: null };
   return event;
 }
 

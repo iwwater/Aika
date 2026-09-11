@@ -13,11 +13,11 @@ function turnStart(text: string | null): TraceEventV1 {
   };
 }
 
-function providerRequest(endpoint: string): TraceEventV1 {
+function providerRequest(endpoint: string, instructionsDigest: string | null = "你是…"): TraceEventV1 {
   return {
     schemaVersion: TRACE_SCHEMA_VERSION, turnId: "t1", seq: 2, at: AT + 10,
     kind: "provider_request", protocol: "openai-compatible", model: "qwen-plus",
-    endpoint, requestChars: 1234,
+    endpoint, requestChars: 1234, instructionsChars: 4096, instructionsDigest,
   };
 }
 
@@ -57,17 +57,23 @@ describe("redactTraceEvent", () => {
     if (kept.kind === "turn_start") expect(kept.text).toBe("今天有点累");
   });
 
-  it("instructions 摘要同样受开关控制", () => {
+  it("instructions 摘要同样受开关控制（它挂在 provider_request 上）", () => {
+    // 摘要不在 context_assemble 上：instructions 是 provider 适配器拼出来的，
+    // 装配阶段还没有这个字符串。
+    const event = providerRequest("https://api.example.com/v1");
+    const off = redactTraceEvent(event);
+    const on = redactTraceEvent(event, { includeText: true });
+    if (off.kind === "provider_request") expect(off.instructionsDigest).toBeNull();
+    if (on.kind === "provider_request") expect(on.instructionsDigest).toBe("你是…");
+  });
+
+  it("context_assemble 只报装配阶段真有的东西", () => {
     const event: TraceEventV1 = {
       schemaVersion: TRACE_SCHEMA_VERSION, turnId: "t1", seq: 2, at: AT,
       kind: "context_assemble", estimatedTokens: 900, droppedSources: [],
       historyDropped: 0, historyRepaired: 0, retrievedSources: ["memory"],
-      instructionsChars: 4096, instructionsDigest: "你是…",
     };
-    const off = redactTraceEvent(event);
-    const on = redactTraceEvent(event, { includeText: true });
-    if (off.kind === "context_assemble") expect(off.instructionsDigest).toBeNull();
-    if (on.kind === "context_assemble") expect(on.instructionsDigest).toBe("你是…");
+    expect(redactTraceEvent(event)).toEqual(event);
   });
 
   it("endpoint 的 query 无论开关都要砍掉", () => {
