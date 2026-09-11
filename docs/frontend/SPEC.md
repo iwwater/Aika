@@ -12,5 +12,6 @@
 | [FE-06](specs/FE-06.md) | 撤回与重新生成（前置 FE-05） |
 | [FE-07](specs/FE-07.md) | 点击朗读 |
 | [FE-08](specs/FE-08.md) | Rewind（回到这里） |
+| [FE-09](specs/FE-09.md) | 开发者模式入口与 Trace 查看页（F2/F4） |
 
 已有适配不等于新 SPEC 全部验收通过；设备与后置范围保持原状态。

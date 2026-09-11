@@ -150,7 +150,7 @@ waku 是本地优先个人 Agent（Python，四支柱：Harness / Loop / Memory 
 | --- | --- | --- |
 | M0 | §0.1 双语修复 + 重试按钮 | 复现用例：replyText==translation 时不显示次级字幕；单测覆盖。**已交付**：双语修复 [FE-04](frontend/specs/FE-04.md)；重试按钮拆成 [CORE-08](core/specs/CORE-08_MESSAGE_DELETION.md)（`deleteMessages` 端口）+ [FE-05](frontend/specs/FE-05.md)（先删再投），因为它不是小改 |
 | M1 | F1 其余交互（发音/撤回/重生成/Rewind） | **全部交付**：撤回/重新生成 [FE-06](frontend/specs/FE-06.md)、点击朗读 [FE-07](frontend/specs/FE-07.md)、Rewind [FE-08](frontend/specs/FE-08.md)。四项都有 fake Runtime 下的逐项 AC 与突变验证；真机目视一律 NOT RUN。原先「需要按时间截断端口」的推测不成立，原因见 FE-08 |
-| M2 | F3 Trace 协议 + fake sink 全链单测；F2 开发者入口 | 事件 schema 版本化；脱敏用例；sink 故障不影响主链路 |
+| M2 | F3 Trace 协议 + fake sink 全链单测；F2 开发者入口 | 事件 schema 版本化；脱敏用例；sink 故障不影响主链路。**已交付**：[LLM-06](llm/specs/LLM-06_TRACE_PROTOCOL.md) 协议与两个 sink、[LLM-07](llm/specs/LLM-07_TRACE_WIRING.md) Runtime 接入与开关、[LLM-08](llm/specs/LLM-08_TRACE_SOURCES.md) 余下三个事件源、[FE-09](frontend/specs/FE-09.md) 开发者入口与 Trace 页（F4 一并交付） |
 | M3 | F4/F5/F6 工作台页面（读 M2 数据） | 用 harness 回放数据驱动页面，不依赖真实模型 |
 | M4 | F7 记忆管理页；F8/F9 视需要后置 | 管理操作有契约测试；统计口径有单测 |
 
@@ -170,6 +170,6 @@ waku 是本地优先个人 Agent（Python，四支柱：Harness / Loop / Memory 
 ## 7. 待确认问题（评审时定）
 
 1. ~~Rewind 对滚动摘要的处理~~ **已按建议执行（FE-08）**：摘要不回滚，只在它覆盖到被删范围时在末尾追加一行 gap 标注。这是取舍不是结论——要求「摘要可重建」仍可推翻它，改动落在 LLM 侧（重新压缩剩余消息），FE 侧把追加换成一次重建调用即可。
-2. 生产构建 Trace 默认开还是关？（建议默认关，崩溃时引导用户临时打开）
+2. ~~生产构建 Trace 默认开还是关？~~ **已按建议执行（LLM-07）**：开发构建默认开、生产默认关，读不到构建标记时按关处理（默认不留痕比默认留痕安全）；持久化后以库里的值为准，开关在工作台里（FE-09）。
 3. F8 SQLite 控制台是否只读？（建议只读，写操作只走应用内接口）
 4. ~~撤回是否需要同步清除已入库的记忆候选？~~ **已回答（FE-06）**：采纳但收窄——来源有交集且仍为 `candidate` 的走 `forget()`，`confirmed` 一律保留（用户明确留下的不能因一次撤回悄悄消失）。收窄理由：抽取输入是最近 4 条消息，一条记忆的来源常跨两轮，「来源有交集」是宽判据。V1 记忆路径无来源字段，不假装联动。
