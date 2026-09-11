@@ -12,6 +12,7 @@
 | [CORE-06](specs/CORE-06_DECOMMISSION.md) | 旧路径下线、开关移除、共享契约更新 | CORE-05 | A–E 自测 PASS；legacy 编排与 `core.orchestrator` 已删；`CONTRACTS.md` 冻结内核契约；触发 INT-01；待审阅 |
 | [CORE-07](specs/CORE-07_PORT_SWAPPABILITY.md) | 端口一致性与实现可替换性收口 | CORE-06 | A–F 自测：替换矩阵（7 端口全部有可比对象）、逐端口突变验证、切换零改动证据均 PASS；`ContextSource` 仍只有 1 真实实现＋1 替身，证据弱；待审阅 |
 | [CORE-08](specs/CORE-08_MESSAGE_DELETION.md) | `AikaStorage` 消息删除端口（重试/撤回/Rewind 的前置） | CORE-07 | 已自测 A–E 全 PASS；两实现跑同一份用例包 36 测试通过，两次突变各命中对应用例；真实 plugin-sql 执行留 INT-01；待审阅 |
+| [CORE-09](specs/CORE-09_TOPOLOGY_READABLE.md) | 装配拓扑可读（F6 数据流图的前置） | CORE-07 | 已自测 A–D 全 PASS；突变命中；待审阅 |
 
 2026-09-11 的输出侧补齐另有一份[变更记录](reports/CORE-05G_OUTPUT_CHANGE_RECORD.md)，只列改了哪些文件、为什么，不重复 AC 证据。
 

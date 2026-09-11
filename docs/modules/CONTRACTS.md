@@ -75,6 +75,8 @@
 
 | `VoiceTurnRequest.runtimeTurnId` | `domain/voiceRuntime.ts` | 可选字段（LLM-08）。与既有 `turnId`（语音回合号 number）**是两回事，不要合并**；不设它的调用方照常工作，只是不记 `tts` 事件。聊天页点朗读没有轮次，那里必须留空而不是编一个 | `CompanionPresenter`（写入）、`VoicePresenter`（读取） |
 
+| `PluginRecord.requires` / `optional` / `provides` | `kernel/diagnostics.ts` | 诊断输出新增三个必填字段（CORE-09），都是 token **key 字符串**——不给 token 实例，拿到实例等于能绕过注册表 resolve。登记时记录，所以 `pending`/`failed`/`skipped` 的插件也带着声明。插件契约 `AikaPlugin` 未改 | 对 `describe().plugins` 做深相等断言的测试（仓库内一处，已更新）；F6 数据流图 |
+
 Trace 事件协议本身（`domain/trace.ts` 的 `TraceEventV1`）自带 `schemaVersion`，后续加字段先冻结已有字段再扩展。**apiKey 永不入 Trace**：不是靠过滤，而是没有任何事件带 key 字段，且 `provider_request.endpoint` 的 query string 整段砍掉。
 
 INT-01 的兼容检查项：云端合成一旦在设置页可选，`createOutputEngine` 的 `note` / `degraded` 必须送到界面，降级当错误显示——现在这两个值在 `defaultSpeechEngines` 里被丢弃。
