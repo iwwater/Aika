@@ -65,6 +65,12 @@ export function createLocalStorage(): AikaStorage {
         .filter((message) => message.source === "proactive" && message.createdAt >= since).length;
     },
 
+    async deleteMessages(ids) {
+      if (!ids.length) return;
+      const doomed = new Set(ids);
+      write(KEYS.messages, read<ChatMessage[]>(KEYS.messages, []).filter((message) => !doomed.has(message.id)));
+    },
+
     async clearMessages() {
       write(KEYS.messages, []);
       write(KEYS.summaries, []);

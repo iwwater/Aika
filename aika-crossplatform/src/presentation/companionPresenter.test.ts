@@ -123,6 +123,12 @@ function createStorage() {
     listMessageTimestamps: async () => rows.filter((message) => !message.error).map((message) => message.createdAt),
     countMessagesSince: async () => 0,
     countProactiveSince: async () => 0,
+    deleteMessages: async (ids: readonly string[]) => {
+      const doomed = new Set(ids);
+      for (let index = rows.length - 1; index >= 0; index -= 1) {
+        if (doomed.has(rows[index].id)) rows.splice(index, 1);
+      }
+    },
     clearMessages: async () => { rows.length = 0; },
     listMemories: async () => [],
     addMemories: async () => undefined,

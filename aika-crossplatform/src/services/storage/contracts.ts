@@ -29,6 +29,14 @@ export interface AikaStorage {
   listMessageTimestamps(): Promise<number[]>;
   countMessagesSince(since: number): Promise<number>;
   countProactiveSince(since: number): Promise<number>;
+  /**
+   * 按 id 删除消息。未知 id 静默忽略，重复调用幂等。
+   *
+   * 与 `clearMessages()` 的区别不只是范围：这里**不**连带作废摘要。删掉最近一条
+   * 失败消息不该触发整段摘要重压缩，摘要覆盖的是更早的消息。也不连带删记忆——
+   * 撤回要不要撤掉该轮的记忆候选是调用方的产品决策，端口不替它决定。
+   */
+  deleteMessages(ids: readonly string[]): Promise<void>;
   clearMessages(): Promise<void>;
 
   listMemories(): Promise<MemoryRecord[]>;

@@ -208,6 +208,13 @@ export async function createSqliteStorage(executor?: SqlExecutor): Promise<AikaS
       return rows[0]?.total ?? 0;
     },
 
+    async deleteMessages(ids) {
+      if (!ids.length) return;
+      // 占位符按个数现拼：plugin-sql 不支持把数组绑成一个 IN 参数。
+      const placeholders = ids.map((_, index) => `$${index + 1}`).join(", ");
+      await db.execute(`DELETE FROM messages WHERE id IN (${placeholders})`, [...ids]);
+    },
+
     async clearMessages() {
       await db.execute("DELETE FROM messages");
       await db.execute("DELETE FROM summaries");

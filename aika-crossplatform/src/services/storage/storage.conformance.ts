@@ -153,6 +153,63 @@ export function runStorageConformance(harness: PortHarness<AikaStorage>): void {
       });
     });
 
+    it("按 id 删除消息：删掉的读不到，没列出的一条不动", async () => {
+      await withStorage(async (storage) => {
+        for (const [index, id] of ["a", "b", "c"].entries()) {
+          await storage.appendMessage(message(id, 100 + index * 100));
+        }
+
+        await storage.deleteMessages(["a", "c"]);
+
+        const messages = await storage.listMessages(10);
+        expect(messages.map((item) => item.id)).toEqual(["b"]);
+        expect(messages[0].content).toBe("内容 b");
+      });
+    });
+
+    it("删除是幂等的：未知 id、重复删、空数组都不出错", async () => {
+      await withStorage(async (storage) => {
+        await storage.appendMessage(message("a", 100));
+
+        // 「删不掉」没有合理的降级，所以这三种调用都必须安静地成功。
+        await storage.deleteMessages(["nope"]);
+        await storage.deleteMessages([]);
+        await storage.deleteMessages(["a"]);
+        await storage.deleteMessages(["a"]);
+
+        expect(await storage.listMessages(10)).toEqual([]);
+      });
+    });
+
+    it("删除后派生查询跟着变：时间戳与两种计数都对齐剩余消息", async () => {
+      await withStorage(async (storage) => {
+        await storage.appendMessage(message("keep", 100));
+        await storage.appendMessage(message("gone", 300));
+        await storage.appendMessage(message("push", 400, { source: "proactive" }));
+
+        await storage.deleteMessages(["gone", "push"]);
+
+        expect(await storage.listMessageTimestamps()).toEqual([100]);
+        expect(await storage.countMessagesSince(0)).toBe(1);
+        expect(await storage.countMessagesSince(300)).toBe(0);
+        expect(await storage.countProactiveSince(0)).toBe(0);
+      });
+    });
+
+    it("删除消息不连带作废摘要、也不动记忆", async () => {
+      await withStorage(async (storage) => {
+        // 与 clearMessages 的分界：删一条最近的失败消息不该触发整段摘要重压缩。
+        await storage.appendMessage(message("a", 100));
+        await storage.saveSummary({ content: "摘要", coversUntil: 100, createdAt: 100 });
+        await storage.addMemories([memory("m1", 100)]);
+
+        await storage.deleteMessages(["a"]);
+
+        expect((await storage.latestSummary())?.content).toBe("摘要");
+        expect((await storage.listMemories()).map((item) => item.id)).toEqual(["m1"]);
+      });
+    });
+
     it("清空消息会连摘要一起作废", async () => {
       await withStorage(async (storage) => {
         await storage.appendMessage(message("a", 100));
