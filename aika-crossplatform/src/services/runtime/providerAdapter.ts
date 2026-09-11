@@ -12,9 +12,9 @@ import { buildConversationInput, buildInstructions } from "../../domain/prompt";
 import type { ProviderConfig } from "../../domain/providers";
 import { DEFAULT_CHARACTER_SOUL, type CharacterSoul } from "../../domain/soul";
 import type { Sticker } from "../../domain/stickers";
-import { isAbortError, streamChat, testProvider } from "../providerClient";
+import { isAbortError, streamChat, testProvider, listModels } from "../providerClient";
 import type { ProviderStreamEvent, RuntimeGenerateInput, RuntimeProvider } from "./companionRuntime";
-import type { ProviderProbe } from "./tokens";
+import type { ProviderModels, ProviderProbe } from "./tokens";
 
 export interface StreamChatProviderOptions {
   getConfig(): ProviderConfig;
@@ -132,3 +132,8 @@ export function createStreamChatProvider(options: StreamChatProviderOptions): Ru
  * providerClient；全仓 providerClient 的调用方只剩本模块与记忆抽取。
  */
 export const providerProbe: ProviderProbe = (config) => testProvider(config);
+
+/**
+ * 设置页「获取模型列表」，同样放在适配器这一层走端口。
+ */
+export const providerModels: ProviderModels = (config) => listModels(config);

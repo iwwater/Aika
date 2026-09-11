@@ -227,3 +227,13 @@ button { border: 0; cursor: pointer; }
 .toggle.on { color: var(--cyan); border-color: rgba(55,230,255,.4); background: rgba(55,230,255,.08); box-shadow: var(--glow-cyan); }
 .toggle-hint { flex: 1; color: var(--dim); font-size: 9px; line-height: 1.5; }
 .storage-error { margin: 12px max(22px,6%) 0; padding: 10px 13px; border: 1px solid rgba(255,77,146,.4); border-radius: 8px; color: #ffb8d1; background: rgba(40,10,26,.7); font-size: 10px; line-height: 1.6; }
+
+/* --- 设置页：拉取模型列表与下拉选择 --- */
+.model-fetch-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.model-fetch-button { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; padding: 6px 11px; border: 1px solid var(--line-soft); border-radius: 7px; color: var(--muted); background: rgba(255,255,255,.05); font-size: 10px; transition: .2s; }
+.model-fetch-button:hover:not(:disabled) { color: var(--cyan); border-color: rgba(55,230,255,.4); background: rgba(55,230,255,.08); }
+.model-fetch-button:disabled { opacity: .5; cursor: default; }
+.model-fetch-note { color: var(--dim); font-size: 9px; line-height: 1.5; }
+.model-fetch-note.ok { color: var(--lime); }
+.model-fetch-note.error { color: #ffb8d1; }
+.model-select { margin-top: 8px; }

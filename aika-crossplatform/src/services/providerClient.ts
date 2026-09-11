@@ -359,6 +359,67 @@ export function requestPlainText(config: ProviderConfig, systemPrompt: string, h
   return requestText(config, systemPrompt, history, "text");
 }
 
+/** 设置页拉取模型列表用的 GET 请求端点与请求头。 */
+function modelsEndpoint(config: ProviderConfig): { url: string; headers: Record<string, string> } {
+  const base = cleanBaseUrl(config.baseUrl);
+
+  if (config.protocol === "anthropic") {
+    return {
+      url: `${base}/v1/models`,
+      headers: { "x-api-key": config.apiKey, "anthropic-version": "2023-06-01" },
+    };
+  }
+  if (config.protocol === "gemini") {
+    return {
+      url: `${base}/v1beta/models?pageSize=100&key=${encodeURIComponent(config.apiKey)}`,
+      headers: {},
+    };
+  }
+  // openai-compatible 与 openai-responses 共用 OpenAI 的 /models。
+  return { url: `${base}/models`, headers: { Authorization: `Bearer ${config.apiKey}` } };
+}
+
+function modelIdsOf(config: ProviderConfig, data: any): string[] {
+  if (config.protocol === "gemini") {
+    // 只留能对话的模型，并去掉路径前缀——generateContent 的 URL 里写的是裸模型名。
+    const models = Array.isArray(data.models) ? data.models : [];
+    return models
+      .filter((model: any) => model.supportedGenerationMethods?.includes("generateContent"))
+      .map((model: any) => String(model.name ?? "").replace(/^models\//, ""))
+      .filter((name: string) => name.length > 0);
+  }
+  const rows = Array.isArray(data.data) ? data.data : [];
+  return rows.map((row: any) => row.id).filter((id: unknown): id is string => typeof id === "string" && id.length > 0);
+}
+
+/**
+ * 拉取该平台可用的模型列表，按字典序返回模型 ID，供设置页下拉选择。
+ * 端点随协议而异；失败时把发出请求的主机名报出来，与对话请求同一口径。
+ */
+export async function listModels(
+  config: ProviderConfig,
+  options: ProviderRequestOptions = {},
+): Promise<string[]> {
+  const { url, headers } = modelsEndpoint(config);
+  throwIfAborted(options.signal);
+  const host = hostOf(url);
+  let response: Response;
+  try {
+    response = await activeFetch(url, {
+      method: "GET",
+      headers,
+      connectTimeout: 15_000,
+      signal: options.signal,
+    } as RequestInit);
+  } catch (error) {
+    throw new Error(`无法连接 ${host}：${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!response.ok) {
+    throw new Error(`${host} 返回 ${response.status}：${await readError(response)}`);
+  }
+  return modelIdsOf(config, await response.json()).sort((a, b) => a.localeCompare(b));
+}
+
 export async function testProvider(config: ProviderConfig): Promise<string> {
   await sendChat(config, "只回复 OK。", [{ role: "user", content: "连接测试" }]);
   return "连接成功，API 可以正常使用";

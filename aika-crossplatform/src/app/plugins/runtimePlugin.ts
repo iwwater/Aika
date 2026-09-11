@@ -1,9 +1,9 @@
 import type { AikaPlugin } from "../../kernel";
 import { ContextSourcesToken } from "../../services/context/tokens";
 import { createCompanionRuntime, type TurnTrace } from "../../services/runtime/companionRuntime";
-import { createStreamChatProvider, providerProbe } from "../../services/runtime/providerAdapter";
+import { createStreamChatProvider, providerModels, providerProbe } from "../../services/runtime/providerAdapter";
 import {
-  ProviderProbeToken, ProviderSettingsToken, ProviderToken, RuntimeToken,
+  ProviderModelsToken, ProviderProbeToken, ProviderSettingsToken, ProviderToken, RuntimeToken,
 } from "../../services/runtime/tokens";
 import { StorageToken } from "../../services/storage/tokens";
 import { ClockToken, TimersToken } from "../../services/time/tokens";
@@ -33,7 +33,7 @@ export function runtimePlugin(options: RuntimePluginOptions = {}): AikaPlugin {
     id: "llm.runtime",
     version: "1.0.0",
     requires: [StorageToken, ClockToken, TimersToken, ProviderSettingsToken, ContextSourcesToken],
-    provides: [ProviderToken, RuntimeToken, ProviderProbeToken],
+    provides: [ProviderToken, RuntimeToken, ProviderProbeToken, ProviderModelsToken],
     activate(context) {
       const storage = context.registrar.resolve(StorageToken);
       const clock = context.registrar.resolve(ClockToken);
@@ -58,8 +58,9 @@ export function runtimePlugin(options: RuntimePluginOptions = {}): AikaPlugin {
       });
 
       context.registrar.provide(ProviderToken, () => provider);
-      // 设置页的连接自检走端口，App 不再直接 import providerClient。
+      // 设置页的连接自检与模型列表走端口，App 不再直接 import providerClient。
       context.registrar.provide(ProviderProbeToken, () => providerProbe);
+      context.registrar.provide(ProviderModelsToken, () => providerModels);
       context.registrar.provide(RuntimeToken, () => runtime, {
         // 内核 dispose 时把在途轮次收干净：不 dispose 的话取消不掉的生成会继续烧 token。
         disposer: (value) => value.dispose(),

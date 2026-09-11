@@ -14,7 +14,7 @@ import { useCompanionSession } from "./hooks/useCompanionSession";
 import { useRemoteAccess } from "./hooks/useRemoteAccess";
 import { useVoiceConversation, type VoiceTurnHandler } from "./hooks/useVoiceConversation";
 import { useService } from "./app/kernelContext";
-import { ProviderProbeToken } from "./services/runtime/tokens";
+import { ProviderModelsToken, ProviderProbeToken } from "./services/runtime/tokens";
 import type { VoiceBackend } from "./services/voice/inputEngine";
 import { createWhisperClient } from "./services/voice/whisperClient";
 
@@ -24,12 +24,17 @@ function App() {
   const session = useCompanionSession();
   // 连接自检是 Provider 侧能力，经注册表取；App 不再直接 import providerClient。
   const probeProvider = useService(ProviderProbeToken);
+  // 模型列表拉取同为 Provider 侧能力，走端口。
+  const fetchModels = useService(ProviderModelsToken);
   const [draftProvider, setDraftProvider] = useState<ProviderConfig>(PROVIDER_PRESETS[1]);
   const [input, setInput] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
   const [showTranslation, setShowTranslation] = useState(true);
   const [status, setStatus] = useState<{ kind: "idle" | "testing" | "ok" | "error"; text: string }>({ kind: "idle", text: "" });
+  const [models, setModels] = useState<string[]>([]);
+  const [modelsStatus, setModelsStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
+  const [modelsNote, setModelsNote] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [whisperStatus, setWhisperStatus] = useState<"idle" | "checking" | "ok" | "down">("idle");
   const [whisperNote, setWhisperNote] = useState("");
@@ -80,6 +85,9 @@ function App() {
   function openSettings() {
     setDraftProvider(provider);
     setStatus({ kind: "idle", text: "" });
+    setModels([]);
+    setModelsStatus("idle");
+    setModelsNote("");
     setShowSettings(true);
   }
 
@@ -88,6 +96,35 @@ function App() {
     if (!preset) return;
     setDraftProvider({ ...preset, apiKey: preset.id === provider.id ? provider.apiKey : "" });
     setStatus({ kind: "idle", text: "" });
+    // 地址和 Key 都会跟着变，旧列表不再可信。
+    setModels([]);
+    setModelsStatus("idle");
+    setModelsNote("");
+  }
+
+  async function handleFetchModels() {
+    if (!draftProvider.baseUrl.trim() || !draftProvider.apiKey.trim()) {
+      setModelsStatus("error");
+      setModelsNote("先填好 API 地址和 API Key 再获取模型列表");
+      return;
+    }
+    setModelsStatus("loading");
+    setModelsNote("正在获取…");
+    try {
+      const list = await fetchModels(draftProvider);
+      setModels(list);
+      if (list.length === 0) {
+        setModelsStatus("error");
+        setModelsNote("平台没有返回任何模型");
+      } else {
+        setModelsStatus("ok");
+        setModelsNote(`获取到 ${list.length} 个模型，在下方选择或直接手动填写`);
+      }
+    } catch (error) {
+      setModels([]);
+      setModelsStatus("error");
+      setModelsNote(error instanceof Error ? error.message : String(error));
+    }
   }
 
   async function handleTest() {
@@ -294,7 +331,30 @@ function App() {
             <div className="form-grid">
               <label className="field wide"><span>API 地址</span><input value={draftProvider.baseUrl} onChange={(e) => setDraftProvider({ ...draftProvider, baseUrl: e.target.value })} placeholder="https://api.example.com/v1" /></label>
               <label className="field"><span>协议</span><select value={draftProvider.protocol} disabled={draftProvider.id !== "custom"} onChange={(e) => setDraftProvider({ ...draftProvider, protocol: e.target.value as ProviderConfig["protocol"] })}><option value="openai-responses">OpenAI Responses</option><option value="openai-compatible">OpenAI 兼容</option><option value="anthropic">Anthropic Messages</option><option value="gemini">Google Gemini</option></select></label>
-              <label className="field"><span>模型名称</span><input value={draftProvider.model} onChange={(e) => setDraftProvider({ ...draftProvider, model: e.target.value })} placeholder="模型 ID" /></label>
+              <label className="field"><span>模型名称</span>
+                <input value={draftProvider.model} onChange={(e) => setDraftProvider({ ...draftProvider, model: e.target.value })} placeholder="模型 ID" />
+                <div className="model-fetch-row">
+                  <button type="button" className="model-fetch-button" onClick={handleFetchModels} disabled={modelsStatus === "loading"}>
+                    {modelsStatus === "loading" ? <LoaderCircle size={13} className="spin" /> : <RefreshCw size={13} />}
+                    <span>{modelsStatus === "loading" ? "获取中…" : models.length > 0 ? "刷新模型列表" : "获取模型列表"}</span>
+                  </button>
+                  {modelsStatus !== "idle" && modelsStatus !== "loading" && (
+                    <span className={`model-fetch-note ${modelsStatus}`}>{modelsNote}</span>
+                  )}
+                </div>
+                {models.length > 0 && (
+                  <div className="select-wrap model-select">
+                    <select
+                      value={models.includes(draftProvider.model) ? draftProvider.model : ""}
+                      onChange={(e) => e.target.value && setDraftProvider({ ...draftProvider, model: e.target.value })}
+                    >
+                      <option value="">从列表选择模型…</option>
+                      {models.map((model) => <option key={model} value={model}>{model}</option>)}
+                    </select>
+                    <ChevronDown size={17} />
+                  </div>
+                )}
+              </label>
               <label className="field wide"><span>API Key</span><div className="key-input"><KeyRound size={17} /><input type="password" value={draftProvider.apiKey} onChange={(e) => setDraftProvider({ ...draftProvider, apiKey: e.target.value })} placeholder="sk-…" /></div></label>
             </div>
             {status.text && <div className={`test-result ${status.kind}`}>{status.kind === "testing" ? <LoaderCircle size={17} className="spin" /> : status.kind === "ok" ? <Check size={17} /> : <X size={17} />}<span>{status.text}</span></div>}

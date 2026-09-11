@@ -35,3 +35,13 @@ export interface RuntimeServices {
 export type ProviderProbe = (config: ProviderConfig) => Promise<string>;
 
 export const ProviderProbeToken = token<ProviderProbe>("llm.providerProbe");
+
+/**
+ * 设置页「获取模型列表」。
+ *
+ * 与 ProviderProbe 同理：拉取平台可用模型列表是 Provider 侧能力，做成端口后
+ * App 不直接 import providerClient。返回按字典序排好的模型 ID。
+ */
+export type ProviderModels = (config: ProviderConfig) => Promise<string[]>;
+
+export const ProviderModelsToken = token<ProviderModels>("llm.providerModels");

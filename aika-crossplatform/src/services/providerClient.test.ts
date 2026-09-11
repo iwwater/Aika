@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderConfig } from "../domain/providers";
-import { sendChat, streamChat } from "./providerClient";
+import { listModels, sendChat, streamChat } from "./providerClient";
 
 const baseConfig: ProviderConfig = {
   id: "test",
@@ -274,5 +274,56 @@ describe("streamChat", () => {
       { signal: controller.signal, turnId: 11 },
     )).rejects.toMatchObject({ name: "AbortError" });
     expect(request).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("listModels", () => {
+  it("requests the OpenAI-compatible models endpoint and returns sorted ids", async () => {
+    const request = vi.fn().mockResolvedValue(jsonResponse({ data: [{ id: "qwen-turbo" }, { id: "qwen-plus" }, { id: "qwen-max" }] }));
+    vi.stubGlobal("fetch", request);
+
+    const models = await listModels(baseConfig);
+
+    expect(models).toEqual(["qwen-max", "qwen-plus", "qwen-turbo"]);
+    expect(request.mock.calls[0][0]).toBe("https://example.com/v1/models");
+    expect(request.mock.calls[0][1].headers.Authorization).toBe("Bearer secret");
+  });
+
+  it("uses Anthropic headers for its models endpoint", async () => {
+    const request = vi.fn().mockResolvedValue(jsonResponse({ data: [{ id: "claude-sonnet-4-5" }] }));
+    vi.stubGlobal("fetch", request);
+
+    await listModels({ ...baseConfig, protocol: "anthropic", baseUrl: "https://api.anthropic.com" });
+
+    expect(request.mock.calls[0][0]).toBe("https://api.anthropic.com/v1/models");
+    expect(request.mock.calls[0][1].headers["x-api-key"]).toBe("secret");
+  });
+
+  it("strips the models/ prefix and keeps only generateContent-capable Gemini models", async () => {
+    const request = vi.fn().mockResolvedValue(jsonResponse({
+      models: [
+        { name: "models/gemini-2.5-flash", supportedGenerationMethods: ["generateContent"] },
+        { name: "models/text-embedding-004", supportedGenerationMethods: ["embedContent"] },
+        { name: "models/gemini-2.5-pro", supportedGenerationMethods: ["generateContent"] },
+      ],
+    }));
+    vi.stubGlobal("fetch", request);
+
+    const models = await listModels(
+      { ...baseConfig, protocol: "gemini", baseUrl: "https://generativelanguage.googleapis.com" },
+    );
+
+    expect(models).toEqual(["gemini-2.5-flash", "gemini-2.5-pro"]);
+    expect(request.mock.calls[0][0]).toContain("/v1beta/models?pageSize=100&key=secret");
+  });
+
+  it("names the host it actually called when the models endpoint fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ error: { message: "bad key" } }, 401)));
+    await expect(listModels(baseConfig)).rejects.toThrow("example.com 返回 401：bad key");
+  });
+
+  it("reports an empty list instead of fabricating one", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ data: [] })));
+    await expect(listModels(baseConfig)).resolves.toEqual([]);
   });
 });
