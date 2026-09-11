@@ -27,6 +27,8 @@ import { computeRelationship, deriveRelationshipSignals } from "../domain/relati
 import { SpeechEnginesToken, type SpeechEngines } from "../services/voice/tokens";
 import { createWebSpeechInputEngine } from "../services/voice/webSpeechInput";
 import { createWhisperInputEngine } from "../services/voice/whisperInput";
+import { DEFAULT_VOICE_OUTPUT, type VoiceOutputConfig } from "../services/voice/outputEngine";
+import type { HttpFetch } from "../services/http";
 
 /**
  * CORE-07 替换矩阵。
@@ -469,7 +471,7 @@ function speechInputCases(): MatrixCase[] {
 }
 
 // ---------------------------------------------------------------------------
-// SpeechOutputEngine：只有一个真实实现，矩阵这一行是 BLOCKED
+// SpeechOutputEngine：两个真实实现（假合成器 / 假传输层，不出声也不发真实请求）
 // ---------------------------------------------------------------------------
 
 class AutoUtterance {
@@ -501,6 +503,43 @@ function stubAutoSpeechSynthesis(): () => void {
   return () => vi.unstubAllGlobals();
 }
 
+/**
+ * 假播放器：拿到音频就算播上了，然后在下一个宏任务里报结束。
+ *
+ * 用 `setTimeout` 而不是 `queueMicrotask` 是有意的：云端引擎的 onStart 挂在
+ * `play()` 的 Promise 上，是个微任务。结束若也走微任务，两者的先后取决于链的长短，
+ * 测出来的顺序就不是产品行为而是调度细节。宏任务保证「先开始、后结束」。
+ */
+class AutoAudio {
+  onended: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  constructor(public src: string) {}
+  play(): Promise<void> {
+    setTimeout(() => this.onended?.(), 0);
+    return Promise.resolve();
+  }
+  pause(): void { /* 场景不打断，这里不需要副作用 */ }
+}
+
+/** 云端那一格的配置：地址是 .invalid，请求也被假出口接住，不会真的出网。 */
+const matrixCloudTts: VoiceOutputConfig = {
+  ...DEFAULT_VOICE_OUTPUT,
+  output: "cloud-tts",
+  baseUrl: "https://tts.invalid/v1",
+  model: "tts-x",
+  voice: "shimmer",
+  speed: 1,
+  apiKey: "sk-matrix",
+};
+
+function stubAutoCloudAudio(): { send: HttpFetch; restore: () => void } {
+  vi.stubGlobal("Audio", AutoAudio);
+  return {
+    send: async () => new Response(new Uint8Array([1, 2, 3]), { status: 200 }),
+    restore: () => vi.unstubAllGlobals(),
+  };
+}
+
 function speechOutputCases(): MatrixCase[] {
   return [
     {
@@ -510,15 +549,40 @@ function speechOutputCases(): MatrixCase[] {
         const { storage, close } = await freshSqlite();
         return {
           hostPlugins: testHostPlugins({ storage }),
-          featurePlugins: [voicePlugin(speechEngines(async () => ({
-            engine: createWebSpeechInputEngine(), note: "", degraded: false,
-          })))],
+          featurePlugins: [voicePlugin(defaultSpeechEngines())],
+          close: () => { close(); restore(); },
+        };
+      },
+    },
+    {
+      port: "SpeechOutputEngine", implementation: "cloudTtsOutput",
+      async open() {
+        const { send, restore } = stubAutoCloudAudio();
+        const { storage, close } = await freshSqlite();
+        return {
+          hostPlugins: testHostPlugins({ storage }),
+          featurePlugins: [voicePlugin(defaultSpeechEngines(matrixCloudTts, send))],
           close: () => { close(); restore(); },
         };
       },
     },
   ];
 }
+
+/**
+ * 只报告「装进来的是哪个实现」，不做任何播放。
+ *
+ * 为什么需要它：输出侧的选择函数**自带一条降级路径**——配置不全时
+ * `createOutputEngine` 会安静地退回系统合成。真降级了的话，两格装的其实是同一个
+ * 实现，一致性断言照样全绿，而那是一行没有意义的矩阵。所以这一行要单独证明
+ * 两格确实不是同一个东西。读的是契约字段 `kind`，不是按实现分支。
+ */
+const speechOutputIdentityScenario: ConsumerScenario = {
+  name: "报告装进来的输出实现",
+  async run(kernel: AikaKernel): Promise<ConsumerObservation> {
+    return { kind: kernel.registry.resolve(SpeechEnginesToken).outputEngine.kind };
+  },
+};
 
 const speechOutputScenario: ConsumerScenario = {
   name: "念一句：开始与结束各一次",
@@ -597,21 +661,16 @@ describe("CORE-07 替换矩阵", () => {
     expect(observations).toHaveLength(2);
   });
 
-  /**
-   * 这一格是**已知不完整**：SPEC 指定的第二输出实现 `cloudTtsOutput` 来自
-   * `stash@{0}`，而那个 stash 在当前仓库不存在（见 CORE-05 报告）。CORE-05-G
-   * 因此没有整体 PASS，CORE-07 的这一行只能标 BLOCKED。
-   *
-   * 下面这条断言是**提醒**：第二实现一旦进来，它会失败——那时应当把这一格换成
-   * 真正的两实现一致性断言，而不是把这里的期望值改大。
-   */
-  it("SpeechOutputEngine：矩阵缺第二实现（BLOCKED，见 CORE-05-G）", async () => {
-    const cases = speechOutputCases();
-    expect(cases).toHaveLength(1);
+  it("SpeechOutputEngine：两格装的确实是两个不同的实现，不是都退回了系统合成", async () => {
+    const result = await runMatrix(speechOutputIdentityScenario, speechOutputCases());
+    for (const entry of result.entries) expect(entry.ok).toBe(true);
+    expect(result.entries.map((entry) => entry.observation?.kind)).toEqual(["web-speech", "cloud-tts"]);
+  });
 
-    // 唯一那个实现仍然跑得通场景本身，证明驱动可用、只是没有第二个对象可比。
-    const result = await runMatrix(speechOutputScenario, cases);
-    assertConsistent(result);
-    expect(result.entries[0].observation).toEqual({ starts: 1, ends: 1, available: true });
+  it("SpeechOutputEngine：系统合成与云端合成下，消费侧可见行为一致", async () => {
+    const observations = assertConsistent(await runMatrix(speechOutputScenario, speechOutputCases()));
+    expect(observations).toHaveLength(2);
+    // 两格都真的念完了一句，不是两边同时什么都没发生。
+    expect(observations[0]).toEqual({ starts: 1, ends: 1, available: true });
   });
 });

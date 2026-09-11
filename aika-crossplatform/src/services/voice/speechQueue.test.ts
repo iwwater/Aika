@@ -5,6 +5,7 @@ import { createSpeechQueue } from "./speechQueue";
 
 function createFakeEngine(autoStart = true) {
   const spoken: SpeechOutputRequest[] = [];
+  const prefetched: SpeechOutputRequest[] = [];
   let pending: SpeechOutputEvents | null = null;
   let stops = 0;
 
@@ -17,6 +18,9 @@ function createFakeEngine(autoStart = true) {
       pending = events;
       if (autoStart) events.onStart?.();
     },
+    prefetch(request) {
+      prefetched.push(request);
+    },
     stop() {
       stops += 1;
       pending = null;
@@ -26,6 +30,7 @@ function createFakeEngine(autoStart = true) {
   return {
     engine,
     spoken,
+    prefetched,
     stops: () => stops,
     finish() {
       const events = pending;
@@ -266,5 +271,109 @@ describe("语气", () => {
     queue.enqueue(["おかえり。"]);
 
     expect(fake.spoken[1].rate).toBe(speechToneFor("neutral").rate);
+  });
+});
+
+describe("预取下一句", () => {
+  it("念这一句的时候就把下一句备好", () => {
+    // 走网络的引擎每句要一次往返，等念完再发请求，句与句之间会出现说不清的静默
+    const fake = createFakeEngine();
+    const queue = createSpeechQueue(fake.engine);
+    queue.speak(["おかえり。", "今日はどうだった？"]);
+
+    expect(fake.spoken.map((request) => request.text)).toEqual(["おかえり。"]);
+    expect(fake.prefetched.map((request) => request.text)).toEqual(["今日はどうだった？"]);
+  });
+
+  it("最后一句之后没有可预取的，不会凭空多发一次请求", () => {
+    const fake = createFakeEngine();
+    const queue = createSpeechQueue(fake.engine);
+    queue.speak(["おかえり。"]);
+    expect(fake.prefetched).toHaveLength(0);
+  });
+
+  it("流式：句子在上一句还在念的时候才到，也要被预取", () => {
+    // pump 会因为 running 直接返回，预取必须在 enqueue 里补一次
+    const fake = createFakeEngine();
+    const queue = createSpeechQueue(fake.engine);
+    queue.begin();
+    queue.enqueue(["おかえり。"]);
+    expect(fake.prefetched).toHaveLength(0);
+
+    queue.enqueue(["今日はどうだった？"]);
+    expect(fake.prefetched.map((request) => request.text)).toEqual(["今日はどうだった？"]);
+  });
+
+  it("预取的参数和真正播放时完全一致，否则两边算出两个缓存键", () => {
+    const fake = createFakeEngine();
+    const queue = createSpeechQueue(fake.engine, { speed: 0.85 });
+    queue.begin();
+    queue.setMood("concerned");
+    queue.enqueue(["大丈夫？", "無理しないで。"]);
+
+    const prefetched = fake.prefetched[0];
+    fake.finish();
+    const spoken = fake.spoken[1];
+
+    expect(prefetched.text).toBe(spoken.text);
+    expect(prefetched.rate).toBe(spoken.rate);
+    expect(prefetched.pitch).toBe(spoken.pitch);
+    expect(prefetched.language).toBe(spoken.language);
+  });
+
+  it("打断之后不再预取", () => {
+    const fake = createFakeEngine();
+    const queue = createSpeechQueue(fake.engine);
+    queue.begin();
+    queue.enqueue(["おかえり。"]);
+    queue.stop();
+    queue.enqueue(["今日はどうだった？"]);
+
+    expect(fake.prefetched).toHaveLength(0);
+  });
+
+  it("引擎没实现预取时照常工作", () => {
+    const spoken: SpeechOutputRequest[] = [];
+    const engine: SpeechOutputEngine = {
+      id: "no-prefetch",
+      kind: "web-speech",
+      isAvailable: () => true,
+      speak(request, events = {}) {
+        spoken.push(request);
+        events.onEnd?.();
+      },
+      stop() {},
+    };
+
+    const queue = createSpeechQueue(engine);
+    queue.speak(["おかえり。", "おやすみ。"]);
+    expect(spoken.map((request) => request.text)).toEqual(["おかえり。", "おやすみ。"]);
+  });
+});
+
+describe("基线语速", () => {
+  it("乘在语气之上，不是覆盖语气", () => {
+    // 「慢一点」是对她说的，不是对某条链路说的：语气仍然要在这之上做微调
+    const fake = createFakeEngine();
+    const queue = createSpeechQueue(fake.engine, { speed: 0.8 });
+    queue.begin();
+    queue.setMood("concerned");
+    queue.enqueue(["大丈夫？"]);
+
+    expect(fake.spoken[0].rate).toBeCloseTo(speechToneFor("concerned").rate * 0.8, 10);
+  });
+
+  it("不设时等于 1，现有行为一个字不变", () => {
+    const fake = createFakeEngine();
+    const queue = createSpeechQueue(fake.engine);
+    queue.speak(["おかえり。"]);
+    expect(fake.spoken[0].rate).toBe(speechToneFor("neutral").rate);
+  });
+
+  it("坏值退回 1，不把语速乘没了", () => {
+    const fake = createFakeEngine();
+    const queue = createSpeechQueue(fake.engine, { speed: 0 });
+    queue.speak(["おかえり。"]);
+    expect(fake.spoken[0].rate).toBe(speechToneFor("neutral").rate);
   });
 });

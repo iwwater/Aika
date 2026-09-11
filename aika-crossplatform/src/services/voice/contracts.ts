@@ -19,7 +19,7 @@ export type {
  */
 export type VoiceInputLanguage = "ja-JP" | "zh-CN" | "en-US";
 export type VoicePhase = "idle" | "listening" | "thinking" | "speaking" | "error";
-export type VoiceEngineKind = "web-speech" | "whisper-local" | "style-bert-vits2";
+export type VoiceEngineKind = "web-speech" | "whisper-local" | "style-bert-vits2" | "cloud-tts";
 
 export interface VoiceCaption {
   id: number;
@@ -32,8 +32,23 @@ export interface VoiceCaption {
 
 export interface SpeechOutputRequest {
   text: string;
+  /**
+   * 这一句用哪种语言念。
+   *
+   * 系统合成要靠它挑音色——它的每个音色只认一种语言。云端合成的模型本身是多语的，
+   * 一个音色念全部三种，所以那条链路会忽略这个字段。「换语言不能换成另一个人」
+   * 这条约束在云端那边是白送的，在系统合成那边要靠逐句挑音色去凑。
+   */
   language: VoiceInputLanguage;
+  /** 语速倍率。系统合成映射到 `rate`，云端合成乘上用户设的基线之后映射到 `speed`。 */
   rate?: number;
+  /**
+   * 音高倍率。
+   *
+   * **只有系统合成认。** OpenAI 兼容的 `/audio/speech` 没有音高参数，
+   * 所以走云端时 `domain/mood.ts` 那七个语气只剩语速这一半能表达出来。
+   * 换来的是能听的音色——这个取舍要让用户在设置页看得见。
+   */
   pitch?: number;
   /** 内部关联字段；引擎不应把它展示给用户。 */
   turnId?: number;
@@ -50,6 +65,16 @@ export interface SpeechOutputEngine {
   readonly kind: VoiceEngineKind;
   isAvailable(): boolean;
   speak(request: SpeechOutputRequest, events?: SpeechOutputEvents): void;
+  /**
+   * 可选：提前把这一句准备好，但不要播。
+   *
+   * 给要走网络的引擎用。队列在开始念第 n 句时会顺手预取第 n+1 句，
+   * 这样往返延迟藏在上一句的播放时间里，句与句之间不会出现说不清的静默。
+   *
+   * 本地合成不需要实现它——系统合成没有等待，多这一层只会白做。
+   * 因此调用方一律写成 `engine.prefetch?.(…)`，没有实现就是没有这一步。
+   */
+  prefetch?(request: SpeechOutputRequest): void;
   stop(): void;
 }
 

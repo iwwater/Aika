@@ -1,6 +1,6 @@
 import { speechLanguageFor } from "../../domain/language";
 import { speechToneFor, type Mood } from "../../domain/mood";
-import type { SpeechOutputEngine } from "./contracts";
+import type { SpeechOutputEngine, SpeechOutputRequest } from "./contracts";
 
 /**
  * 逐句播放队列。
@@ -51,6 +51,13 @@ export interface SpeechQueue {
 export interface SpeechQueueOptions {
   rate?: number;
   pitch?: number;
+  /**
+   * 用户设的基线语速倍率，乘在语气之上。
+   *
+   * 放在队列里而不是某个引擎里，是因为「慢一点」是对她说的，不是对某条链路说的——
+   * 系统合成和云端合成都得听懂。语气仍然在这之上做微调，两者是相乘不是覆盖。
+   */
+  speed?: number;
 }
 
 export function createSpeechQueue(
@@ -72,6 +79,29 @@ export function createSpeechQueue(
   let mood: Mood | undefined;
   let started = false;
   let errorCount = 0;
+  /** 设置里存的是字符串，读出来可能是 0 或 NaN，不能让它把语速乘没了。 */
+  const baseSpeed = Number.isFinite(options.speed) && (options.speed as number) > 0
+    ? (options.speed as number)
+    : 1;
+
+  /**
+   * 一句话要怎么念。
+   *
+   * 预取和真正播放必须用完全一样的参数，否则走网络的引擎会按两个键各发一次请求——
+   * 预取白花钱，停顿照样在。所以这里只有一处地方决定这些值。
+   */
+  function requestFor(text: string): SpeechOutputRequest {
+    // 语气只调 rate/pitch，幅度很小：调大了不像情绪，像换了个人。
+    const tone = speechToneFor(mood);
+    return {
+      text,
+      // 她用哪种语言说的就用哪种语言念，逐句判断。
+      language: speechLanguageFor(text),
+      rate: (options.rate ?? tone.rate) * baseSpeed,
+      pitch: options.pitch ?? tone.pitch,
+      turnId: events.turnId,
+    };
+  }
 
   function pump(epoch: number) {
     if (epoch !== generation || running) return;
@@ -90,17 +120,8 @@ export function createSpeechQueue(
     running = true;
     events.onSentence?.(index, text);
 
-    // 语气只调 rate/pitch，幅度很小：调大了不像情绪，像换了个人。
-    const tone = speechToneFor(mood);
     engine.speak(
-      {
-        text,
-        // 她用哪种语言说的就用哪种语言念，逐句判断。
-        language: speechLanguageFor(text),
-        rate: options.rate ?? tone.rate,
-        pitch: options.pitch ?? tone.pitch,
-        turnId: events.turnId,
-      },
+      requestFor(text),
       {
         onStart: () => {
           if (epoch !== generation || started) return;
@@ -122,6 +143,10 @@ export function createSpeechQueue(
         },
       },
     );
+
+    // 这一句在念的时候就把下一句备好，往返延迟藏进这一句的播放时间里。
+    const next = sentences[index + 1];
+    if (next !== undefined) engine.prefetch?.(requestFor(next));
   }
 
   function reset(nextEvents: SpeechQueueEvents) {
@@ -148,6 +173,9 @@ export function createSpeechQueue(
     enqueue(next) {
       if (!accepting || !next.length) return;
       sentences.push(...next);
+      // 流式的常见情况：这一句还在念，下一句刚生成出来。pump 会因为 running 直接返回，
+      // 预取要在这里补一次，否则整轮只有第一句能享受到提前量。
+      if (running && cursor < sentences.length) engine.prefetch?.(requestFor(sentences[cursor]));
       pump(generation);
     },
 
