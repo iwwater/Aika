@@ -9,5 +9,6 @@
 | [LLM-03](specs/LLM-03_MEMORY_USER_SOUL.md) | Memory / User Soul | 已自测通过；已接入存储与运行时；真实 SQLite 已跑通；AC-D 真实模型 10 样本 REAL RUN（10/10 命中、0 伪造）；回复质量待审阅 |
 | [LLM-04](specs/LLM-04_AGENT_MEMORY_WRITEBACK.md) | 单次 Agent / 后台写回 | 未开始 |
 | [LLM-05](specs/LLM-05_KNOWLEDGE_RAG.md) | Knowledge / RAG | 未开始 |
+| [LLM-06](specs/LLM-06_TRACE_PROTOCOL.md) | Trace 采集协议与 Sink 端口（F3 数据底座） | 待执行 |
 
 LLM-01 已有 [验收报告](reports/LLM-01_ACCEPTANCE.md)，其中真实模型质量未执行；本次拆文档不重新跑测试、不追认通过。LLM-02 已有 [验收报告](reports/LLM-02_ACCEPTANCE.md)，只验 headless 编排与装配逻辑，Hook 接入与真实模型样本未执行。LLM-03 已有 [验收报告](reports/LLM-03_ACCEPTANCE.md)，AC-A/B/C/D 全部通过（含真实 SQLite FTS5 与真实模型 qwen-plus 跨会话 10 样本：10/10 命中、0 伪造、0 候选当确证），回复自然度待审阅。LLM-04–05 尚未开始。
