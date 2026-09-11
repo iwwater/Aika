@@ -10,6 +10,7 @@
 | [LLM-04](specs/LLM-04_AGENT_MEMORY_WRITEBACK.md) | 单次 Agent / 后台写回 | 未开始 |
 | [LLM-05](specs/LLM-05_KNOWLEDGE_RAG.md) | Knowledge / RAG | 未开始 |
 | [LLM-06](specs/LLM-06_TRACE_PROTOCOL.md) | Trace 采集协议与 Sink 端口（F3 数据底座） | 已自测 A–E 全 PASS；两实现同用例包 31 测试通过，五处突变各命中；无生产消费者（本阶段预期如此）；待审阅 |
-| [LLM-07](specs/LLM-07_TRACE_WIRING.md) | Trace 接入（Runtime 侧与开关） | 待执行 |
+| [LLM-07](specs/LLM-07_TRACE_WIRING.md) | Trace 接入（Runtime 侧与开关） | 已自测 A–F 全 PASS；三处突变各命中；里程碑全量 820 测试通过；待审阅 |
+| [LLM-08](specs/LLM-08_TRACE_SOURCES.md) | Trace 余下三个事件源 | 已自测 A–E 全 PASS；三处突变各命中（其中一条用例的理由被突变证伪后已修正）；全量 829 测试通过；待审阅 |
 
 LLM-01 已有 [验收报告](reports/LLM-01_ACCEPTANCE.md)，其中真实模型质量未执行；本次拆文档不重新跑测试、不追认通过。LLM-02 已有 [验收报告](reports/LLM-02_ACCEPTANCE.md)，只验 headless 编排与装配逻辑，Hook 接入与真实模型样本未执行。LLM-03 已有 [验收报告](reports/LLM-03_ACCEPTANCE.md)，AC-A/B/C/D 全部通过（含真实 SQLite FTS5 与真实模型 qwen-plus 跨会话 10 样本：10/10 命中、0 伪造、0 候选当确证），回复自然度待审阅。LLM-04–05 尚未开始。

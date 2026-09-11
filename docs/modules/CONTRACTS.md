@@ -73,6 +73,8 @@
 | `AikaStorage.sqlExecutor` | `services/storage/contracts.ts` | **可选**成员，沿用 `memoryV2?` 的「能力缺失即不提供」模式：SQLite 实现有，localStorage 实现没有并在用例包里如实声明 `unsupported`。拿到它的代码负责自己的表，不许改别人的表、不许绕过既有方法改消息与记忆 | Trace 落盘；后续存储浏览页 |
 | `SETTING_KEYS.traceEnabled` / `traceIncludeText` | 同上 | 新增键。旧库里没有这两个键时用按构建取的默认值（开发开、生产关；读不到构建标记按关） | 设置页（F2 未做） |
 
+| `VoiceTurnRequest.runtimeTurnId` | `domain/voiceRuntime.ts` | 可选字段（LLM-08）。与既有 `turnId`（语音回合号 number）**是两回事，不要合并**；不设它的调用方照常工作，只是不记 `tts` 事件。聊天页点朗读没有轮次，那里必须留空而不是编一个 | `CompanionPresenter`（写入）、`VoicePresenter`（读取） |
+
 Trace 事件协议本身（`domain/trace.ts` 的 `TraceEventV1`）自带 `schemaVersion`，后续加字段先冻结已有字段再扩展。**apiKey 永不入 Trace**：不是靠过滤，而是没有任何事件带 key 字段，且 `provider_request.endpoint` 的 query string 整段砍掉。
 
 INT-01 的兼容检查项：云端合成一旦在设置页可选，`createOutputEngine` 的 `note` / `degraded` 必须送到界面，降级当错误显示——现在这两个值在 `defaultSpeechEngines` 里被丢弃。
