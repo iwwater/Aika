@@ -46,12 +46,15 @@ interface FakeRuntime {
   error(turnId: string, code: string, message?: string): void;
   settle(turnId: string, settlement: TurnSettlement): void;
   cancelled: string[];
+  /** 提交过的每一轮，settle 后也留痕——`last()` 只看在途轮，数不出「有没有多提交」。 */
+  submitted: string[];
 }
 
 function createFakeRuntime(): FakeRuntime {
   const listeners = new Set<(event: RuntimeEvent) => void>();
   const turns = new Map<string, FakeTurn>();
   const cancelled: string[] = [];
+  const submitted: string[] = [];
   let counter = 0;
   let seq = 0;
 
@@ -65,6 +68,7 @@ function createFakeRuntime(): FakeRuntime {
     submit(request) {
       counter += 1;
       const turnId = `turn-${counter}`;
+      submitted.push(turnId);
       let resolve!: (settlement: TurnSettlement) => void;
       const done = new Promise<TurnSettlement>((promise) => { resolve = promise; });
       turns.set(turnId, { request, settle: resolve });
@@ -91,6 +95,7 @@ function createFakeRuntime(): FakeRuntime {
   return {
     runtime,
     cancelled,
+    submitted,
     last() {
       const ids = [...turns.keys()];
       const turnId = ids[ids.length - 1];
@@ -220,6 +225,75 @@ describe("CompanionPresenter 无 React 驱动", () => {
     const snapshot = ctx.presenter.getSnapshot();
     expect(snapshot.sending).toBe(false);
     expect(snapshot.messages.some((message) => message.error && message.content.includes("连接被重置"))).toBe(true);
+  });
+
+  it("重试：先整轮删掉再用原话重投，库里不留重复用户消息", async () => {
+    await ctx.presenter.start();
+    const sent = ctx.presenter.send("你好");
+    const turn = ctx.fake.last();
+    // 真 Runtime 在生成前就把用户那句话落库（companionRuntime 的 persist(turn, asked)），
+    // fake Runtime 不落库；这里按真实形状补上，含同号的 runtimeTurnId。
+    ctx.storage.rows.push({
+      id: "asked-1", role: "user", content: "你好", source: "text",
+      createdAt: Date.now(), time: "00:00", runtimeTurnId: turn.turnId,
+    });
+
+    ctx.fake.error(turn.turnId, "PROVIDER_FAILED", "连接被重置");
+    ctx.fake.settle(turn.turnId, { state: "failed", persisted: true, errorCode: "PROVIDER_FAILED" });
+    await sent;
+    await flush();
+
+    const failure = ctx.presenter.getSnapshot().messages.find((message) => message.error);
+    expect(failure).toBeDefined();
+    expect(ctx.storage.rows.filter((row) => row.role === "user")).toHaveLength(1);
+
+    const retried = ctx.presenter.retry(failure!.id);
+    await flush();
+
+    // 失败轮的两行都从库里消失了，界面上也不再有失败气泡。
+    expect(ctx.storage.rows.some((row) => row.id === failure!.id)).toBe(false);
+    expect(ctx.storage.rows.some((row) => row.id === "asked-1")).toBe(false);
+    expect(ctx.presenter.getSnapshot().messages.some((message) => message.error)).toBe(false);
+
+    // 用同一句原话重投，不是发一句空话。
+    const second = ctx.fake.last();
+    expect(second.turnId).not.toBe(turn.turnId);
+    expect(second.request.text).toBe("你好");
+
+    ctx.fake.generated(second.turnId, envelope("こんにちは", "你好"));
+    ctx.fake.settle(second.turnId, { state: "completed", persisted: true });
+    await retried;
+    await flush();
+
+    expect(ctx.presenter.getSnapshot().messages.some((message) => message.error)).toBe(false);
+    expect(ctx.storage.rows.filter((row) => row.role === "user")).toHaveLength(0);
+  });
+
+  it("重试：未知 id、非失败气泡、正在发送中，三种都不动手", async () => {
+    await ctx.presenter.start();
+    const sent = ctx.presenter.send("你好");
+    const first = ctx.fake.last();
+    ctx.fake.error(first.turnId, "PROVIDER_FAILED", "连接被重置");
+    ctx.fake.settle(first.turnId, { state: "failed", persisted: true, errorCode: "PROVIDER_FAILED" });
+    await sent;
+    await flush();
+    const failure = ctx.presenter.getSnapshot().messages.find((message) => message.error);
+    expect(failure).toBeDefined();
+
+    // 未知 id：不存在的消息不能凭空重投。
+    await expect(ctx.presenter.retry("不存在")).resolves.toBeNull();
+    // 非失败气泡：开场白是 assistant 消息但没有失败，不可重试。
+    await expect(ctx.presenter.retry("welcome")).resolves.toBeNull();
+
+    // 正在发送中：新一轮在途时不许再塞一轮进去。
+    void ctx.presenter.send("再说一次");
+    const second = ctx.fake.last();
+    await expect(ctx.presenter.retry(failure!.id)).resolves.toBeNull();
+
+    // 只有上面两次真实 send 提交过，三次 retry 一轮都没多提交。
+    expect(ctx.fake.submitted).toEqual([first.turnId, second.turnId]);
+    // 失败气泡还在，用户之后仍可重试。
+    expect(ctx.presenter.getSnapshot().messages.some((message) => message.id === failure!.id)).toBe(true);
   });
 
   it("取消：交给 Runtime 取消，界面不再认为这一轮仍在进行", async () => {

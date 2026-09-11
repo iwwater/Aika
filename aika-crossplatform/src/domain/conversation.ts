@@ -107,6 +107,49 @@ function sentenceKey(text: string): string {
   return text.replace(/[\s\p{P}\p{S}]/gu, "").toLowerCase();
 }
 
+/** 一次可重跑的失败轮：要删掉哪几行，用哪句原话重投。 */
+export interface RetryableTurn {
+  /** 该轮在库里留下的全部消息 id，重投前要先删掉。 */
+  ids: string[];
+  /** 用户当初说的那句话。 */
+  text: string;
+  /** 原轮来源。语音轮重投时仍标 voice，不伪装成打字。 */
+  source: MessageSource;
+}
+
+/**
+ * 找出失败气泡对应的那一轮。不可重试时返回 null。
+ *
+ * 为什么要连用户那条一起删：`CompanionRuntime` 在生成前就把用户那句话落库了
+ * （「后面生成失败，这一句也不该丢」），而 `submit()` 每轮都新建 id 重新持久化。
+ * 只删失败气泡就重投，库里会留下两条一模一样的用户消息。
+ *
+ * 归组按 `runtimeTurnId`：Runtime 给用户消息写 turn.id，Presenter 给失败气泡写
+ * handle.turnId，同一轮的两行天然同号。旧数据没有这个字段，回退到「失败气泡之前
+ * 最近的那条用户消息」——这是那些行唯一还能用的线索。
+ *
+ * 主动消息轮没有用户发言，重投无从谈起，返回 null 让界面不给入口。
+ */
+export function retryableTurn(
+  messages: readonly ChatMessage[],
+  failureId: string,
+): RetryableTurn | null {
+  const index = messages.findIndex((message) => message.id === failureId);
+  const failure = index < 0 ? undefined : messages[index];
+  if (!failure || failure.role !== "assistant" || !failure.error) return null;
+
+  const sameTurn = failure.runtimeTurnId
+    ? messages.filter((message) => message.runtimeTurnId === failure.runtimeTurnId)
+    : [failure];
+  const asked = sameTurn.find((message) => message.role === "user")
+    // 旧数据回退：往前找最近一条用户消息。
+    ?? messages.slice(0, index).reverse().find((message) => message.role === "user");
+  if (!asked?.content.trim()) return null;
+
+  const ids = [...new Set([...sameTurn.map((message) => message.id), asked.id, failure.id])];
+  return { ids, text: asked.content, source: asked.source ?? "text" };
+}
+
 /** 送进提示词的历史。Aika 的历史只带日语正文，不带中文翻译，避免占用上下文。 */
 export function toCompanionTurns(messages: readonly ChatMessage[]): ConversationTurn[] {
   return messages

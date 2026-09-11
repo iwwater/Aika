@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import "./App.css";
 import { AvatarPlaceholder } from "./components/AvatarPlaceholder";
+import { MessageRetry } from "./components/MessageRetry";
 import { MessageSticker } from "./components/MessageSticker";
 import { MessageTranslation } from "./components/MessageTranslation";
 import { VoiceModal } from "./components/VoiceModal";
@@ -235,6 +236,12 @@ function App() {
                         ))}
                         <MessageTranslation message={message} visible={showTranslation} />
                         <MessageSticker id={message.sticker} stickers={session.stickers} />
+                        <MessageRetry
+                          message={message}
+                          messages={messages}
+                          sending={sending}
+                          onRetry={(id) => void session.retry(id)}
+                        />
                       </>
                     )}
                   </div>

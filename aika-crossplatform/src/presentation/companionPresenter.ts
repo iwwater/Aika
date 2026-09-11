@@ -1,7 +1,7 @@
 import { DEFAULT_CHARACTER } from "../domain/character";
 import { toCompanionReply, type CompanionReply } from "../domain/companion";
 import {
-  buildCompanionContext, companionMessage, formatClockTime, toCompanionTurns, userMessage,
+  buildCompanionContext, companionMessage, formatClockTime, retryableTurn, toCompanionTurns, userMessage,
   type ChatMessage, type MessageSource,
 } from "../domain/conversation";
 import {
@@ -100,6 +100,13 @@ export interface CompanionPresenter {
   ): Promise<CompanionReply | null>;
   /** 取消当前轮次。 */
   cancel(): void;
+  /**
+   * 重跑失败的那一轮。
+   *
+   * 不是「再发一次」：失败轮在库里已经留下用户消息与失败气泡两行，
+   * 直接重投会留下两条相同的用户消息。这里先整轮删掉，再用同一句原话提交。
+   */
+  retry(messageId: string): Promise<CompanionReply | null>;
   setProvider(next: ProviderConfig): Promise<void>;
   setProactive(next: ProactiveSettings): Promise<void>;
   setMemoryExtractionEnabled(enabled: boolean): Promise<void>;
@@ -681,6 +688,30 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
     return sendTurn(runtimeServices, content, source, onPartial, request);
   }
 
+  /**
+   * 重跑失败的那一轮。
+   *
+   * 顺序是「先删再投」，不能反过来：Runtime 每轮新建 id 重新持久化用户消息，
+   * 先投后删就有一个窗口里库里存在两条相同的用户消息，而删除的是哪一条也说不清。
+   *
+   * 删存储失败就不重投：留着那条失败气泡，用户还能再点一次，
+   * 比让界面和库对不上要好。
+   */
+  async function retry(messageId: string): Promise<CompanionReply | null> {
+    if (sending) return null;
+    const turn = retryableTurn(messages, messageId);
+    if (!turn) return null;
+    try {
+      await storage?.deleteMessages(turn.ids);
+    } catch (error) {
+      setStorageError(error instanceof Error ? error.message : String(error));
+      return null;
+    }
+    const doomed = new Set(turn.ids);
+    patchMessages((current) => current.filter((message) => !doomed.has(message.id)));
+    return send(turn.text, turn.source);
+  }
+
   /** 主动消息。频率闸门与理由选择都在 domain/proactive.ts，这里只负责跑一次。 */
   async function runProactiveTick(): Promise<void> {
     if (!runtimeServices || !storage || !ready || !connected() || !proactive.enabled || sending) return;
@@ -857,6 +888,7 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
     cancel() {
       if (runtimeServices && kernelTurnId) runtimeServices.runtime.cancel(kernelTurnId);
     },
+    retry,
     setProvider,
     setProactive,
     setMemoryExtractionEnabled,

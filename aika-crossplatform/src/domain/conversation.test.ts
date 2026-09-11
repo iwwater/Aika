@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildCompanionContext, companionMessage, displayTranslation, toCompanionTurns, userMessage,
+  buildCompanionContext, companionMessage, displayTranslation, retryableTurn, toCompanionTurns, userMessage,
   type ChatMessage,
 } from "./conversation";
 
@@ -53,6 +53,68 @@ describe("displayTranslation", () => {
       chineseTranslation: "这次没有发出去：401", createdAt: NOW, time: "12:00", error: true,
     };
     expect(displayTranslation(failure)).toBe("");
+  });
+});
+
+describe("retryableTurn", () => {
+  /** 一轮失败在库里留下的两行：Runtime 落的用户消息 + Presenter 落的失败气泡，同号。 */
+  function failedTurn(runtimeTurnId?: string): ChatMessage[] {
+    return [
+      { id: "asked", role: "user", content: "今天有点累", createdAt: NOW, time: "12:00", source: "text",
+        ...(runtimeTurnId ? { runtimeTurnId } : {}) },
+      { id: "failure", role: "assistant", content: "这次没有发出去：401", createdAt: NOW + 1, time: "12:00",
+        error: true, ...(runtimeTurnId ? { runtimeTurnId } : {}) },
+    ];
+  }
+
+  it("按 runtimeTurnId 归组：两行都要删，用原话重投", () => {
+    expect(retryableTurn(failedTurn("run-1"), "failure")).toEqual({
+      ids: ["asked", "failure"],
+      text: "今天有点累",
+      source: "text",
+    });
+  });
+
+  it("旧数据没有 runtimeTurnId 时回退到最近一条用户消息", () => {
+    const messages = [
+      userMessage("更早说的", NOW - 10_000),
+      companionMessage({ japaneseText: "うん", chineseTranslation: "嗯", mood: "neutral" }, NOW - 9000),
+      ...failedTurn(),
+    ];
+    const turn = retryableTurn(messages, "failure");
+    expect(turn?.text).toBe("今天有点累");
+    expect(turn?.ids).toEqual(["failure", "asked"]);
+  });
+
+  it("同号的第三行也一起删，不留半轮", () => {
+    const messages = [
+      ...failedTurn("run-1"),
+      { id: "fragment", role: "assistant" as const, content: "我刚才想说", createdAt: NOW + 2, time: "12:00",
+        runtimeTurnId: "run-1", completion: "interrupted" as const },
+    ];
+    expect(retryableTurn(messages, "failure")?.ids).toEqual(["asked", "failure", "fragment"]);
+  });
+
+  it("语音轮重投仍标 voice，不伪装成打字", () => {
+    const messages = failedTurn("run-1");
+    messages[0] = { ...messages[0], source: "voice" };
+    expect(retryableTurn(messages, "failure")?.source).toBe("voice");
+  });
+
+  it("不是失败的 assistant 消息一律不可重试", () => {
+    const messages = failedTurn("run-1");
+    expect(retryableTurn(messages, "asked")).toBeNull();
+    expect(retryableTurn(messages, "不存在")).toBeNull();
+    expect(retryableTurn([{ ...messages[1], error: false }], "failure")).toBeNull();
+  });
+
+  it("主动消息轮没有用户原话，返回 null 让界面不给入口", () => {
+    // 主动消息不写用户历史（companionRuntime 的 source !== "proactive" 才落 asked）
+    const messages: ChatMessage[] = [
+      { id: "failure", role: "assistant", content: "这次没有发出去：401", createdAt: NOW, time: "12:00",
+        error: true, runtimeTurnId: "run-1", source: "proactive" },
+    ];
+    expect(retryableTurn(messages, "failure")).toBeNull();
   });
 });
 

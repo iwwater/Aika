@@ -84,6 +84,9 @@ button { border: 0; cursor: pointer; }
 .message-row.error .message-bubble { color: #ffb8d1; border-color: rgba(255,77,146,.4); background: rgba(40,10,26,.85); }
 .message-row.error .message-bubble::before { background: var(--magenta); }
 .translation { color: var(--muted); font-size: 11px; border-top: 1px solid var(--line-soft); padding-top: 7px; }
+.message-retry { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; margin-top: 2px; padding: 4px 9px; border: 1px solid rgba(255,77,146,.4); border-radius: 7px; color: #ffb8d1; background: rgba(255,77,146,.1); font-size: 11px; transition: .2s; }
+.message-retry:hover:not(:disabled) { border-color: rgba(255,77,146,.7); background: rgba(255,77,146,.18); }
+.message-retry:disabled { opacity: .45; cursor: default; }
 .typing { display: flex; gap: 4px; padding: 5px 3px; }
 .typing i { width: 5px; height: 5px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); animation: bounce 1s infinite alternate; }
 .typing i:nth-child(2) { animation-delay: .2s; }
