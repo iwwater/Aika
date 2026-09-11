@@ -4,6 +4,8 @@ import { buildContextClock, type AgentContext, type ContextSnippet } from "../..
 import { DEFAULT_CHARACTER_SOUL, DEFAULT_MODE_CONFIG } from "../../domain/soul";
 import { computeRelationship, deriveRelationshipSignals } from "../../domain/relationship";
 import type { ProviderConfig } from "../../domain/providers";
+import { createMemoryTraceSink } from "../trace/memoryTraceSink";
+import { createTraceRecorder } from "../trace/traceRecorder";
 import { createStreamChatProvider, type StreamChatProviderOptions } from "./providerAdapter";
 import type { ProviderStreamEvent } from "./companionRuntime";
 
@@ -11,9 +13,11 @@ const mocks = vi.hoisted(() => ({
   streamChat: vi.fn(),
 }));
 
-vi.mock("../providerClient", () => ({
+// 只替 streamChat（不想真发请求），其余保留真实实现——Trace 报的 endpoint
+// 必须是 providerClient 真正会用的那个，拿假的来断言等于什么都没验。
+vi.mock("../providerClient", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../providerClient")>()),
   streamChat: mocks.streamChat,
-  isAbortError: (error: unknown) => error instanceof Error && error.name === "AbortError",
 }));
 
 const NOW = Date.UTC(2026, 2, 10, 15, 30);
@@ -136,5 +140,74 @@ describe("createStreamChatProvider", () => {
     mocks.streamChat.mockRejectedValueOnce(Object.assign(new Error("aborted"), { name: "AbortError" }));
     const cancelled = await collect(createStreamChatProvider(options()), { context: context(), signal: controller.signal });
     expect(cancelled).toEqual([]);
+  });
+});
+
+describe("LLM-08 · provider_request 事件", () => {
+  function traced(overrides: Partial<ProviderConfig> = {}, includeText = false) {
+    const sink = createMemoryTraceSink(20);
+    const recorder = createTraceRecorder({
+      sink,
+      clock: () => 1_700_000_000_000,
+      policy: () => ({ includeText }),
+    });
+    const target = { ...config, ...overrides };
+    return { sink, recorder, config: target };
+  }
+
+  it("报的是 providerClient 真正会用的 endpoint 与真实请求体大小", async () => {
+    mocks.streamChat.mockImplementation(async () => reply);
+    const { sink, recorder, config: target } = traced();
+
+    await collect(createStreamChatProvider({ getConfig: () => target, trace: recorder }), { context: context() });
+
+    const [event] = await sink.query({ kind: "provider_request" });
+    expect(event.kind).toBe("provider_request");
+    if (event.kind !== "provider_request") return;
+    expect(event.protocol).toBe("openai-compatible");
+    expect(event.model).toBe("test-model");
+    // baseUrl 是 https://example.com/v1/，openai 兼容协议补 /chat/completions
+    expect(event.endpoint).toBe("https://example.com/v1/chat/completions");
+    expect(event.requestChars).toBeGreaterThan(0);
+    expect(event.instructionsChars).toBeGreaterThan(0);
+  });
+
+  it("Gemini 的 key 在落到 sink 时已经不在了", async () => {
+    mocks.streamChat.mockImplementation(async () => reply);
+    const { sink, recorder, config: target } = traced({
+      protocol: "gemini",
+      baseUrl: "https://generativelanguage.googleapis.com",
+      apiKey: "SECRET-KEY-123",
+      model: "gemini-2.5-flash",
+    });
+
+    await collect(createStreamChatProvider({ getConfig: () => target, trace: recorder }), { context: context() });
+
+    const [event] = await sink.query({ kind: "provider_request" });
+    if (event.kind !== "provider_request") return;
+    // 真实 URL 里带 ?key=；recorder 统一砍 query，所以盘上那份不该有它。
+    expect(event.endpoint).not.toContain("SECRET-KEY-123");
+    expect(event.endpoint).toContain(":streamGenerateContent");
+    expect(JSON.stringify(event)).not.toContain("SECRET-KEY-123");
+  });
+
+  it("instructions 摘要受正文开关控制", async () => {
+    mocks.streamChat.mockImplementation(async () => reply);
+
+    const off = traced({}, false);
+    await collect(createStreamChatProvider({ getConfig: () => off.config, trace: off.recorder }), { context: context() });
+    const [hidden] = await off.sink.query({ kind: "provider_request" });
+    if (hidden.kind === "provider_request") expect(hidden.instructionsDigest).toBeNull();
+
+    const on = traced({}, true);
+    await collect(createStreamChatProvider({ getConfig: () => on.config, trace: on.recorder }), { context: context() });
+    const [shown] = await on.sink.query({ kind: "provider_request" });
+    if (shown.kind === "provider_request") expect(shown.instructionsDigest).toBeTruthy();
+  });
+
+  it("不传 trace 时什么都不记，也不影响生成", async () => {
+    mocks.streamChat.mockImplementation(async () => reply);
+    const events = await collect(createStreamChatProvider(options()), { context: context() });
+    expect(events.some((event) => event.type === "reply")).toBe(true);
   });
 });

@@ -10,6 +10,8 @@ import { createProviderSettings } from "../services/runtime/providerSettings";
 import { createMemoryRepository } from "../services/memory/memoryRepository";
 import { createInMemoryMemoryStore } from "../services/memory/memoryStore";
 import { createMemoryV2 } from "../domain/memory";
+import { createMemoryTraceSink } from "../services/trace/memoryTraceSink";
+import { createTraceRecorder } from "../services/trace/traceRecorder";
 import { createCompanionPresenter, type CompanionPresenter } from "./companionPresenter";
 
 /**
@@ -167,6 +169,9 @@ function envelope(replyText: string, translation = ""): ReplyEnvelopeV1 {
 function setup(options: {
   memories?: readonly ReturnType<typeof createMemoryV2>[];
   summaries?: SessionSummary[];
+  /** 注入 Trace 时同时给出 sink，便于断言记了什么。 */
+  trace?: { sink: ReturnType<typeof createMemoryTraceSink> };
+  extractor?: { extract(): Promise<unknown[]>; summarize(): Promise<string> };
 } = {}) {
   const storage = createStorage({ summaries: options.summaries });
   const fake = createFakeRuntime();
@@ -178,8 +183,16 @@ function setup(options: {
     loadStorage: async () => storage,
     notifier: { notify: async () => false },
     loadStickers: async () => [],
-    extractor: { extract: async () => [], summarize: async () => "" },
+    extractor: (options.extractor ?? { extract: async () => [], summarize: async () => "" }) as never,
     runtime: { runtime: fake.runtime, settings },
+    ...(options.trace
+      ? {
+        trace: createTraceRecorder({
+          sink: options.trace.sink,
+          clock: () => 1_700_000_000_000,
+        }),
+      }
+      : {}),
     ...(options.memories ? { memoryAccess: { repository, onInvalidate: () => () => undefined } } : {}),
   });
   return { presenter, storage, fake, repository };
@@ -562,6 +575,66 @@ describe("CompanionPresenter 无 React 驱动", () => {
 
     expect(local.presenter.getSnapshot().summary).toBe("上周聊过换工作");
     expect(local.storage.summaries).toEqual([{ content: "上周聊过换工作", coversUntil: 500, createdAt: 500 }]);
+    local.presenter.dispose();
+  });
+
+  it("memory_extract：候选条数落在这一轮上", async () => {
+    const sink = createMemoryTraceSink(20);
+    const local = setup({
+      trace: { sink },
+      extractor: {
+        extract: async () => [
+          { id: "m1", category: "日常", content: "最近很累", status: "pending", createdAt: 1, updatedAt: 1 },
+        ],
+        summarize: async () => "",
+      },
+    });
+    await local.presenter.start();
+    const sent = local.presenter.send("你好");
+    const turn = local.fake.last();
+    seedTurnRows(local.storage, turn.turnId);
+    local.fake.generated(turn.turnId, envelope("こんにちは", "你好"));
+    local.fake.settle(turn.turnId, { state: "completed", persisted: true });
+    await sent;
+    await flush();
+
+    const [event] = await sink.query({ kind: "memory_extract" });
+    expect(event?.kind).toBe("memory_extract");
+    if (event?.kind === "memory_extract") {
+      expect(event.candidates).toBe(1);
+      expect(event.failed).toBe(false);
+      // 挂在 Runtime 的轮次 uuid 上，才能和同一轮的其它事件拼成一条时间线。
+      expect(event.turnId).toBe(turn.turnId);
+    }
+    local.presenter.dispose();
+  });
+
+  it("memory_extract：抽取抛错时记 failed，而不是干脆不记", async () => {
+    const sink = createMemoryTraceSink(20);
+    const local = setup({
+      trace: { sink },
+      extractor: {
+        extract: async () => { throw new Error("抽取挂了"); },
+        summarize: async () => "",
+      },
+    });
+    await local.presenter.start();
+    const sent = local.presenter.send("你好");
+    const turn = local.fake.last();
+    seedTurnRows(local.storage, turn.turnId);
+    local.fake.generated(turn.turnId, envelope("こんにちは", "你好"));
+    local.fake.settle(turn.turnId, { state: "completed", persisted: true });
+    await sent;
+    await flush();
+
+    const [event] = await sink.query({ kind: "memory_extract" });
+    // 不记的话，「记忆怎么一条都没有」永远查不出是抽取一直在失败。
+    if (event?.kind === "memory_extract") {
+      expect(event.failed).toBe(true);
+      expect(event.candidates).toBe(0);
+    } else {
+      expect.unreachable("抽取失败也必须留下一条 memory_extract");
+    }
     local.presenter.dispose();
   });
 

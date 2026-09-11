@@ -52,6 +52,13 @@ export type PlaybackStatus = "unknown" | "played";
 /** 一次可取消的 LLM/语音轮次请求，跨 Hook 和会话层传递。 */
 export interface VoiceTurnRequest {
   turnId: number;
+  /**
+   * Runtime 的轮次 uuid，由会话层在发起这一轮时写进来。
+   *
+   * 与上面的 `turnId`（语音回合号，number）是两回事，不要合并——Trace 按 uuid
+   * 归组，而聊天页点朗读压根不属于任何一轮，那时这里是 undefined，**不许编一个**。
+   */
+  runtimeTurnId?: string;
   signal: AbortSignal;
   getPlaybackStatus?(): PlaybackStatus;
   /** 语音队列完全 drained 后由调用方触发，允许会话层解除中断监听。 */

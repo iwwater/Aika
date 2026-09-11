@@ -1,5 +1,6 @@
 import { createAsrSegmentReorderer } from "../domain/asrSegments";
 import { locateSentence, type CaptionRange } from "../domain/captionHighlight";
+import { NO_TRACE, type TraceRecorder } from "../services/trace/traceRecorder";
 import { replyDisplayText, type CompanionReply } from "../domain/companion";
 import { createSentenceEmitter, splitIntoSentences } from "../domain/sentences";
 import type { PartialReply } from "../domain/streamingReply";
@@ -116,6 +117,8 @@ export interface VoiceTimers {
 }
 
 export interface VoicePresenterDeps {
+  /** Trace 记录器；不传等于不记。 */
+  trace?: TraceRecorder;
   createInputEngine?: (config: VoiceBackendConfig) => Promise<ResolvedInputEngine>;
   createQueue?: (engine: SpeechOutputEngine) => SpeechQueue;
   outputEngine?: SpeechOutputEngine;
@@ -138,6 +141,7 @@ export function createVoicePresenter(deps: VoicePresenterDeps = {}): VoicePresen
   const monitor: MicActivityMonitor = (deps.createMonitor ?? createMicActivityMonitor)();
   const diagnostics: VoiceDiagnostics = deps.diagnostics ?? createVoiceDiagnostics();
   const timers = deps.timers ?? DEFAULT_TIMERS;
+  const trace = deps.trace ?? NO_TRACE;
 
   let disposed = false;
 
@@ -514,6 +518,16 @@ export function createVoicePresenter(deps: VoicePresenterDeps = {}): VoicePresen
   function finishSpeaking(result: SpeechQueueDrainResult): void {
     monitor.stop();
     const request = turnRequest;
+    // 只有会话轮才有 Runtime 的轮次 uuid。聊天页点朗读（FE-07）不属于任何一轮，
+    // 那时 runtimeTurnId 是 undefined——不记，而不是编一个 id 把它挂上去。
+    if (request?.runtimeTurnId) {
+      trace.record(request.runtimeTurnId, {
+        kind: "tts",
+        sentences: result.sentenceCount,
+        played: result.played,
+        errorCount: result.errorCount,
+      });
+    }
     if (request && !request.signal.aborted) {
       if (result.played) {
         request.onPlaybackComplete?.();

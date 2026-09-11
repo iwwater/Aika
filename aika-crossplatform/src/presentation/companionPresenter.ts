@@ -27,6 +27,7 @@ import type { VoiceTurnRequest } from "../domain/voiceRuntime";
 import { createModelMemoryExtractor, formatTranscript, type MemoryExtractor } from "../services/memory/extractor";
 import { createMemoryRepository, type MemoryRepository } from "../services/memory/memoryRepository";
 import type { MemoryAccess } from "../services/memory/tokens";
+import { NO_TRACE, type TraceRecorder } from "../services/trace/traceRecorder";
 import { createMemoryWriteback, type MemoryWriteback } from "../services/memory/writeback";
 import type { Notifier } from "../services/notification/notifier";
 import type { RuntimeServices } from "../services/runtime/tokens";
@@ -149,6 +150,8 @@ export interface CompanionPresenterDeps {
   runtime: RuntimeServices | null;
   /** 记忆能力包；缺失时（noMemoryPlugin 或无 V2 存储）退回 V1 记忆路径。 */
   memoryAccess?: MemoryAccess | null;
+  /** Trace 记录器；不传等于不记。 */
+  trace?: TraceRecorder;
   loadStickers?: () => Promise<readonly Sticker[]>;
   extractor?: MemoryExtractor;
   interval?: IntervalPort;
@@ -223,6 +226,7 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
   let unsubscribeInvalidation: (() => void) | null = null;
   let writeback: MemoryWriteback | null = null;
   let persist: (message: ChatMessage) => Promise<void> = async () => undefined;
+  const trace = deps.trace ?? NO_TRACE;
   const persistedMessageIds = new Set<string>();
 
   let ready = false;
@@ -438,13 +442,20 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
   }
 
   /** 抽取候选记忆并压缩更早的对话。失败只记录，不打断聊天。 */
-  async function runBackgroundMemoryWork(allMessages: readonly ChatMessage[]): Promise<void> {
+  async function runBackgroundMemoryWork(
+    allMessages: readonly ChatMessage[],
+    /** 这一批记忆是哪一轮喂出来的。Trace 按它归组；主动维护没有轮次时为 null。 */
+    runtimeTurnId: string | null = null,
+  ): Promise<void> {
     if (!storage || !maintenanceEnabled) return;
 
     try {
       const recent = allMessages.slice(-4);
       const turns = toCompanionTurns(recent);
       const extracted = await extractor.extract(turns, memories);
+      if (runtimeTurnId) {
+        trace.record(runtimeTurnId, { kind: "memory_extract", candidates: extracted.length, failed: false });
+      }
       if (!maintenanceEnabled) return;
       if (extracted.length) {
         const repository = memoryRepository;
@@ -478,7 +489,11 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
         }
       }
     } catch {
-      // 抽取失败不影响这一轮对话，下一轮会再试。
+      // 抽取失败不影响这一轮对话，下一轮会再试——但必须能被统计到，
+      // 不记的话「记忆怎么一条都没有」就永远查不出是抽取一直在失败。
+      if (runtimeTurnId) {
+        trace.record(runtimeTurnId, { kind: "memory_extract", candidates: 0, failed: true });
+      }
     }
 
     try {
@@ -623,6 +638,8 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
       //
       // precision 用 confirmed 而不是 proxy：onPlaybackComplete 对应的是播放队列
       // 的 drained——「交给它的文本全念完了」是确证的，不是估算。
+      // TTS 侧记 trace 要用 Runtime 的轮次 uuid（request.turnId 是语音回合号）。
+      request.runtimeTurnId = handle.turnId;
       request.onPlaybackComplete = () => services.runtime.reportDelivery({
         turnId: handle.turnId, status: "complete", precision: "confirmed",
       });
@@ -662,7 +679,7 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
       if (settlement.state === "completed" && settlement.persisted
         && rows.some((row) => row.runtimeTurnId === handle.turnId
           && row.role === "assistant" && row.completion !== "interrupted")) {
-        void runBackgroundMemoryWork(rows);
+        void runBackgroundMemoryWork(rows, handle.turnId);
       }
     };
 

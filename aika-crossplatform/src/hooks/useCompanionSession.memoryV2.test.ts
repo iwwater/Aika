@@ -74,7 +74,10 @@ vi.mock("../services/memory/extractor", () => ({
   formatTranscript: () => "",
 }));
 vi.mock("../services/stickers/library", () => ({ loadStickers: async () => [] }));
-vi.mock("../services/providerClient", () => ({
+// 只替 streamChat；describeChatRequest 等保留真实实现——Trace 报的 endpoint
+// 必须是 providerClient 真正会用的那个。
+vi.mock("../services/providerClient", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/providerClient")>()),
   streamChat: (...args: unknown[]) => mocks.streamChat(...args),
   sendChat: vi.fn(),
   isAbortError: () => false,

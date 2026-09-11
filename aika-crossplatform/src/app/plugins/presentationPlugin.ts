@@ -6,6 +6,7 @@ import { ProviderSettingsToken, RuntimeToken, type RuntimeServices } from "../..
 import { StorageToken } from "../../services/storage/tokens";
 import { StickerLibraryToken } from "../../services/stickers/tokens";
 import { SpeechEnginesToken } from "../../services/voice/tokens";
+import { TraceRecorderToken } from "../../services/trace/tokens";
 import { createCompanionPresenter } from "../../presentation/companionPresenter";
 import { createVoicePresenter } from "../../presentation/voicePresenter";
 import { CompanionPresenterToken, VoicePresenterToken } from "../../presentation/tokens";
@@ -44,6 +45,7 @@ export function presentationPlugin(options: PresentationPluginOptions = {}): Aik
       StorageToken, NotifierToken,
       RuntimeToken, ProviderSettingsToken,
       MemoryAccessToken, StickerLibraryToken, SpeechEnginesToken,
+      TraceRecorderToken,
     ],
     provides: [CompanionPresenterToken, VoicePresenterToken],
     activate(context) {
@@ -52,17 +54,19 @@ export function presentationPlugin(options: PresentationPluginOptions = {}): Aik
       const memoryAccess = context.registrar.tryResolve(MemoryAccessToken);
       const stickers = context.registrar.tryResolve(StickerLibraryToken);
       const engines = context.registrar.tryResolve(SpeechEnginesToken);
+      const trace = context.registrar.tryResolve(TraceRecorderToken);
 
-      context.registrar.provide(VoicePresenterToken, () => createVoicePresenter(
-        engines
+      context.registrar.provide(VoicePresenterToken, () => createVoicePresenter({
+        ...(engines
           ? {
               createInputEngine: (config) => engines.createInputEngine(config),
               outputEngine: engines.outputEngine,
               createQueue: engines.createQueue,
               createMonitor: engines.createMonitor,
             }
-          : {},
-      ), { disposer: (value) => value.dispose() });
+          : {}),
+        ...(trace ? { trace } : {}),
+      }), { disposer: (value) => value.dispose() });
 
       context.registrar.provide(CompanionPresenterToken, () => createCompanionPresenter({
         loadStorage: storage
@@ -72,6 +76,7 @@ export function presentationPlugin(options: PresentationPluginOptions = {}): Aik
         runtime: options.resolveRuntime?.() ?? null,
         ...(memoryAccess ? { memoryAccess } : {}),
         ...(stickers ? { loadStickers: stickers } : {}),
+        ...(trace ? { trace } : {}),
       }), { disposer: (value) => value.dispose() });
     },
   };

@@ -349,6 +349,28 @@ export async function streamChat(
   return finish(raw);
 }
 
+/**
+ * 这一轮真实请求长什么样——只读，不发请求。
+ *
+ * Trace 的 `provider_request` 需要真实 endpoint 与请求体大小。**不能在别处照抄
+ * URL 规则**：四种协议各拼各的（Gemini 还要 `:streamGenerateContent` 加 query），
+ * 抄一份出去迟早和真实请求漂移，那时 Trace 报的地址就是假的。所以这里复用同一个
+ * `prepare()`，调用方拿到的和真正发出去的是同一份。
+ *
+ * 返回的 url 里可能带凭据（Gemini 的 `?key=`）；砍掉 query 是 Trace 侧的事，
+ * 这里不替调用方决定要不要脱敏。
+ */
+export function describeChatRequest(
+  config: ProviderConfig,
+  systemPrompt: string,
+  history: ChatTurn[],
+  stickerIds: readonly string[] = [],
+  stream = true,
+): { url: string; bodyChars: number } {
+  const prepared = prepare(config, systemPrompt, history, "companion-reply", stream, stickerIds);
+  return { url: prepared.url, bodyChars: JSON.stringify(prepared.body).length };
+}
+
 /** 记忆抽取用：需要 JSON，但结构由提示词约定。 */
 export function requestJson(config: ProviderConfig, systemPrompt: string, history: ChatTurn[]) {
   return requestText(config, systemPrompt, history, "json");

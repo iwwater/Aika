@@ -50,6 +50,7 @@ export function runtimePlugin(options: RuntimePluginOptions = {}): AikaPlugin {
       const provider = createStreamChatProvider({
         getConfig: () => settings.get(),
         getStickers: () => settings.getStickers(),
+        trace,
       });
 
       const runtime = createCompanionRuntime({

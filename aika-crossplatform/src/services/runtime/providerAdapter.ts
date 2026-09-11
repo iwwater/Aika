@@ -12,7 +12,9 @@ import { buildConversationInput, buildInstructions } from "../../domain/prompt";
 import type { ProviderConfig } from "../../domain/providers";
 import { DEFAULT_CHARACTER_SOUL, type CharacterSoul } from "../../domain/soul";
 import type { Sticker } from "../../domain/stickers";
-import { isAbortError, streamChat, testProvider, listModels } from "../providerClient";
+import { describeChatRequest, isAbortError, streamChat, testProvider, listModels } from "../providerClient";
+import { digestText } from "../../domain/trace";
+import { NO_TRACE, type TraceRecorder } from "../trace/traceRecorder";
 import type { ProviderStreamEvent, RuntimeGenerateInput, RuntimeProvider } from "./companionRuntime";
 import type { ProviderModels, ProviderProbe } from "./tokens";
 
@@ -20,6 +22,8 @@ export interface StreamChatProviderOptions {
   getConfig(): ProviderConfig;
   getStickers?(): readonly Sticker[];
   soul?: CharacterSoul;
+  /** Trace 记录器。不传等于不记（NO_TRACE）。 */
+  trace?: TraceRecorder;
 }
 
 function toEnvelope(reply: CompanionReply): ReplyEnvelopeV1 {
@@ -53,6 +57,25 @@ async function* generateEvents(
   ].filter((block) => block.trim().length > 0).join("\n\n");
 
   if (input.signal.aborted) return;
+
+  const config = options.getConfig();
+  const userContent = input.source === "proactive"
+    ? input.context.query
+    : buildConversationInput(input.context.query, companion);
+  const history = [{ role: "user" as const, content: userContent }];
+  // 端点与请求体大小都问 providerClient 要，不在这里照抄 URL 规则。
+  const described = describeChatRequest(config, instructions, history, stickers.map((sticker) => sticker.id));
+  (options.trace ?? NO_TRACE).record(input.turnId, {
+    kind: "provider_request",
+    protocol: config.protocol,
+    model: config.model,
+    // key 还在 URL 里（Gemini 的 ?key=）；砍 query 是 recorder 统一做的事。
+    endpoint: described.url,
+    requestChars: described.bodyChars,
+    instructionsChars: instructions.length,
+    instructionsDigest: digestText(instructions),
+  });
+
   const controller = new AbortController();
   const queue: ProviderStreamEvent[] = [];
   let notify: (() => void) | null = null;
@@ -73,10 +96,9 @@ async function* generateEvents(
   const pump = (async () => {
     try {
       const reply = await streamChat(
-        options.getConfig(),
+        config,
         instructions,
-        [{ role: "user", content: input.source === "proactive"
-          ? input.context.query : buildConversationInput(input.context.query, companion) }],
+        history,
         (partial) => {
           if (controller.signal.aborted) return;
           queue.push({

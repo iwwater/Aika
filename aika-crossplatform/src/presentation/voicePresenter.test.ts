@@ -5,6 +5,8 @@ import type { PartialReply } from "../domain/streamingReply";
 import type { SpeechFinalResult, VoiceTurnRequest } from "../domain/voiceRuntime";
 import { createVoicePresenter, type VoiceTimers } from "./voicePresenter";
 import { locateSentence } from "../domain/captionHighlight";
+import { createMemoryTraceSink } from "../services/trace/memoryTraceSink";
+import { createTraceRecorder } from "../services/trace/traceRecorder";
 
 /**
  * CORE-04-E：语音打断在 Presenter 内编排，用 fake STT/TTS 验收。
@@ -325,6 +327,104 @@ describe("VoicePresenter 聊天页朗读（fake TTS）", () => {
     presenter.speakMessage("m1", "   ");
     expect(output.texts()).toEqual([]);
     expect(presenter.getSnapshot().speakingMessageId).toBeNull();
+    presenter.dispose();
+  });
+});
+
+describe("LLM-08 · tts 事件", () => {
+  it("会话轮：句数、播过与否、失败句数与 drain 结果一致，挂在 Runtime 轮次上", async () => {
+    const input = createInput();
+    const output = createOutput();
+    const sink = createMemoryTraceSink(20);
+    const presenter = createVoicePresenter({
+      createInputEngine: async () => ({ engine: input.engine, note: "fake", degraded: false }),
+      outputEngine: output.engine,
+      createMonitor: () => createMonitor().monitor,
+      timers: createTimers().port,
+      trace: createTraceRecorder({ sink, clock: () => 1_700_000_000_000 }),
+    });
+    presenter.configure({
+      onTranscript: (_text, onPartial: (partial: PartialReply) => void, request: VoiceTurnRequest) => {
+        // 会话层真实接线里这一行由 CompanionPresenter 写：Trace 要 Runtime 的 uuid。
+        request.runtimeTurnId = "run-uuid-1";
+        onPartial({ japaneseText: "おかえり。", chineseTranslation: "你回来了", mood: "neutral", japaneseComplete: false });
+        return Promise.resolve({
+          japaneseText: "おかえり。", chineseTranslation: "你回来了", mood: "neutral",
+        } as CompanionReply);
+      },
+      resolveLanguage: () => "ja-JP",
+    });
+
+    await presenter.open();
+    input.events.onFinal(segment(0, "ただいま。"));
+    presenter.sendNow();
+    for (let index = 0; index < 12; index += 1) await Promise.resolve();
+    output.drain();
+    for (let index = 0; index < 12; index += 1) await Promise.resolve();
+
+    const [event] = await sink.query({ kind: "tts" });
+    expect(event?.kind).toBe("tts");
+    if (event?.kind === "tts") {
+      expect(event.turnId).toBe("run-uuid-1");
+      expect(event.sentences).toBeGreaterThan(0);
+      expect(event.played).toBe(true);
+      expect(event.errorCount).toBe(0);
+    }
+    presenter.dispose();
+  });
+
+  it("会话轮但没有 runtimeTurnId：不记——不许拿语音回合号编一个", async () => {
+    const input = createInput();
+    const output = createOutput();
+    const sink = createMemoryTraceSink(20);
+    const presenter = createVoicePresenter({
+      createInputEngine: async () => ({ engine: input.engine, note: "fake", degraded: false }),
+      outputEngine: output.engine,
+      createMonitor: () => createMonitor().monitor,
+      timers: createTimers().port,
+      trace: createTraceRecorder({ sink, clock: () => 1_700_000_000_000 }),
+    });
+    presenter.configure({
+      // 刻意不写 request.runtimeTurnId：会话层没给 Runtime 轮次时，
+      // 拿 request.turnId（语音回合号）编一个 trace id 就是伪造归组。
+      onTranscript: (_text, onPartial: (partial: PartialReply) => void) => {
+        onPartial({ japaneseText: "おかえり。", chineseTranslation: "你回来了", mood: "neutral", japaneseComplete: false });
+        return Promise.resolve({
+          japaneseText: "おかえり。", chineseTranslation: "你回来了", mood: "neutral",
+        } as CompanionReply);
+      },
+      resolveLanguage: () => "ja-JP",
+    });
+
+    await presenter.open();
+    input.events.onFinal(segment(0, "ただいま。"));
+    presenter.sendNow();
+    for (let index = 0; index < 12; index += 1) await Promise.resolve();
+    output.drain();
+    for (let index = 0; index < 12; index += 1) await Promise.resolve();
+
+    expect(await sink.query({ kind: "tts" })).toEqual([]);
+    presenter.dispose();
+  });
+
+  it("聊天页点朗读不产生 tts 事件：它压根不走会话的收尾路径", async () => {
+    const output = createOutput();
+    const sink = createMemoryTraceSink(20);
+    const presenter = createVoicePresenter({
+      createInputEngine: async () => ({ engine: createInput().engine, note: "fake", degraded: false }),
+      outputEngine: output.engine,
+      createMonitor: () => createMonitor().monitor,
+      timers: createTimers().port,
+      trace: createTraceRecorder({ sink, clock: () => 1_700_000_000_000 }),
+    });
+
+    // FE-07 的朗读走 queue.speak 自己的 onDrained（clearBubblePlayback），
+    // 不经过 finishSpeaking——所以这里验的是「没有多记」，不是守卫生效。
+    presenter.speakMessage("m1", "おかえり。今日はどうだった？");
+    output.drain();
+    output.drain();
+
+    expect(await sink.query({})).toEqual([]);
     presenter.dispose();
   });
 });
