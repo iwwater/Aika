@@ -33,6 +33,18 @@ export interface PluginRecord {
   version: string;
   status: PluginStatus;
   error?: { code: string; message: string };
+  /**
+   * 三份声明，以 token key 的形式带出来（CORE-09）。
+   *
+   * 只给 key 字符串，不给 token 实例——拿到实例就等于能绕过注册表直接 resolve，
+   * 那是 CORE-01 明确堵住的路。
+   *
+   * 在**登记**时记录而不是激活后：`pending` / `failed` / `skipped` 的插件也要能
+   * 出现在拓扑图里，「谁没装上」恰恰是最需要看见的。
+   */
+  requires: readonly string[];
+  optional: readonly string[];
+  provides: readonly string[];
 }
 
 export interface KernelSnapshot {

@@ -459,13 +459,15 @@ describe("事件与诊断", () => {
 
     const failedSnapshot = kernel.describe();
     expect(failedSnapshot.state).toBe("failed");
+    // CORE-09：三份声明也在这里，失败与被回滚的插件同样带着（图里要看得见谁没装上）。
     expect(failedSnapshot.plugins).toEqual([
-      { id: "good", version: "1.0.0", status: "rolledBack" },
+      { id: "good", version: "1.0.0", status: "rolledBack", requires: [], optional: [], provides: [] },
       {
         id: "broken",
         version: "2.0.0",
         status: "failed",
         error: { code: "PLUGIN_CONTRACT_VIOLATION", message: "nope" },
+        requires: [], optional: [], provides: [],
       },
     ]);
 
@@ -507,5 +509,88 @@ describe("事件与诊断", () => {
       expectCode(error, "KERNEL_INVALID_STATE");
     }
     await expect(kernel.start()).rejects.toThrow(KernelError);
+  });
+});
+
+describe("CORE-09 · 装配拓扑可读", () => {
+  const alpha = token<string>("topology.alpha");
+  const beta = token<string>("topology.beta");
+  const missing = token<string>("topology.missing");
+
+  it("三份声明按 token key 出现在快照里；没声明的是空数组", async () => {
+    const kernel = createKernel();
+    kernel.use({
+      id: "provider",
+      version: "1.0.0",
+      provides: [alpha],
+      activate: (context) => {
+        context.registrar.provide(alpha, () => "A");
+      },
+    });
+    kernel.use({
+      id: "consumer",
+      version: "1.0.0",
+      requires: [alpha],
+      optional: [missing],
+      provides: [beta],
+      activate: (context) => {
+        context.registrar.provide(beta, () => "B");
+      },
+    });
+    kernel.use({ id: "loner", version: "1.0.0", activate: () => undefined });
+
+    await kernel.start();
+    const snapshot = kernel.describe();
+    const byId = new Map(snapshot.plugins.map((plugin) => [plugin.id, plugin]));
+
+    expect(byId.get("consumer")).toMatchObject({
+      requires: ["topology.alpha"],
+      optional: ["topology.missing"],
+      provides: ["topology.beta"],
+    });
+    // 没声明的是空数组而不是 undefined：画图的一方不该到处写 ?? []。
+    expect(byId.get("loner")).toMatchObject({ requires: [], optional: [], provides: [] });
+    await kernel.dispose();
+  });
+
+  it("provides 与 services 的 providedBy 对得上", async () => {
+    const kernel = createKernel();
+    kernel.use({
+      id: "provider",
+      version: "1.0.0",
+      provides: [alpha],
+      activate: (context) => {
+        context.registrar.provide(alpha, () => "A");
+      },
+    });
+
+    await kernel.start();
+    const snapshot = kernel.describe();
+    const record = snapshot.plugins.find((plugin) => plugin.id === "provider");
+
+    for (const key of record?.provides ?? []) {
+      const entry = snapshot.services.find((service) => service.key === key);
+      // 这条对得上，图里的「谁提供了什么」才不会和实际注册漂移。
+      expect(entry?.providedBy).toBe("provider");
+    }
+    await kernel.dispose();
+  });
+
+  it("只有字符串：记录里没有 token 实例也没有 factory", async () => {
+    const kernel = createKernel();
+    kernel.use({
+      id: "provider",
+      version: "1.0.0",
+      provides: [alpha],
+      activate: (context) => {
+        context.registrar.provide(alpha, () => "A");
+      },
+    });
+    await kernel.start();
+
+    const record = kernel.describe().plugins[0];
+    expect(record.provides.every((value) => typeof value === "string")).toBe(true);
+    expect(JSON.stringify(record)).not.toContain("function");
+    await kernel.dispose();
   });
 });

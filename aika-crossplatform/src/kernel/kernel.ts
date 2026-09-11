@@ -164,7 +164,15 @@ export function createKernel(options: KernelOptions = {}): AikaKernel {
         });
       }
       plugins.push(plugin);
-      records.set(plugin.id, { id: plugin.id, version: plugin.version, status: "pending" });
+      records.set(plugin.id, {
+        id: plugin.id,
+        version: plugin.version,
+        status: "pending",
+        // 声明在这里就定下来：后面激活失败、被回滚，图里也还得有它。
+        requires: (plugin.requires ?? []).map((token) => token.key),
+        optional: (plugin.optional ?? []).map((token) => token.key),
+        provides: (plugin.provides ?? []).map((token) => token.key),
+      });
       return this;
     },
 
