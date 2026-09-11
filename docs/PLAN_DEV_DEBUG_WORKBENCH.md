@@ -20,9 +20,14 @@
 
 **修复方向**（小改，随下个 SPEC 顺手带出）：
 
-- 前端 display guard：`chineseTranslation` 与正文相同（或正文本身已是中文）时不渲染次级字幕。判定放 domain 层（如 `presentationMessage()`），配单测。
-- 提示词强化：`buildInstructions` 明确"replyText 必须是日语，translation 是中文；两者不得相同"，并给一个反例。
+- 前端 display guard：`chineseTranslation` 与正文相同时不渲染次级字幕。判定放 domain 层，配单测。
 - 长效手段归 F3：协议层回包进 Trace 后，这类"协议合法但语义退化"的回复才能被看见、被统计。
+
+> **2026-09-12 更正（已由 [FE-04](frontend/specs/FE-04.md) 实施，验收见 [报告](frontend/reports/FE-04_ACCEPTANCE.md)）**
+>
+> 1. 上文根因 2 说的"无条件渲染"不准确：`App.tsx` 改前是 `showTranslation && message.chineseTranslation`，受用户开关控制，缺的只是同句判定这一层。
+> 2. **原列出的"提示词强化"一条已删除，不要执行**：`prompt.ts:71` 本来就写着「整句本来就是中文时，两个字段写成一样即可」，模型返回两句相同中文是遵守提示词；`CODE_SWITCH_RULE` 又刻意规定日/中/英无主次、不设默认语言。要求"replyText 必须是日语"会推翻角色设定。
+> 3. 原括注的"或正文本身已是中文"也已删除：`detectLanguage` 把纯汉字日语（「大丈夫」「了解」）判成 zh，按语言去字幕会误杀真正需要翻译的句子。实际实现只比较"是不是同一句"（`domain/conversation.ts` 的 `displayTranslation`），函数名 `presentationMessage()` 未采用。
 
 ---
 
@@ -71,7 +76,7 @@ waku 是本地优先个人 Agent（Python，四支柱：Harness / Loop / Memory 
 | 撤回 | 删除单条消息并从后续上下文剔除；assistant 消息撤回同时撤销其记忆候选 | 需要存储层补删除接口 |
 | 重新生成 | 对最后一轮 user 消息重发，替换上一条 assistant 回复 | 复用 `session.send`，turnId 屏蔽迟到结果已有 |
 | Rewind | 选任意历史消息"回到这里"：截断其后的消息与派生数据（摘要不回滚，标注 gap） | 需定义截断语义与 SQLite 级联，单独 SPEC |
-| 重试失败轮 | error 气泡上直接重试按钮 | 小改 |
+| 重试失败轮 | error 气泡上直接重试按钮 | **不是小改**：失败气泡由 presenter `persist()` 落库，而 storage 契约只有 `deleteMemory`，删除消息的端口需新增（含 conformance + sqlite/localStorage 两处实现） |
 
 ### F2 开发者模式入口（frontend + app 装配）
 
@@ -141,7 +146,7 @@ waku 是本地优先个人 Agent（Python，四支柱：Harness / Loop / Memory 
 
 | 里程碑 | 内容 | 出口 AC（示例） |
 | --- | --- | --- |
-| M0 | §0.1 双语修复 + 重试按钮 | 复现用例：replyText==translation 时不显示次级字幕；单测覆盖 |
+| M0 | §0.1 双语修复 + 重试按钮 | 复现用例：replyText==translation 时不显示次级字幕；单测覆盖。**双语修复已由 FE-04 交付**；重试按钮经查证不是小改（storage 契约无删除消息接口，失败气泡已落库），单独立项 |
 | M1 | F1 其余交互（发音/撤回/重生成/Rewind） | fake Runtime 下逐项 AC；SQLite 截断语义有测试 |
 | M2 | F3 Trace 协议 + fake sink 全链单测；F2 开发者入口 | 事件 schema 版本化；脱敏用例；sink 故障不影响主链路 |
 | M3 | F4/F5/F6 工作台页面（读 M2 数据） | 用 harness 回放数据驱动页面，不依赖真实模型 |
