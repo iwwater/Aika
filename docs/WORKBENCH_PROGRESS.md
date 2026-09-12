@@ -26,8 +26,9 @@
 | [LLM-09](llm/specs/LLM-09_REPLY_EVENT.md) | `reply` 事件，语义退化可统计 | §0.1 长效手段 / F5 前置 |
 | [FE-10](frontend/specs/FE-10.md) | 能力调用视图 + 装配拓扑图 + 一轮数据流 | F5 / F6 |
 | [FE-11](frontend/specs/FE-11.md) | 长期记忆管理页（含 `MemoryAccess` 变更通知） | F7 |
+| [LLM-10](llm/specs/LLM-10_PROVIDER_USAGE.md) | Provider usage 上报（四协议、流式与非流式） | F9 前置 |
 
-里程碑口径：**M0、M1、M2、M3 均已交付，M4 只差 F8/F9**。测试基线：`npx vitest run src` → 74 文件通过 / 1 跳过，930 通过 / 1 跳过（那 1 个跳过的是既有的真实模型样本，按环境变量关）；`npx tsc --noEmit` 退出码 0。
+里程碑口径：**M0、M1、M2、M3 均已交付，M4 只差 F8/F9**。测试基线：`npx vitest run src` → 74 文件通过 / 1 跳过，945 通过 / 1 跳过（那 1 个跳过的是既有的真实模型样本，按环境变量关）；`npx tsc --noEmit` 退出码 0。
 
 顺带回答了规划文档 §7 的三个待确认项（都写进了原文档）：
 
@@ -44,7 +45,7 @@
 | 规划项 | 内容 | 已知前置 |
 | --- | --- | --- |
 | F8 | 存储浏览页（分表浏览、schema 查看、只读 SQL 控制台） | `AikaStorage.sqlExecutor` 已在 LLM-07 露出，够用；**但 §7 问题 3「是否只读」需要先定** |
-| F9 | Ops 成本页（按日/模型/用途的 token 与估算成本、最慢轮次、错误率） | **被 provider 卡住**：`turn_end.tokens.reportedTotal` 目前一律 null，因为 `providerClient` 不解析 usage。要真实数字得先改它，否则成本页只能显示估算值 |
+| F9 | Ops 成本页（按日/模型/用途的 token 与估算成本、最慢轮次、错误率） | **前置已解除**（[LLM-10](llm/specs/LLM-10_PROVIDER_USAGE.md)）：四种协议的 usage 现在都解析，`turn_end.tokens.reportedTotal` 写的是平台上报值，取消与失败的轮次也带。**但那些数字来自 fixture，真实平台 NOT RUN**——成本页动工前最好先拿真实 Key 跑一轮看看数字对不对。单价换算仍未做（价目表不该埋进 provider 层） |
 | M4 后置 | 评测（headless harness）入口与历史结果 | 规划文档自己标的 F9+ |
 
 规划文档 §3 末尾的 backlog 也都没做：用户消息编辑后重发、对话导出、Provider 配额提醒、错误气泡文案统一、设置项搜索、标题栏快速换模型。

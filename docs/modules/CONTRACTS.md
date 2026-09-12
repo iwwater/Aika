@@ -87,6 +87,17 @@
 
 分工必须分清，否则等于把摘要作废滥用成刷新信号：`onInvalidate` 的语义是**摘要作废**，只在 `forget` 时发；`onChanged` 的语义是**记忆内容变了**（确认、编辑、删除都算）。删除时两个都发，**顺序是先 invalidate 后 changed**——摘要先作废，界面再重读，读到的才是作废之后的状态。`notifyChanged()` 只发 changed 这一组：确认与编辑不该让摘要失效。
 
+### v1 之后的追加（2026-09-12，LLM-10 Provider usage，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `ProviderUsage` | `domain/providers.ts` | 新类型。放 domain 而不是 providerClient 旁边：Runtime 与 Trace 都要认识它，让编排层为拿类型去 import 一个 HTTP 客户端等于把实现拖进来 | Runtime、providerAdapter、后续 F9 成本页 |
+| `ProviderStreamEvent` 增加 `{ type: "usage" }` | `services/runtime/companionRuntime.ts` | 联合类型加成员，既有三种事件语义一字未改。对 kind 做**穷举**的地方要补分支——仓库内一处（Runtime 事件循环，已补）；`provider.conformance.ts` 只断言特定事件，不受影响 | 任何自实现 `RuntimeProvider` 的适配器（不发这个事件＝不报用量，照常工作） |
+| `ProviderRequestOptions.onUsage` | `services/providerClient.ts` | **可选**入参，不传等于不收；至多回调一次（内部退回非流式时合并后再叫） | providerAdapter；记忆抽取等其它调用方不传 |
+| `ProviderHttpError`（带 status） | 同上 | `extends Error`，错误文案一字未改；靠 `instanceof Error` 或 message 判断的代码不受影响 | 流式重试判定 |
+
+请求体变化：openai-compatible **流式**多带 `stream_options: { include_usage: true }`（其余三家流式本来就报用量，不多塞）。中转站 400/422 掉它且还没吐内容时，去掉该字段再流式重试一次，仍失败才退非流式——多出来的是一次不烧 token 的失败请求，换的是流式不退化。
+
 Trace 事件协议本身（`domain/trace.ts` 的 `TraceEventV1`）自带 `schemaVersion`，后续加字段先冻结已有字段再扩展。**apiKey 永不入 Trace**：不是靠过滤，而是没有任何事件带 key 字段，且 `provider_request.endpoint` 的 query string 整段砍掉。
 
 INT-01 的兼容检查项：云端合成一旦在设置页可选，`createOutputEngine` 的 `note` / `degraded` 必须送到界面，降级当错误显示——现在这两个值在 `defaultSpeechEngines` 里被丢弃。
