@@ -39,6 +39,6 @@
 | [FE-23](specs/FE-23.md) | Live Inspector 外壳与实时订阅 | READY，仅本地实现 |
 | [FE-24](specs/FE-24.md) | 泳道时间线、检查器与导出 | READY，仅本地实现 |
 | [FE-25](specs/FE-25.md) | 上下文布局、记忆清单与实时数据流 | READY，仅本地实现 |
-| [FE-26](specs/FE-26.md) | F9 Ops 成本页 | READY，仅本地实现 |
+| [FE-26](specs/FE-26.md) | F9 Ops 成本页 | AUTO_PASS（2026-09-13）：A~D 自动 AC 全过（幂等/分页覆盖/时区日界线/未知语义/币种分离/错误率定义/最慢尝试完整计时），全量 1133 回归全绿；UI 目视与真实费用留人工。见[验收报告](reports/FE-26_ACCEPTANCE.md) |
 
 当前执行按[安全计划](../GOAL_EXECUTION_PLAN.md)。早期无报告项状态为未核实/待补证，不认定未实现或通过；已有报告项仍待审阅。

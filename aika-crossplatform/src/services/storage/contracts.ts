@@ -86,6 +86,8 @@ export const SETTING_KEYS = {
   traceIncludeText: "trace.includeText",
   /** 开发者模式（FE-09）。关着时标题栏没有工作台入口。 */
   devMode: "devtools.enabled",
+  /** 版本化价目（FE-26 成本页）。价格由使用者显式输入，不内置实时价。 */
+  usagePrices: "usage.pricing",
   /**
    * CORE-03 迁移期用过 `core.orchestrator = legacy | kernel`。CORE-06 删除旧编排后
    * 这个 key 不再被读写；旧库里残留的值会被当作普通未知设置忽略，不报错、不迁移。

@@ -10,16 +10,17 @@ import { SecretStoreToken } from "../../services/storage/tokens";
 import { createVoiceOutputSettings } from "../../services/voice/outputSettings";
 import type { VoiceOutputConfig } from "../../services/voice/outputEngine";
 import { TraceRecorderToken, TraceSettingsToken, TraceSinkToken } from "../../services/trace/tokens";
-import { UsageLedgerToken } from "../../services/usage/tokens";
 import { createCompanionPresenter } from "../../presentation/companionPresenter";
 import { createVoicePresenter } from "../../presentation/voicePresenter";
 import { createDevToolsPresenter } from "../../presentation/devToolsPresenter";
 import { createMemoryPresenter } from "../../presentation/memoryPresenter";
 import { createStoragePresenter } from "../../presentation/storagePresenter";
 import { createInspectorPresenter } from "../../presentation/inspectorPresenter";
+import { createOpsPresenter } from "../../presentation/opsPresenter";
+import { UsageLedgerStoreToken, UsageLedgerToken } from "../../services/usage/tokens";
 import {
   CompanionPresenterToken, DevToolsPresenterToken, MemoryPresenterToken,
-  StoragePresenterToken, VoicePresenterToken, InspectorPresenterToken,
+  StoragePresenterToken, VoicePresenterToken, InspectorPresenterToken, OpsPresenterToken,
 } from "../../presentation/tokens";
 
 /**
@@ -57,11 +58,11 @@ export function presentationPlugin(options: PresentationPluginOptions = {}): Aik
       RuntimeToken, ProviderSettingsToken,
       MemoryAccessToken, StickerLibraryToken, SpeechEnginesToken,
       TraceRecorderToken, TraceSinkToken, TraceSettingsToken,
-      UsageLedgerToken,
+      UsageLedgerToken, UsageLedgerStoreToken,
     ],
     provides: [
       CompanionPresenterToken, VoicePresenterToken, DevToolsPresenterToken,
-      MemoryPresenterToken, StoragePresenterToken, InspectorPresenterToken,
+      MemoryPresenterToken, StoragePresenterToken, InspectorPresenterToken, OpsPresenterToken,
     ],
     activate(context) {
       const storage = context.registrar.tryResolve(StorageToken);
@@ -142,6 +143,17 @@ export function presentationPlugin(options: PresentationPluginOptions = {}): Aik
       // 那时页面负责说清楚，而不是显示一个空库。
       context.registrar.provide(StoragePresenterToken, () => createStoragePresenter({
         executor: storage?.sqlExecutor ?? null,
+      }), { disposer: (value) => value.dispose() });
+
+      // Ops 成本页（FE-26）：台账 store 是可选能力，没装 usagePlugin 时页面
+      // 显示「没有采集」，入口照常存在。
+      const usageStore = context.registrar.tryResolve(UsageLedgerStoreToken);
+      context.registrar.provide(OpsPresenterToken, () => createOpsPresenter({
+        store: usageStore ?? null,
+        loadStorage: storage
+          ? async () => storage
+          : async () => { throw new Error("本地存储尚未装配，价目无法保存"); },
+        ...(traceSettings ? { isCaptureEnabled: () => traceSettings.get().enabled } : {}),
       }), { disposer: (value) => value.dispose() });
     },
   };

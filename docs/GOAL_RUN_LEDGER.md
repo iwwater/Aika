@@ -67,7 +67,7 @@
 | 3 | FE-24 实时浮层 | AUTO_PASS（待人工） | 见会话日志 | 时间线宁缺毋假/导出逐字节一致全过；目视留人工 |
 | 3 | FE-25 上下文视图 | AUTO_PASS（待人工） | 见会话日志 | 布局三态/不回查存储/turnFlow 一致性全过 |
 | 3 | LLM-12 用量台账 | AUTO_PASS（待人工） | 见会话日志 | UsageRecordV1+双 store 同用例包+recorder 采集；门禁违规（providerClient 调用方）重构修复；定向 98+全量 1104 全绿 tsc 0；真实计费 NOT RUN |
-| 3 | FE-26 成本页 | NOT RUN | | 硬前置 LLM-12（**下一节点**） |
+| 3 | FE-26 成本页 | AUTO_PASS（待人工） | 见会话日志 | usageStats 纯函数+OpsPresenter+工作台成本页签；幂等/分页覆盖/时区/未知语义/币种/错误率/最慢尝试全过；1133 回归全绿 tsc 0；真实费用 NOT RUN |
 | 4 | RT-01 契约 | NOT RUN | | |
 | 4 | RT-02 身份隔离 | NOT RUN | | 生产 Runtime scope 隔离 |
 | 4 | RT-03 权限 | NOT RUN | | RT-03 前置于 AGT |
@@ -117,3 +117,4 @@
 - 2026-09-13 05:18 Wave 3 FE-24 AUTO_PASS（待人工）：buildTurnTimeline（真实配对才给耗时、负差 null、重复吞掉、缺 turn_end=running）、inspectorPresenter 选中轮/时间线/导出（与页面投影逐字节一致 + coverageNote）、LiveInspector 时间线与详情渲染。170 回归全绿 tsc 0。**下一节点：FE-25；再 LLM-12→FE-26。**
 - 2026-09-13 05:28 Wave 3 FE-25 AUTO_PASS（待人工）：domain/contextLayout（逻辑块顺序、kept/trimmed/notRetrieved 三态、content=null 不回查、缺快照 supported=false）、LiveInspector 上下文 pane。577 回归全绿 tsc 0。**下一节点：LLM-12 用量台账 → FE-26 成本页。**
 - 2026-09-13 06:06 Wave 3 LLM-12 AUTO_PASS（待人工）：domain/usageLedger（UsageRecordV1/coverage 三态/legacy scope）+ usage 服务（sqlite/memory 双 store 同用例包、recorder 采集：per-attempt started/终态幂等 upsert、Trace enabled 同源门控、写失败旁路化+有界队列+诊断）+ providerClient onRequestUsage 样本通道（4xx 重试/fallback/断流各自取证；purpose 缺省 foreground→unknown 属契约修正）+ adapter（proactive/foreground）与 extractor（maintenance/summary）真实接线 + usagePlugin 装配。architecture 门禁（providerClient 调用方白名单）曾违规，重构为 domain 样本类型+结构切片+泛型 observe 后恢复。定向 98/受影响回归 273/全量 1104 全绿，tsc 0。真实计费 NOT RUN。**下一节点：FE-26 成本页（消费 LLM-12）→ Wave 4（RT-01~04、GW-01~03）。**
+- 2026-09-13 06:47 Wave 3 FE-26 AUTO_PASS（待人工）：domain/usageStats（attemptId 幂等、错误率 failed/(completed+failed) 且取消/无终态另计、coverage 分布、missingPurposes 未采集≠0、时区日界线 localDayKey、版本化价目按生效日匹配、币种分列不换算、SPEC 算例 0.006、慢尝试只取完整计时）+opsPresenter（cursor 翻页+coverageNote、价目 KV 持久化/校验拒绝/失败回滚/损坏明说、采集关闭标注）+ OpsPage/工作台成本页签 + UsageLedgerStoreToken 只读端口。修复 presentationPlugin 漏声明 optional 触发 DEPENDENCY_NOT_DECLARED 拒启动（门禁按设计工作）。定向 29/全量 1133 全绿 tsc 0。**Wave 3 全部节点完成。下一节点：Wave 4 RT-01（契约）。**

@@ -5,7 +5,7 @@ import { TraceSettingsToken } from "../../services/trace/tokens";
 import { createMemoryUsageLedger } from "../../services/usage/memoryUsageLedger";
 import { createSqliteUsageLedger } from "../../services/usage/sqliteUsageLedger";
 import { createUsageLedgerRecorder } from "../../services/usage/usageRecorder";
-import { UsageLedgerToken } from "../../services/usage/tokens";
+import { UsageLedgerStoreToken, UsageLedgerToken } from "../../services/usage/tokens";
 
 /**
  * Provider 用量台账（LLM-12）。
@@ -28,7 +28,7 @@ export function usagePlugin(options: UsagePluginOptions = {}): AikaPlugin {
     version: "1.0.0",
     requires: [ClockToken],
     optional: [StorageToken, TraceSettingsToken],
-    provides: [UsageLedgerToken],
+    provides: [UsageLedgerToken, UsageLedgerStoreToken],
     async activate(context) {
       const clock = context.registrar.resolve(ClockToken);
       const storage = context.registrar.tryResolve(StorageToken);
@@ -54,6 +54,8 @@ export function usagePlugin(options: UsagePluginOptions = {}): AikaPlugin {
       });
 
       context.registrar.provide(UsageLedgerToken, () => recorder);
+      // 只读查询端口：FE-26 成本页经 OpsPresenter 消费同一份数据。
+      context.registrar.provide(UsageLedgerStoreToken, () => store);
     },
   };
 }

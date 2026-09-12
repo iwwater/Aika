@@ -5,6 +5,7 @@ import type { DevToolsPresenter } from "./devToolsPresenter";
 import type { MemoryPresenter } from "./memoryPresenter";
 import type { StoragePresenter } from "./storagePresenter";
 import type { InspectorPresenter } from "./inspectorPresenter";
+import type { OpsPresenter } from "./opsPresenter";
 
 /**
  * 展示层服务标识。
@@ -40,3 +41,9 @@ export const MemoryPresenterToken = token<MemoryPresenter>("presentation.memory"
  * 能力」，而不是给一张空表让人以为库是空的。
  */
 export const StoragePresenterToken = token<StoragePresenter>("presentation.storage");
+/**
+ * Ops 成本页 Presenter（FE-26）。
+ *
+ * 同样**总是**注册：没装用量台账时页面要能说「没有采集」，而不是入口消失。
+ */
+export const OpsPresenterToken = token<OpsPresenter>("presentation.ops");

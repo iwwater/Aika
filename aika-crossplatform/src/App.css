@@ -500,3 +500,20 @@ mark.speaking { color: var(--cyan); background: rgba(55,230,255,.14); border-rad
   border-top: 1px solid rgba(128,128,128,0.25); white-space: pre-wrap;
 }
 .live-inspector-row[role="button"] { cursor: pointer; }
+
+/* F9 Ops 成本页（FE-26） */
+.ops-page { display: flex; flex-direction: column; gap: 14px; padding: 12px 16px; overflow-y: auto; }
+.ops-tz { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary, #888); }
+.ops-tz input { width: 150px; }
+.ops-coverage { font-size: 11px; color: var(--text-secondary, #888); }
+.ops-loading { font-size: 12px; color: var(--text-secondary, #888); }
+.ops-error { color: #d64545; font-size: 12px; margin: 0; }
+.ops-block h4 { margin: 0 0 6px; font-size: 13px; }
+.ops-block { border: 1px solid var(--border, #333); border-radius: 8px; padding: 10px 12px; }
+.ops-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.ops-table th, .ops-table td { border-bottom: 1px solid var(--border, #2a2a2a); padding: 4px 8px; text-align: left; }
+.ops-table th { color: var(--text-secondary, #888); font-weight: 500; white-space: nowrap; }
+.ops-note { color: var(--text-secondary, #888); font-size: 11px; margin-left: 6px; }
+.ops-price-form { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.ops-price-form input { width: 130px; font-size: 12px; }
+.ops-more { align-self: center; font-size: 12px; }
