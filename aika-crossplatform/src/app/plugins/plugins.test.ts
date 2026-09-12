@@ -9,7 +9,7 @@ import { createSqliteStorage } from "../../services/storage/sqliteStorage";
 import { StorageToken } from "../../services/storage/tokens";
 import { createAikaKernel } from "../composition";
 import { testHostPlugins } from "../hosts";
-import { llmPlugins, memoryPlugin, noMemoryPlugin, providerSettingsPlugin, runtimePlugin } from ".";
+import { contextSourcesPlugin, llmPlugins, memoryPlugin, noMemoryPlugin, providerSettingsPlugin, runtimePlugin } from ".";
 
 /**
  * LLM 能力插件的装配。
@@ -76,25 +76,28 @@ describe("LLM 能力插件装配", () => {
     expect(dispose).toHaveBeenCalledOnce();
   });
 
-  it("有 memoryV2 就注册仓储与记忆上下文源", async () => {
+  it("有 memoryV2 就注册仓储；上下文来源由唯一装配点给出 memory+knowledge", async () => {
     const { kernel } = await bootWith(await realStorage());
 
     expect(kernel.registry.has(MemoryRepositoryToken)).toBe(true);
-    expect(kernel.registry.resolve(ContextSourcesToken)).toHaveLength(1);
+    const sources = kernel.registry.resolve(ContextSourcesToken);
+    // SQLite 存储带 sqlExecutor：memory 源 + knowledge 源（LLM-05 装配点）。
+    expect(sources.map((source) => source.id)).toEqual(["memory", "knowledge"]);
 
     await kernel.dispose();
   });
 
-  it("没有记忆能力的宿主：仓储 token 根本不注册，上下文源为空", async () => {
+  it("没有记忆能力的宿主：仓储 token 根本不注册，knowledge 仍然独立装配", async () => {
     const storage = storageWithoutMemoryV2(await realStorage());
     const { kernel, report } = await bootWith(storage, [
-      providerSettingsPlugin(), noMemoryPlugin(), runtimePlugin(),
+      providerSettingsPlugin(), noMemoryPlugin(), contextSourcesPlugin(), runtimePlugin(),
     ]);
 
     expect(report.ok).toBe(true);
     // 拿到的是 null，不是一个「能调但永远为空」的假仓储。
     expect(kernel.registry.tryResolve(MemoryRepositoryToken)).toBeNull();
-    expect(kernel.registry.resolve(ContextSourcesToken)).toEqual([]);
+    // memory 缺失不让 knowledge 一起消失（LLM-05）。
+    expect(kernel.registry.resolve(ContextSourcesToken).map((source) => source.id)).toEqual(["knowledge"]);
     // Runtime 照样能装配起来：没有记忆不等于不能对话。
     expect(kernel.registry.resolve(RuntimeToken)).toBeDefined();
 
@@ -105,7 +108,9 @@ describe("LLM 能力插件装配", () => {
     const storage = storageWithoutMemoryV2(await realStorage());
 
     const { report } = await bootWith(storage, [
-      providerSettingsPlugin(), memoryPlugin(), runtimePlugin(),
+      // contextSourcesPlugin 在场：ContextSourcesToken 有人提供，
+      // 这样失败就落在 memory 自己的违约上，而不是 runtime 的缺依赖上。
+      providerSettingsPlugin(), memoryPlugin(), contextSourcesPlugin(), runtimePlugin(),
     ]);
 
     expect(report.ok).toBe(false);
@@ -118,7 +123,7 @@ describe("LLM 能力插件装配", () => {
 
     const { report } = await createAikaKernel({
       hostPlugins: testHostPlugins({ storage }),
-      // 少装 memory：ContextSourcesToken 没人提供。
+      // 少装 memory 与 contextSources：ContextSourcesToken 没人提供。
       featurePlugins: [providerSettingsPlugin(), runtimePlugin()],
       installLegacyPorts: false,
     });
@@ -162,7 +167,7 @@ describe("LLM 能力插件装配", () => {
 
     const { report } = await createAikaKernel({
       hostPlugins: testHostPlugins({ storage }),
-      featurePlugins: [providerSettingsPlugin(), memoryPlugin(), squatter, runtimePlugin()],
+      featurePlugins: [providerSettingsPlugin(), memoryPlugin(), contextSourcesPlugin(), squatter, runtimePlugin()],
       installLegacyPorts: false,
     });
 

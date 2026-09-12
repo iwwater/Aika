@@ -2,6 +2,7 @@ import type { AikaPlugin } from "../../kernel";
 import { PROVIDER_PRESETS, type ProviderConfig } from "../../domain/providers";
 import { createProviderSettings } from "../../services/runtime/providerSettings";
 import { ProviderSettingsToken } from "../../services/runtime/tokens";
+import { contextSourcesPlugin } from "./contextSourcesPlugin";
 import { memoryPlugin } from "./memoryPlugin";
 import { runtimePlugin, type RuntimePluginOptions } from "./runtimePlugin";
 import { stickersPlugin } from "./stickersPlugin";
@@ -9,6 +10,7 @@ import { tracePlugin } from "./tracePlugin";
 import { voicePlugin } from "./voicePlugin";
 
 export { memoryPlugin, noMemoryPlugin } from "./memoryPlugin";
+export { contextSourcesPlugin } from "./contextSourcesPlugin";
 export { runtimePlugin, type RuntimePluginOptions } from "./runtimePlugin";
 export { presentationPlugin } from "./presentationPlugin";
 export { stickersPlugin } from "./stickersPlugin";
@@ -43,7 +45,7 @@ export function providerSettingsPlugin(
  * core.orchestrator 开关控制，是第二步的事。
  */
 export function llmPlugins(options: RuntimePluginOptions = {}): AikaPlugin[] {
-  return [providerSettingsPlugin(), memoryPlugin(), runtimePlugin(options)];
+  return [providerSettingsPlugin(), memoryPlugin(), contextSourcesPlugin(), runtimePlugin(options)];
 }
 
 /**
@@ -57,6 +59,7 @@ export function capabilityPlugins(options: RuntimePluginOptions = {}): AikaPlugi
   return [
     providerSettingsPlugin(),
     memoryPlugin(),
+    contextSourcesPlugin(),
     // Trace 排在 runtime 之前只是可读性：真正的顺序由内核按 requires/optional 解析。
     tracePlugin(),
     runtimePlugin(options),

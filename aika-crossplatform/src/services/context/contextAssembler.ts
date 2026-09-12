@@ -20,10 +20,19 @@ import {
 import type { RelationshipState } from "../../domain/relationship";
 import type { CharacterSoul, ModeConfig, UserSoul } from "../../domain/soul";
 
+/** 只读 scope：来源可据此过滤（知识解锁阶段/角色/模式）；缺失时来源自行决定降级。 */
+export interface ContextSourceScope {
+  characterId?: string;
+  stage?: "new" | "familiar" | "close";
+  mode?: string;
+}
+
 export interface ContextSourceInput {
   query: string;
   now: number;
   signal: AbortSignal;
+  /** 由 AssembleInput 透传；来源不得读全局可变状态或用 query 覆盖解锁级别。 */
+  scope?: ContextSourceScope;
 }
 
 /** 一个可选上下文源。真实 Memory/RAG/环境由 LLM-04/05 实现，本阶段只消费接口。 */
@@ -322,7 +331,16 @@ export function createContextAssembler(options: ContextAssemblerOptions = {}): C
       const signal = input.signal ?? new AbortController().signal;
 
       const outcomes = await Promise.all(
-        sources.map((source) => loadSource(source, { query: input.query, now: input.now, signal }, sourceTimeoutMs, timers)),
+        sources.map((source) => loadSource(source, {
+          query: input.query,
+          now: input.now,
+          signal,
+          scope: {
+            characterId: input.characterSoul.id,
+            stage: input.relationship.stage,
+            mode: input.mode.mode,
+          },
+        }, sourceTimeoutMs, timers)),
       );
 
       const droppedSources: DroppedSource[] = [];

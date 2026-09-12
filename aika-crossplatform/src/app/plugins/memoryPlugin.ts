@@ -1,6 +1,4 @@
 import { KernelError, type AikaPlugin } from "../../kernel";
-import { ContextSourcesToken } from "../../services/context/tokens";
-import { createMemorySource } from "../../services/memory/memorySource";
 import { createMemoryRepository } from "../../services/memory/memoryRepository";
 import { MemoryAccessToken, MemoryRepositoryToken, type MemoryAccess } from "../../services/memory/tokens";
 import { StorageToken } from "../../services/storage/tokens";
@@ -24,7 +22,8 @@ export function memoryPlugin(): AikaPlugin {
     id: "llm.memory",
     version: "1.0.0",
     requires: [StorageToken, ClockToken],
-    provides: [MemoryRepositoryToken, MemoryAccessToken, ContextSourcesToken],
+    // 上下文来源集合改由 contextSourcesPlugin 统一装配（LLM-05）；这里只出记忆能力。
+    provides: [MemoryRepositoryToken, MemoryAccessToken],
     activate(context) {
       const storage = context.registrar.resolve(StorageToken);
       const clock = context.registrar.resolve(ClockToken);
@@ -87,7 +86,6 @@ export function memoryPlugin(): AikaPlugin {
 
       context.registrar.provide(MemoryRepositoryToken, () => repository);
       context.registrar.provide(MemoryAccessToken, () => access);
-      context.registrar.provide(ContextSourcesToken, () => [createMemorySource(repository)]);
     },
   };
 }
@@ -95,16 +93,17 @@ export function memoryPlugin(): AikaPlugin {
 /**
  * 没有记忆能力的宿主用这个。
  *
- * 它只提供空的上下文来源，**不注册 MemoryRepositoryToken**——消费方按 optional
- * + tryResolve 拿到 null 就知道「这台机器上没有记忆」，而不是拿到一个假仓储。
+ * 上下文来源集合由 contextSourcesPlugin 统一装配：它 optional 解析
+ * MemoryRepositoryToken，拿不到就不加记忆源——所以本插件不再需要替谁
+ * 提供空来源。它保留在这里是为了维持「有没有记忆」是装配期选择的语义。
  */
 export function noMemoryPlugin(): AikaPlugin {
   return {
     id: "llm.memory",
     version: "1.0.0",
-    provides: [ContextSourcesToken],
-    activate(context) {
-      context.registrar.provide(ContextSourcesToken, () => []);
+    provides: [],
+    activate() {
+      // 刻意不注册任何服务：消费方 tryResolve 拿到 null 即「本机无记忆」。
     },
   };
 }

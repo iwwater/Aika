@@ -60,7 +60,7 @@
 | 1 | FE-13 | REVIEWED_AUTO | 见会话日志 | 唯一缺全量回归的报告（已记录）；浏览器闩锁复现有力 |
 | 2 | INT-01 可自动消费者检查 | PARTIAL | 见会话日志 | 自动契约列 PASS（109 测试 exit 0）；浏览器/Tauri/手机/真实Provider 四列 NOT RUN 留人工队列 |
 | 3 | LLM-04 后台写回 | AUTO_PASS（fixture） | 见会话日志 | MemoryMaintenance 重写+计量埋点；274 回归全绿 tsc 0；真实服务 NOT RUN |
-| 3 | LLM-05 RAG | NOT RUN | | |
+| 3 | LLM-05 RAG | PARTIAL | 见会话日志 | A/B/C/E 全过（15/15 命中）；AC-D 真实模型 NOT RUN 无凭证；装配点改 contextSourcesPlugin |
 | 3 | TTS-04 设置与错误传播 | NOT RUN | | |
 | 3 | LLM-11 上下文快照 | NOT RUN | | |
 | 3 | FE-23 时间线 | NOT RUN | | 依赖 LLM-11 |
@@ -110,3 +110,4 @@
 - 2026-09-13 02:52 Wave 1 FE-01～13：Explore 审阅 10 份报告（AC 证据链完整，突变自查诚实）+ 组件/页面核实；新写 FE-01/02/03 复核补证报告；实跑 `npx vitest run src/hooks src/presentation src/domain/conversation.test.ts src/domain/captionHighlight.test.ts` → 10 文件 / 143 测试 exit 0。更新 FE 索引 13 行状态。共性弱项：界面 AC 以"组件只转发"替代 DOM 证据、真机 NOT RUN 归 INT-01/03；FE-09/10/12 基线计数漂移、FE-13 缺全量回归，均记录。**Wave 1 全部完成。**
 - 2026-09-13 02:55 Wave 2 INT-01：写 reports/INT-01_ACCEPTANCE.md（分列）；实跑 composition/remote/storageCompatibility/storage.conformance/companionRuntime/useCompanionSession.integration → 6 文件 / 109 测试 exit 0。结论 PARTIAL：自动契约列 PASS；浏览器页面、Tauri plugin-sql、真实手机、真实 Provider 四列 NOT RUN。旧版 Remote 基线可作 RT-02 之前的本地前置。
 - 2026-09-13 03:23 Wave 3 LLM-04 AUTO_PASS（fixture）：重写 services/memory/writeback.ts 为 MemoryMaintenance（批次快照/稳定ID/单worker/退避1s→30s×3/epoch作废/journal KV持久化/8轮阈值/容量上限），新增 maintenanceJournal.ts、RequestMetric 计量埋点（providerClient/extractor/adapter），presenter 切换装配。回归 274 passed+1 skipped exit 0，项目 tsc 0 错误。报告 LLM-04_AGENT_MEMORY_WRITEBACK_ACCEPTANCE.md。注意：dispose 不异步 flush（SPEC 接受 <8 轮窗口丢失）；hook 集成测试注入阈值 1 保持重试语义。
+- 2026-09-13 04:05 Wave 3 LLM-05 PARTIAL：新增 domain/knowledge + knowledgeIndex（staging/原子激活/FTS 召回+TS BM25/缓存/降级）+ knowledgeSource + contextSourcesPlugin 唯一装配点；memoryPlugin 不再提供 ContextSourcesToken。冻结语料 15/15 命中、5 无答案空命中；回归 154 测试全绿 tsc 0；矩阵/plugins/hook 消费者同步更新。AC-D 真实模型 NOT RUN。

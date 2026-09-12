@@ -8,7 +8,7 @@
 | [LLM-02](specs/LLM-02_RUNTIME_CONTEXT.md) | Runtime / Context / 取消 | 已自测 4 文件/46 测试通过；真实模型样本与 Hook 接入 NOT RUN；待审阅，不新增完成声明 |
 | [LLM-03](specs/LLM-03_MEMORY_USER_SOUL.md) | Memory / User Soul | 已自测通过；已接入存储与运行时；真实 SQLite 已跑通；AC-D 真实模型 10 样本 REAL RUN（10/10 命中、0 伪造）；回复质量待审阅 |
 | [LLM-04](specs/LLM-04_AGENT_MEMORY_WRITEBACK.md) | 单次 Agent / 后台写回 | 已实现（2026-09-13）：MemoryMaintenance 唯一 worker + RequestMetric 计量；定向回归 274 测试全绿；真实服务 NOT RUN。见[验收报告](reports/LLM-04_AGENT_MEMORY_WRITEBACK_ACCEPTANCE.md) |
-| [LLM-05](specs/LLM-05_KNOWLEDGE_RAG.md) | Knowledge / RAG | 未开始 |
+| [LLM-05](specs/LLM-05_KNOWLEDGE_RAG.md) | Knowledge / RAG | PARTIAL（2026-09-13）：A/B/C/E 自动全过（真实 SQLite FTS5，15/15 命中）；AC-D 真实模型问答 NOT RUN（无凭证）。见[验收报告](reports/LLM-05_ACCEPTANCE.md) |
 | [LLM-06](specs/LLM-06_TRACE_PROTOCOL.md) | Trace 采集协议与 Sink 端口（F3 数据底座） | 已自测 A–E 全 PASS；两实现同用例包 31 测试通过，五处突变各命中；无生产消费者（本阶段预期如此）；待审阅 |
 | [LLM-07](specs/LLM-07_TRACE_WIRING.md) | Trace 接入（Runtime 侧与开关） | 已自测 A–F 全 PASS；三处突变各命中；里程碑全量 820 测试通过；待审阅 |
 | [LLM-08](specs/LLM-08_TRACE_SOURCES.md) | Trace 余下三个事件源 | 已自测 A–E 全 PASS；三处突变各命中（其中一条用例的理由被突变证伪后已修正）；全量 829 测试通过；待审阅 |

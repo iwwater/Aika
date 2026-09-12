@@ -20,7 +20,7 @@ import { createAikaKernel } from "../composition";
 import { testHostPlugins } from "../hosts";
 import { remotePlugin } from "../hosts/plugins";
 import {
-  capabilityPlugins, memoryPlugin, providerSettingsPlugin, runtimePlugin,
+  capabilityPlugins, contextSourcesPlugin, memoryPlugin, providerSettingsPlugin, runtimePlugin,
   sampleCapabilityPlugin, SampleCapabilityToken, stickersPlugin, voicePlugin,
 } from ".";
 
@@ -169,7 +169,7 @@ describe("CORE-05-B 能力缺失是常态", () => {
     const { kernel, report } = await createAikaKernel({
       hostPlugins: testHostPlugins({ storage: await realStorage() }),
       featurePlugins: [
-        providerSettingsPlugin(), memoryPlugin(), runtimePlugin(), voicePlugin(),
+        providerSettingsPlugin(), memoryPlugin(), contextSourcesPlugin(), runtimePlugin(), voicePlugin(),
         stickersPlugin(async () => []),
       ],
     });

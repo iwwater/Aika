@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import type { AikaKernel, AikaPlugin } from "../kernel";
 import { testHostPlugins } from "./hosts";
-import { defaultSpeechEngines, memoryPlugin, providerSettingsPlugin, runtimePlugin, voicePlugin } from "./plugins";
+import { contextSourcesPlugin, defaultSpeechEngines, memoryPlugin, providerSettingsPlugin, runtimePlugin, voicePlugin } from "./plugins";
 import type { ConsumerObservation, ConsumerScenario, MatrixCase, MatrixResult } from "./swapMatrix";
 import { runMatrix } from "./swapMatrix";
 import type { AikaStorage } from "../services/storage/contracts";
@@ -260,7 +260,7 @@ function contextCases(): MatrixCase[] {
       async open() {
         const { storage, close } = await freshSqlite();
         await storage.memoryV2?.save(confirmedMemorySnapshot());
-        return { hostPlugins: testHostPlugins({ storage }), featurePlugins: [memoryPlugin()], close };
+        return { hostPlugins: testHostPlugins({ storage }), featurePlugins: [memoryPlugin(), contextSourcesPlugin()], close };
       },
     },
     {
@@ -355,7 +355,7 @@ function providerCases(): MatrixCase[] {
       vi.stubGlobal("fetch", protocolFixture(protocol).fetch);
       return {
         hostPlugins: testHostPlugins({ storage }),
-        featurePlugins: [providerSettingsPlugin(providerConfig(protocol)), memoryPlugin(), runtimePlugin()],
+        featurePlugins: [providerSettingsPlugin(providerConfig(protocol)), memoryPlugin(), contextSourcesPlugin(), runtimePlugin()],
         close: () => { close(); vi.unstubAllGlobals(); },
       };
     },
