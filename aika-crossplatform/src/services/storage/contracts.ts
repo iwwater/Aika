@@ -97,6 +97,8 @@ export const SETTING_KEYS = {
   usagePrices: "usage.pricing",
   /** 外部账户绑定关系（RT-02）。损坏按「没有任何绑定」处理（fail-closed）。 */
   identityBindings: "identity.bindings.v1",
+  /** 权限请求记录（RT-03）。重启后 pending 保持 pending，绝不自动批准。 */
+  permissionRequests: "permission.requests.v1",
   /**
    * CORE-03 迁移期用过 `core.orchestrator = legacy | kernel`。CORE-06 删除旧编排后
    * 这个 key 不再被读写；旧库里残留的值会被当作普通未知设置忽略，不报错、不迁移。
