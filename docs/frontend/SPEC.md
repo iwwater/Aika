@@ -4,19 +4,19 @@
 
 | SPEC | 交付 | 状态 |
 | --- | --- | --- |
-| [FE-01](specs/FE-01.md) | Runtime 桥接与消息状态 | 状态未核实；缺正式验收记录 |
-| [FE-02](specs/FE-02.md) | 模式、场景与设置 | 状态未核实；缺正式验收记录 |
-| [FE-03](specs/FE-03.md) | 语音状态与字幕显示 | 状态未核实；缺正式验收记录 |
-| [FE-04](specs/FE-04.md) | 双语对照字幕去重 | 待审阅（未追认） |
-| [FE-05](specs/FE-05.md) | 失败轮重试（前置 CORE-08） | 待审阅（未追认） |
-| [FE-06](specs/FE-06.md) | 撤回与重新生成（前置 FE-05） | 待审阅（未追认） |
-| [FE-07](specs/FE-07.md) | 点击朗读 | 待审阅（未追认） |
-| [FE-08](specs/FE-08.md) | Rewind（回到这里） | 待审阅（未追认） |
-| [FE-09](specs/FE-09.md) | 开发者模式入口与 Trace 查看页（F2/F4） | 待审阅（未追认） |
-| [FE-10](specs/FE-10.md) | 能力调用视图与数据流图（F5/F6） | 待审阅（未追认） |
-| [FE-11](specs/FE-11.md) | 长期记忆管理页（F7） | 待审阅（未追认） |
-| [FE-12](specs/FE-12.md) | 存储浏览页与只读 SQL 控制台（F8） | 待审阅（未追认） |
-| [FE-13](specs/FE-13.md) | 语音页露出识别语言并允许改掉（待审阅） | 待审阅（未追认） |
+| [FE-01](specs/FE-01.md) | Runtime 桥接与消息状态 | 已补证（2026-09-13 复核报告）：hook/presenter 143 测试全绿；页面视觉证据 NOT RUN |
+| [FE-02](specs/FE-02.md) | 模式、场景与设置 | 已补证（2026-09-13 复核报告）：状态层 PASS；键盘/窄屏 AC-C 保留人工队列 |
+| [FE-03](specs/FE-03.md) | 语音状态与字幕显示 | 已补证（2026-09-13 复核报告）：状态层 PASS；浏览器截图 NOT RUN |
+| [FE-04](specs/FE-04.md) | 双语对照字幕去重 | REVIEWED_AUTO（2026-09-13 证据审阅：报告逐 AC 齐全，弱项见账本） |
+| [FE-05](specs/FE-05.md) | 失败轮重试（前置 CORE-08） | REVIEWED_AUTO（2026-09-13 证据审阅：报告逐 AC 齐全，弱项见账本） |
+| [FE-06](specs/FE-06.md) | 撤回与重新生成（前置 FE-05） | REVIEWED_AUTO（2026-09-13 证据审阅：报告逐 AC 齐全，弱项见账本） |
+| [FE-07](specs/FE-07.md) | 点击朗读 | REVIEWED_AUTO（2026-09-13 证据审阅：报告逐 AC 齐全，弱项见账本） |
+| [FE-08](specs/FE-08.md) | Rewind（回到这里） | REVIEWED_AUTO（2026-09-13 证据审阅：报告逐 AC 齐全，弱项见账本） |
+| [FE-09](specs/FE-09.md) | 开发者模式入口与 Trace 查看页（F2/F4） | REVIEWED_AUTO（2026-09-13 证据审阅：报告逐 AC 齐全，弱项见账本） |
+| [FE-10](specs/FE-10.md) | 能力调用视图与数据流图（F5/F6） | REVIEWED_AUTO（2026-09-13 证据审阅：报告逐 AC 齐全，弱项见账本） |
+| [FE-11](specs/FE-11.md) | 长期记忆管理页（F7） | REVIEWED_AUTO（2026-09-13 证据审阅：报告逐 AC 齐全，弱项见账本） |
+| [FE-12](specs/FE-12.md) | 存储浏览页与只读 SQL 控制台（F8） | REVIEWED_AUTO（2026-09-13 证据审阅：报告逐 AC 齐全，弱项见账本） |
+| [FE-13](specs/FE-13.md) | 语音页露出识别语言并允许改掉 | REVIEWED_AUTO（2026-09-13：报告逐 AC 齐全，16 测试范围复跑全绿；无全量回归已记录） |
 | [FE-14](specs/FE-14.md) | 远程输出协议内核：OutboundChannel 与 schema v1（草案） | READY；执行当前已审阅正文 |
 | [FE-15](specs/FE-15.md) | Tauri 宿主 transport（HTTP 轮询）与手机页迁移（草案） | READY；执行当前已审阅正文 |
 | [FE-16](specs/FE-16.md) | 浏览器 dev 宿主 transport 与 Node ws 中继（草案） | READY；执行当前已审阅正文 |
