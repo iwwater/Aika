@@ -98,6 +98,8 @@ export interface TraceContextSnapshotFields {
 interface TraceEventBase {
   schemaVersion: typeof TRACE_SCHEMA_VERSION;
   turnId: string;
+  /** 会话 scope（RT-02，可选增量字段）：旧事件没有它，读取方按 legacy 本地处理。 */
+  conversationId?: string;
   /** 同一轮内从 1 起单调递增；跨轮各自计数。落盘顺序与发生顺序脱钩时靠它还原时序。 */
   seq: number;
   at: number;

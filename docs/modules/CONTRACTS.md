@@ -123,6 +123,19 @@ INT-01 的兼容检查项：云端合成一旦在设置页可选，`createOutput
 | `HostLifecycle` / `createHostLifecycle()` / `HostLivenessState` | `services/runtime/hostLifecycle.ts` | 新端口（可注入心跳/租约/时钟/定时器），无生产装配调用方（宿主接线归 GW/INT-01 真实轨）；三态 online/offline/recovering 只描述本进程，**不宣称云端接管** | RT-02、GW-05、FE 工作台状态展示（后续） |
 | 单 Runtime facade 门禁 | `app/runtimeFacade.test.ts` | 新增架构测试（不改变行为）：`RuntimeToken`/`companionRuntime` 的生产 import 白名单——app/composition、runtimePlugin、presentationPlugin、runtime/tokens、providerAdapter、provider.conformance | 未来 ACP/远程入口的贡献者（进白名单需审阅） |
 
+### v1 之后的追加（2026-09-13，RT-02 会话隔离，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `AccountKeyV1`（platform,botAccount,tenant,sender）/ `ConversationScopeV1` / `canonicalScopeKey` / `canonicalAccountKey` / `LOCAL_CONVERSATION_SCOPE` | `domain/identity.ts` | 新类型+纯函数。旧数据归属 legacy 本地会话（`conversationId "local"`），可回退 | BindingService、Runtime、GW/AGT 外部入口 |
+| `ChatMessage.conversationId?` / `SessionSummary.conversationId?` | `domain/conversation.ts`、`domain/summary.ts` | **可选**字段：旧数据无字段=legacy 本地，读取方归一，不回填假值 | 两个存储实现、Runtime、Presenter |
+| `listMessages(limit, scope?)` / `listMessageTimestamps(scope?)` / `latestSummary(scope?)` | `services/storage/contracts.ts` | **可选**参数：不传=旧行为（单主体口径）；传了只返回该会话（local 匹配含 NULL legacy 行）。SQLite 由 12 变 16 次 try-ALTER（messages/summaries 各加 conversation_id，NULL=legacy），localStorage 版本化 JSON 同语义；升级在临时库验证 | 两个存储实现、`createScopedRuntimeStorage`、`storage.conformance` |
+| `SubmitRequest.conversation?` / `cancel(turnId, scope?)` / `CompanionRuntimeOptions.createScopeView?` / `MAX_WAITING_TURNS=8` / `SESSION_QUEUE_FULL` | `services/runtime/companionRuntime.ts` | 全部可选增量：不传 conversation=legacy 本地（旧行为一字不变，含「新提交取消旧轮」立即接管时序）；跨会话提交进有界队列不取消别人的轮，满则显式 `SESSION_QUEUE_FULL`；cancel 带 scope 校验归属；每轮经 `createScopeView` 拿专属存储视图，单生成槽在 settled+存储完成后才换 scope | runtimePlugin（已接线 scopedStorage）、未来 ACP/远程入口 |
+| `createScopedRuntimeStorage(storage, scope)` | `services/runtime/scopedStorage.ts` | 新函数：AikaStorage → 按会话过滤的 RuntimeStorage 视图 | runtimePlugin |
+| `ContextSourceScope.conversationId?/principalId?` + `AssembleInput` 同名字段 | `services/context/contextAssembler.ts` | 可选透传字段；`memorySource` 据此守门：**principalId 非本地（含 unknown/空/外部）→ 个人记忆 0 片段**（legacy 未声明=本地行为不变） | contextSourcesPlugin 的 memorySource、未来 knowledge/environment 来源 |
+| `TraceEventBase.conversationId?` | `domain/trace.ts` | 可选增量字段，runtime 6 个事件源已写入；redact 走 `...event` 透传；旧事件无字段=legacy 本地 | TracePage/inspector/统计消费方（读不到时按旧逻辑） |
+| `BindingService`（issueBindingCode/claim/principalFor/unbind/list）+ `SETTING_KEYS.identityBindings` | `services/identity/binding.ts` | 新服务：一次性/限期/防暴力/解绑即失效；绑定存储损坏按「无任何绑定」fail-closed。本地可信界面签码、外部入口凭码+四元组账户键认领；外部声明 userId 无效 | RT-03 权限端口、GW-01 渠道入口、FE 绑定 UI（后续） |
+
 ## 详细接口入口
 
 LLM 各自的 `docs/llm/specs/LLM-01…05` 文件内写明实现级接口；[STT](../stt/ARCHITECTURE.md)、[TTS](../tts/ARCHITECTURE.md)、[前端](../frontend/ARCHITECTURE.md) 按共享架构文件引用对应阶段。代码块是拟定逻辑契约，现有类型通过兼容 adapter 映射；不能以名称尚未存在推断已实现，也不要机械新增重复接口。

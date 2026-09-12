@@ -16,6 +16,10 @@ import { toCompanionReply, type ReplyEnvelopeV1 } from "../../domain/companion";
 import type { ProviderUsage } from "../../domain/providers";
 import { companionMessage, formatClockTime, isSameSentence, type ChatMessage } from "../../domain/conversation";
 import {
+  canonicalScopeKey, LOCAL_CONVERSATION_SCOPE,
+  type ConversationScopeV1,
+} from "../../domain/identity";
+import {
   normalizeHistoryMessages,
   type AgentContext, type ContextAssemblyResult, type ContextBudget, type DroppedSource,
 } from "../../domain/context";
@@ -44,6 +48,11 @@ export interface SubmitRequest {
   text: string;
   source: TurnSource;
   mode: ModeConfig;
+  /**
+   * 会话 scope（RT-02）：这一轮属于谁、哪段会话。缺省 = legacy 本地会话
+   * （RT-01 的桌面兼容映射），旧调用方行为一字不变。
+   */
+  conversation?: ConversationScopeV1;
   /**
    * 语音回合号，透传用。
    *
@@ -132,7 +141,8 @@ export interface TurnTrace {
 
 export interface CompanionRuntime {
   submit(request: SubmitRequest): TurnHandle;
-  cancel(turnId: string): void;
+  /** scope 给定时校验轮次归属：只能取消自己会话的轮（RT-02）。 */
+  cancel(turnId: string, scope?: { conversationId: string }): void;
   reportDelivery(receipt: DeliveryReceipt): void;
   subscribe(listener: (event: RuntimeEvent) => void): () => void;
   dispose(): void;
@@ -141,6 +151,12 @@ export interface CompanionRuntime {
 export interface CompanionRuntimeOptions {
   provider: RuntimeProvider;
   storage: RuntimeStorage;
+  /**
+   * 会话 scope 视图工厂（RT-02）。提供后每一轮拿到**只属于自己的存储视图**，
+   * 在途 I/O 闭包里握着的是自己那份；不提供 = 单一全局存储（旧行为，测试与
+   * 单主体桌面用）。
+   */
+  createScopeView?: (scope: ConversationScopeV1) => RuntimeStorage;
   assembler?: ContextAssembler;
   sources?: readonly ContextSource[];
   budget?: Partial<ContextBudget>;
@@ -167,11 +183,23 @@ export interface CompanionRuntimeOptions {
 
 export const DEFAULT_DELIVERY_TIMEOUT_MS = 30_000;
 
+/**
+ * 跨会话等待队列上限（RT-02）：显式有界。满了就拒绝新轮（SESSION_QUEUE_FULL），
+ * 不静默丢弃、也不挤掉已经在等的别人的轮。
+ */
+export const MAX_WAITING_TURNS = 8;
+
 interface Turn {
   id: string;
+  /** 会话 scope（RT-02）：提交时固定，终局不变。 */
+  scope: ConversationScopeV1;
+  /** scope 的规范键（conversationId#threadId），Map 键与判等一律用它。 */
+  conversationKey: string;
+  /** 本轮专用的存储视图；在途 I/O 全走它，不共享可变 scope。 */
+  storageView: RuntimeStorage;
   /** 语音回合号，只用于落库时带上，不参与判定。 */
   voiceTurnId?: number;
-  /** 每次 submit 递增：晚到的旧轮回调靠它作废。 */
+  /** 每次提交递增（按 conversation 分桶）：晚到的旧轮回调靠它作废。 */
   revision: number;
   source: TurnSource;
   mode: ModeConfig;
@@ -278,8 +306,15 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
   const turns = new Map<string, Turn>();
   const userSoul = options.userSoul ?? null;
 
-  let revision = 0;
-  let active: Turn | null = null;
+  /**
+   * RT-02：单实例多会话。每个 conversation 同时至多一个「排队或运行中」的轮；
+   * 全局只有一个生成槽（runningTurn）——跨 conversation 串行排队，绝不并行
+   * 抢同一份 Provider/上下文；同 conversation 保持旧「新提交取消旧轮」语义。
+   */
+  const activeByConversation = new Map<string, Turn>();
+  const revisionByConversation = new Map<string, number>();
+  const waitingQueue: Turn[] = [];
+  let runningTurn: Turn | null = null;
   let disposed = false;
   /** 所有轮次共享的写入队列：取消与生成完成竞争时，落库顺序仍与提交顺序一致。 */
   let writeChain: Promise<void> = Promise.resolve();
@@ -320,7 +355,7 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
     clearDeliveryTimer(turn);
     // settle 是所有终态的唯一漏斗（完成/失败/取消都从这里过），
     // 所以 turn_end 只需要挂在这一处，不会漏也不会重。
-    trace.record(turn.id, {
+    trace.record(turn.id, { conversationId: turn.scope.conversationId,
       kind: "turn_end",
       status: state === "completed" ? "completed" : state === "failed" ? "failed" : "cancelled",
       durationMs: clock.now() - turn.startedAt,
@@ -344,7 +379,23 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
       persisted: settlement.persisted,
       ...(errorCode ? { errorCode } : {}),
     });
-    if (active === turn) active = null;
+    if (runningTurn === turn) {
+      // 生成槽释放：settled 与存储提交都已收尾（persist 已 await），此刻才轮到
+      // 下一个会话——在途 I/O 不可能再看到这个 scope。
+      runningTurn = null;
+      // 只在 map 仍指向自己时除名：同会话可能已有新一轮顶替了它。
+      if (activeByConversation.get(turn.conversationKey) === turn) {
+        activeByConversation.delete(turn.conversationKey);
+      }
+      startNext();
+    } else {
+      // 排队中的轮被取消/结算：从等待队列里除名（startNext 也会跳过 settled）。
+      const queueIndex = waitingQueue.indexOf(turn);
+      if (queueIndex >= 0) waitingQueue.splice(queueIndex, 1);
+      if (activeByConversation.get(turn.conversationKey) === turn) {
+        activeByConversation.delete(turn.conversationKey);
+      }
+    }
     // 终态之后不再接受交付回执：迟到的回执不许改写已经结算的结果。
     turns.delete(turn.id);
     turn.resolve(settlement);
@@ -362,7 +413,7 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
   function persist(turn: Turn, message: ChatMessage): Promise<void> {
     const operation = writeChain.then(
       async () => {
-        await options.storage.appendMessage(message);
+        await turn.storageView.appendMessage(message);
         return true;
       },
       () => false,
@@ -374,7 +425,7 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
   }
 
   function isStale(turn: Turn): boolean {
-    return disposed || turn.settled || turn.revision !== revision;
+    return disposed || turn.settled || turn.revision !== (revisionByConversation.get(turn.conversationKey) ?? 0);
   }
 
   async function persistFragment(turn: Turn): Promise<void> {
@@ -412,7 +463,8 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
     query: string,
     source: TurnSource,
     mode: ModeConfig,
-    voiceTurnId?: number,
+    voiceTurnId: number | undefined,
+    scope: ConversationScopeV1,
   ): Turn {
     const controller = new AbortController();
     let resolve!: (settlement: TurnSettlement) => void;
@@ -421,6 +473,9 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
     });
     return {
       id: idFactory(),
+      scope,
+      conversationKey: canonicalScopeKey(scope),
+      storageView: options.createScopeView ? options.createScopeView(scope) : options.storage,
       ...(voiceTurnId === undefined ? {} : { voiceTurnId }),
       revision: 0,
       source,
@@ -476,7 +531,7 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
       historyRepaired: history.repairedCount,
     });
     turn.estimatedPromptTokens = assembled.estimatedTokens;
-    trace.record(turn.id, {
+    trace.record(turn.id, { conversationId: turn.scope.conversationId,
       kind: "context_assemble",
       estimatedTokens: assembled.estimatedTokens,
       droppedSources: assembled.droppedSources.map((dropped) => ({
@@ -493,13 +548,13 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
     });
     // 装配期观察到的裁剪诊断（LLM-11）：record 内部会再次复核开关，关了就不构造。
     if (assembled.diagnostics) {
-      trace.record(turn.id, { kind: "context_snapshot", ...assembled.diagnostics });
+      trace.record(turn.id, { conversationId: turn.scope.conversationId, kind: "context_snapshot", ...assembled.diagnostics });
     }
   }
 
   async function run(turn: Turn): Promise<void> {
     const startedAt = clock.now();
-    trace.record(turn.id, {
+    trace.record(turn.id, { conversationId: turn.scope.conversationId,
       kind: "turn_start",
       source: turn.source,
       mode: turn.mode.mode,
@@ -520,8 +575,8 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
     let timestamps: number[];
     try {
       [history, timestamps] = await Promise.all([
-        options.storage.listMessages(historyLimit),
-        options.storage.listMessageTimestamps(),
+        turn.storageView.listMessages(historyLimit),
+        turn.storageView.listMessageTimestamps(),
       ]);
     } catch (error) {
       fail(turn, "STORAGE_FAILED", true, messageOf(error));
@@ -535,7 +590,7 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
 
     let summary: string | null = null;
     try {
-      summary = (await options.storage.latestSummary())?.content ?? null;
+      summary = (await turn.storageView.latestSummary())?.content ?? null;
     } catch {
       summary = null;
     }
@@ -555,6 +610,9 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
         history: normalized.messages,
         summary,
         signal: turn.controller.signal,
+        // 会话隔离（RT-02）：随 scope 透传，来源据此守住个人数据。
+        conversationId: turn.scope.conversationId,
+        principalId: turn.scope.principalId,
         // Trace 开启才让装配器采集正文诊断；关着就不构造（LLM-11-C）。
         includeDiagnostics: trace.enabled(),
       });
@@ -632,7 +690,7 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
 
     // 放在这里而不是成功分支里：取消与失败也需要知道「收到了几片、首片多久到」，
     // 那正是排查卡顿与空回复最有用的两个数字。
-    trace.record(turn.id, {
+    trace.record(turn.id, { conversationId: turn.scope.conversationId,
       kind: "provider_stream_meta",
       firstTokenMs: firstChunkAt === null ? null : firstChunkAt - startedAt,
       chunks,
@@ -655,7 +713,7 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
     turn.reply = reply;
     // 回包成型就记一条：mood / sticker / actions 是 F5 要展示的东西，
     // translationDuplicatesReply 是 §0.1 那个退化的可统计形式。
-    trace.record(turn.id, {
+    trace.record(turn.id, { conversationId: turn.scope.conversationId,
       kind: "reply",
       mood: reply.mood,
       replyChars: reply.replyText.length,
@@ -679,8 +737,22 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
     settle(turn, "completed");
   }
 
+  /** 生成槽空闲时从等待队列拉下一轮；跳过排队期间已取消的。 */
+  function startNext(): void {
+    if (runningTurn !== null || disposed) return;
+    while (waitingQueue.length) {
+      const next = waitingQueue.shift() as Turn;
+      if (next.settled) continue;
+      runningTurn = next;
+      // 排队时已 announce 过 assembling；setState 幂等，不重发事件。
+      setState(next, "assembling");
+      void run(next);
+      return;
+    }
+  }
+
   function rejected(code: string, retryable: boolean, message: string): TurnHandle {
-    const turn = createTurn("", "text", DEFAULT_MODE_CONFIG);
+    const turn = createTurn("", "text", DEFAULT_MODE_CONFIG, undefined, LOCAL_CONVERSATION_SCOPE);
     turn.settled = true;
     turn.state = "failed";
     emit(turn, { type: "error", code, retryable, message });
@@ -696,22 +768,56 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
       if (disposed) return rejected("DISPOSED", false, "Runtime 已释放，不再接受新的轮次");
       if (!text) return rejected("EMPTY_INPUT", false, "空输入不会建立新的轮次");
 
-      // 单会话最多一个活动轮：新的一句先把旧的取消掉，再生成新的 turnId。
-      if (active && !active.settled) void cancelTurn(active);
+      // RT-02：scope 在提交时固定；缺省 = legacy 本地会话（旧调用方行为不变）。
+      const scope = request.conversation ?? LOCAL_CONVERSATION_SCOPE;
+      const conversationKey = canonicalScopeKey(scope);
 
-      const turn = createTurn(text, request.source, request.mode ?? DEFAULT_MODE_CONFIG, request.voiceTurnId);
-      revision += 1;
-      turn.revision = revision;
-      active = turn;
+      // 同 conversation：新提交取消旧轮（旧语义，只作用于同一个会话）。
+      const existing = activeByConversation.get(conversationKey);
+      if (existing && !existing.settled) {
+        if (runningTurn === existing) {
+          void cancelTurn(existing);
+        } else {
+          // 排队中的旧轮直接结算，不占队列位。
+          const queueIndex = waitingQueue.indexOf(existing);
+          if (queueIndex >= 0) waitingQueue.splice(queueIndex, 1);
+          void finishAsInterrupted(existing);
+        }
+      }
+
+      const turn = createTurn(text, request.source, request.mode ?? DEFAULT_MODE_CONFIG, request.voiceTurnId, scope);
+      const nextRevision = (revisionByConversation.get(conversationKey) ?? 0) + 1;
+      revisionByConversation.set(conversationKey, nextRevision);
+      turn.revision = nextRevision;
+      activeByConversation.set(conversationKey, turn);
       turns.set(turn.id, turn);
       announceState(turn, "assembling");
-      void run(turn);
+
+      // 跨 conversation 不取消别人的轮次：生成槽忙时进有界队列串行等。
+      // 同 conversation 的替换是例外：槽位直接交给新轮（旧轮正在取消中），
+      // 完全保持旧版「新提交立即开跑」的时序——scope 相同，无换 scope 隔离问题。
+      if (runningTurn === null) {
+        runningTurn = turn;
+        void run(turn);
+      } else if (runningTurn.conversationKey === conversationKey) {
+        runningTurn = turn;
+        void run(turn);
+      } else if (waitingQueue.length >= MAX_WAITING_TURNS) {
+        // 有界溢出显式失败，不静默丢弃也不挤掉别人的轮。
+        fail(turn, "SESSION_QUEUE_FULL", false, "会话队列已满，请稍后再试");
+      } else {
+        waitingQueue.push(turn);
+      }
       return { turnId: turn.id, done: turn.done };
     },
 
-    cancel(turnId: string): void {
+    cancel(turnId: string, scope?: { conversationId: string }): void {
       const turn = turns.get(turnId);
       if (!turn || turn.settled) return;
+      // RT-02：cancel 校验归属——带了 scope 的取消请求只能取消自己会话的轮。
+      if (scope && canonicalScopeKey({ conversationId: scope.conversationId, threadId: undefined }) !== turn.conversationKey) {
+        return;
+      }
       void cancelTurn(turn);
     },
 
@@ -754,7 +860,12 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
     dispose(): void {
       if (disposed) return;
       disposed = true;
-      if (active && !active.settled) void cancelTurn(active);
+      // 收掉所有会话的活动轮：运行中的走完整取消路径，排队中的直接结算。
+      for (const turn of [...activeByConversation.values()]) {
+        if (turn.settled) continue;
+        if (runningTurn === turn) void cancelTurn(turn);
+        else void finishAsInterrupted(turn);
+      }
       listeners.clear();
     },
   };

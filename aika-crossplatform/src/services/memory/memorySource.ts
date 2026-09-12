@@ -6,6 +6,7 @@
  */
 
 import { MEMORY_TYPE_LABELS, type MemoryQuery } from "../../domain/memoryRetrieval";
+import { LOCAL_PRINCIPAL_ID } from "../../domain/identity";
 import type { ContextSnippet } from "../../domain/context";
 import type { ContextSource } from "../context/contextAssembler";
 import type { MemoryRepository } from "./memoryRepository";
@@ -16,6 +17,18 @@ export interface MemorySourceOptions {
   tokenBudget?: number;
 }
 
+/**
+ * 谁能读这份个人记忆（RT-02-D）。
+ *
+ * 记忆库是**本地主体**的个人数据：只有 legacy 本地链路（未声明 principal 的
+ * 旧调用方，RT-01 已把旧数据归属 local）和显式的本地主体可以读。任何外部
+ * principal——无论绑定与否、无论声明了什么 userId——都不读它；绑定外部主体的
+ * 个人记忆库是 RT-04 的事。没有明确授权就拒绝，是这里的唯一取向。
+ */
+function mayReadPersonalMemories(principalId: string | undefined): boolean {
+  return principalId === undefined || principalId === LOCAL_PRINCIPAL_ID;
+}
+
 export function createMemorySource(
   repository: MemoryRepository,
   options: MemorySourceOptions = {},
@@ -23,7 +36,11 @@ export function createMemorySource(
   return {
     id: options.id ?? "memory",
     section: "memory",
-    async load(input: { query: string; now: number }): Promise<ContextSnippet[]> {
+    async load(input: { query: string; now: number; scope?: { principalId?: string } }): Promise<ContextSnippet[]> {
+      if (!mayReadPersonalMemories(input.scope?.principalId)) {
+        // 未授权主体：一个片段都不给。这是隔离，不是「没检索到」。
+        return [];
+      }
       const query: MemoryQuery = {
         text: input.query,
         now: input.now,

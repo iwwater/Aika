@@ -28,6 +28,9 @@ export interface ContextSourceScope {
   characterId?: string;
   stage?: "new" | "familiar" | "close";
   mode?: string;
+  /** 会话隔离（RT-02）：来源据此决定个人数据（记忆/画像）是否可见。 */
+  conversationId?: string;
+  principalId?: string;
 }
 
 export interface ContextSourceInput {
@@ -65,6 +68,9 @@ export interface AssembleInput {
   signal?: AbortSignal;
   /** Trace 开启时置 true：装配期采集裁剪诊断（LLM-11）。关着就不构造正文快照。 */
   includeDiagnostics?: boolean;
+  /** 会话隔离（RT-02）：随 scope 透传给各来源。 */
+  conversationId?: string;
+  principalId?: string;
 }
 
 export const DEFAULT_SOURCE_TIMEOUT_MS = 300;
@@ -435,6 +441,8 @@ export function createContextAssembler(options: ContextAssemblerOptions = {}): C
             characterId: input.characterSoul.id,
             stage: input.relationship.stage,
             mode: input.mode.mode,
+            conversationId: input.conversationId,
+            principalId: input.principalId,
           },
         }, sourceTimeoutMs, timers)),
       );

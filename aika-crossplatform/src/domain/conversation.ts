@@ -37,6 +37,12 @@ export interface ChatMessage extends ChatTurn {
   runtimeTurnId?: string;
   /** 这条消息是怎么来的。proactive 用于统计每日主动消息条数。 */
   source?: MessageSource;
+  /**
+   * 会话 scope（RT-02）：这段历史属于哪个 conversation。
+   * 旧消息没有此字段 = legacy 本地会话（读取时按 local 归属，可回退）；
+   * 任何实现都不得把无 scope 的历史当成其它主体的。
+   */
+  conversationId?: string;
   pending?: boolean;
   error?: boolean;
   /** 被打断且已展示的 assistant 片段不能伪装成完整回复。 */

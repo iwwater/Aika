@@ -26,6 +26,16 @@ function read<T>(key: string, fallback: T): T {
   }
 }
 
+/**
+ * RT-02 的 scope 过滤：local 归属同时匹配旧数据（无字段即 legacy 本地），
+ * 其它 scope 精确匹配。旧数据永远只归属本地会话。
+ */
+function inScope(conversationId: string | undefined, scope?: { conversationId: string }): boolean {
+  if (!scope) return true;
+  const actual = conversationId ?? "local";
+  return actual === scope.conversationId;
+}
+
 function write(key: string, value: unknown, throwOnError = false) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
@@ -41,8 +51,10 @@ export function createLocalStorage(): AikaStorage {
     // 浏览器降级：整份快照一次替换，写失败就抛错，旧快照不动。
     memoryV2: createLocalMemoryStore(browserBackend()),
 
-    async listMessages(limit) {
-      return read<ChatMessage[]>(KEYS.messages, []).slice(-limit);
+    async listMessages(limit, scope) {
+      return read<ChatMessage[]>(KEYS.messages, [])
+        .filter((message) => inScope(message.conversationId, scope))
+        .slice(-limit);
     },
 
     async appendMessage(message) {
@@ -50,9 +62,9 @@ export function createLocalStorage(): AikaStorage {
       write(KEYS.messages, [...messages, message].sort((a, b) => a.createdAt - b.createdAt));
     },
 
-    async listMessageTimestamps() {
+    async listMessageTimestamps(scope) {
       return read<ChatMessage[]>(KEYS.messages, [])
-        .filter((message) => !message.error)
+        .filter((message) => !message.error && inScope(message.conversationId, scope))
         .map((message) => message.createdAt);
     },
 
@@ -98,8 +110,9 @@ export function createLocalStorage(): AikaStorage {
       write(KEYS.memories, read<MemoryRecord[]>(KEYS.memories, []).filter((memory) => memory.id !== id));
     },
 
-    async latestSummary() {
-      const summaries = read<SessionSummary[]>(KEYS.summaries, []);
+    async latestSummary(scope) {
+      const summaries = read<SessionSummary[]>(KEYS.summaries, [])
+        .filter((summary) => inScope(summary.conversationId, scope));
       return summaries.length ? summaries[summaries.length - 1] : null;
     },
 

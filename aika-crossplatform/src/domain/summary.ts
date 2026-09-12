@@ -11,6 +11,11 @@ export interface SessionSummary {
   /** 这段摘要覆盖到哪条消息的时间戳为止（含）。 */
   coversUntil: number;
   createdAt: number;
+  /**
+   * 会话 scope（RT-02）：摘要属于哪个 conversation。
+   * 旧摘要没有此字段 = legacy 本地会话；查询按 scope 过滤，绝不跨会话取摘要。
+   */
+  conversationId?: string;
 }
 
 /** 提示词里保留原文的最近消息条数。 */

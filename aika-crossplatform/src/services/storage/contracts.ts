@@ -34,11 +34,17 @@ export interface AikaStorage {
    */
   readonly sqlExecutor?: SqlExecutor;
 
-  /** 最近 limit 条消息，按时间正序。 */
-  listMessages(limit: number): Promise<ChatMessage[]>;
+  /**
+   * 最近 limit 条消息，按时间正序。
+   *
+   * `scope`（RT-02）给定时只返回该 conversation 的消息（旧数据归属 local）；
+   * 不给定时保持旧行为返回全部——那是单主体桌面的历史口径，不是泄漏通道，
+   * 但调用方应当总是传 scope。
+   */
+  listMessages(limit: number, scope?: { conversationId: string }): Promise<ChatMessage[]>;
   appendMessage(message: ChatMessage): Promise<void>;
-  /** 全部消息的时间戳，用于多因子关系状态。 */
-  listMessageTimestamps(): Promise<number[]>;
+  /** 全部消息的时间戳，用于多因子关系状态；给 scope 时只统计该会话。 */
+  listMessageTimestamps(scope?: { conversationId: string }): Promise<number[]>;
   countMessagesSince(since: number): Promise<number>;
   countProactiveSince(since: number): Promise<number>;
   /**
@@ -56,7 +62,8 @@ export interface AikaStorage {
   setMemoryStatus(id: string, status: MemoryStatus): Promise<void>;
   deleteMemory(id: string): Promise<void>;
 
-  latestSummary(): Promise<SessionSummary | null>;
+  /** 给 scope 时只取该会话的最新摘要；不给时保持旧行为（RT-02）。 */
+  latestSummary(scope?: { conversationId: string }): Promise<SessionSummary | null>;
   saveSummary(summary: SessionSummary): Promise<void>;
   /**
    * 让已有摘要整体失效（LLM-03 删除记忆时用）。
@@ -88,6 +95,8 @@ export const SETTING_KEYS = {
   devMode: "devtools.enabled",
   /** 版本化价目（FE-26 成本页）。价格由使用者显式输入，不内置实时价。 */
   usagePrices: "usage.pricing",
+  /** 外部账户绑定关系（RT-02）。损坏按「没有任何绑定」处理（fail-closed）。 */
+  identityBindings: "identity.bindings.v1",
   /**
    * CORE-03 迁移期用过 `core.orchestrator = legacy | kernel`。CORE-06 删除旧编排后
    * 这个 key 不再被读写；旧库里残留的值会被当作普通未知设置忽略，不报错、不迁移。

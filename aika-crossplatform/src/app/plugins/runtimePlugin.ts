@@ -1,6 +1,7 @@
 import type { AikaPlugin } from "../../kernel";
 import { ContextSourcesToken } from "../../services/context/tokens";
 import { createCompanionRuntime, type TurnTrace } from "../../services/runtime/companionRuntime";
+import { createScopedRuntimeStorage } from "../../services/runtime/scopedStorage";
 import { createStreamChatProvider, providerModels, providerProbe } from "../../services/runtime/providerAdapter";
 import {
   ProviderModelsToken, ProviderProbeToken, ProviderSettingsToken, ProviderToken, RuntimeToken,
@@ -59,6 +60,8 @@ export function runtimePlugin(options: RuntimePluginOptions = {}): AikaPlugin {
       const runtime = createCompanionRuntime({
         provider,
         storage,
+        // RT-02：每轮按提交时的 scope 拿专属存储视图，在途 I/O 不共享可变 scope。
+        createScopeView: (scope) => createScopedRuntimeStorage(storage, scope),
         sources,
         clock,
         timers,

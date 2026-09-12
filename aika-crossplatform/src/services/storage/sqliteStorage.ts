@@ -28,7 +28,8 @@ const SCHEMA = [
      turn_id INTEGER,
      runtime_turn_id TEXT,
      completion_status TEXT NOT NULL DEFAULT 'complete',
-     playback_status TEXT
+     playback_status TEXT,
+     conversation_id TEXT
    )`,
   `CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages (created_at)`,
   `CREATE TABLE IF NOT EXISTS memories (
@@ -43,7 +44,8 @@ const SCHEMA = [
      id INTEGER PRIMARY KEY AUTOINCREMENT,
      content TEXT NOT NULL,
      covers_until INTEGER NOT NULL,
-     created_at INTEGER NOT NULL
+     created_at INTEGER NOT NULL,
+     conversation_id TEXT
    )`,
   `CREATE TABLE IF NOT EXISTS settings (
      key TEXT PRIMARY KEY,
@@ -62,6 +64,9 @@ const MIGRATIONS = [
   "ALTER TABLE messages ADD COLUMN completion_status TEXT NOT NULL DEFAULT 'complete'",
   "ALTER TABLE messages ADD COLUMN playback_status TEXT",
   "ALTER TABLE messages ADD COLUMN runtime_turn_id TEXT",
+  // RT-02 会话 scope：NULL 即 legacy 本地会话，可回退。
+  "ALTER TABLE messages ADD COLUMN conversation_id TEXT",
+  "ALTER TABLE summaries ADD COLUMN conversation_id TEXT",
 ];
 
 interface MessageRow {
@@ -79,6 +84,7 @@ interface MessageRow {
   runtime_turn_id: string | null;
   completion_status: string | null;
   playback_status: string | null;
+  conversation_id: string | null;
 }
 
 interface MemoryRow {
@@ -94,6 +100,7 @@ interface SummaryRow {
   id: number;
   content: string;
   covers_until: number;
+  conversation_id: string | null;
   created_at: number;
 }
 
@@ -111,10 +118,23 @@ function toMessage(row: MessageRow): ChatMessage {
     ...(row.completion_status === "interrupted" ? { completion: "interrupted" as const } : {}),
     playbackStatus: row.playback_status === "played" ? "played" : undefined,
     source: row.source as MessageSource,
+    // NULL 即 legacy 本地会话：读出时归一到 local，调用方拿到的归属总是明确的。
+    conversationId: row.conversation_id ?? "local",
     createdAt: row.created_at,
     time: formatClockTime(row.created_at),
     error: row.is_error === 1,
   };
+}
+
+/**
+ * RT-02 的 scope 匹配谓词：目标 scope 是 local 时同时匹配 NULL（legacy 行），
+ * 其它 scope 只精确匹配。这样旧数据永远只归属本地会话，不会泄漏给外部主体。
+ */
+function scopeMatch(column: string, conversationId: string): string {
+  if (conversationId === "local") {
+    return `(${column} IS NULL OR ${column} = 'local')`;
+  }
+  return `${column} = '${conversationId.replace(/'/g, "''")}'`;
 }
 
 function toMemory(row: MemoryRow): MemoryRecord {
@@ -154,9 +174,11 @@ export async function createSqliteStorage(executor?: SqlExecutor): Promise<AikaS
     // Trace 落盘等「自带表」的消费者从这里拿执行器，各自建表、各自清理。
     sqlExecutor: db,
 
-    async listMessages(limit) {
+    async listMessages(limit, scope) {
+      // scope 过滤（RT-02）：local 归属同时匹配旧数据的 NULL（可回退，不丢历史）。
+      const scopeClause = scope ? " WHERE " + scopeMatch("conversation_id", scope.conversationId) : "";
       const rows = await db.select<MessageRow[]>(
-        "SELECT * FROM messages ORDER BY created_at DESC, rowid DESC LIMIT $1",
+        `SELECT * FROM messages${scopeClause} ORDER BY created_at DESC, rowid DESC LIMIT $1`,
         [limit],
       );
       return rows.reverse().map(toMessage);
@@ -166,8 +188,8 @@ export async function createSqliteStorage(executor?: SqlExecutor): Promise<AikaS
       await db.execute(
         `INSERT OR REPLACE INTO messages
            (id, role, source, content, japanese_text, chinese_translation, created_at, is_error, sticker, mood,
-            turn_id, runtime_turn_id, completion_status, playback_status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+            turn_id, runtime_turn_id, completion_status, playback_status, conversation_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
         [
           message.id,
           message.role,
@@ -183,13 +205,15 @@ export async function createSqliteStorage(executor?: SqlExecutor): Promise<AikaS
           message.runtimeTurnId ?? null,
           message.completion ?? "complete",
           message.playbackStatus ?? null,
+          message.conversationId ?? null,
         ],
       );
     },
 
-    async listMessageTimestamps() {
+    async listMessageTimestamps(scope) {
+      const scopeClause = scope ? " AND " + scopeMatch("conversation_id", scope.conversationId) : "";
       const rows = await db.select<{ created_at: number }[]>(
-        "SELECT created_at FROM messages WHERE is_error = 0 ORDER BY created_at",
+        `SELECT created_at FROM messages WHERE is_error = 0${scopeClause} ORDER BY created_at`,
       );
       return rows.map((row) => row.created_at);
     },
@@ -249,20 +273,24 @@ export async function createSqliteStorage(executor?: SqlExecutor): Promise<AikaS
       await db.execute("DELETE FROM memories WHERE id = $1", [id]);
     },
 
-    async latestSummary() {
+    async latestSummary(scope) {
+      const scopeClause = scope ? " WHERE " + scopeMatch("conversation_id", scope.conversationId) : "";
       const rows = await db.select<SummaryRow[]>(
-        "SELECT * FROM summaries ORDER BY covers_until DESC LIMIT 1",
+        `SELECT * FROM summaries${scopeClause} ORDER BY covers_until DESC LIMIT 1`,
       );
       const row = rows[0];
       return row
-        ? { id: row.id, content: row.content, coversUntil: row.covers_until, createdAt: row.created_at }
+        ? {
+          id: row.id, content: row.content, coversUntil: row.covers_until,
+          createdAt: row.created_at, conversationId: row.conversation_id ?? undefined,
+        }
         : null;
     },
 
     async saveSummary(summary) {
       await db.execute(
-        "INSERT INTO summaries (content, covers_until, created_at) VALUES ($1, $2, $3)",
-        [summary.content, summary.coversUntil, summary.createdAt],
+        "INSERT INTO summaries (content, covers_until, created_at, conversation_id) VALUES ($1, $2, $3, $4)",
+        [summary.content, summary.coversUntil, summary.createdAt, summary.conversationId ?? null],
       );
     },
 

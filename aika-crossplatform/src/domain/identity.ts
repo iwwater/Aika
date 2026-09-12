@@ -22,6 +22,53 @@ export interface PrincipalIdentityV1 {
   displayName?: string;
 }
 
+/**
+ * 账户键（RT-02）：外部入口的唯一身份定位。
+ * 四元组缺一不可——只有 platform+sender 会把同一平台的不同机器人/租户混成一人；
+ * 外部声明「我是 userId X」不构成身份，身份由绑定关系给（RT-02-A）。
+ */
+export interface AccountKeyV1 {
+  version: 1;
+  platform: string;
+  botAccount: string;
+  tenant: string;
+  sender: string;
+}
+
+/**
+ * 会话 scope（RT-02）：一轮/一段历史的隔离边界。
+ * conversation 之外还有 chat/thread：同账户的群聊与私聊是不同 scope，
+ * 不共享历史与敏感记忆。
+ */
+export interface ConversationScopeV1 {
+  conversationId: string;
+  principalId: string;
+  threadId?: string;
+}
+
+/** 本地桌面的固定标识（RT-01 桌面适配与 RT-02 legacy 归属共用）。 */
+export const LOCAL_CONVERSATION_ID = "local";
+export const LOCAL_PRINCIPAL_ID = "local";
+
+/** 本地桌面 scope：旧数据全部映射到这里，可回退（RT-02-D）。 */
+export const LOCAL_CONVERSATION_SCOPE: ConversationScopeV1 = {
+  conversationId: LOCAL_CONVERSATION_ID,
+  principalId: LOCAL_PRINCIPAL_ID,
+};
+
+/**
+ * scope 的规范键：存储列/去重键/排序键都用它，绝不用调用方拼的裸字符串——
+ * 拼接口径不一就是在造跨 tenant 混键。
+ */
+export function canonicalScopeKey(scope: Pick<ConversationScopeV1, "conversationId" | "threadId">): string {
+  return scope.threadId ? `${scope.conversationId}#${scope.threadId}` : scope.conversationId;
+}
+
+/** 账户键的规范形式：绑定关系的查找键。 */
+export function canonicalAccountKey(account: Pick<AccountKeyV1, "platform" | "botAccount" | "tenant" | "sender">): string {
+  return [account.platform, account.botAccount, account.tenant, account.sender].map((part) => encodeURIComponent(part)).join(":");
+}
+
 /** conversation：一段连续对话的归属单位（账本、权限、历史都以它为界）。 */
 export interface ConversationV1 {
   version: 1;
@@ -66,10 +113,6 @@ export interface DeviceSessionV1 {
 
 /** 本协议冻结的版本号。外部字段扩展先加 version，不改旧字段含义。 */
 export const IDENTITY_CONTRACT_SCHEMA_VERSION = 1;
-
-/** 本地桌面默认的 conversationId / principalId（与 sourceEnvelope 的桌面适配一致）。 */
-export const LOCAL_CONVERSATION_ID = "local";
-export const LOCAL_PRINCIPAL_ID = "local";
 
 /**
  * 宿主能力矩阵：这台机器这次存活期能做什么。
