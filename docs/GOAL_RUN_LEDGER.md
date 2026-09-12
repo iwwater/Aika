@@ -58,7 +58,7 @@
 | 1 | FE-11 | REVIEWED_AUTO | 见会话日志 | 桌面SQLite NOT RUN |
 | 1 | FE-12 | REVIEWED_AUTO | 见会话日志 | 门禁为文本判定；基线漂移+15无解释（记录） |
 | 1 | FE-13 | REVIEWED_AUTO | 见会话日志 | 唯一缺全量回归的报告（已记录）；浏览器闩锁复现有力 |
-| 2 | INT-01 可自动消费者检查 | NOT RUN | | 真实 Tauri/SQL/手机留人工槽 |
+| 2 | INT-01 可自动消费者检查 | PARTIAL | 见会话日志 | 自动契约列 PASS（109 测试 exit 0）；浏览器/Tauri/手机/真实Provider 四列 NOT RUN 留人工队列 |
 | 3 | LLM-04 后台写回 | NOT RUN | | 队列原子性/epoch |
 | 3 | LLM-05 RAG | NOT RUN | | |
 | 3 | TTS-04 设置与错误传播 | NOT RUN | | |
@@ -108,3 +108,4 @@
 - 2026-09-13 02:38 Wave 1 LLM-01～03/06～10 REVIEWED_AUTO：Explore 审阅 8 份 + 生产符号核实（ProviderUsage/extractUsage/reportedTotal/isSameSentence/describeChatRequest 等）；定向 `npx vitest run src/domain src/services/trace src/services/context src/services/providerClient.test.ts` → 36 文件 / 511 测试 exit 0。修 LLM-01/02 SPEC 状态行、LLM-10 突变计数、LLM-03 报告陈旧 BLOCKED 段。LLM-01-D 的 6 条真实模型质量失败留给 Prompt 修复项（不阻塞后续 SPEC）。
 - 2026-09-13 02:45 Wave 1 STT-01/02/04、TTS-01/02：Explore 初报漏检 STT-02 实现，本人复核确认 vadSegmenter/asrSegments/turnEnd/voicePresenter 管线齐全且被生产消费；实跑 voice+language 118 例、STT 定向 76 例、输出契约 12 例、TTS 54 例全 exit 0。新写 4 份复核补证报告（stt/reports/STT-01、STT-02，tts/reports/TTS-01、TTS-02），更新 stt/tts 索引状态（STT-04 → REVIEWED_AUTO）。证据弱项如实标注：clearPending 幂等、全失败不称成功、重复 dispose。
 - 2026-09-13 02:52 Wave 1 FE-01～13：Explore 审阅 10 份报告（AC 证据链完整，突变自查诚实）+ 组件/页面核实；新写 FE-01/02/03 复核补证报告；实跑 `npx vitest run src/hooks src/presentation src/domain/conversation.test.ts src/domain/captionHighlight.test.ts` → 10 文件 / 143 测试 exit 0。更新 FE 索引 13 行状态。共性弱项：界面 AC 以"组件只转发"替代 DOM 证据、真机 NOT RUN 归 INT-01/03；FE-09/10/12 基线计数漂移、FE-13 缺全量回归，均记录。**Wave 1 全部完成。**
+- 2026-09-13 02:55 Wave 2 INT-01：写 reports/INT-01_ACCEPTANCE.md（分列）；实跑 composition/remote/storageCompatibility/storage.conformance/companionRuntime/useCompanionSession.integration → 6 文件 / 109 测试 exit 0。结论 PARTIAL：自动契约列 PASS；浏览器页面、Tauri plugin-sql、真实手机、真实 Provider 四列 NOT RUN。旧版 Remote 基线可作 RT-02 之前的本地前置。
