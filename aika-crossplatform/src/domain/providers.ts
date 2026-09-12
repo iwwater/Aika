@@ -1,3 +1,20 @@
+/**
+ * 平台上报的用量（LLM-10）。
+ *
+ * 四家的字段名不同（`prompt_tokens` / `input_tokens` / `promptTokenCount`…），语义
+ * 一致，所以归一成这三个。**缺失一律 null**：写 0 会让成本页把「不知道」画成
+ * 「不花钱」。
+ *
+ * 放在 domain 而不是 providerClient 旁边：Runtime 与 Trace 都要认识这个形状，
+ * 让它们 import 一个 HTTP 客户端模块只是为了拿类型，等于把实现拖进编排层。
+ */
+export interface ProviderUsage {
+  promptTokens: number | null;
+  completionTokens: number | null;
+  /** 平台报了就用平台的；只报了两个分项就相加；缺一项就是 null。 */
+  totalTokens: number | null;
+}
+
 export type ApiProtocol =
   | "openai-responses"
   | "openai-compatible"

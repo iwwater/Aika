@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "../../domain/conversation";
 import type { AgentContext, ContextSnippet } from "../../domain/context";
 import type { ReplyEnvelopeV1 } from "../../domain/companion";
+import type { ProviderUsage } from "../../domain/providers";
 import { DEFAULT_MODE_CONFIG } from "../../domain/soul";
 import type { SessionSummary } from "../../domain/summary";
 import type { ContextSource, TimerPort } from "../context/contextAssembler";
@@ -80,6 +81,8 @@ interface TurnControl {
   context: AgentContext;
   signal: AbortSignal;
   push(text: string): void;
+  /** 平台上报用量（LLM-10）。可以在回复之前、之后，甚至失败之前投。 */
+  reportUsage(usage: ProviderUsage): void;
   finish(reply?: Partial<ReplyEnvelopeV1>): void;
   fail(code: string): void;
 }
@@ -108,6 +111,9 @@ function createScriptedProvider() {
         signal: input.signal,
         push(text) {
           deliver({ type: "delta", text });
+        },
+        reportUsage(usage) {
+          deliver({ type: "usage", usage });
         },
         finish(reply) {
           deliver({
@@ -576,6 +582,88 @@ describe("LLM-07 · Trace 事件序列", () => {
 
     const cancelledEnd = (await events(cancelled.sink)).find((event) => event.kind === "turn_end");
     if (cancelledEnd?.kind === "turn_end") expect(cancelledEnd.status).toBe("cancelled");
+  });
+
+  it("LLM-10：平台报了用量，turn_end 写真实数字", async () => {
+    const setup = traced();
+    const handle = setup.harness.submit("你好");
+    await flush();
+    setup.harness.controls[0].reportUsage({ promptTokens: 820, completionTokens: 64, totalTokens: 884 });
+    setup.harness.controls[0].finish();
+    await handle.done;
+    await flush();
+
+    const end = (await events(setup.sink)).find((event) => event.kind === "turn_end");
+    if (end?.kind === "turn_end") {
+      expect(end.tokens.reportedTotal).toBe(884);
+      // 估算值仍然各算各的：两个数字回答的是不同的问题，不能互相顶替。
+      expect(end.tokens.estimatedPrompt).toBeGreaterThan(0);
+      expect(end.tokens.estimatedPrompt).not.toBe(884);
+    } else {
+      throw new Error("没有 turn_end 事件");
+    }
+  });
+
+  it("LLM-10：失败与取消的轮次也带出已经拿到的用量", async () => {
+    const failed = traced();
+    const failedHandle = failed.harness.submit("你好");
+    await flush();
+    // Anthropic 的 input 在 message_start 就到了，之后才炸——这些 token 已经烧掉了。
+    failed.harness.controls[0].reportUsage({ promptTokens: 300, completionTokens: null, totalTokens: 300 });
+    failed.harness.controls[0].fail("PROVIDER_FAILED");
+    await failedHandle.done;
+    await flush();
+
+    const end = (await events(failed.sink)).find((event) => event.kind === "turn_end");
+    if (end?.kind === "turn_end") {
+      expect(end.status).toBe("failed");
+      expect(end.tokens.reportedTotal).toBe(300);
+    } else {
+      throw new Error("没有 turn_end 事件");
+    }
+
+    const cancelled = traced();
+    const cancelledHandle = cancelled.harness.submit("你好");
+    await flush();
+    cancelled.harness.controls[0].reportUsage({ promptTokens: 120, completionTokens: 5, totalTokens: 125 });
+    await flush();
+    cancelled.harness.runtime.cancel(cancelledHandle.turnId);
+    await cancelledHandle.done;
+    await flush();
+
+    const cancelledEnd = (await events(cancelled.sink)).find((event) => event.kind === "turn_end");
+    if (cancelledEnd?.kind === "turn_end") {
+      expect(cancelledEnd.status).toBe("cancelled");
+      expect(cancelledEnd.tokens.reportedTotal).toBe(125);
+    } else {
+      throw new Error("没有 turn_end 事件");
+    }
+  });
+
+  it("LLM-10：用量事件不打扰增量与回复（LLM-10-F）", async () => {
+    const setup = traced();
+    const handle = setup.harness.submit("你好");
+    await flush();
+    const seen: string[] = [];
+    const stop = setup.harness.runtime.subscribe((event) => {
+      if (event.type === "replyDelta") seen.push(event.text);
+    });
+
+    // 用量夹在两片增量中间：它既不该被当成一片正文，也不该顶掉后面那片。
+    setup.harness.controls[0].push("こん");
+    await flush();
+    setup.harness.controls[0].reportUsage({ promptTokens: 10, completionTokens: 1, totalTokens: 11 });
+    await flush();
+    setup.harness.controls[0].push("こんにちは");
+    await flush();
+    setup.harness.controls[0].finish();
+    await handle.done;
+    await flush();
+    stop();
+
+    expect(seen).toEqual(["こん", "にちは"]);
+    const settlement = await handle.done;
+    expect(settlement.state).toBe("completed");
   });
 
   it("正文开关：关时 turn_start.text 是 null，开时是原话", async () => {

@@ -88,6 +88,30 @@ beforeEach(() => {
 });
 
 describe("createStreamChatProvider", () => {
+  it("LLM-10：providerClient 报的用量转成 usage 事件，排在回复之前也不乱", async () => {
+    mocks.streamChat.mockImplementation(async (
+      _config: ProviderConfig,
+      _instructions: string,
+      _history: unknown,
+      onPartial: (partial: { japaneseText: string; chineseTranslation: string; mood: string }) => void,
+      _stickerIds: readonly string[],
+      requestOptions: { onUsage?: (usage: unknown) => void },
+    ) => {
+      // Anthropic 的 input 在 message_start 就到——用量比正文还早。
+      requestOptions.onUsage?.({ promptTokens: 820, completionTokens: 64, totalTokens: 884 });
+      onPartial({ japaneseText: "こんにちは", chineseTranslation: "你好", mood: "neutral" });
+      return reply;
+    });
+
+    const events = await collect(createStreamChatProvider(options()), { context: context() });
+
+    expect(events.map((event) => event.type)).toEqual(["usage", "delta", "reply"]);
+    expect(events[0]).toEqual({
+      type: "usage",
+      usage: { promptTokens: 820, completionTokens: 64, totalTokens: 884 },
+    });
+  });
+
   it("把 streamChat 的增量与终包转成事件流", async () => {
     mocks.streamChat.mockImplementation(async (
       _config: ProviderConfig,

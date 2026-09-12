@@ -110,7 +110,15 @@ async function* generateEvents(
           wake();
         },
         stickers.map((sticker) => sticker.id),
-        { signal: controller.signal },
+        {
+          signal: controller.signal,
+          // 用量单独成事件：它可能比回复先到，取消/失败的轮次也拿得到（LLM-10）。
+          onUsage: (usage) => {
+            if (controller.signal.aborted) return;
+            queue.push({ type: "usage", usage });
+            wake();
+          },
+        },
       );
       if (!controller.signal.aborted) queue.push({ type: "reply", reply: toEnvelope(reply) });
     } catch (error) {

@@ -1,7 +1,7 @@
 import { activeFetch } from "./http";
 import { companionReplySchema, parseCompanionReply, type CompanionReply } from "../domain/companion";
 import type { ChatTurn } from "../domain/conversation";
-import type { ProviderConfig } from "../domain/providers";
+import type { ProviderConfig, ProviderUsage } from "../domain/providers";
 import { cleanBaseUrl } from "../domain/providers";
 import { parsePartialReply, type PartialReply } from "../domain/streamingReply";
 
@@ -23,10 +23,82 @@ interface PreparedRequest {
   body: unknown;
 }
 
+export type { ProviderUsage } from "../domain/providers";
+
 export interface ProviderRequestOptions {
   /** 取消整轮 LLM 请求和 SSE reader；调用方仍须用 turnId 屏蔽不支持取消的迟到结果。 */
   signal?: AbortSignal;
   turnId?: number;
+  /**
+   * 平台报了用量就叫一次——**至多一次**，内部退回非流式时合并后再叫。
+   *
+   * 之所以是回调而不是返回值的一部分：取消与失败的轮次没有回复，但那时候
+   * 已经烧掉的 token 同样要能记账。
+   */
+  onUsage?: (usage: ProviderUsage) => void;
+}
+
+/** 带状态码的 HTTP 错误：流式重试要靠它分辨「请求体不对」和「网络/服务端炸了」。 */
+export class ProviderHttpError extends Error {
+  constructor(readonly status: number, readonly host: string, message: string) {
+    super(message);
+    this.name = "ProviderHttpError";
+  }
+}
+
+function numberOr(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/** 两个分项都在才相加——相加是算术，拿半个数字当全量才是发明。 */
+function totalOf(reported: unknown, prompt: number | null, completion: number | null): number | null {
+  const total = numberOr(reported);
+  if (total !== null) return total;
+  return prompt !== null && completion !== null ? prompt + completion : null;
+}
+
+function emptyUsage(): ProviderUsage {
+  return { promptTokens: null, completionTokens: null, totalTokens: null };
+}
+
+export function hasUsage(usage: ProviderUsage): boolean {
+  return usage.promptTokens !== null || usage.completionTokens !== null || usage.totalTokens !== null;
+}
+
+/**
+ * 从一份响应（或一个流式 chunk）里取用量。取不到就返回全 null。
+ *
+ * 按**形状**认而不是按协议分支：同一个协议在流式与非流式下 usage 挂的位置不同
+ * （responses 挂在 `response.usage`，anthropic 分散在 `message.usage` 与
+ * `usage`），分支写四遍迟早漏一处。
+ */
+export function extractUsage(payload: any): ProviderUsage {
+  if (!payload || typeof payload !== "object") return emptyUsage();
+  const usage = payload.usage ?? payload.response?.usage ?? payload.message?.usage ?? payload.usageMetadata;
+  if (!usage || typeof usage !== "object") return emptyUsage();
+
+  const prompt = numberOr(usage.prompt_tokens) ?? numberOr(usage.input_tokens) ?? numberOr(usage.promptTokenCount);
+  const completion = numberOr(usage.completion_tokens) ?? numberOr(usage.output_tokens)
+    ?? numberOr(usage.candidatesTokenCount);
+  return {
+    promptTokens: prompt,
+    completionTokens: completion,
+    totalTokens: totalOf(usage.total_tokens ?? usage.totalTokenCount, prompt, completion),
+  };
+}
+
+/**
+ * 流式里 usage 是**逐块累积**的：Anthropic 的 input 在 `message_start`、output 在
+ * `message_delta`，两次都只有一半。所以按字段合并而不是后者覆盖前者。
+ */
+function mergeUsage(base: ProviderUsage, next: ProviderUsage): ProviderUsage {
+  const promptTokens = next.promptTokens ?? base.promptTokens;
+  const completionTokens = next.completionTokens ?? base.completionTokens;
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens: totalOf(next.totalTokens ?? base.totalTokens, promptTokens, completionTokens),
+  };
 }
 
 function abortError(): DOMException {
@@ -78,7 +150,7 @@ async function post(request: PreparedRequest, options: ProviderRequestOptions = 
     throw new Error(`无法连接 ${host}：${error instanceof Error ? error.message : String(error)}`);
   }
   if (!response.ok) {
-    throw new Error(`${host} 返回 ${response.status}：${await readError(response)}`);
+    throw new ProviderHttpError(response.status, host, `${host} 返回 ${response.status}：${await readError(response)}`);
   }
   return response;
 }
@@ -101,6 +173,13 @@ function prepare(
   stream: boolean,
   /** 这一轮她能挑的表情包 id。空数组时结构化输出里根本没有这个字段。 */
   stickerIds: readonly string[] = [],
+  /**
+   * 流式里要不要主动索要用量（LLM-10）。
+   *
+   * 只对 openai-compatible 有意义：它流式默认不报 usage。其余三家流式本来就带，
+   * 不需要多塞字段——多塞一个字段就多一处会被中转站 400 掉的地方。
+   */
+  includeUsage = true,
 ): PreparedRequest {
   const base = cleanBaseUrl(config.baseUrl);
 
@@ -171,6 +250,7 @@ function prepare(
       messages: [{ role: "system", content: systemPrompt }, ...history],
       temperature: format === "companion-reply" ? 0.85 : 0.3,
       ...(stream ? { stream: true } : {}),
+      ...(stream && includeUsage ? { stream_options: { include_usage: true } } : {}),
     },
   };
 }
@@ -198,7 +278,14 @@ async function requestText(
   options: ProviderRequestOptions = {},
 ): Promise<string> {
   const response = await post(prepare(config, systemPrompt, history, format, false, stickerIds), options);
-  return extractText(config, await response.json());
+  const data = await response.json();
+  reportUsage(options, extractUsage(data));
+  return extractText(config, data);
+}
+
+/** 有东西才叫回调：全 null 的用量等于没拿到，不值得让下游记一笔「都是 null」。 */
+function reportUsage(options: ProviderRequestOptions, usage: ProviderUsage): void {
+  if (hasUsage(usage)) options.onUsage?.(usage);
 }
 
 /** 从一个 SSE 事件的 data 里取出这一小段新增文本。取不到就返回空串。 */
@@ -330,23 +417,67 @@ export async function streamChat(
     onPartial(partial);
   }
 
-  try {
-    const response = await post(prepare(config, systemPrompt, history, "companion-reply", true, stickerIds), options);
+  let usage = emptyUsage();
+
+  /**
+   * 跑一次流式。`includeUsage` 为 false 时不带 `stream_options`——那是给
+   * 不认识这个字段的中转站的第二次机会。
+   */
+  async function runStream(includeUsage: boolean): Promise<void> {
+    const response = await post(
+      prepare(config, systemPrompt, history, "companion-reply", true, stickerIds, includeUsage),
+      options,
+    );
     await readEventStream(response, (payload) => {
+      // usage 可能挂在一个没有正文的 chunk 上（OpenAI 末尾那个 choices: []），
+      // 所以先收用量再判断有没有 delta，顺序反了就永远收不到。
+      usage = mergeUsage(usage, extractUsage(payload));
       const delta = deltaOf(config, payload);
       if (!delta) return;
       raw += delta;
       emitPartial(parsePartialReply(raw));
     }, options.signal);
+  }
+
+  try {
+    try {
+      await runStream(true);
+    } catch (error) {
+      // 只在「还没吐过任何内容」且「是请求体层面的 4xx」时才去掉 stream_options 重来：
+      // 为了统计 token 把流式弄没了是本末倒置，但网络断了或 500 时重试只是浪费一次请求。
+      if (raw || options.signal?.aborted || isAbortError(error)) throw error;
+      if (!(error instanceof ProviderHttpError) || error.status < 400 || error.status >= 500) throw error;
+      await runStream(false);
+    }
   } catch (error) {
     if (options.signal?.aborted || isAbortError(error)) throw (options.signal?.aborted ? abortError() : error);
     if (raw) throw error;
-    return sendChat(config, systemPrompt, history, stickerIds, options);
+    return fallbackNonStream();
   }
 
+  reportUsage(options, usage);
+
   throwIfAborted(options.signal);
-  if (!raw) return sendChat(config, systemPrompt, history, stickerIds, options);
+  if (!raw) return fallbackNonStream();
   return finish(raw);
+
+  /**
+   * 退回非流式。
+   *
+   * 用量在这里合并后**只回调一次**：调用方不该因为内部退了一次而收到两份用量，
+   * 自己去猜哪一份算数。
+   */
+  async function fallbackNonStream(): Promise<CompanionReply> {
+    let fallbackUsage = emptyUsage();
+    const reply = await sendChat(config, systemPrompt, history, stickerIds, {
+      ...options,
+      onUsage: (value) => {
+        fallbackUsage = value;
+      },
+    });
+    reportUsage(options, mergeUsage(usage, fallbackUsage));
+    return reply;
+  }
 }
 
 /**

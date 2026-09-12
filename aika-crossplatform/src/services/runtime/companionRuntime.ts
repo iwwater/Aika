@@ -13,6 +13,7 @@
  */
 
 import { toCompanionReply, type ReplyEnvelopeV1 } from "../../domain/companion";
+import type { ProviderUsage } from "../../domain/providers";
 import { companionMessage, formatClockTime, isSameSentence, type ChatMessage } from "../../domain/conversation";
 import {
   normalizeHistoryMessages,
@@ -75,6 +76,12 @@ export interface DeliveryReceipt {
 export type ProviderStreamEvent =
   | { type: "delta"; text: string; translation?: string; mood?: Mood }
   | { type: "reply"; reply: ReplyEnvelopeV1 }
+  /**
+   * 平台上报的用量（LLM-10）。单独一种事件而不是塞进 `reply`：流式里它可能比回复
+   * 先到（Anthropic 的 `message_start`），而取消与失败的轮次根本没有回复——
+   * 那时候已经烧掉的 token 同样要记账。
+   */
+  | { type: "usage"; usage: ProviderUsage }
   | { type: "error"; code: string; retryable: boolean; message?: string };
 
 export interface RuntimeGenerateInput {
@@ -179,6 +186,8 @@ interface Turn {
   startedAt: number;
   /** 上下文装配的估算 prompt token。装配失败时仍是 null，不写 0。 */
   estimatedPromptTokens: number | null;
+  /** 平台上报的用量。没报过就是 null——估算值不能冒充实际用量。 */
+  reportedUsage: ProviderUsage | null;
   draftText: string;
   translation: string;
   mood: Mood;
@@ -316,7 +325,11 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
       status: state === "completed" ? "completed" : state === "failed" ? "failed" : "cancelled",
       durationMs: clock.now() - turn.startedAt,
       ...(errorCode ? { errorCode } : {}),
-      tokens: { estimatedPrompt: turn.estimatedPromptTokens, reportedTotal: null },
+      tokens: {
+        estimatedPrompt: turn.estimatedPromptTokens,
+        // 平台报了才写。取消与失败的轮次同样带出已经拿到的那部分。
+        reportedTotal: turn.reportedUsage?.totalTokens ?? null,
+      },
     });
     trace.endTurn(turn.id);
     setState(turn, state);
@@ -422,6 +435,7 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
       fragmentPersisted: false,
       startedAt: clock.now(),
       estimatedPromptTokens: null,
+      reportedUsage: null,
       draftText: "",
       translation: "",
       mood: normalizeMood(null),
@@ -584,6 +598,10 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
           if (event.translation !== undefined) turn.translation = event.translation;
           if (event.mood !== undefined) turn.mood = normalizeMood(event.mood);
           if (delta) emit(turn, { type: "replyDelta", text: delta, cumulative });
+          continue;
+        }
+        if (event.type === "usage") {
+          turn.reportedUsage = event.usage;
           continue;
         }
         if (event.type === "reply") {

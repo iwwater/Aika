@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderConfig } from "../domain/providers";
-import { listModels, sendChat, streamChat } from "./providerClient";
+import { listModels, sendChat, streamChat, type ProviderUsage } from "./providerClient";
 
 const baseConfig: ProviderConfig = {
   id: "test",
@@ -202,7 +202,10 @@ describe("streamChat", () => {
   });
 
   it("中转站不支持 stream 时安静退回非流式，不让整轮失败", async () => {
+    // LLM-10 之后这条路上多了一次尝试：先去掉 stream_options 再流式一遍（万一它只是
+    // 不认识那个字段），仍然 400 才退回非流式。多出来的是一次失败请求，不烧 token。
     const request = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ error: { message: "stream not supported" } }, 400))
       .mockResolvedValueOnce(jsonResponse({ error: { message: "stream not supported" } }, 400))
       .mockResolvedValueOnce(jsonResponse({ choices: [{ message: { content: replyJson } }] }));
     vi.stubGlobal("fetch", request);
@@ -210,7 +213,8 @@ describe("streamChat", () => {
     const reply = await streamChat(baseConfig, "system", [{ role: "user", content: "hi" }], () => undefined);
 
     expect(reply).toMatchObject({ japaneseText: "こんにちは", chineseTranslation: "你好", mood: "neutral", schemaVersion: 1 });
-    expect(JSON.parse(request.mock.calls[1][1].body).stream).toBeUndefined();
+    expect(JSON.parse(request.mock.calls[1][1].body).stream_options).toBeUndefined();
+    expect(JSON.parse(request.mock.calls[2][1].body).stream).toBeUndefined();
   });
 
   it("已经吐过内容再断就报错：退回重来会把同一句念两遍", async () => {
@@ -274,6 +278,163 @@ describe("streamChat", () => {
       { signal: controller.signal, turnId: 11 },
     )).rejects.toMatchObject({ name: "AbortError" });
     expect(request).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("LLM-10 用量上报", () => {
+  const ask = async (config: ProviderConfig, stream = false) => {
+    const seen: ProviderUsage[] = [];
+    const call = stream
+      ? streamChat(config, "system", [{ role: "user", content: "hi" }], () => undefined, [], {
+        onUsage: (usage) => seen.push(usage),
+      })
+      : sendChat(config, "system", [{ role: "user", content: "hi" }], [], {
+        onUsage: (usage) => seen.push(usage),
+      });
+    await call;
+    return seen;
+  };
+
+  it("非流式：四种协议的 usage 都解析得出来（LLM-10-A）", async () => {
+    const cases: [ProviderConfig["protocol"], unknown, ProviderUsage][] = [
+      ["openai-compatible",
+        { choices: [{ message: { content: replyJson } }], usage: { prompt_tokens: 120, completion_tokens: 30, total_tokens: 150 } },
+        { promptTokens: 120, completionTokens: 30, totalTokens: 150 }],
+      ["openai-responses",
+        { output: [{ content: [{ text: replyJson }] }], usage: { input_tokens: 90, output_tokens: 12, total_tokens: 102 } },
+        { promptTokens: 90, completionTokens: 12, totalTokens: 102 }],
+      ["anthropic",
+        { content: [{ type: "text", text: replyJson }], usage: { input_tokens: 70, output_tokens: 20 } },
+        // Anthropic 不报 total，两个分项都在所以相加——相加是算术，不是发明。
+        { promptTokens: 70, completionTokens: 20, totalTokens: 90 }],
+      ["gemini",
+        { candidates: [{ content: { parts: [{ text: replyJson }] } }], usageMetadata: { promptTokenCount: 55, candidatesTokenCount: 8, totalTokenCount: 63 } },
+        { promptTokens: 55, completionTokens: 8, totalTokens: 63 }],
+    ];
+
+    for (const [protocol, body, expected] of cases) {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(body)));
+      expect(await ask({ ...baseConfig, protocol }), protocol).toEqual([expected]);
+    }
+  });
+
+  it("平台不报 usage 就一次都不回调（LLM-10-D）", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ choices: [{ message: { content: replyJson } }] })));
+
+    // 「不知道」必须保持不知道：回调一份全 null 会让下游记一笔看似有数据的空账。
+    expect(await ask(baseConfig)).toEqual([]);
+  });
+
+  it("缺一个分项时 total 为 null，不拿半个数字当全量（LLM-10-A）", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({
+      choices: [{ message: { content: replyJson } }],
+      usage: { prompt_tokens: 120 },
+    })));
+
+    expect(await ask(baseConfig)).toEqual([{ promptTokens: 120, completionTokens: null, totalTokens: null }]);
+  });
+
+  it("流式 openai-compatible：请求带 include_usage，末尾那个空 chunk 的用量收得到（LLM-10-B）", async () => {
+    const request = vi.fn().mockResolvedValue(sseResponse([
+      `data: ${JSON.stringify({ choices: [{ delta: { content: replyJson } }] })}`,
+      // 真实平台就是这样：最后一个 chunk 没有 choices，只有 usage。
+      'data: {"choices":[],"usage":{"prompt_tokens":200,"completion_tokens":40,"total_tokens":240}}',
+      "data: [DONE]",
+    ]));
+    vi.stubGlobal("fetch", request);
+
+    expect(await ask(baseConfig, true)).toEqual([{ promptTokens: 200, completionTokens: 40, totalTokens: 240 }]);
+    expect(JSON.parse(request.mock.calls[0][1].body).stream_options).toEqual({ include_usage: true });
+  });
+
+  it("流式 anthropic：message_start 与 message_delta 各报一半，合并成一份（LLM-10-B）", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(sseResponse([
+      'data: {"type":"message_start","message":{"usage":{"input_tokens":300}}}',
+      `data: ${JSON.stringify({ type: "content_block_delta", delta: { text: replyJson } })}`,
+      'data: {"type":"message_delta","usage":{"output_tokens":25}}',
+    ])));
+
+    // 后到的那半不能覆盖先到的那半，否则 input 永远丢。
+    expect(await ask({ ...baseConfig, protocol: "anthropic" }, true))
+      .toEqual([{ promptTokens: 300, completionTokens: 25, totalTokens: 325 }]);
+  });
+
+  it("流式 anthropic 不多塞 stream_options：它本来就报用量", async () => {
+    const request = vi.fn().mockResolvedValue(sseResponse([
+      `data: ${JSON.stringify({ type: "content_block_delta", delta: { text: replyJson } })}`,
+    ]));
+    vi.stubGlobal("fetch", request);
+    await ask({ ...baseConfig, protocol: "anthropic" }, true);
+
+    // 多塞一个字段就多一处会被中转站 400 掉的地方。
+    expect(JSON.parse(request.mock.calls[0][1].body).stream_options).toBeUndefined();
+  });
+
+  it("流式 gemini：取最后一次 usageMetadata（LLM-10-B）", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(sseResponse([
+      `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: replyJson }] } }], usageMetadata: { promptTokenCount: 40, candidatesTokenCount: 2, totalTokenCount: 42 } })}`,
+      `data: ${JSON.stringify({ usageMetadata: { promptTokenCount: 40, candidatesTokenCount: 18, totalTokenCount: 58 } })}`,
+    ])));
+
+    expect(await ask({ ...baseConfig, protocol: "gemini" }, true))
+      .toEqual([{ promptTokens: 40, completionTokens: 18, totalTokens: 58 }]);
+  });
+
+  it("流式 responses：response.completed 里的用量（LLM-10-B）", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(sseResponse([
+      `data: ${JSON.stringify({ type: "response.output_text.delta", delta: replyJson })}`,
+      'data: {"type":"response.completed","response":{"usage":{"input_tokens":80,"output_tokens":16,"total_tokens":96}}}',
+    ])));
+
+    expect(await ask({ ...baseConfig, protocol: "openai-responses" }, true))
+      .toEqual([{ promptTokens: 80, completionTokens: 16, totalTokens: 96 }]);
+  });
+
+  it("400 掉 stream_options 的中转站：去掉它再流式一次，流式不退化（LLM-10-C）", async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ error: { message: "unknown field: stream_options" } }, 400))
+      .mockResolvedValueOnce(sseResponse([
+        `data: ${JSON.stringify({ choices: [{ delta: { content: replyJson } }] })}`,
+        "data: [DONE]",
+      ]));
+    vi.stubGlobal("fetch", request);
+
+    const seen: string[] = [];
+    const reply = await streamChat(baseConfig, "system", [{ role: "user", content: "hi" }], (partial) => {
+      seen.push(partial.japaneseText);
+    });
+
+    expect(reply.japaneseText).toBe("こんにちは");
+    // 第二次仍然是流式：为了统计 token 把流式弄没了，是本末倒置。
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(request.mock.calls[1][1].body).stream).toBe(true);
+    expect(JSON.parse(request.mock.calls[1][1].body).stream_options).toBeUndefined();
+    expect(seen.length).toBeGreaterThan(0);
+  });
+
+  it("500 不重试去 stream_options：那跟请求体没关系（LLM-10-C）", async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ error: { message: "upstream boom" } }, 500))
+      .mockResolvedValueOnce(jsonResponse({ choices: [{ message: { content: replyJson } }] }));
+    vi.stubGlobal("fetch", request);
+
+    await streamChat(baseConfig, "system", [{ role: "user", content: "hi" }], () => undefined);
+
+    // 直接退非流式，不浪费一次注定同样失败的流式请求。
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(request.mock.calls[1][1].body).stream).toBeUndefined();
+  });
+
+  it("退回非流式时用量只回调一次，调用方不用猜哪份算数", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ error: { message: "no stream" } }, 400))
+      .mockResolvedValueOnce(jsonResponse({ error: { message: "no stream" } }, 400))
+      .mockResolvedValueOnce(jsonResponse({
+        choices: [{ message: { content: replyJson } }],
+        usage: { prompt_tokens: 11, completion_tokens: 2, total_tokens: 13 },
+      })));
+
+    expect(await ask(baseConfig, true)).toEqual([{ promptTokens: 11, completionTokens: 2, totalTokens: 13 }]);
   });
 });
 
