@@ -491,6 +491,10 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
         ...assembled.context.environment,
       ].map((snippet) => snippet.source))],
     });
+    // 装配期观察到的裁剪诊断（LLM-11）：record 内部会再次复核开关，关了就不构造。
+    if (assembled.diagnostics) {
+      trace.record(turn.id, { kind: "context_snapshot", ...assembled.diagnostics });
+    }
   }
 
   async function run(turn: Turn): Promise<void> {
@@ -551,6 +555,8 @@ export function createCompanionRuntime(options: CompanionRuntimeOptions): Compan
         history: normalized.messages,
         summary,
         signal: turn.controller.signal,
+        // Trace 开启才让装配器采集正文诊断；关着就不构造（LLM-11-C）。
+        includeDiagnostics: trace.enabled(),
       });
     } catch (error) {
       if (error instanceof ContextTooLargeError) {

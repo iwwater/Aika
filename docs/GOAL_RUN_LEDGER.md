@@ -62,7 +62,7 @@
 | 3 | LLM-04 后台写回 | AUTO_PASS（fixture） | 见会话日志 | MemoryMaintenance 重写+计量埋点；274 回归全绿 tsc 0；真实服务 NOT RUN |
 | 3 | LLM-05 RAG | PARTIAL | 见会话日志 | A/B/C/E 全过（15/15 命中）；AC-D 真实模型 NOT RUN 无凭证；装配点改 contextSourcesPlugin |
 | 3 | TTS-04 设置与错误传播 | AUTO_PASS（待人工） | 见会话日志 | 设置端口/切引擎停队列/降级可见全过；SpeechEngines 接口破坏性扩展（消费者已同步） |
-| 3 | LLM-11 上下文快照 | NOT RUN | | **下一个执行节点**；SPEC 已读：新增可选 context_snapshot 事件，字段冻结见 SPEC「全文审阅」节；改 domain/trace.ts、contextAssembler 诊断、companionRuntime、唯一脱敏点；AC-D 含旧 kind 穷举消费者更新（TracePage/traceView/pluginGraph） |
+| 3 | LLM-11 上下文快照 | AUTO_PASS（待人工） | 见会话日志 | context_snapshot 事件+装配期诊断+唯一脱敏点；穷举消费者已同步；516 回归全绿 |
 | 3 | FE-23 时间线 | NOT RUN | | 依赖 LLM-11 |
 | 3 | FE-24 实时浮层 | NOT RUN | | 依赖 FE-23 |
 | 3 | FE-25 上下文视图 | NOT RUN | | 依赖 FE-24 |
@@ -112,3 +112,4 @@
 - 2026-09-13 03:23 Wave 3 LLM-04 AUTO_PASS（fixture）：重写 services/memory/writeback.ts 为 MemoryMaintenance（批次快照/稳定ID/单worker/退避1s→30s×3/epoch作废/journal KV持久化/8轮阈值/容量上限），新增 maintenanceJournal.ts、RequestMetric 计量埋点（providerClient/extractor/adapter），presenter 切换装配。回归 274 passed+1 skipped exit 0，项目 tsc 0 错误。报告 LLM-04_AGENT_MEMORY_WRITEBACK_ACCEPTANCE.md。注意：dispose 不异步 flush（SPEC 接受 <8 轮窗口丢失）；hook 集成测试注入阈值 1 保持重试语义。
 - 2026-09-13 04:05 Wave 3 LLM-05 PARTIAL：新增 domain/knowledge + knowledgeIndex（staging/原子激活/FTS 召回+TS BM25/缓存/降级）+ knowledgeSource + contextSourcesPlugin 唯一装配点；memoryPlugin 不再提供 ContextSourcesToken。冻结语料 15/15 命中、5 无答案空命中；回归 154 测试全绿 tsc 0；矩阵/plugins/hook 消费者同步更新。AC-D 真实模型 NOT RUN。
 - 2026-09-13 04:30 Wave 3 TTS-04 AUTO_PASS（待人工）：outputSettings 端口（Key 进 SecretStore、空=保持、显式删除）、SpeechEngines.output/resolveOutput 扩展、voicePresenter.applyVoiceOutput（停旧队列+世代隔离）、companionPresenter.setVoiceOutput + App 设置表单。定向 8 例 + 回归 233 全绿，tsc 0。UI 视觉/真实试听留人工/TTS-05。
+- 2026-09-13 04:52 Wave 3 LLM-11 AUTO_PASS（待人工）：trace 新增 context_snapshot（字段冻结），contextAssembler.includeDiagnostics 装配期采集（kept/trimmed 同源、截断如实记录），companionRuntime 记录（record 前复核开关），脱敏走唯一 redactTraceEvent（canary 实测）；pluginGraph/traceView/TracePage 穷举更新。回归 516 全绿 tsc 0。**下一节点：FE-23 时间线（消费 LLM-11）→ FE-24 → FE-25；再 LLM-12→FE-26。**

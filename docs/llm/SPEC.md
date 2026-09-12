@@ -21,7 +21,7 @@ LLM-01 已有 [验收报告](reports/LLM-01_ACCEPTANCE.md)，其中真实模型�
 
 | SPEC | 交付 | 状态 |
 | --- | --- | --- |
-| [LLM-11](specs/LLM-11_CONTEXT_SNAPSHOT.md) | 上下文装配快照 | READY，仅本地实现 |
+| [LLM-11](specs/LLM-11_CONTEXT_SNAPSHOT.md) | 上下文装配快照 | AUTO_PASS（2026-09-13）：A~D 全过，516 测试回归全绿；消费 traceView/pluginGraph/TracePage 已同步。见[验收报告](reports/LLM-11_ACCEPTANCE.md) |
 
 当前执行按[安全计划](../GOAL_EXECUTION_PLAN.md)。早期无报告项状态为未核实/待补证，不认定未实现或通过；已有报告项仍待审阅。
 

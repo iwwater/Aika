@@ -200,6 +200,7 @@ describe("turnFlow", () => {
     expect(flow.stages.map((stage) => [stage.kind, stage.state])).toEqual([
       ["turn_start", "done"],
       ["context_assemble", "done"],
+      ["context_snapshot", "notReached"],
       ["provider_request", "notReached"],
       ["provider_stream_meta", "notReached"],
       ["reply", "notReached"],

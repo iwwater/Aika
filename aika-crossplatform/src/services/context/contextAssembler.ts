@@ -19,6 +19,9 @@ import {
 } from "../../domain/context";
 import type { RelationshipState } from "../../domain/relationship";
 import type { CharacterSoul, ModeConfig, UserSoul } from "../../domain/soul";
+import type {
+  TraceContextSectionDiagnostic, TraceContextSnapshotFields, TraceContextSnippetDiagnostic,
+} from "../../domain/trace";
 
 /** 只读 scope：来源可据此过滤（知识解锁阶段/角色/模式）；缺失时来源自行决定降级。 */
 export interface ContextSourceScope {
@@ -60,6 +63,8 @@ export interface AssembleInput {
   history: readonly ChatMessage[];
   summary?: string | null;
   signal?: AbortSignal;
+  /** Trace 开启时置 true：装配期采集裁剪诊断（LLM-11）。关着就不构造正文快照。 */
+  includeDiagnostics?: boolean;
 }
 
 export const DEFAULT_SOURCE_TIMEOUT_MS = 300;
@@ -201,12 +206,22 @@ async function loadSource(
 
 /** 必需块的估算：角色设定、模式、关系、时钟、用户画像与本轮问题。 */
 function requiredTokensOf(input: AssembleInput, clock: AgentContext["clock"]): number {
-  return estimateValueTokens(input.characterSoul)
-    + estimateValueTokens(input.mode)
-    + estimateValueTokens(input.relationship)
-    + estimateValueTokens(clock)
-    + estimateValueTokens(input.userSoul ?? null)
-    + estimateTokens(input.query);
+  return requiredBlocksOf(input, clock).reduce((sum, block) => sum + block.estimatedTokens, 0);
+}
+
+/** 必需块逐项估算（LLM-11 诊断用）：名称冻结，估算口径标 estimated。 */
+function requiredBlocksOf(
+  input: AssembleInput,
+  clock: AgentContext["clock"],
+): { name: string; estimatedTokens: number }[] {
+  return [
+    { name: "characterSoul", estimatedTokens: estimateValueTokens(input.characterSoul) },
+    { name: "mode", estimatedTokens: estimateValueTokens(input.mode) },
+    { name: "relationship", estimatedTokens: estimateValueTokens(input.relationship) },
+    { name: "clock", estimatedTokens: estimateValueTokens(clock) },
+    { name: "userSoul", estimatedTokens: estimateValueTokens(input.userSoul ?? null) },
+    { name: "query", estimatedTokens: estimateTokens(input.query) },
+  ];
 }
 
 export interface ContextAssembler {
@@ -235,6 +250,10 @@ const defaultTimers: TimerPort = {
  * 顺序固定：最近对话（新的优先）→ 摘要 → 记忆 → 知识 → 环境。
  * 装配结果必须与输入顺序、来源顺序无关，同样的输入永远得到同样的输出。
  */
+/** LLM-11 截断上限：单 section snippet 数与事件总字节；超出记 truncated，不冒充全量。 */
+const DIAGNOSTICS_MAX_SNIPPETS_PER_SECTION = 50;
+const DIAGNOSTICS_MAX_BYTES = 24_000;
+
 function trimToBudget(
   draft: Omit<AgentContext, "recentConversation" | "summary" | "memories" | "knowledge" | "environment">,
   pieces: {
@@ -246,7 +265,10 @@ function trimToBudget(
   },
   budget: ContextBudget,
   requiredTokens: number,
-): { context: AgentContext; estimatedTokens: number; droppedSources: DroppedSource[] } {
+  requiredBlocks: { name: string; estimatedTokens: number }[],
+  historyCounts: { inputCount: number; normalizedCount: number; recentLimitDropped: number },
+  includeDiagnostics: boolean,
+): { context: AgentContext; estimatedTokens: number; droppedSources: DroppedSource[]; diagnostics?: TraceContextSnapshotFields } {
   const available = Math.max(0, budget.inputLimit - budget.outputReserve - budget.safetyReserve);
   if (requiredTokens > available) throw new ContextTooLargeError(requiredTokens, available);
 
@@ -286,9 +308,32 @@ function trimToBudget(
     knowledge: [] as ContextSnippet[],
     environment: [] as ContextSnippet[],
   };
+  const snippetDiagnostics = {
+    memories: [] as TraceContextSnippetDiagnostic[],
+    knowledge: [] as TraceContextSnippetDiagnostic[],
+    environment: [] as TraceContextSnippetDiagnostic[],
+  };
+  let ordinal = 0;
+  let diagnosticsBytes = 0;
+  let truncated = false;
+  const sectionDiagnostics: TraceContextSectionDiagnostic[] = [];
   for (const section of ["memories", "knowledge", "environment"] as const) {
+    let sectionTokens = 0;
     for (const snippet of pieces[section]) {
       const cost = estimateTokens(snippet.content);
+      const diagnostic: TraceContextSnippetDiagnostic = {
+        source: snippet.source,
+        id: snippet.id ?? null,
+        category: snippet.category ?? null,
+        precision: snippet.precision ?? null,
+        temporal: snippet.temporal ?? null,
+        ordinal,
+        estimatedTokens: cost,
+        kept: true,
+        reason: null,
+        content: includeDiagnostics ? snippet.content : null,
+      };
+      ordinal += 1;
       if (cost > remaining) {
         droppedSources.push({
           source: snippet.source,
@@ -296,12 +341,62 @@ function trimToBudget(
           reason: "trimmed",
           detail: "超出剩余预算",
         });
-        continue;
+        diagnostic.kept = false;
+        diagnostic.reason = "trimmed";
+      } else {
+        remaining -= cost;
+        kept[section].push(snippet);
+        sectionTokens += cost;
       }
-      remaining -= cost;
-      kept[section].push(snippet);
+      if (includeDiagnostics) {
+        if (snippetDiagnostics[section].length >= DIAGNOSTICS_MAX_SNIPPETS_PER_SECTION) {
+          truncated = true;
+        } else {
+          diagnosticsBytes += estimateTokens(JSON.stringify(diagnostic.content ?? "")) + 96;
+          snippetDiagnostics[section].push(diagnostic);
+        }
+      }
+      if (diagnosticsBytes > DIAGNOSTICS_MAX_BYTES) truncated = true;
+    }
+    if (includeDiagnostics) {
+      sectionDiagnostics.push({
+        name: SECTION_OF_FIELD[section],
+        snippets: snippetDiagnostics[section],
+        estimatedTokens: sectionTokens,
+      });
     }
   }
+
+  const estimatedUsed = available - remaining;
+  const diagnostics: TraceContextSnapshotFields | undefined = includeDiagnostics
+    ? {
+        budget: {
+          inputLimit: budget.inputLimit,
+          outputReserve: budget.outputReserve,
+          safetyReserve: budget.safetyReserve,
+          available,
+          estimatedUsed,
+        },
+        requiredBlocks,
+        history: {
+          inputCount: historyCounts.inputCount,
+          normalizedCount: historyCounts.normalizedCount,
+          recentLimitDropped: historyCounts.recentLimitDropped,
+          budgetDropped: historyCounts.normalizedCount - recentConversation.length - historyCounts.recentLimitDropped,
+          kept: recentConversation.length,
+        },
+        summary: {
+          state: pieces.summary === null ? "none" : summary === null ? "skipped" : "used",
+          estimatedTokens: summary === null ? 0 : estimateTokens(summary),
+        },
+        sections: sectionDiagnostics,
+        counts: {
+          snippetsTotal: ordinal,
+          snippetsKept: kept.memories.length + kept.knowledge.length + kept.environment.length,
+          truncated,
+        },
+      }
+    : undefined;
 
   return {
     context: {
@@ -314,6 +409,7 @@ function trimToBudget(
     },
     estimatedTokens: available - remaining,
     droppedSources,
+    ...(includeDiagnostics ? { diagnostics } : {}),
   };
 }
 
@@ -367,10 +463,12 @@ export function createContextAssembler(options: ContextAssemblerOptions = {}): C
       };
 
       const requiredTokens = requiredTokensOf(input, clock);
+      const normalizedTurns = toCompanionTurns(input.history);
+      const recentConversation = normalizedTurns.slice(-recentTurnLimit);
       const result = trimToBudget(
         draft,
         {
-          recentConversation: toCompanionTurns(input.history).slice(-recentTurnLimit),
+          recentConversation,
           summary: input.summary ?? null,
           memories: bySection.memory,
           knowledge: bySection.knowledge,
@@ -378,6 +476,13 @@ export function createContextAssembler(options: ContextAssemblerOptions = {}): C
         },
         budget,
         requiredTokens,
+        input.includeDiagnostics ? requiredBlocksOf(input, clock) : [],
+        {
+          inputCount: input.history.length,
+          normalizedCount: normalizedTurns.length,
+          recentLimitDropped: normalizedTurns.length - recentConversation.length,
+        },
+        input.includeDiagnostics === true,
       );
 
       return {
@@ -385,6 +490,7 @@ export function createContextAssembler(options: ContextAssemblerOptions = {}): C
         budget,
         estimatedTokens: result.estimatedTokens,
         droppedSources: [...droppedSources, ...result.droppedSources],
+        ...(result.diagnostics ? { diagnostics: result.diagnostics } : {}),
       };
     },
   };

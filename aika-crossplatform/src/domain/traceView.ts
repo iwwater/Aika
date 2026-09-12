@@ -101,6 +101,7 @@ export function toJsonl(events: readonly TraceEventV1[]): string {
 const KIND_LABELS: Record<TraceEventKind, string> = {
   turn_start: "开始",
   context_assemble: "组装上下文",
+  context_snapshot: "上下文快照",
   provider_request: "发出请求",
   provider_stream_meta: "流式统计",
   reply: "回包",

@@ -16,6 +16,7 @@ export const TRACE_SCHEMA_VERSION = 1;
 export type TraceEventKind =
   | "turn_start"
   | "context_assemble"
+  | "context_snapshot"
   | "provider_request"
   | "provider_stream_meta"
   | "reply"
@@ -29,6 +30,69 @@ export interface TraceDroppedSource {
   source: string;
   section: ContextSection | "history" | "summary";
   reason: ContextDropReason;
+}
+
+// ---------------------------------------------------------------------------
+// context_snapshot（LLM-11）：装配期观察到的裁剪诊断。
+//
+// 在装配时采集，**不是**从最终 context 反推被裁内容；正文开关关闭时 content
+// 由唯一脱敏点置 null。ordinal 只是本轮诊断序号，不冒充 Memory ID。
+// ---------------------------------------------------------------------------
+
+export interface TraceContextSnippetDiagnostic {
+  /** 受控来源名（来源 id 或 section 名），不是自由路径。 */
+  source: string;
+  /** 可空：来源内部 id（如 memory id）。 */
+  id: string | null;
+  category: string | null;
+  precision: "confirmed" | "proxy" | "unknown" | null;
+  temporal: "current" | "past" | null;
+  /** 本轮诊断序号，从 0 起。 */
+  ordinal: number;
+  estimatedTokens: number;
+  kept: boolean;
+  /** kept=false 时的裁剪原因。 */
+  reason: ContextDropReason | null;
+  /** 正文。脱敏关掉时是 null；缺失（null）和空串必须分得开。 */
+  content: string | null;
+}
+
+export interface TraceContextSectionDiagnostic {
+  name: ContextSection;
+  snippets: TraceContextSnippetDiagnostic[];
+  estimatedTokens: number;
+}
+
+export interface TraceContextBudgetDiagnostic {
+  inputLimit: number;
+  outputReserve: number;
+  safetyReserve: number;
+  /** max(0, inputLimit - outputReserve - safetyReserve)。估算口径，不是平台真实预算。 */
+  available: number;
+  estimatedUsed: number;
+}
+
+export interface TraceContextHistoryDiagnostic {
+  inputCount: number;
+  normalizedCount: number;
+  recentLimitDropped: number;
+  budgetDropped: number;
+  kept: number;
+}
+
+export interface TraceContextSummaryDiagnostic {
+  state: "none" | "used" | "skipped";
+  estimatedTokens: number;
+}
+
+export interface TraceContextSnapshotFields {
+  budget: TraceContextBudgetDiagnostic;
+  requiredBlocks: { name: string; estimatedTokens: number }[];
+  history: TraceContextHistoryDiagnostic;
+  summary: TraceContextSummaryDiagnostic;
+  sections: TraceContextSectionDiagnostic[];
+  /** 截断时明确记录：这不是全量清单。 */
+  counts: { snippetsTotal: number; snippetsKept: number; truncated: boolean };
 }
 
 interface TraceEventBase {
@@ -56,6 +120,7 @@ export type TraceEventV1 =
     /** 真进了上下文的来源名。空数组表示这一轮没注入任何检索结果。 */
     retrievedSources: string[];
   })
+  | (TraceEventBase & ({ kind: "context_snapshot" } & TraceContextSnapshotFields))
   | (TraceEventBase & {
     kind: "provider_request";
     protocol: string;
@@ -185,6 +250,17 @@ export function redactTraceEvent(
     return policy.includeText
       ? { ...event, endpoint }
       : { ...event, endpoint, instructionsDigest: null };
+  }
+  if (event.kind === "context_snapshot") {
+    if (policy.includeText) return event;
+    // 正文开关关闭：content 一律置 null；source 是受控来源名，保留可统计。
+    return {
+      ...event,
+      sections: event.sections.map((section) => ({
+        ...section,
+        snippets: section.snippets.map((snippet) => ({ ...snippet, content: null })),
+      })),
+    };
   }
   if (policy.includeText) return event;
   if (event.kind === "turn_start") return { ...event, text: null };

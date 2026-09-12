@@ -105,6 +105,8 @@ function summarizeStep(event: import("../domain/trace").TraceEventV1): string {
       return `${event.source} · ${event.mode}${event.text ? ` · ${event.text}` : ""}`;
     case "context_assemble":
       return `≈${event.estimatedTokens} token · 来源 ${event.retrievedSources.length} · 丢弃 ${event.droppedSources.length}`;
+    case "context_snapshot":
+      return `保留 ${event.counts.snippetsKept}/${event.counts.snippetsTotal}${event.counts.truncated ? " · 已截断" : ""} · ≈${event.budget.estimatedUsed} token`;
     case "provider_request":
       return `${event.protocol} · ${event.model} · ${event.endpoint}`;
     case "provider_stream_meta":

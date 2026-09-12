@@ -493,7 +493,7 @@ describe("LLM-07 · Trace 事件序列", () => {
     return [...await sink.query({})];
   }
 
-  it("一轮走完：五个事件按序到达，seq 从 1 连续", async () => {
+  it("一轮走完：六个事件按序到达，seq 从 1 连续", async () => {
     const { harness, sink, tick } = traced();
     const handle = harness.submit("你好");
     await flush();
@@ -508,11 +508,12 @@ describe("LLM-07 · Trace 事件序列", () => {
     await flush();
 
     const recorded = await events(sink);
-    // reply 排在 provider_stream_meta 与 turn_end 之间（LLM-09）。
+    // reply 排在 provider_stream_meta 与 turn_end 之间（LLM-09）；
+    // context_snapshot 紧跟 context_assemble（LLM-11）。
     expect(recorded.map((event) => event.kind)).toEqual([
-      "turn_start", "context_assemble", "provider_stream_meta", "reply", "turn_end",
+      "turn_start", "context_assemble", "context_snapshot", "provider_stream_meta", "reply", "turn_end",
     ]);
-    expect(recorded.map((event) => event.seq)).toEqual([1, 2, 3, 4, 5]);
+    expect(recorded.map((event) => event.seq)).toEqual([1, 2, 3, 4, 5, 6]);
     expect(recorded.every((event) => event.turnId === handle.turnId)).toBe(true);
   });
 
@@ -812,6 +813,72 @@ describe("LLM-09 · reply 事件", () => {
     expect(await sink.query({ kind: "reply" })).toEqual([]);
     // 但 turn_end 仍然有：失败也是一种结束。
     expect(await sink.query({ kind: "turn_end" })).toHaveLength(1);
+    harness.runtime.dispose();
+  });
+});
+
+describe("LLM-11 · context_snapshot", () => {
+  function tracedSnap(options: { enabled?: boolean; includeText?: boolean } = {}) {
+    let now = NOW;
+    const sink = createMemoryTraceSink(200);
+    const recorder = createTraceRecorder({
+      sink,
+      clock: () => now,
+      isEnabled: () => options.enabled ?? true,
+      policy: () => ({ includeText: options.includeText ?? false }),
+    });
+    const harness = setup({ clock: { now: () => now }, trace: recorder });
+    return { harness, sink, tick: (ms: number) => { now += ms; } };
+  }
+
+  async function snapEvents(sink: TraceSink): Promise<readonly TraceEventV1[]> {
+    return (await sink.query({ kind: "context_snapshot" }));
+  }
+
+  it("成功装配轮恰好一条快照，字段齐全", async () => {
+    const { harness, sink } = tracedSnap();
+    const handle = harness.submit("你好");
+    await flush();
+    harness.controls[0].finish({ replyText: "こんにちは", translation: "你好" });
+    await handle.done;
+    await flush();
+
+    const snapshots = await snapEvents(sink);
+    expect(snapshots).toHaveLength(1);
+    const snapshot = snapshots[0];
+    if (snapshot.kind !== "context_snapshot") throw new Error("kind 不符");
+    expect(snapshot.budget.available).toBeGreaterThan(0);
+    expect(snapshot.budget.estimatedUsed).toBeGreaterThan(0);
+    expect(snapshot.requiredBlocks.map((block) => block.name)).toContain("query");
+    expect(snapshot.history).toMatchObject({ inputCount: 0, recentLimitDropped: 0, kept: 0 });
+    expect(snapshot.summary.state).toBe("none");
+    expect(snapshot.counts.truncated).toBe(false);
+    harness.runtime.dispose();
+  });
+
+  it("Trace 关闭：不产生快照（连诊断正文都不构造）", async () => {
+    const { harness, sink } = tracedSnap({ enabled: false });
+    const handle = harness.submit("你好");
+    await flush();
+    harness.controls[0].finish({ replyText: "こんにちは", translation: "你好" });
+    await handle.done;
+    await flush();
+    expect(await snapEvents(sink)).toHaveLength(0);
+    harness.runtime.dispose();
+  });
+
+  it("includeText=false：快照正文经唯一脱敏点置 null", async () => {
+    const { harness, sink } = tracedSnap({ includeText: false });
+    const handle = harness.submit("你好");
+    await flush();
+    harness.controls[0].finish({ replyText: "こんにちは", translation: "你好" });
+    await handle.done;
+    await flush();
+    const snapshots = await snapEvents(sink);
+    if (snapshots[0]?.kind !== "context_snapshot") throw new Error("无快照");
+    const withContent = snapshots[0].sections.flatMap((section) => section.snippets)
+      .filter((snippet) => snippet.content !== null);
+    expect(withContent).toEqual([]);
     harness.runtime.dispose();
   });
 });

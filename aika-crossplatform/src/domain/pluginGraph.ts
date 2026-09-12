@@ -294,7 +294,7 @@ export interface TurnFlow {
 
 /** 固定顺序，与 Runtime 实际编排一致；缺哪一步就看得出缺在哪。 */
 const FLOW_ORDER: readonly TraceEventKind[] = [
-  "turn_start", "context_assemble", "provider_request", "provider_stream_meta",
+  "turn_start", "context_assemble", "context_snapshot", "provider_request", "provider_stream_meta",
   "reply", "memory_extract", "tts", "turn_end",
 ];
 
@@ -339,6 +339,8 @@ function describeStage(event: TraceEventV1): string {
       return `${event.source} · ${event.mode}`;
     case "context_assemble":
       return `≈${event.estimatedTokens} token · 来源 ${event.retrievedSources.length} · 丢弃 ${event.droppedSources.length}`;
+    case "context_snapshot":
+      return `快照 · 保留 ${event.counts.snippetsKept}/${event.counts.snippetsTotal}${event.counts.truncated ? " · 已截断" : ""}`;
     case "provider_request":
       return `${event.protocol} · ${event.model}`;
     case "provider_stream_meta":

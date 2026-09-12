@@ -86,6 +86,8 @@ export interface ContextAssemblyResult {
   budget: ContextBudget;
   estimatedTokens: number;
   droppedSources: DroppedSource[];
+  /** 装配期裁剪诊断（LLM-11）；只有请求时才构造，避免关闭 Trace 时白付拷贝。 */
+  diagnostics?: import("./trace").TraceContextSnapshotFields;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
