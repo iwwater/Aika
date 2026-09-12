@@ -109,8 +109,10 @@ SpeechOutputEngine：两格装的确实是两个不同的实现，不是都退�
 
 ```
 npx vitest run <7 份 conformance.test.ts>
-→ Test Files 7 failed (7) / Tests 12 failed | 84 passed (96)，退出码 0
+→ Test Files 7 failed (7) / Tests 12 failed | 84 passed (96)，退出码 1
 ```
+
+> 2026-09-13 复核更正：上行退出码原误记为 0；7 个文件失败必然对应非零退出码（vitest 失败为 1），突变验证结论（用例包真实检出改坏）不受影响。
 
 | 端口 | 被改坏的实现 | 改坏的行为 | 失败的用例 |
 | --- | --- | --- | --- |

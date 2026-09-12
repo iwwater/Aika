@@ -23,15 +23,15 @@
 | --- | --- | --- | --- | --- |
 | 0 | 读文档 + git 基线登记 + commit 一次 | DONE | 049372f | 见上 |
 | 0 | speechOutput 契约定向复核 | DONE | 049372f + 本文件 | 12/12 exit 0 |
-| 1 | CORE-01 | NOT RUN | | 审生产实现+逐AC证据 |
-| 1 | CORE-02 | NOT RUN | | |
-| 1 | CORE-03 | NOT RUN | | 编排统一门禁 |
-| 1 | CORE-04 | NOT RUN | | |
-| 1 | CORE-05 | NOT RUN | | |
-| 1 | CORE-06 | NOT RUN | | |
-| 1 | CORE-07 | NOT RUN | | |
-| 1 | CORE-08 | NOT RUN | | |
-| 1 | CORE-09 | NOT RUN | | |
+| 1 | CORE-01 | REVIEWED_AUTO | 见会话日志 | 逐AC证据全；kernel 4文件77测试复跑 exit 0 |
+| 1 | CORE-02 | REVIEWED_AUTO | 见会话日志 | 逐AC全；SPEC状态行"未开始"已补正 |
+| 1 | CORE-03 | REVIEWED_AUTO | 见会话日志 | 编排统一门禁；自测16文件/189，范围复跑绿 |
+| 1 | CORE-04 | REVIEWED_AUTO | 见会话日志 | 行数漂移：报告65/57 vs 实际73/74（≤150门限仍满足），已记录 |
+| 1 | CORE-05 | REVIEWED_AUTO | 见会话日志 | cloudTtsOutput补齐有据；真实云TTS NOT RUN |
+| 1 | CORE-06 | REVIEWED_AUTO | 见会话日志 | legacy无生产残留（grep核实）；AC-C基线对比口径弱（vs CORE-05 160→151），已记录 |
+| 1 | CORE-07 | REVIEWED_AUTO | 见会话日志 | 突变验证有效；报告退出码笔误已更正；补齐动生产代码与SPEC"不做"条款冲突（报告已自认）；ContextSource仅1真实实现证据弱 |
+| 1 | CORE-08 | REVIEWED_AUTO | 见会话日志 | deleteMessages端口contracts.ts:51核实；真实plugin-sql留INT-01 |
+| 1 | CORE-09 | REVIEWED_AUTO | 见会话日志 | src/kernel 77测试绿；SPEC证据列plugin.test.ts未在报告出现（小出入） |
 | 1 | LLM-01 | NOT RUN | | |
 | 1 | LLM-02 | NOT RUN | | |
 | 1 | LLM-03 | NOT RUN | | |
@@ -104,3 +104,4 @@
 ## 会话日志
 
 - 2026-09-13 02:22 Wave 0 完成：基线 `049372f`；speechOutput 12/12 exit 0。
+- 2026-09-13 02:30 Wave 1 CORE-01～09 REVIEWED_AUTO：Explore 审阅 8 份 SPEC/报告逐 AC 证据 + 生产抽查（legacy 无生产残留、activeRuntime.ts 已删、CONTRACTS 含内核契约）；合集定向测试 `npx vitest run src/kernel src/app src/presentation src/hooks src/services/{storage,runtime,context,memory,voice}` → 41 文件 / 491 测试全绿 exit 0。修 CORE-02 SPEC 状态行、CORE-07 报告退出码笔误。CORE 批次 commit 待落。
