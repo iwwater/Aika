@@ -10,6 +10,7 @@ import { MessageBody } from "./components/MessageBody";
 import { MessageSticker } from "./components/MessageSticker";
 import { MessageTranslation } from "./components/MessageTranslation";
 import { VoiceModal } from "./components/VoiceModal";
+import type { VoiceOutput } from "./services/voice/outputEngine";
 import { DevToolsPage } from "./pages/DevToolsPage";
 import { DEFAULT_CHARACTER } from "./domain/character";
 import { nextRecognitionLanguage, type RecognitionInput } from "./domain/language";
@@ -53,6 +54,20 @@ function App() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [whisperStatus, setWhisperStatus] = useState<"idle" | "checking" | "ok" | "down">("idle");
   const [whisperNote, setWhisperNote] = useState("");
+  const [voiceApiKeyDraft, setVoiceApiKeyDraft] = useState("");
+  const applyVoiceOutput = (overrides: Partial<import("./services/voice/outputEngine").VoiceOutputConfig>) => {
+    const current = session.voiceOutput;
+    const config = {
+      output: (overrides.output ?? (current?.output as VoiceOutput | undefined) ?? "system") as VoiceOutput,
+      baseUrl: overrides.baseUrl ?? current?.baseUrl ?? "",
+      model: overrides.model ?? current?.model ?? "",
+      voice: overrides.voice ?? current?.voice ?? "",
+      speed: overrides.speed ?? current?.speed ?? 1,
+      apiKey: overrides.apiKey ?? "",
+    };
+    void session.setVoiceOutput(config);
+  };
+
 
   const { connected, sending, provider, messages, memories, relationship, proactive } = session;
 
@@ -479,6 +494,76 @@ function App() {
               </button>
               <span className="toggle-hint">{whisperNote || "启动 whisper-server 之后点这里确认它活着。"}</span>
             </div>
+
+            <div className="settings-divider" />
+            <div className="modal-heading"><div><p className="eyebrow">Speaking</p><h3>语音输出</h3></div></div>
+            <p className="modal-intro">默认走系统合成。点名要云端却配置不全时，她会退回系统合成并把原因一直显示在这里——不会假装新音色已经生效。API Key 存在系统加密的密钥库里，不进设置导出。</p>
+            {session.voiceOutput && (
+              <div className="form-grid">
+                <label className="field"><span>输出链路</span>
+                  <select
+                    value={session.voiceOutput.output}
+                    onChange={(e) => applyVoiceOutput({ output: e.target.value as VoiceOutput })}
+                  >
+                    <option value="system">只用系统合成</option>
+                    <option value="auto">自动：配好了就用云端</option>
+                    <option value="cloud-tts">只用云端合成</option>
+                  </select>
+                </label>
+                <label className="field"><span>API 地址</span>
+                  <input
+                    value={session.voiceOutput.baseUrl}
+                    onChange={(e) => applyVoiceOutput({ baseUrl: e.target.value })}
+                    placeholder="https://api.example.com/v1"
+                  />
+                </label>
+                <label className="field"><span>模型</span>
+                  <input
+                    value={session.voiceOutput.model}
+                    onChange={(e) => applyVoiceOutput({ model: e.target.value })}
+                  />
+                </label>
+                <label className="field"><span>音色</span>
+                  <input
+                    value={session.voiceOutput.voice}
+                    onChange={(e) => applyVoiceOutput({ voice: e.target.value })}
+                  />
+                </label>
+                <label className="field"><span>语速</span>
+                  <input
+                    type="number" step="0.1" min="0.5" max="2"
+                    value={session.voiceOutput.speed}
+                    onChange={(e) => applyVoiceOutput({ speed: Number(e.target.value) || 1 })}
+                  />
+                </label>
+                <label className="field"><span>API Key {session.voiceOutput.hasApiKey ? "（已保存，留空＝保持）" : ""}</span>
+                  <input
+                    type="password"
+                    value={voiceApiKeyDraft}
+                    onChange={(e) => setVoiceApiKeyDraft(e.target.value)}
+                    placeholder={session.voiceOutput.hasApiKey ? "••••••••" : "sk-…"}
+                  />
+                </label>
+                <div className="toggle-row">
+                  <button className="toggle" onClick={() => { applyVoiceOutput({ apiKey: voiceApiKeyDraft }); setVoiceApiKeyDraft(""); }}>
+                    <Volume2 size={15} /><span>保存 API Key</span>
+                  </button>
+                  {session.voiceOutput.hasApiKey && (
+                    <button className="toggle" onClick={() => { void session.removeVoiceApiKey(); setVoiceApiKeyDraft(""); }}>
+                      <span>删除已保存的 Key</span>
+                    </button>
+                  )}
+                </div>
+                {voice.outputStatus && (
+                  <div className="toggle-row">
+                    <span className={voice.outputStatus.degraded ? "toggle-hint" : "toggle-hint"}>
+                      {voice.outputStatus.degraded ? "⚠ " : ""}{voice.outputStatus.note}
+                      {voice.outputStatus.degraded ? "（当前实际用系统合成）" : ""}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="settings-divider" />
             <div className="modal-heading"><div><p className="eyebrow">Phone</p><h3>手机也能用</h3></div></div>

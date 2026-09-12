@@ -30,6 +30,8 @@ import type { MemoryAccess } from "../services/memory/tokens";
 import { NO_TRACE, type TraceRecorder } from "../services/trace/traceRecorder";
 import { createMemoryMaintenance, type MemoryMaintenance } from "../services/memory/writeback";
 import { createStorageMaintenanceJournal } from "../services/memory/maintenanceJournal";
+import type { VoiceOutputSettingsPort } from "../services/voice/outputSettings";
+import type { VoiceOutputConfig } from "../services/voice/outputEngine";
 import type { Notifier } from "../services/notification/notifier";
 import type { RuntimeServices } from "../services/runtime/tokens";
 import { loadStickers } from "../services/stickers/library";
@@ -81,6 +83,9 @@ export interface CompanionViewModel {
   memoryExtractionEnabled: boolean;
   proactive: ProactiveSettings;
   voiceBackend: VoiceBackendConfig;
+  /** 语音输出持久化配置（不含 Key——Key 不进快照/Trace，只报 hasApiKey）。
+   * 输出链路实际状态在 voice 会话视图（outputStatus），degraded 要当错误显示。 */
+  voiceOutput: { output: string; baseUrl: string; model: string; voice: string; speed: number; hasApiKey: boolean } | null;
   stickers: readonly Sticker[];
   relationship: RelationshipState;
   summary: string | null;
@@ -130,6 +135,10 @@ export interface CompanionPresenter {
   setProactive(next: ProactiveSettings): Promise<void>;
   setMemoryExtractionEnabled(enabled: boolean): Promise<void>;
   setVoiceBackend(next: VoiceBackendConfig): Promise<void>;
+  /** 保存并应用语音输出配置（TTS-04）；持久化失败时抛错且不切内存。 */
+  setVoiceOutput(next: VoiceOutputConfig): Promise<void>;
+  /** 显式删除已保存的云端 Key。 */
+  removeVoiceApiKey(): Promise<void>;
   setModeConfig(next: ModeConfig): Promise<void>;
   exitScenario(): Promise<void>;
   confirmMemory(id: string): Promise<void>;
@@ -160,6 +169,10 @@ export interface CompanionPresenterDeps {
   randomUUID?: () => string;
   /** 后台维护的触发阈值（每 N 个成功轮一批）。生产默认 8；测试可注入更小值。 */
   maintenanceTurnThreshold?: number;
+  /** 语音输出设置端口（TTS-04）；缺省时输出设置只读不可写。 */
+  voiceOutputSettings?: VoiceOutputSettingsPort;
+  /** 把新输出配置推给 VoicePresenter（重建引擎与队列）。 */
+  applyVoiceOutput?: (config: VoiceOutputConfig) => void;
 }
 
 function startOfToday(now: number): number {
@@ -231,6 +244,9 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
   /** 记忆能力包；管理页改完记忆时靠它通知，这里也靠它通知管理页。 */
   let memoryAccess: MemoryAccess | null = null;
   let maintenance: MemoryMaintenance | null = null;
+  let voiceOutputSettings: VoiceOutputSettingsPort | null = deps.voiceOutputSettings ?? null;
+  let voiceOutput: VoiceOutputConfig | null = null;
+  let voiceOutputErrors = new Set<string>();
   let persist: (message: ChatMessage) => Promise<void> = async () => undefined;
   const trace = deps.trace ?? NO_TRACE;
   const persistedMessageIds = new Set<string>();
@@ -338,6 +354,18 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
       opened.getSetting(SETTING_KEYS.mode),
     ]);
     if (disposed) return;
+
+    // 语音输出配置（TTS-04）：读回持久化状态并推给 VoicePresenter，
+    // 否则重启后会被默认 system 覆盖。load 失败按默认值继续，不算启动故障。
+    if (voiceOutputSettings) {
+      try {
+        voiceOutput = await voiceOutputSettings.load();
+        deps.applyVoiceOutput?.(voiceOutput);
+      } catch {
+        voiceOutput = null;
+      }
+      if (disposed) return;
+    }
 
     // 清单读不出来就当没有表情包，不该拦住这次启动。
     stickers = [...await loadStickerLibrary()];
@@ -957,6 +985,43 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
     await storage?.setSetting(SETTING_KEYS.whisperEndpoint, next.whisperEndpoint);
   }
 
+  async function setVoiceOutput(next: VoiceOutputConfig): Promise<void> {
+    if (!voiceOutputSettings) {
+      const failure = new Error("语音输出设置不可用：本机没有配置存储");
+      voiceOutputErrors.add(failure.message);
+      setStorageError(appendVisibleError(storageError, failure.message));
+      throw failure;
+    }
+    try {
+      // 持久化成功才切内存与引擎；失败保留原配置（错误可见，不悄悄回滚）。
+      await voiceOutputSettings.save(next);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      const failure = new Error(`语音输出设置保存失败：${detail}`);
+      voiceOutputErrors.add(failure.message);
+      setStorageError(appendVisibleError(storageError, failure.message));
+      throw failure;
+    }
+    for (const previous of [...voiceOutputErrors]) {
+      voiceOutputErrors.delete(previous);
+      setStorageError(removeVisibleError(storageError, previous));
+    }
+    voiceOutput = next;
+    deps.applyVoiceOutput?.(next);
+    commit();
+  }
+
+  /** 显式删除已保存的云端 TTS Key；空 Key 的保存语义是"保持"，删除必须走这里。 */
+  async function removeVoiceApiKey(): Promise<void> {
+    if (!voiceOutputSettings) {
+      const failure = new Error("语音输出设置不可用：本机没有配置存储");
+      throw failure;
+    }
+    await voiceOutputSettings.removeApiKey();
+    if (voiceOutput) voiceOutput = { ...voiceOutput, apiKey: "" };
+    commit();
+  }
+
   async function setModeConfig(next: ModeConfig): Promise<void> {
     const normalized = normalizeModeConfig(next);
     if (!storage) {
@@ -1058,6 +1123,14 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
         memoryExtractionEnabled,
         proactive,
         voiceBackend,
+        voiceOutput: voiceOutput ? {
+          output: voiceOutput.output,
+          baseUrl: voiceOutput.baseUrl,
+          model: voiceOutput.model,
+          voice: voiceOutput.voice,
+          speed: voiceOutput.speed,
+          hasApiKey: Boolean(voiceOutput.apiKey),
+        } : null,
         stickers,
         relationship: computeRelationship(deriveRelationshipSignals(timestamps)),
         summary,
@@ -1088,6 +1161,8 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
     setProactive,
     setMemoryExtractionEnabled,
     setVoiceBackend,
+    setVoiceOutput,
+    removeVoiceApiKey,
     setModeConfig,
     exitScenario,
     confirmMemory,

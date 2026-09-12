@@ -187,6 +187,14 @@ describe("CORE-05-B 能力缺失是常态", () => {
 
   it("无麦克风权限：语音页显示错误但不崩、应用仍可用", async () => {
     const denied: SpeechEngines = {
+      output: { selected: "system", actual: "system", note: "系统语音合成", degraded: false },
+      resolveOutput: () => ({
+        engine: {
+          id: "fake", kind: "web-speech", isAvailable: () => true,
+          speak: () => undefined, stop: () => undefined,
+        } as never,
+        actual: "system" as const, note: "系统语音合成", degraded: false,
+      }),
       createInputEngine: async () => ({
         engine: {
           id: "denied", kind: "web-speech", continuous: false,

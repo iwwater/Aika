@@ -36,6 +36,8 @@ export const DEFAULT_VOICE_OUTPUT: VoiceOutputConfig = {
 
 export interface ResolvedOutputEngine {
   engine: SpeechOutputEngine;
+  /** 实际生效的链路：自动降级后 UI 显示的「当前引擎」以它为准（TTS-04）。 */
+  actual: "system" | "cloud-tts";
   /** 给界面显示的一句话，说明这一轮实际用的是哪条链路。 */
   note: string;
   /** 用户点名要云端，但配置不全。界面要把它当错误显示，不能只当提示。 */
@@ -54,7 +56,7 @@ export function missingCloudTtsField(config: CloudTtsConfig): string {
 const SYSTEM_NOTE = "系统语音合成：语速能调，音色取决于 Windows 里装了哪些语音包。";
 
 function system(note: string, degraded = false): ResolvedOutputEngine {
-  return { engine: webSpeechOutput, note, degraded };
+  return { engine: webSpeechOutput, actual: "system", note, degraded };
 }
 
 export function createOutputEngine(config: VoiceOutputConfig, send?: HttpFetch): ResolvedOutputEngine {
@@ -74,6 +76,7 @@ export function createOutputEngine(config: VoiceOutputConfig, send?: HttpFetch):
 function cloud(config: VoiceOutputConfig, send?: HttpFetch): ResolvedOutputEngine {
   return {
     engine: createCloudTtsOutput(() => config, send),
+    actual: "cloud-tts",
     note: `云端语音合成：${config.model} · ${config.voice} · 语速 ${config.speed}`,
     degraded: false,
   };

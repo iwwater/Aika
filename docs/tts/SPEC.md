@@ -21,7 +21,7 @@
 
 | SPEC | 交付 | 状态 |
 | --- | --- | --- |
-| [TTS-04](specs/TTS-04.md) | 云端输出设置与降级错误 | READY，仅本地实现 |
+| [TTS-04](specs/TTS-04.md) | 云端输出设置与降级错误 | AUTO_PASS（2026-09-13）：A~D 可自动 AC 全过，233 测试回归全绿；真实试听属 TTS-05。见[验收报告](reports/TTS-04_ACCEPTANCE.md) |
 | [TTS-05](specs/TTS-05.md) | 真实云 TTS 试听 | 条件执行；真实服务NOT RUN |
 
 当前执行按[安全计划](../GOAL_EXECUTION_PLAN.md)。早期无报告项状态为未核实/待补证，不认定未实现或通过；已有报告项仍待审阅。

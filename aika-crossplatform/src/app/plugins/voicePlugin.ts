@@ -40,9 +40,8 @@ export function voicePlugin(engines: SpeechEngines = defaultSpeechEngines()): Ai
  *
  * `speed` 交给队列而不是引擎：「慢一点」是对她说的，两条链路都得听懂。
  *
- * 还没接上的一环：`createOutputEngine` 返回的 `note` / `degraded` 在这里被丢掉了。
- * 目前没有让用户选云端合成的入口，所以还不会发生「悄悄降级」；等设置页接上时，
- * 这两个值必须一路送到界面，降级要当错误显示。
+ * `note` / `degraded` 从这里透出到 `output` 状态（TTS-04）：点名要云端却配不全
+ * 时 `degraded=true`，UI 必须把它当错误持久显示。
  */
 export function defaultSpeechEngines(
   output: VoiceOutputConfig = DEFAULT_VOICE_OUTPUT,
@@ -52,6 +51,13 @@ export function defaultSpeechEngines(
   return {
     createInputEngine,
     outputEngine: resolved.engine,
+    output: {
+      selected: output.output,
+      actual: resolved.actual,
+      note: resolved.note,
+      degraded: resolved.degraded,
+    },
+    resolveOutput: (config) => createOutputEngine(config, send),
     createQueue: (engine) => createSpeechQueue(engine, { speed: output.speed }),
     createMonitor: () => createMicActivityMonitor(),
   };

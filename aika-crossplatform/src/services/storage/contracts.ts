@@ -77,6 +77,8 @@ export const SETTING_KEYS = {
   proactiveLastReason: "proactive.lastReason",
   memoryExtraction: "memory.extraction",
   voiceBackend: "voice.backend",
+  /** 语音输出链路（TTS-04）。API Key 不在这里：走 SecretStore 的 tts.cloud.apiKey。 */
+  voiceOutput: "voice.output",
   whisperEndpoint: "voice.whisperEndpoint",
   mode: "llm.mode",
   /** Trace 开关（LLM-07）。默认值按构建取，持久化后以库里的为准。 */

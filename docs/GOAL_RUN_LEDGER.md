@@ -61,7 +61,7 @@
 | 2 | INT-01 可自动消费者检查 | PARTIAL | 见会话日志 | 自动契约列 PASS（109 测试 exit 0）；浏览器/Tauri/手机/真实Provider 四列 NOT RUN 留人工队列 |
 | 3 | LLM-04 后台写回 | AUTO_PASS（fixture） | 见会话日志 | MemoryMaintenance 重写+计量埋点；274 回归全绿 tsc 0；真实服务 NOT RUN |
 | 3 | LLM-05 RAG | PARTIAL | 见会话日志 | A/B/C/E 全过（15/15 命中）；AC-D 真实模型 NOT RUN 无凭证；装配点改 contextSourcesPlugin |
-| 3 | TTS-04 设置与错误传播 | NOT RUN | | |
+| 3 | TTS-04 设置与错误传播 | AUTO_PASS（待人工） | 见会话日志 | 设置端口/切引擎停队列/降级可见全过；SpeechEngines 接口破坏性扩展（消费者已同步） |
 | 3 | LLM-11 上下文快照 | NOT RUN | | |
 | 3 | FE-23 时间线 | NOT RUN | | 依赖 LLM-11 |
 | 3 | FE-24 实时浮层 | NOT RUN | | 依赖 FE-23 |
@@ -111,3 +111,4 @@
 - 2026-09-13 02:55 Wave 2 INT-01：写 reports/INT-01_ACCEPTANCE.md（分列）；实跑 composition/remote/storageCompatibility/storage.conformance/companionRuntime/useCompanionSession.integration → 6 文件 / 109 测试 exit 0。结论 PARTIAL：自动契约列 PASS；浏览器页面、Tauri plugin-sql、真实手机、真实 Provider 四列 NOT RUN。旧版 Remote 基线可作 RT-02 之前的本地前置。
 - 2026-09-13 03:23 Wave 3 LLM-04 AUTO_PASS（fixture）：重写 services/memory/writeback.ts 为 MemoryMaintenance（批次快照/稳定ID/单worker/退避1s→30s×3/epoch作废/journal KV持久化/8轮阈值/容量上限），新增 maintenanceJournal.ts、RequestMetric 计量埋点（providerClient/extractor/adapter），presenter 切换装配。回归 274 passed+1 skipped exit 0，项目 tsc 0 错误。报告 LLM-04_AGENT_MEMORY_WRITEBACK_ACCEPTANCE.md。注意：dispose 不异步 flush（SPEC 接受 <8 轮窗口丢失）；hook 集成测试注入阈值 1 保持重试语义。
 - 2026-09-13 04:05 Wave 3 LLM-05 PARTIAL：新增 domain/knowledge + knowledgeIndex（staging/原子激活/FTS 召回+TS BM25/缓存/降级）+ knowledgeSource + contextSourcesPlugin 唯一装配点；memoryPlugin 不再提供 ContextSourcesToken。冻结语料 15/15 命中、5 无答案空命中；回归 154 测试全绿 tsc 0；矩阵/plugins/hook 消费者同步更新。AC-D 真实模型 NOT RUN。
+- 2026-09-13 04:30 Wave 3 TTS-04 AUTO_PASS（待人工）：outputSettings 端口（Key 进 SecretStore、空=保持、显式删除）、SpeechEngines.output/resolveOutput 扩展、voicePresenter.applyVoiceOutput（停旧队列+世代隔离）、companionPresenter.setVoiceOutput + App 设置表单。定向 8 例 + 回归 233 全绿，tsc 0。UI 视觉/真实试听留人工/TTS-05。

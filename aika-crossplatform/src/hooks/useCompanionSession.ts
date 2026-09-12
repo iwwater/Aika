@@ -40,6 +40,11 @@ export function useCompanionSession() {
     [presenter],
   );
   const setVoiceBackend = useCallback((next: VoiceBackendConfig) => presenter.setVoiceBackend(next), [presenter]);
+  const setVoiceOutput = useCallback(
+    (next: Parameters<CompanionPresenter["setVoiceOutput"]>[0]) => presenter.setVoiceOutput(next),
+    [presenter],
+  );
+  const removeVoiceApiKey = useCallback(() => presenter.removeVoiceApiKey(), [presenter]);
   const setModeConfig = useCallback((next: ModeConfig) => presenter.setModeConfig(next), [presenter]);
   const setMode = useCallback(
     (mode: ModeId) => presenter.setModeConfig({ ...presenter.getSnapshot().mode, mode }),
@@ -61,6 +66,8 @@ export function useCompanionSession() {
     setProactive,
     setMemoryExtractionEnabled,
     setVoiceBackend,
+    setVoiceOutput,
+    removeVoiceApiKey,
     setModeConfig,
     setMode,
     exitScenario,
@@ -68,6 +75,7 @@ export function useCompanionSession() {
     deleteMemory,
   }), [
     snapshot, send, retry, regenerate, withdraw, rewind, setProvider, setProactive, setMemoryExtractionEnabled, setVoiceBackend,
+    setVoiceOutput, removeVoiceApiKey,
     setModeConfig, setMode, exitScenario, confirmMemory, deleteMemory,
   ]);
 }

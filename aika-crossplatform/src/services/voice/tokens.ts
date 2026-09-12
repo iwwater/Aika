@@ -2,7 +2,19 @@ import { token } from "../../kernel";
 import type { MicActivityMonitor } from "./micActivity";
 import type { SpeechOutputEngine } from "./contracts";
 import type { ResolvedInputEngine, VoiceBackendConfig } from "./inputEngine";
+import type { ResolvedOutputEngine, VoiceOutput, VoiceOutputConfig } from "./outputEngine";
 import type { SpeechQueue } from "./speechQueue";
+
+/**
+ * 输出侧的当前状态：用户选了什么、实际走的是哪条链路、为什么。
+ * `degraded=true` 是错误（点名要云端却配不全），UI 必须持久可见，不能只当提示。
+ */
+export interface VoiceOutputStatus {
+  selected: VoiceOutput;
+  actual: "system" | "cloud-tts";
+  note: string;
+  degraded: boolean;
+}
 
 /**
  * 语音能力端口。
@@ -21,6 +33,10 @@ export interface SpeechEngines {
   createInputEngine(config: VoiceBackendConfig): Promise<ResolvedInputEngine>;
   /** 默认输出引擎；队列与 stop 语义由 speechQueue 提供。 */
   outputEngine: SpeechOutputEngine;
+  /** 当前输出链路状态（TTS-04）：由 createOutputEngine 的 note/degraded 透出。 */
+  output: VoiceOutputStatus;
+  /** 设置变更后按新配置重建输出引擎；不探测、不发任何网络请求。 */
+  resolveOutput(config: VoiceOutputConfig): ResolvedOutputEngine;
   createQueue(engine: SpeechOutputEngine): SpeechQueue;
   createMonitor(): MicActivityMonitor;
 }

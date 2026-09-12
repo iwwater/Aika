@@ -1,4 +1,6 @@
 import { createAsrSegmentReorderer } from "../domain/asrSegments";
+import type { ResolvedOutputEngine, VoiceOutputConfig } from "../services/voice/outputEngine";
+import type { VoiceOutputStatus } from "../services/voice/tokens";
 import { locateSentence, type CaptionRange } from "../domain/captionHighlight";
 import { NO_TRACE, type TraceRecorder } from "../services/trace/traceRecorder";
 import { replyDisplayText, type CompanionReply } from "../domain/companion";
@@ -87,6 +89,8 @@ export interface VoiceViewModel {
   language: VoiceInputLanguage;
   /** 用户显式指定过语言吗。指定过就不再跟着历史推导，直到退出语音页。 */
   languagePinned: boolean;
+  /** 输出链路当前状态（TTS-04）：选了什么、实际走哪条、为什么；degraded 要当错误显示。 */
+  outputStatus: VoiceOutputStatus;
 }
 
 export interface VoicePresenter {
@@ -118,6 +122,11 @@ export interface VoicePresenter {
   speakMessage(messageId: string, text: string): void;
   /** 停止朗读。不影响语音会话自己的播放。 */
   stopSpeaking(): void;
+  /**
+   * 应用新的语音输出配置（TTS-04）：停旧队列、按新配置重建引擎与队列。
+   * 不发任何网络请求；实际生效链路与原因经 outputStatus 可见。
+   */
+  applyVoiceOutput(config: VoiceOutputConfig): void;
   sendNow(): void;
   clearPending(): void;
   diagnostics(): VoiceDiagnostics;
@@ -138,6 +147,10 @@ export interface VoicePresenterDeps {
   createInputEngine?: (config: VoiceBackendConfig) => Promise<ResolvedInputEngine>;
   createQueue?: (engine: SpeechOutputEngine) => SpeechQueue;
   outputEngine?: SpeechOutputEngine;
+  /** 按配置重建输出引擎（TTS-04）；不探测、不发网络请求。 */
+  resolveOutput?: (config: VoiceOutputConfig) => ResolvedOutputEngine;
+  /** 启动时持久化的输出配置：装配层在首次 resolve 前应用，避免覆盖丢失。 */
+  initialOutputConfig?: VoiceOutputConfig;
   createMonitor?: () => MicActivityMonitor;
   diagnostics?: VoiceDiagnostics;
   timers?: VoiceTimers;
@@ -152,8 +165,15 @@ const DEFAULT_TIMERS: VoiceTimers = {
 
 export function createVoicePresenter(deps: VoicePresenterDeps = {}): VoicePresenter {
   const resolveInput = deps.createInputEngine ?? createInputEngine;
-  const output = deps.outputEngine ?? webSpeechOutput;
-  const queue: SpeechQueue = (deps.createQueue ?? ((engine) => createSpeechQueue(engine)))(output);
+  let output: SpeechOutputEngine = deps.outputEngine ?? webSpeechOutput;
+  let queue: SpeechQueue = (deps.createQueue ?? ((engine) => createSpeechQueue(engine)))(output);
+  /** 输出世代：每次切引擎 +1；旧队列经 stop（TTS-02 语义）后迟到回调不再生效。 */
+  let outputGeneration = 0;
+  let outputStatus: VoiceOutputStatus = {
+    selected: "system", actual: "system",
+    note: "系统语音合成：语速能调，音色取决于 Windows 里装了哪些语音包。",
+    degraded: false,
+  };
   const monitor: MicActivityMonitor = (deps.createMonitor ?? createMicActivityMonitor)();
   const diagnostics: VoiceDiagnostics = deps.diagnostics ?? createVoiceDiagnostics();
   const timers = deps.timers ?? DEFAULT_TIMERS;
@@ -217,6 +237,11 @@ export function createVoicePresenter(deps: VoicePresenterDeps = {}): VoicePresen
   let cached: VoiceViewModel | null = null;
   let dirty = true;
   let listeners = new Set<() => void>();
+
+  // 启动即应用持久化配置（不发请求）：否则设置保存后重启会被默认 system 覆盖。
+  if (deps.initialOutputConfig && deps.resolveOutput) {
+    applyVoiceOutput(deps.initialOutputConfig);
+  }
 
   function commit(): void {
     if (disposed) return;
@@ -652,6 +677,26 @@ export function createVoicePresenter(deps: VoicePresenterDeps = {}): VoicePresen
     });
   }
 
+  function applyVoiceOutput(config: VoiceOutputConfig): void {
+    if (disposed) return;
+    // 切引擎先停旧队列：旧回调被 TTS-02 的 stop 语义挡住，不会覆盖新轮；
+    // 点朗读的高亮状态随之清空，新队列只服务之后的轮次。
+    queue.stop();
+    clearBubblePlayback();
+    outputGeneration += 1;
+    const resolved = deps.resolveOutput?.(config)
+      ?? { engine: output, actual: "system" as const, note: "系统语音合成：语速能调，音色取决于 Windows 里装了哪些语音包。", degraded: false };
+    output = resolved.engine;
+    queue = (deps.createQueue ?? ((engine) => createSpeechQueue(engine)))(output);
+    outputStatus = {
+      selected: config.output,
+      actual: resolved.actual,
+      note: resolved.note,
+      degraded: resolved.degraded,
+    };
+    commit();
+  }
+
   function stopSpeaking(): void {
     if (!speakingMessageId) return;
     queue.stop();
@@ -907,6 +952,7 @@ export function createVoicePresenter(deps: VoicePresenterDeps = {}): VoicePresen
         backendNote,
         language,
         languagePinned,
+        outputStatus,
       });
       dirty = false;
     }
@@ -934,6 +980,7 @@ export function createVoicePresenter(deps: VoicePresenterDeps = {}): VoicePresen
     close,
     speakMessage,
     stopSpeaking,
+    applyVoiceOutput,
     interruptAndListen,
     sendNow,
     clearPending,

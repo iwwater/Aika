@@ -6,6 +6,9 @@ import { ProviderSettingsToken, RuntimeToken, type RuntimeServices } from "../..
 import { StorageToken } from "../../services/storage/tokens";
 import { StickerLibraryToken } from "../../services/stickers/tokens";
 import { SpeechEnginesToken } from "../../services/voice/tokens";
+import { SecretStoreToken } from "../../services/storage/tokens";
+import { createVoiceOutputSettings } from "../../services/voice/outputSettings";
+import type { VoiceOutputConfig } from "../../services/voice/outputEngine";
 import { TraceRecorderToken, TraceSettingsToken, TraceSinkToken } from "../../services/trace/tokens";
 import { createCompanionPresenter } from "../../presentation/companionPresenter";
 import { createVoicePresenter } from "../../presentation/voicePresenter";
@@ -48,7 +51,7 @@ export function presentationPlugin(options: PresentationPluginOptions = {}): Aik
     id: "presentation.core",
     version: "1.0.0",
     optional: [
-      StorageToken, NotifierToken,
+      StorageToken, NotifierToken, SecretStoreToken,
       RuntimeToken, ProviderSettingsToken,
       MemoryAccessToken, StickerLibraryToken, SpeechEnginesToken,
       TraceRecorderToken, TraceSinkToken, TraceSettingsToken,
@@ -63,21 +66,33 @@ export function presentationPlugin(options: PresentationPluginOptions = {}): Aik
       const memoryAccess = context.registrar.tryResolve(MemoryAccessToken);
       const stickers = context.registrar.tryResolve(StickerLibraryToken);
       const engines = context.registrar.tryResolve(SpeechEnginesToken);
+      const secrets = context.registrar.tryResolve(SecretStoreToken);
+      // TTS-04 桥接：companionPresenter 保存配置后推给 voicePresenter 重建输出。
+      // voicePresenter 可能还没构造（惰性），所以最后一份配置先留在闭包里，
+      // 构造时作为初始配置应用——重启后持久化配置不会被默认 system 覆盖。
+      let lastVoiceOutput: VoiceOutputConfig | null = null;
+      let voicePresenterRef: { applyVoiceOutput(config: VoiceOutputConfig): void } | null = null;
       const trace = context.registrar.tryResolve(TraceRecorderToken);
       const traceSink = context.registrar.tryResolve(TraceSinkToken);
       const traceSettings = context.registrar.tryResolve(TraceSettingsToken);
 
-      context.registrar.provide(VoicePresenterToken, () => createVoicePresenter({
-        ...(engines
-          ? {
-              createInputEngine: (config) => engines.createInputEngine(config),
-              outputEngine: engines.outputEngine,
-              createQueue: engines.createQueue,
-              createMonitor: engines.createMonitor,
-            }
-          : {}),
-        ...(trace ? { trace } : {}),
-      }), { disposer: (value) => value.dispose() });
+      context.registrar.provide(VoicePresenterToken, () => {
+        const presenter = createVoicePresenter({
+          ...(engines
+            ? {
+                createInputEngine: (config) => engines.createInputEngine(config),
+                outputEngine: engines.outputEngine,
+                resolveOutput: engines.resolveOutput,
+                createQueue: engines.createQueue,
+                createMonitor: engines.createMonitor,
+              }
+            : {}),
+          ...(lastVoiceOutput ? { initialOutputConfig: lastVoiceOutput } : {}),
+          ...(trace ? { trace } : {}),
+        });
+        voicePresenterRef = presenter;
+        return presenter;
+      }, { disposer: (value) => value.dispose() });
 
       context.registrar.provide(CompanionPresenterToken, () => createCompanionPresenter({
         loadStorage: storage
@@ -88,6 +103,13 @@ export function presentationPlugin(options: PresentationPluginOptions = {}): Aik
         ...(memoryAccess ? { memoryAccess } : {}),
         ...(stickers ? { loadStickers: stickers } : {}),
         ...(trace ? { trace } : {}),
+        ...(storage && secrets
+          ? { voiceOutputSettings: createVoiceOutputSettings({ storage, secrets }) }
+          : {}),
+        applyVoiceOutput: (config: VoiceOutputConfig) => {
+          lastVoiceOutput = config;
+          voicePresenterRef?.applyVoiceOutput(config);
+        },
       }), { disposer: (value) => value.dispose() });
 
       // 工作台 Presenter 总是注册：没装 Trace 时它负责显示「未启用」，
