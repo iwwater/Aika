@@ -7,7 +7,7 @@
 
 ---
 
-> **执行进度（2026-09-12）**：F1～F4 与 F6 的前置已交付，F5/F6 进行中，F7/F8/F9 未开始。逐项状态、接手建议与全局未验证项见 [调试工作台 · 进度与未完成项](WORKBENCH_PROGRESS.md)。
+> **执行进度（2026-09-12）**：F1～F6 已交付（M0～M3 全部完成），F7/F8/F9 未开始。逐项状态、接手建议与全局未验证项见 [调试工作台 · 进度与未完成项](WORKBENCH_PROGRESS.md)。
 
 ## 0. 触发问题（本期必须先修）
 
@@ -105,10 +105,14 @@ waku 是本地优先个人 Agent（Python，四支柱：Harness / Loop / Memory 
 - 展示一轮内的"能力调用"：表情包检索、上下文检索来源（retrieved sections）、记忆抽取结果、sticker action。
 - 当前仓库 Tool Call 面很窄（`actions` 仅 sticker），页面按"现有能力如实展示"实现，为后续真实 tool call 预留同一事件类型。
 
+> **已交付**（[FE-10](frontend/specs/FE-10.md)）：六项能力固定顺序展示，「未发生」与「空结果」分开——没有 `memory_extract` 事件是没跑抽取，`candidates: 0` 是跑了没抽到，排查方向相反。双语退化（正文与翻译同句）在这一轮被显式标出。
+
 ### F6 数据流图（frontend，读装配元信息）
 
 - 两张图：① plugin 依赖拓扑（从注册表 `requires/provides` 生成，图不与代码漂移）；② 一轮 turn 的数据流（输入 → 上下文 → Provider → 解析 → 记忆/TTS/字幕）。
 - 渲染用内联 SVG/简单布局，不引重依赖。
+
+> **已交付**（[FE-10](frontend/specs/FE-10.md)）：拓扑从 `kernel.describe()` 现算，含未激活插件与「没人提供的依赖」清单（必选/可选分开标）；一轮数据流按实际事件点亮八个阶段，失败轮指出停在哪一步。内联 SVG，无图形库。
 
 ### F7 长期记忆管理页（frontend + memory）
 
@@ -153,7 +157,7 @@ waku 是本地优先个人 Agent（Python，四支柱：Harness / Loop / Memory 
 | M0 | §0.1 双语修复 + 重试按钮 | 复现用例：replyText==translation 时不显示次级字幕；单测覆盖。**已交付**：双语修复 [FE-04](frontend/specs/FE-04.md)；重试按钮拆成 [CORE-08](core/specs/CORE-08_MESSAGE_DELETION.md)（`deleteMessages` 端口）+ [FE-05](frontend/specs/FE-05.md)（先删再投），因为它不是小改 |
 | M1 | F1 其余交互（发音/撤回/重生成/Rewind） | **全部交付**：撤回/重新生成 [FE-06](frontend/specs/FE-06.md)、点击朗读 [FE-07](frontend/specs/FE-07.md)、Rewind [FE-08](frontend/specs/FE-08.md)。四项都有 fake Runtime 下的逐项 AC 与突变验证；真机目视一律 NOT RUN。原先「需要按时间截断端口」的推测不成立，原因见 FE-08 |
 | M2 | F3 Trace 协议 + fake sink 全链单测；F2 开发者入口 | 事件 schema 版本化；脱敏用例；sink 故障不影响主链路。**已交付**：[LLM-06](llm/specs/LLM-06_TRACE_PROTOCOL.md) 协议与两个 sink、[LLM-07](llm/specs/LLM-07_TRACE_WIRING.md) Runtime 接入与开关、[LLM-08](llm/specs/LLM-08_TRACE_SOURCES.md) 余下三个事件源、[FE-09](frontend/specs/FE-09.md) 开发者入口与 Trace 页（F4 一并交付） |
-| M3 | F4/F5/F6 工作台页面（读 M2 数据） | 用 harness 回放数据驱动页面，不依赖真实模型 |
+| M3 | F4/F5/F6 工作台页面（读 M2 数据） | 用 harness 回放数据驱动页面，不依赖真实模型。**已交付**：F4 随 [FE-09](frontend/specs/FE-09.md)；F5/F6 [FE-10](frontend/specs/FE-10.md)（能力调用视图、装配拓扑与一轮数据流）。页面渲染无 DOM 测试环境，真机目视 NOT RUN |
 | M4 | F7 记忆管理页；F8/F9 视需要后置 | 管理操作有契约测试；统计口径有单测 |
 
 执行按仓库既有规则：一次一个 SPEC，验收报告落 `docs/<module>/reports/`，mock 不冒充真实模型质量。
