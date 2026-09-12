@@ -25,6 +25,7 @@ import { RAW_TURN_WINDOW, SUMMARY_INPUT_LIMIT, shouldSummarize } from "../domain
 import type { PartialReply } from "../domain/streamingReply";
 import type { VoiceTurnRequest } from "../domain/voiceRuntime";
 import { createModelMemoryExtractor, formatTranscript, type MemoryExtractor } from "../services/memory/extractor";
+import type { UsageLedgerRecorder } from "../services/usage/contracts";
 import { createMemoryRepository, type MemoryRepository } from "../services/memory/memoryRepository";
 import type { MemoryAccess } from "../services/memory/tokens";
 import { NO_TRACE, type TraceRecorder } from "../services/trace/traceRecorder";
@@ -164,6 +165,8 @@ export interface CompanionPresenterDeps {
   trace?: TraceRecorder;
   loadStickers?: () => Promise<readonly Sticker[]>;
   extractor?: MemoryExtractor;
+  /** 用量台账 recorder（LLM-12）：维护/摘要请求的用途与用量从这里记账。 */
+  usageRecorder?: UsageLedgerRecorder;
   interval?: IntervalPort;
   providerFallback?: ProviderConfig;
   randomUUID?: () => string;
@@ -276,7 +279,8 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
   let dirty = true;
   let listeners = new Set<() => void>();
 
-  const extractor = deps.extractor ?? createModelMemoryExtractor(() => provider);
+  const extractor = deps.extractor
+    ?? createModelMemoryExtractor(() => provider, deps.usageRecorder);
 
   function connected(): boolean {
     return Boolean(provider.apiKey && provider.baseUrl && provider.model);

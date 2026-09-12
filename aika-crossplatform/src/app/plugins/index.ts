@@ -7,6 +7,7 @@ import { memoryPlugin } from "./memoryPlugin";
 import { runtimePlugin, type RuntimePluginOptions } from "./runtimePlugin";
 import { stickersPlugin } from "./stickersPlugin";
 import { tracePlugin } from "./tracePlugin";
+import { usagePlugin } from "./usagePlugin";
 import { voicePlugin } from "./voicePlugin";
 
 export { memoryPlugin, noMemoryPlugin } from "./memoryPlugin";
@@ -15,6 +16,7 @@ export { runtimePlugin, type RuntimePluginOptions } from "./runtimePlugin";
 export { presentationPlugin } from "./presentationPlugin";
 export { stickersPlugin } from "./stickersPlugin";
 export { tracePlugin, type TracePluginOptions } from "./tracePlugin";
+export { usagePlugin, type UsagePluginOptions } from "./usagePlugin";
 export { voicePlugin, defaultSpeechEngines } from "./voicePlugin";
 export { sampleCapabilityPlugin, SampleCapabilityToken, type SampleCapability } from "./sampleCapabilityPlugin";
 
@@ -62,6 +64,8 @@ export function capabilityPlugins(options: RuntimePluginOptions = {}): AikaPlugi
     contextSourcesPlugin(),
     // Trace 排在 runtime 之前只是可读性：真正的顺序由内核按 requires/optional 解析。
     tracePlugin(),
+    // 用量台账跟在 trace 后面：它的采集开关读 TraceSettings（LLM-12 契约）。
+    usagePlugin(),
     runtimePlugin(options),
     voicePlugin(),
     stickersPlugin(),

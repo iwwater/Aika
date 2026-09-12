@@ -4,6 +4,7 @@ import type { ChatTurn } from "../domain/conversation";
 import type { ProviderConfig, ProviderUsage } from "../domain/providers";
 import { cleanBaseUrl } from "../domain/providers";
 import { parsePartialReply, type PartialReply } from "../domain/streamingReply";
+import type { RequestUsageSample } from "../domain/usageLedger";
 
 export type { ChatTurn } from "../domain/conversation";
 export type { CompanionReply } from "../domain/companion";
@@ -24,6 +25,7 @@ interface PreparedRequest {
 }
 
 export type { ProviderUsage } from "../domain/providers";
+export type { RequestUsageSample } from "../domain/usageLedger";
 
 export interface ProviderRequestOptions {
   /** 取消整轮 LLM 请求和 SSE reader；调用方仍须用 turnId 屏蔽不支持取消的迟到结果。 */
@@ -40,17 +42,24 @@ export interface ProviderRequestOptions {
    * 物理请求计量（LLM-04 RequestMetric）。**每次真实网络尝试各计一条**：
    * 流式内部退回非流式、受控 fallback 都是独立的 attempt，不能用逻辑回合数
    * 把重试并成一次。purpose/turnId 由调用方声明——这里不知道自己是前台
-   * 生成还是后台维护。
+   * 生成还是后台维护；没声明的按 unknown 记，不猜。
    */
-  requestPurpose?: "foreground" | "maintenance";
+  requestPurpose?: "foreground" | "maintenance" | "summary" | "proactive";
   requestTurnId?: string;
   onRequestMetric?: (metric: RequestMetric) => void;
+  /**
+   * 物理请求的用量样本（LLM-12）：started 一次、终态一次，每次尝试独立的
+   * attempt 编号。与 onUsage 的区别——onUsage 是逻辑请求合并后的一份，
+   * 这里是每次尝试各自的取证。
+   */
+  onRequestUsage?: (sample: RequestUsageSample) => void;
 }
 
-/** 一次物理 Provider 请求尝试的计量记录（LLM-04-A/C）。 */
+/** 一次物理 Provider 请求尝试的计量记录（LLM-04-A/C；purpose 词汇表由 LLM-12 扩到五种）。 */
 export interface RequestMetric {
   turnId: string;
-  purpose: "foreground" | "maintenance";
+  /** 没经过声明链路的就是 unknown——见 LLM-12 的用途词汇表。 */
+  purpose: "foreground" | "maintenance" | "summary" | "proactive" | "unknown";
   attempt: number;
   status: "started" | "completed" | "failed" | "cancelled";
 }
@@ -149,6 +158,29 @@ function hostOf(url: string): string {
   } catch {
     return url;
   }
+}
+
+/** 逻辑请求 ID：一次 sendChat/streamChat/requestText 调用一份，重试共享。 */
+let usageRequestCounter = 0;
+function newUsageRequestId(): string {
+  usageRequestCounter += 1;
+  return `req-${Date.now().toString(36)}-${usageRequestCounter}-${Math.random().toString(16).slice(2, 8)}`;
+}
+
+/** 终态样本：拿到过字段才带 usage——全 null 的用量等于 unknown，不该伪装成数据。 */
+function emitUsageSample(
+  options: ProviderRequestOptions,
+  logicalRequestId: string,
+  attempt: number,
+  phase: RequestUsageSample["phase"],
+  usage?: ProviderUsage,
+): void {
+  options.onRequestUsage?.({
+    logicalRequestId,
+    attempt,
+    phase,
+    ...(usage && hasUsage(usage) ? { usage } : {}),
+  });
 }
 
 async function post(request: PreparedRequest, options: ProviderRequestOptions = {}): Promise<Response> {
@@ -294,16 +326,22 @@ async function requestText(
   stickerIds: readonly string[] = [],
   options: ProviderRequestOptions = {},
 ): Promise<string> {
+  const logicalRequestId = newUsageRequestId();
   emitMetric(options, 1, "started");
+  emitUsageSample(options, logicalRequestId, 1, "started");
   try {
     const response = await post(prepare(config, systemPrompt, history, format, false, stickerIds), options);
     const data = await response.json();
-    reportUsage(options, extractUsage(data));
+    const usage = extractUsage(data);
+    reportUsage(options, usage);
     emitMetric(options, 1, "completed");
+    emitUsageSample(options, logicalRequestId, 1, "completed", usage);
     return extractText(config, data);
   } catch (error) {
     // post() 会包装连接错误；调用方已取消的轮次按 cancelled 记，不冒充 failed。
-    emitMetric(options, 1, options.signal?.aborted || isAbortError(error) ? "cancelled" : "failed");
+    const phase = options.signal?.aborted || isAbortError(error) ? "cancelled" : "failed";
+    emitMetric(options, 1, phase);
+    emitUsageSample(options, logicalRequestId, 1, phase);
     throw error;
   }
 }
@@ -321,7 +359,8 @@ function emitMetric(
 ): void {
   options.onRequestMetric?.({
     turnId: options.requestTurnId ?? "",
-    purpose: options.requestPurpose ?? "foreground",
+    // 没声明用途就是 unknown：把「没接线」记成 foreground 是在猜。
+    purpose: options.requestPurpose ?? "unknown",
     attempt,
     status,
   });
@@ -438,6 +477,7 @@ export async function streamChat(
   let raw = "";
   let lastPartial: PartialReply | null = null;
   let metricAttempt = 0;
+  const logicalRequestId = newUsageRequestId();
 
   function emitPartial(partial: PartialReply) {
     if (!partial.japaneseText && !partial.chineseTranslation
@@ -462,12 +502,18 @@ export async function streamChat(
   /**
    * 跑一次流式。`includeUsage` 为 false 时不带 `stream_options`——那是给
    * 不认识这个字段的中转站的第二次机会。
+   *
+   * 用量分两层记：`usage` 是整个逻辑请求的合并值（onUsage 的语义，LLM-10）；
+   * `attemptUsage` 是这一次尝试自己收到的（LLM-12 样本），重试/回退各归各的
+   * attempt，台账不拿合并值冒充单次尝试。
    */
   async function runStream(includeUsage: boolean): Promise<void> {
     // 计数按物理尝试递增：4xx 去掉 stream_options 的第二次机会也是一次真实请求。
     metricAttempt += 1;
     const attempt = metricAttempt;
+    let attemptUsage = emptyUsage();
     emitMetric(options, attempt, "started");
+    emitUsageSample(options, logicalRequestId, attempt, "started");
     try {
       const response = await post(
         prepare(config, systemPrompt, history, "companion-reply", true, stickerIds, includeUsage),
@@ -476,15 +522,23 @@ export async function streamChat(
       await readEventStream(response, (payload) => {
         // usage 可能挂在一个没有正文的 chunk 上（OpenAI 末尾那个 choices: []），
         // 所以先收用量再判断有没有 delta，顺序反了就永远收不到。
-        usage = mergeUsage(usage, extractUsage(payload));
+        const chunkUsage = extractUsage(payload);
+        if (hasUsage(chunkUsage)) {
+          usage = mergeUsage(usage, chunkUsage);
+          attemptUsage = mergeUsage(attemptUsage, chunkUsage);
+        }
         const delta = deltaOf(config, payload);
         if (!delta) return;
         raw += delta;
         emitPartial(parsePartialReply(raw));
       }, options.signal);
       emitMetric(options, attempt, "completed");
+      emitUsageSample(options, logicalRequestId, attempt, "completed", attemptUsage);
     } catch (error) {
-      emitMetric(options, attempt, options.signal?.aborted || isAbortError(error) ? "cancelled" : "failed");
+      const phase = options.signal?.aborted || isAbortError(error) ? "cancelled" : "failed";
+      emitMetric(options, attempt, phase);
+      // 断流前已收到的部分用量如实带上：那是平台确报过的，不是估计。
+      emitUsageSample(options, logicalRequestId, attempt, phase, attemptUsage);
       throw error;
     }
   }
@@ -518,24 +572,31 @@ export async function streamChat(
    * 自己去猜哪一份算数。
    */
   async function fallbackNonStream(): Promise<CompanionReply> {
-    // 这次退回也是一次独立的物理请求：自己计数，并屏蔽内层 sendChat 的重复计量。
+    // 这次退回也是一次独立的物理请求：自己计数，并屏蔽内层 sendChat 的重复计量
+    // 与重复用量样本——两个通道都由这里代发。
     metricAttempt += 1;
     const attempt = metricAttempt;
     emitMetric(options, attempt, "started");
+    emitUsageSample(options, logicalRequestId, attempt, "started");
     let fallbackUsage = emptyUsage();
     try {
       const reply = await sendChat(config, systemPrompt, history, stickerIds, {
         ...options,
         onRequestMetric: undefined,
+        onRequestUsage: undefined,
         onUsage: (value) => {
           fallbackUsage = value;
         },
       });
       emitMetric(options, attempt, "completed");
-      reportUsage(options, mergeUsage(usage, fallbackUsage));
+      const merged = mergeUsage(usage, fallbackUsage);
+      emitUsageSample(options, logicalRequestId, attempt, "completed", fallbackUsage);
+      reportUsage(options, merged);
       return reply;
     } catch (error) {
-      emitMetric(options, attempt, options.signal?.aborted || isAbortError(error) ? "cancelled" : "failed");
+      const phase = options.signal?.aborted || isAbortError(error) ? "cancelled" : "failed";
+      emitMetric(options, attempt, phase);
+      emitUsageSample(options, logicalRequestId, attempt, phase);
       throw error;
     }
   }

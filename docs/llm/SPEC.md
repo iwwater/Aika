@@ -22,7 +22,6 @@ LLM-01 已有 [验收报告](reports/LLM-01_ACCEPTANCE.md)，其中真实模型�
 | SPEC | 交付 | 状态 |
 | --- | --- | --- |
 | [LLM-11](specs/LLM-11_CONTEXT_SNAPSHOT.md) | 上下文装配快照 | AUTO_PASS（2026-09-13）：A~D 全过，516 测试回归全绿；消费 traceView/pluginGraph/TracePage 已同步。见[验收报告](reports/LLM-11_ACCEPTANCE.md) |
+| [LLM-12](specs/LLM-12_USAGE_LEDGER.md) | Provider物理请求用量记录（F9输入输出/用途前置） | AUTO_PASS（2026-09-13）：A~D 自动 AC 全过，定向 98 + 全量 1104 回归全绿；真实计费 NOT RUN。见[验收报告](reports/LLM-12_ACCEPTANCE.md) |
 
 当前执行按[安全计划](../GOAL_EXECUTION_PLAN.md)。早期无报告项状态为未核实/待补证，不认定未实现或通过；已有报告项仍待审阅。
-
-| [LLM-12](specs/LLM-12_USAGE_LEDGER.md) | Provider物理请求用量记录（F9输入输出/用途前置） | 已全文审阅；READY，本地实现未执行 |

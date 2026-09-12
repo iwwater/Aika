@@ -559,3 +559,144 @@ describe("物理请求计量（LLM-04 RequestMetric）", () => {
     ]);
   });
 });
+
+describe("物理请求用量样本（LLM-12）", () => {
+  interface UsageSample {
+    logicalRequestId: string;
+    attempt: number;
+    phase: string;
+    usage?: ProviderUsage;
+  }
+
+  function collectUsage() {
+    const samples: UsageSample[] = [];
+    return {
+      samples,
+      onRequestUsage: (sample: UsageSample) => samples.push(sample),
+    };
+  }
+
+  it("非流式：started→completed 各一条样本，completed 带这次尝试的用量", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({
+      choices: [{ message: { content: replyJson } }],
+      usage: { prompt_tokens: 120, completion_tokens: 30, total_tokens: 150 },
+    })));
+    const sink = collectUsage();
+
+    await sendChat(baseConfig, "system", [{ role: "user", content: "hi" }], [], {
+      onRequestUsage: sink.onRequestUsage,
+    });
+
+    expect(sink.samples).toHaveLength(2);
+    expect(sink.samples[0].phase).toBe("started");
+    expect(sink.samples[1]).toMatchObject({
+      phase: "completed",
+      attempt: 1,
+      usage: { promptTokens: 120, completionTokens: 30, totalTokens: 150 },
+    });
+    // 同一逻辑请求共享 logicalRequestId，attempt 不重复汇总。
+    expect(sink.samples[0].logicalRequestId).toBe(sink.samples[1].logicalRequestId);
+  });
+
+  it("流式 4xx 去掉 stream_options 重试：两次尝试各自取证，不拿合并值冒充单次", async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ error: { message: "unknown field: stream_options" } }, 400))
+      .mockResolvedValueOnce(sseResponse([
+        `data: ${JSON.stringify({ choices: [{ delta: { content: replyJson } }] })}`,
+        'data: {"choices":[],"usage":{"prompt_tokens":200,"completion_tokens":40,"total_tokens":240}}',
+        "data: [DONE]",
+      ]));
+    vi.stubGlobal("fetch", request);
+    const sink = collectUsage();
+
+    await streamChat(baseConfig, "system", [{ role: "user", content: "hi" }], () => undefined, [], {
+      onRequestUsage: sink.onRequestUsage,
+    });
+
+    expect(sink.samples.map((sample) => `${sample.attempt}:${sample.phase}`))
+      .toEqual(["1:started", "1:failed", "2:started", "2:completed"]);
+    expect(new Set(sink.samples.map((sample) => sample.logicalRequestId)).size).toBe(1);
+    // 第一次尝试（400）没有用量；第二次是完整 reported。
+    expect(sink.samples[1].usage).toBeUndefined();
+    expect(sink.samples[3].usage).toEqual({ promptTokens: 200, completionTokens: 40, totalTokens: 240 });
+  });
+
+  it("退回非流式：fallback 是独立 attempt，内层 sendChat 的样本被屏蔽不重复", async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ error: { message: "upstream boom" } }, 500))
+      .mockResolvedValueOnce(jsonResponse({
+        choices: [{ message: { content: replyJson } }],
+        usage: { prompt_tokens: 11, completion_tokens: 2, total_tokens: 13 },
+      }));
+    vi.stubGlobal("fetch", request);
+    const sink = collectUsage();
+
+    await streamChat(baseConfig, "system", [{ role: "user", content: "hi" }], () => undefined, [], {
+      onRequestUsage: sink.onRequestUsage,
+    });
+
+    // 5xx 直接退非流式：attempt 1 流式失败 + attempt 2 非流式成功，只有四条样本。
+    expect(sink.samples.map((sample) => `${sample.attempt}:${sample.phase}`))
+      .toEqual(["1:started", "1:failed", "2:started", "2:completed"]);
+    expect(sink.samples[3].usage).toEqual({ promptTokens: 11, completionTokens: 2, totalTokens: 13 });
+  });
+
+  it("断流前已收到的部分用量随终态带出（LLM-12-B partial 的样本来源）", async () => {
+    const failingStream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const encoder = new TextEncoder();
+        controller.enqueue(encoder.encode('data: {"type":"message_start","message":{"usage":{"input_tokens":300}}}\n'));
+        // error() 会丢掉队列里还没读的块，所以错开一拍再断。
+        setTimeout(() => controller.error(new Error("connection reset")), 0);
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(new Response(failingStream, { status: 200, headers: { "Content-Type": "text/event-stream" } }))
+      // 退回非流式用的是 anthropic 形状：外层 config 的协议是 anthropic。
+      .mockResolvedValueOnce(jsonResponse({ content: [{ type: "text", text: replyJson }] })));
+    const sink = collectUsage();
+
+    await streamChat({ ...baseConfig, protocol: "anthropic" }, "system", [{ role: "user", content: "hi" }],
+      () => undefined, [], { onRequestUsage: sink.onRequestUsage });
+
+    const failed = sink.samples.find((sample) => sample.attempt === 1 && sample.phase === "failed");
+    expect(failed?.usage).toEqual({ promptTokens: 300, completionTokens: null, totalTokens: null });
+  });
+
+  it("显式 0 与显式 unknown 的边界：平台报 0 就带 0，没报就不带", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({
+      choices: [{ message: { content: replyJson } }],
+      usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+    })));
+    const sink = collectUsage();
+
+    await sendChat(baseConfig, "system", [{ role: "user", content: "hi" }], [], {
+      onRequestUsage: sink.onRequestUsage,
+    });
+
+    expect(sink.samples[1].usage).toEqual({ promptTokens: 0, completionTokens: 0, totalTokens: 0 });
+  });
+
+  it("未声明用途的请求，计量 purpose 记 unknown，不猜成 foreground（LLM-12-A）", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ choices: [{ message: { content: replyJson } }] })));
+    const metrics: string[] = [];
+
+    await sendChat(baseConfig, "system", [{ role: "user", content: "hi" }], [], {
+      onRequestMetric: (metric) => metrics.push(metric.purpose),
+    });
+
+    expect(metrics).toEqual(["unknown", "unknown"]);
+  });
+
+  it("summary/proactive 用途顺着 requestPurpose 透传", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ choices: [{ message: { content: replyJson } }] })));
+    const metrics: string[] = [];
+
+    await sendChat(baseConfig, "system", [{ role: "user", content: "hi" }], [], {
+      requestPurpose: "summary",
+      onRequestMetric: (metric) => metrics.push(metric.purpose),
+    });
+
+    expect(metrics).toEqual(["summary", "summary"]);
+  });
+});

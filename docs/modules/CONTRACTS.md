@@ -102,6 +102,18 @@ Trace 事件协议本身（`domain/trace.ts` 的 `TraceEventV1`）自带 `schema
 
 INT-01 的兼容检查项：云端合成一旦在设置页可选，`createOutputEngine` 的 `note` / `degraded` 必须送到界面，降级当错误显示——现在这两个值在 `defaultSpeechEngines` 里被丢弃。
 
+### v1 之后的追加（2026-09-13，LLM-12 用量台账，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `UsageRecordV1` / `UsagePurpose` / `UsageCoverage` / `UsageLedgerQuery` / `UsageLedgerPage` / `RequestUsageSample` | `domain/usageLedger.ts` | 新类型（`schemaVersion: 1`）。`RequestUsageSample` 放 domain 是因为 usage 服务不许 import HTTP 客户端模块（providerClient 的调用方门禁不变） | `services/usage/*`、FE-26 成本页 |
+| `UsageLedgerToken` | `services/usage/tokens.ts` | 新注册，**可选能力**：不装 `usagePlugin` 时 token 不存在，adapter/extractor 原样发请求不记账 | `runtimePlugin`、`presentationPlugin`（都 optional 声明） |
+| `UsageLedgerStore` / `UsageLedgerRecorder` | `services/usage/contracts.ts` | 新端口。两个实现（`sqliteUsageLedger`、`memoryUsageLedger`）跑同一份 `usageLedger.conformance.ts` 用例包 | FE-26 经 presenter 查询（后续 SPEC） |
+| `ProviderRequestOptions.onRequestUsage` / `requestPurpose` 词汇表扩展 | `services/providerClient.ts` | `onRequestUsage` 是**可选**新回调（每次物理尝试 started+终态各一条样本）；`requestPurpose` 联合类型从 `foreground\|maintenance` 扩到含 `summary\|proactive`，未声明时计量 purpose 记 `unknown`（原缺省 foreground 是在猜，属行为修正）。不传新回调的调用方行为不变 | `providerAdapter`、`extractor`（已接线）；LLM-04 的 `RequestMetric.purpose` 同步扩词汇 |
+| `usagePlugin` | `app/plugins/usagePlugin.ts` | 新插件（`capabilityPlugins` 已装配）。采集开关与 Trace `enabled` 同源：关着不新写记录；保留期默认 30 天（`DEFAULT_USAGE_RETENTION_DAYS`） | FE-26；诊断经 `recorder.diagnostics()` |
+
+语义边界：记录按**物理尝试**记（重试/回退各自 attemptId，同一逻辑请求共享 `logicalRequestId`），按 id 幂等 upsert（终态覆盖开始登记）；缺末包 usage/取消记 `coverage: "unknown"`，确切上报一部分记 `partial`，只报 total 保留 total 不拆分；记录不含正文/密钥/完整 URL（同模型不同 endpoint 靠 `providerId` 区分）；写失败旁路化、待写队列有界、丢弃与失败计数在 `diagnostics()` 可见；无 scope 的记录归 `USAGE_LEGACY_SCOPE` 分组，不与任何主体混算。
+
 ## 详细接口入口
 
 LLM 各自的 `docs/llm/specs/LLM-01…05` 文件内写明实现级接口；[STT](../stt/ARCHITECTURE.md)、[TTS](../tts/ARCHITECTURE.md)、[前端](../frontend/ARCHITECTURE.md) 按共享架构文件引用对应阶段。代码块是拟定逻辑契约，现有类型通过兼容 adapter 映射；不能以名称尚未存在推断已实现，也不要机械新增重复接口。

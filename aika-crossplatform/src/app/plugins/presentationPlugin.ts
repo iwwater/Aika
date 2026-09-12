@@ -10,6 +10,7 @@ import { SecretStoreToken } from "../../services/storage/tokens";
 import { createVoiceOutputSettings } from "../../services/voice/outputSettings";
 import type { VoiceOutputConfig } from "../../services/voice/outputEngine";
 import { TraceRecorderToken, TraceSettingsToken, TraceSinkToken } from "../../services/trace/tokens";
+import { UsageLedgerToken } from "../../services/usage/tokens";
 import { createCompanionPresenter } from "../../presentation/companionPresenter";
 import { createVoicePresenter } from "../../presentation/voicePresenter";
 import { createDevToolsPresenter } from "../../presentation/devToolsPresenter";
@@ -56,6 +57,7 @@ export function presentationPlugin(options: PresentationPluginOptions = {}): Aik
       RuntimeToken, ProviderSettingsToken,
       MemoryAccessToken, StickerLibraryToken, SpeechEnginesToken,
       TraceRecorderToken, TraceSinkToken, TraceSettingsToken,
+      UsageLedgerToken,
     ],
     provides: [
       CompanionPresenterToken, VoicePresenterToken, DevToolsPresenterToken,
@@ -76,6 +78,7 @@ export function presentationPlugin(options: PresentationPluginOptions = {}): Aik
       const trace = context.registrar.tryResolve(TraceRecorderToken);
       const traceSink = context.registrar.tryResolve(TraceSinkToken);
       const traceSettings = context.registrar.tryResolve(TraceSettingsToken);
+      const usageRecorder = context.registrar.tryResolve(UsageLedgerToken);
 
       context.registrar.provide(VoicePresenterToken, () => {
         const presenter = createVoicePresenter({
@@ -104,6 +107,7 @@ export function presentationPlugin(options: PresentationPluginOptions = {}): Aik
         ...(memoryAccess ? { memoryAccess } : {}),
         ...(stickers ? { loadStickers: stickers } : {}),
         ...(trace ? { trace } : {}),
+        ...(usageRecorder ? { usageRecorder } : {}),
         ...(storage && secrets
           ? { voiceOutputSettings: createVoiceOutputSettings({ storage, secrets }) }
           : {}),

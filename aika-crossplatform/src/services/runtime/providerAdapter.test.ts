@@ -6,6 +6,7 @@ import { computeRelationship, deriveRelationshipSignals } from "../../domain/rel
 import type { ProviderConfig } from "../../domain/providers";
 import { createMemoryTraceSink } from "../trace/memoryTraceSink";
 import { createTraceRecorder } from "../trace/traceRecorder";
+import type { UsageLedgerRecorder } from "../usage/contracts";
 import { createStreamChatProvider, type StreamChatProviderOptions } from "./providerAdapter";
 import type { ProviderStreamEvent } from "./companionRuntime";
 
@@ -233,5 +234,78 @@ describe("LLM-08 · provider_request 事件", () => {
     mocks.streamChat.mockImplementation(async () => reply);
     const events = await collect(createStreamChatProvider(options()), { context: context() });
     expect(events.some((event) => event.type === "reply")).toBe(true);
+  });
+});
+
+describe("LLM-12 · 用量台账接线", () => {
+  function fakeRecorder() {
+    const observed: Array<{ purpose: string; turnId?: string; providerId: string }> = [];
+    const recorder = {
+      observe: (input: { purpose: string; turnId?: string; config: { id: string }; options?: Record<string, unknown> }) => {
+        observed.push({ purpose: input.purpose, turnId: input.turnId, providerId: input.config.id });
+        // 打标记：流式收到的 options 里能看到它，就证明包装对象真的传下去了。
+        return { ...(input.options ?? {}), onRequestUsage: () => undefined };
+      },
+      diagnostics: () => ({ registered: 0, writeFailures: 0, dropped: 0 }),
+    } as unknown as UsageLedgerRecorder;
+    return { recorder, observed };
+  }
+
+  it("前台轮次：observe 收到 foreground 与真实配置，包装后的 options 传给 streamChat", async () => {
+    const { recorder, observed } = fakeRecorder();
+    let receivedOptions: { onRequestUsage?: unknown } = {};
+
+    mocks.streamChat.mockImplementation(async (
+      _config: ProviderConfig,
+      _instructions: string,
+      _history: unknown,
+      _onPartial: unknown,
+      _stickerIds: readonly string[],
+      requestOptions: { onRequestUsage?: unknown },
+    ) => {
+      receivedOptions = requestOptions;
+      return reply;
+    });
+
+    await collect(createStreamChatProvider({ getConfig: () => config, usageRecorder: recorder }), { context: context() });
+
+    expect(observed).toEqual([{ purpose: "foreground", turnId: "turn-1", providerId: "test" }]);
+    expect(receivedOptions.onRequestUsage).toBeTypeOf("function");
+  });
+
+  it("主动发起的轮次记 proactive，不冒充 foreground", async () => {
+    mocks.streamChat.mockImplementation(async () => reply);
+    const { recorder, observed } = fakeRecorder();
+
+    const events: ProviderStreamEvent[] = [];
+    for await (const event of createStreamChatProvider({ getConfig: () => config, usageRecorder: recorder }).generate({
+      turnId: "turn-pro",
+      source: "proactive",
+      context: context(),
+      mode: DEFAULT_MODE_CONFIG,
+      signal: new AbortController().signal,
+    })) {
+      events.push(event);
+    }
+
+    expect(observed).toEqual([{ purpose: "proactive", turnId: "turn-pro", providerId: "test" }]);
+    expect(events.some((event) => event.type === "reply")).toBe(true);
+  });
+
+  it("没装台账时请求原样发，不凭空多出记账通道", async () => {
+    mocks.streamChat.mockImplementation(async (
+      _config: ProviderConfig,
+      _instructions: string,
+      _history: unknown,
+      _onPartial: unknown,
+      _stickerIds: readonly string[],
+      requestOptions: { onRequestUsage?: unknown },
+    ) => {
+      expect(requestOptions.onRequestUsage).toBeUndefined();
+      return reply;
+    });
+
+    await collect(createStreamChatProvider({ getConfig: () => config }), { context: context() });
+    expect(mocks.streamChat).toHaveBeenCalledTimes(1);
   });
 });

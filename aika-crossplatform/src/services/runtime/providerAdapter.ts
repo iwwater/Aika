@@ -7,12 +7,17 @@
  */
 
 import type { CompanionReply, ReplyEnvelopeV1 } from "../../domain/companion";
+import type { UsagePurpose } from "../../domain/usageLedger";
 import { formatRetrievedSections, toCompanionContext } from "../../domain/context";
 import { buildConversationInput, buildInstructions } from "../../domain/prompt";
 import type { ProviderConfig } from "../../domain/providers";
 import { DEFAULT_CHARACTER_SOUL, type CharacterSoul } from "../../domain/soul";
 import type { Sticker } from "../../domain/stickers";
-import { describeChatRequest, isAbortError, streamChat, testProvider, listModels, type RequestMetric } from "../providerClient";
+import {
+  describeChatRequest, isAbortError, streamChat, testProvider, listModels,
+  type ProviderRequestOptions, type RequestMetric,
+} from "../providerClient";
+import type { UsageLedgerRecorder } from "../usage/contracts";
 import { digestText } from "../../domain/trace";
 import { NO_TRACE, type TraceRecorder } from "../trace/traceRecorder";
 import type { ProviderStreamEvent, RuntimeGenerateInput, RuntimeProvider } from "./companionRuntime";
@@ -26,6 +31,8 @@ export interface StreamChatProviderOptions {
   trace?: TraceRecorder;
   /** 物理请求计量 sink（LLM-04）：前台生成的每次网络尝试从这里出去。 */
   onRequestMetric?: (metric: RequestMetric) => void;
+  /** 用量台账 recorder（LLM-12）。不传就不记账，请求原样发。 */
+  usageRecorder?: UsageLedgerRecorder;
 }
 
 function toEnvelope(reply: CompanionReply): ReplyEnvelopeV1 {
@@ -97,6 +104,25 @@ async function* generateEvents(
 
   const pump = (async () => {
     try {
+      // 用途由实际调用方声明：主动发起的轮次记 proactive，其余前台生成（LLM-12-A）。
+      const purpose: UsagePurpose = input.source === "proactive" ? "proactive" : "foreground";
+      const requestOptions: ProviderRequestOptions = {
+        signal: controller.signal,
+        // 用量单独成事件：它可能比回复先到，取消/失败的轮次也拿得到（LLM-10）。
+        onUsage: (usage) => {
+          if (controller.signal.aborted) return;
+          queue.push({ type: "usage", usage });
+          wake();
+        },
+        // 前台生成的物理请求计量：attempt 数含受控 fallback，不并成一次（LLM-04-A）。
+        requestPurpose: purpose,
+        requestTurnId: input.turnId,
+        onRequestMetric: options.onRequestMetric,
+      };
+      // 台账 recorder 在这里包住 options：每次物理尝试的开始/终态从边界取证。
+      const wired = options.usageRecorder
+        ? options.usageRecorder.observe({ config, purpose, turnId: input.turnId, options: requestOptions })
+        : requestOptions;
       const reply = await streamChat(
         config,
         instructions,
@@ -112,19 +138,7 @@ async function* generateEvents(
           wake();
         },
         stickers.map((sticker) => sticker.id),
-        {
-          signal: controller.signal,
-          // 用量单独成事件：它可能比回复先到，取消/失败的轮次也拿得到（LLM-10）。
-          onUsage: (usage) => {
-            if (controller.signal.aborted) return;
-            queue.push({ type: "usage", usage });
-            wake();
-          },
-          // 前台生成的物理请求计量：attempt 数含受控 fallback，不并成一次（LLM-04-A）。
-          requestPurpose: "foreground",
-          requestTurnId: input.turnId,
-          onRequestMetric: options.onRequestMetric,
-        },
+        wired,
       );
       if (!controller.signal.aborted) queue.push({ type: "reply", reply: toEnvelope(reply) });
     } catch (error) {
