@@ -15,7 +15,7 @@
  * 真正决定结果的仍是应用层 BM25；候选为空时由 repository 回退全量扫描。
  */
 
-import type { MemoryRecordV2 } from "../../domain/memory";
+import { isMemorySourceKind, type MemoryRecordV2 } from "../../domain/memory";
 import {
   MEMORY_SCHEMA_VERSION, emptySnapshot,
   type MemorySnapshot, type MemorySuppression, type MemoryV2Store,
@@ -119,9 +119,7 @@ function toRecord(row: MemoryRow): MemoryRecordV2 {
       : "fact",
     content: row.content,
     sourceMessageIds: parseIds(row.source_message_ids),
-    sourceKind: (["messages", "legacy", "userEdit"] as const).includes(row.source_kind as never)
-      ? row.source_kind as MemoryRecordV2["sourceKind"]
-      : "messages",
+    sourceKind: isMemorySourceKind(row.source_kind) ? row.source_kind : "messages",
     status: (["candidate", "confirmed", "superseded"] as const).includes(row.status as never)
       ? row.status as MemoryRecordV2["status"]
       : "candidate",

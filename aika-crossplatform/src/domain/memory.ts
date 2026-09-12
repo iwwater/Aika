@@ -81,7 +81,63 @@ export type MemoryType = (typeof MEMORY_TYPES)[number];
 export const MEMORY_STATUS_V2 = ["candidate", "confirmed", "superseded"] as const;
 export type MemoryStatusV2 = (typeof MEMORY_STATUS_V2)[number];
 
-export type MemorySourceKind = "messages" | "legacy" | "userEdit";
+/**
+ * 来源与信任分级（RT-04）。
+ *
+ * - messages：本地用户自己的对话（可信自述，仍只能当候选、由人确认）。
+ * - external-bound：已绑定外部主体的 DM——**只认证了发件人**，不证明正文里的
+ *   引文/文件/Agent 结果是其本人事实。
+ * - untrusted-material：群消息、转贴第三方内容、OCR/文件、Agent 输出——
+ *   不可信资料，永不自动提升，也不归入本地用户画像。
+ * - legacy：迁移旧记录，按原有口径兼容。
+ */
+export type MemorySourceKind = "messages" | "external-bound" | "untrusted-material" | "legacy" | "userEdit";
+
+export const MEMORY_SOURCE_KINDS: readonly MemorySourceKind[] = [
+  "messages", "external-bound", "untrusted-material", "legacy", "userEdit",
+];
+
+export function isMemorySourceKind(value: unknown): value is MemorySourceKind {
+  return typeof value === "string" && (MEMORY_SOURCE_KINDS as readonly string[]).includes(value);
+}
+
+/**
+ * 模型生成的候选一律不能自行提升为 confirmed（RT-04-A）：
+ * 提升只能走人（userEdit / 管理页确认），这与 sourceKind 无关。
+ */
+export function mayElevateToConfirmed(byModel: boolean): boolean {
+  return !byModel;
+}
+
+/**
+ * 谁能进本地用户的 User Soul 画像（RT-04）。
+ * 明确归属 + 经人确认：本地对话/旧数据/用户手写且状态 confirmed；
+ * external-bound 与 untrusted-material 即使被人确认也**不归入本地画像**
+ * （归属无法核实，保守默认），它们只作为会话内事实存在。
+ */
+export function mayFeedUserSoul(sourceKind: MemorySourceKind, status: MemoryStatusV2): boolean {
+  if (status !== "confirmed") return false;
+  return sourceKind === "messages" || sourceKind === "legacy" || sourceKind === "userEdit";
+}
+
+/**
+ * 由提交来源推导候选的信任分级（RT-04）。
+ * 来源字符串本身不授予权限——分组/Agent/引文/unknown 一律按不可信资料处理。
+ */
+export function sourceKindForOrigin(
+  origin: string,
+  options: { bound: boolean; isGroupConversation?: boolean; isAgentOutput?: boolean; isQuotedMaterial?: boolean } = { bound: true },
+): MemorySourceKind {
+  if (options.isAgentOutput || options.isQuotedMaterial || options.isGroupConversation) {
+    return "untrusted-material";
+  }
+  if (origin === "desktop") return "messages";
+  if (origin === "telegram" || origin === "feishu" || origin === "qq" || origin === "mobile") {
+    return options.bound ? "external-bound" : "untrusted-material";
+  }
+  // environment/proactive/unknown：来源不明不自动提升。
+  return "untrusted-material";
+}
 
 /**
  * 带来源的记忆。

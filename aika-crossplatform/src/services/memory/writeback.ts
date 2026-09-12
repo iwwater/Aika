@@ -55,6 +55,8 @@ export interface MaintenanceFlushResult {
   written: number;
   failed: number;
   errors: string[];
+  /** 提交前重新检查被拒（撤权/解绑）而丢弃的批次数（RT-04-C）。 */
+  denied?: number;
 }
 
 export interface MaintenanceEnqueueInput {
@@ -81,6 +83,13 @@ export interface MemoryMaintenanceOptions {
   /** 调度器注入：测试用假时钟驱动退避，不必真等 30 秒。返回取消函数。 */
   schedule?: (fn: () => void, ms: number) => () => void;
   onError?: (error: unknown) => void;
+  /**
+   * 提交前重新检查（RT-04-C）：worker 在 repository.upsert 之前调用——
+   * 入队时的授权（绑定/撤权状态）到提交时可能已经变了。返回不 ok 就丢弃
+   * 整批（不写入、不重试），拒绝原因进 result.errors。没提供 = legacy 单主体
+   * 本地链路，不需要重查。
+   */
+  authorizeWriteback?: (batch: MaintenanceBatch) => Promise<{ ok: boolean; reason?: string }>;
 }
 
 export interface MemoryMaintenance {
@@ -219,6 +228,18 @@ export function createMemoryMaintenance(options: MemoryMaintenanceOptions): Memo
       if (disposed || !enabled) {
         batch.status = "pending";
         break;
+      }
+
+      // 提交前重新检查（RT-04-C）：解绑/撤权后，旧队列批次到这里必须止步。
+      if (options.authorizeWriteback) {
+        const verdict = await options.authorizeWriteback(batch);
+        if (!verdict.ok) {
+          batches.delete(batch.id);
+          persist();
+          result.denied = (result.denied ?? 0) + 1;
+          result.errors.push(`writeback-denied:${verdict.reason ?? "revoked"}`);
+          continue;
+        }
       }
 
       const records = buildRecords(batch);

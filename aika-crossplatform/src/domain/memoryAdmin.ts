@@ -56,6 +56,8 @@ export const MEMORY_STATUS_LABELS: Record<MemoryStatusV2, string> = {
 
 export const MEMORY_SOURCE_LABELS: Record<MemorySourceKind, string> = {
   messages: "来自对话",
+  "external-bound": "绑定外部主体（未核归属）",
+  "untrusted-material": "不可信资料（群聊/引文/Agent）",
   legacy: "来源不明（迁移自旧版）",
   userEdit: "你写的",
 };
