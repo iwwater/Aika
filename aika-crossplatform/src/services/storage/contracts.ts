@@ -99,6 +99,8 @@ export const SETTING_KEYS = {
   identityBindings: "identity.bindings.v1",
   /** 权限请求记录（RT-03）。重启后 pending 保持 pending，绝不自动批准。 */
   permissionRequests: "permission.requests.v1",
+  /** 渠道网关 inbox/outbox 状态（GW-01）。损坏按空网关处理。 */
+  gatewayState: "gateway.state.v1",
   /**
    * CORE-03 迁移期用过 `core.orchestrator = legacy | kernel`。CORE-06 删除旧编排后
    * 这个 key 不再被读写；旧库里残留的值会被当作普通未知设置忽略，不报错、不迁移。

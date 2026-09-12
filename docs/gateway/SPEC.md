@@ -4,7 +4,7 @@
 
 | SPEC | 交付 | 前置 | 状态 |
 | --- | --- | --- | --- |
-| [GW-01](specs/GW-01.md) | Channel Gateway 与可靠收发 | RT-02、RT-03、RT-04 | READY（本地实现） |
+| [GW-01](specs/GW-01.md) | Channel Gateway 与可靠收发 | RT-02、RT-03、RT-04 | AUTO_PASS（2026-09-13）：A~D 全过（去重/恢复 unknown 不重跑/附件校验/有序/目的地绑定/重试上限/unknown 终态/适配器无 LLM-Memory 面）；真实适配器 NOT RUN。见[验收报告](reports/GW-01_ACCEPTANCE.md) |
 | [GW-02](specs/GW-02.md) | Telegram 文本私聊适配 | GW-01 | READY（本地实现） |
 | [GW-03](specs/GW-03.md) | Telegram 语音与文件入口 | GW-02、STT/TTS 端口自动审查 | READY（本地实现） |
 | [GW-04](specs/GW-04.md) | Device Gateway 配对与能力会话 | RT-03、FE-14、FE-17-pre、FE-15、FE-17-host/tauri | READY（本地实现） |

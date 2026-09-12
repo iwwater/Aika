@@ -136,6 +136,14 @@ INT-01 的兼容检查项：云端合成一旦在设置页可选，`createOutput
 | `TraceEventBase.conversationId?` | `domain/trace.ts` | 可选增量字段，runtime 6 个事件源已写入；redact 走 `...event` 透传；旧事件无字段=legacy 本地 | TracePage/inspector/统计消费方（读不到时按旧逻辑） |
 | `BindingService`（issueBindingCode/claim/principalFor/unbind/list）+ `SETTING_KEYS.identityBindings` | `services/identity/binding.ts` | 新服务：一次性/限期/防暴力/解绑即失效；绑定存储损坏按「无任何绑定」fail-closed。本地可信界面签码、外部入口凭码+四元组账户键认领；外部声明 userId 无效 | RT-03 权限端口、GW-01 渠道入口、FE 绑定 UI（后续） |
 
+### v1 之后的追加（2026-09-13，GW-01 渠道网关，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `GatewayPayload`（text/voice/image/file/command 判别联合）/ `GatewayInboundMessageV1` / `inboxKeyOf` / `validatePayload` | `domain/gateway.ts` | 新类型+纯函数。附件上限 20MB、media type 白名单、未知类型拒绝；第一版不做图像/转写理解（显式附件表示） | Gateway、GW-02 适配器、GW-03 文件端口 |
+| `InboxRecordV1`（received/accepted/running/completed/failed/unknown）/ `OutboundMessageV1`（queued/sent/failed/unknown） | 同上 | 持久唯一键=平台账户+会话+messageId；出站目的地固定绑定原请求；重试上限 3（可配更低）、容量 200、TTL 24h | `channelGateway`、GW-02 |
+| `ChannelGateway` / `GatewayRuntimePort` / `GatewayTransport` / `GatewayBindingPort` | `services/gateway/channelGateway.ts` | 新服务；三窄端口——适配器与 Gateway **不 import** 任何 LLM/Memory/Runtime 实现（测试内架构断言）。崩溃窗口口径：先持久接收再确认平台 offset；提交后崩溃标 unknown 绝不自动重跑；发送不确认（无幂等键声明）标 unknown 终态 | GW-02 适配器、RT-03 审批（任意新目标）、AGT |
+
 ## 详细接口入口
 
 LLM 各自的 `docs/llm/specs/LLM-01…05` 文件内写明实现级接口；[STT](../stt/ARCHITECTURE.md)、[TTS](../tts/ARCHITECTURE.md)、[前端](../frontend/ARCHITECTURE.md) 按共享架构文件引用对应阶段。代码块是拟定逻辑契约，现有类型通过兼容 adapter 映射；不能以名称尚未存在推断已实现，也不要机械新增重复接口。
