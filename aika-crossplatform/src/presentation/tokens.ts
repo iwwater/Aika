@@ -4,6 +4,7 @@ import type { VoicePresenter } from "./voicePresenter";
 import type { DevToolsPresenter } from "./devToolsPresenter";
 import type { MemoryPresenter } from "./memoryPresenter";
 import type { StoragePresenter } from "./storagePresenter";
+import type { InspectorPresenter } from "./inspectorPresenter";
 
 /**
  * 展示层服务标识。
@@ -15,6 +16,8 @@ import type { StoragePresenter } from "./storagePresenter";
  * 指的就是这里：Hook 只拿这一个 token，不再认识 activeRuntimeServices 之类的过渡槽。
  */
 export const CompanionPresenterToken = token<CompanionPresenter>("presentation.companion");
+/** Live Inspector（FE-23）：实时订阅 + 历史合并的采集视图。 */
+export const InspectorPresenterToken = token<InspectorPresenter>("presentation.inspector");
 export const VoicePresenterToken = token<VoicePresenter>("presentation.voice");
 /**
  * 工作台 Presenter（FE-09）。

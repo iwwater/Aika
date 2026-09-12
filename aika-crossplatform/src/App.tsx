@@ -12,6 +12,7 @@ import { MessageTranslation } from "./components/MessageTranslation";
 import { VoiceModal } from "./components/VoiceModal";
 import type { VoiceOutput } from "./services/voice/outputEngine";
 import { DevToolsPage } from "./pages/DevToolsPage";
+import { LiveInspector } from "./components/LiveInspector";
 import { DEFAULT_CHARACTER } from "./domain/character";
 import { nextRecognitionLanguage, type RecognitionInput } from "./domain/language";
 import { PROVIDER_PRESETS, validateProvider, type ProviderConfig } from "./domain/providers";
@@ -234,6 +235,7 @@ function App() {
       <header className="titlebar">
         <div className="brand"><span className="brand-mark"><Sparkles size={17} /></span><span>{DEFAULT_CHARACTER.name}</span><span className="brand-subtitle">Aika</span></div>
         <div className="titlebar-actions">
+          {devTools.devMode && showDevTools && <LiveInspector />}
           {devTools.devMode && (
             <button
               className={`icon-button ${showDevTools ? "active" : ""}`}

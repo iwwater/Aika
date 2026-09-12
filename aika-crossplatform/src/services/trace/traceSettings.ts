@@ -15,6 +15,8 @@ export interface TraceSettings {
 export interface TraceSettingsService {
   get(): TraceSettings;
   set(next: Partial<TraceSettings>): void;
+  /** 设置变化订阅（FE-23）：返回退订函数。监听器异常与主链路相互隔离。 */
+  onChanged(listener: (next: TraceSettings) => void): () => void;
 }
 
 /**
@@ -36,10 +38,24 @@ export function defaultTraceSettings(): TraceSettings {
 
 export function createTraceSettings(initial: TraceSettings = defaultTraceSettings()): TraceSettingsService {
   let current: TraceSettings = { ...initial };
+  const listeners = new Set<(next: TraceSettings) => void>();
   return {
     get: () => current,
     set(next) {
       current = { ...current, ...next };
+      for (const listener of [...listeners]) {
+        try {
+          listener(current);
+        } catch {
+          // 设置变化的监听器抛错不影响主链路，也不影响其它监听器。
+        }
+      }
+    },
+    onChanged(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
     },
   };
 }

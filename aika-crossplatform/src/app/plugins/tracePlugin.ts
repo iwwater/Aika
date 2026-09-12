@@ -4,6 +4,7 @@ import { ClockToken } from "../../services/time/tokens";
 import { createMemoryTraceSink } from "../../services/trace/memoryTraceSink";
 import { createSqliteTraceSink } from "../../services/trace/sqliteTraceSink";
 import { createTraceRecorder } from "../../services/trace/traceRecorder";
+import { createObservableTraceSink } from "../../services/trace/observableSink";
 import { TraceRecorderToken, TraceSettingsToken, TraceSinkToken } from "../../services/trace/tokens";
 import { createTraceSettings, type TraceSettings } from "../../services/trace/traceSettings";
 import type { TraceSink } from "../../services/trace/contracts";
@@ -67,7 +68,8 @@ export function tracePlugin(options: TracePluginOptions = {}): AikaPlugin {
         }));
       }
 
-      const sink = sinks.length === 1 ? memory : fanOut(sinks);
+      // 包装成可观察 sink：Live Inspector 订阅先行，查询期间的并发事件才不丢（FE-23）。
+      const sink = createObservableTraceSink(sinks.length === 1 ? memory : fanOut(sinks));
       const settings = createTraceSettings(options.initial);
       // 两个闭包每次都重新读：设置页一改，下一条事件就按新规矩走。
       const recorder = createTraceRecorder({

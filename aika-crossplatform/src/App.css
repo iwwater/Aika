@@ -430,3 +430,65 @@ mark.speaking { color: var(--cyan); background: rgba(55,230,255,.14); border-rad
 .storage-result th { position: sticky; top: 0; padding: 5px 9px; border-bottom: 1px solid var(--line); background: rgba(19,29,49,.98); color: var(--muted); font-weight: 400; text-align: left; white-space: nowrap; }
 .storage-result td { padding: 4px 9px; border-bottom: 1px solid rgba(255,255,255,.04); color: var(--ink); white-space: pre-wrap; word-break: break-word; vertical-align: top; }
 .storage-result td.null { color: var(--dim); font-style: italic; }
+
+/* Live Inspector（FE-23）：固定浮层，只在面板上拦指针，聊天保持可操作。 */
+.live-inspector {
+  position: fixed;
+  width: 352px;
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel, #1b1d23);
+  color: inherit;
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
+  z-index: 90;
+}
+.live-inspector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+}
+.live-inspector-header:active { cursor: grabbing; }
+.live-inspector-actions { display: flex; gap: 4px; }
+.live-inspector-list {
+  overflow: auto;
+  padding: 4px 0;
+  min-height: 120px;
+  max-height: 44vh;
+}
+.live-inspector-row {
+  display: flex;
+  gap: 8px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+  align-items: baseline;
+}
+.live-inspector-kind { flex: 0 0 52px; opacity: 0.75; }
+.live-inspector-summary { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-inspector-note { margin: 4px 10px; font-size: 11px; opacity: 0.8; }
+.live-inspector-empty { margin: 10px; font-size: 12px; opacity: 0.7; }
+.live-inspector-footer { border-top: 1px solid rgba(128, 128, 128, 0.25); padding: 4px 8px; }
+.live-inspector-capsule {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 90;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(128, 128, 128, 0.4);
+  background: var(--panel, #1b1d23);
+  color: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}

@@ -15,9 +15,10 @@ import { createVoicePresenter } from "../../presentation/voicePresenter";
 import { createDevToolsPresenter } from "../../presentation/devToolsPresenter";
 import { createMemoryPresenter } from "../../presentation/memoryPresenter";
 import { createStoragePresenter } from "../../presentation/storagePresenter";
+import { createInspectorPresenter } from "../../presentation/inspectorPresenter";
 import {
   CompanionPresenterToken, DevToolsPresenterToken, MemoryPresenterToken,
-  StoragePresenterToken, VoicePresenterToken,
+  StoragePresenterToken, VoicePresenterToken, InspectorPresenterToken,
 } from "../../presentation/tokens";
 
 /**
@@ -58,7 +59,7 @@ export function presentationPlugin(options: PresentationPluginOptions = {}): Aik
     ],
     provides: [
       CompanionPresenterToken, VoicePresenterToken, DevToolsPresenterToken,
-      MemoryPresenterToken, StoragePresenterToken,
+      MemoryPresenterToken, StoragePresenterToken, InspectorPresenterToken,
     ],
     activate(context) {
       const storage = context.registrar.tryResolve(StorageToken);
@@ -126,6 +127,12 @@ export function presentationPlugin(options: PresentationPluginOptions = {}): Aik
       context.registrar.provide(MemoryPresenterToken, () => createMemoryPresenter({
         access: memoryAccess ?? null,
       }), { disposer: (value) => value.dispose() });
+
+      // Live Inspector（FE-23）：sink/settings 缺任一就显示引导，不崩、不自行开启。
+      context.registrar.provide(InspectorPresenterToken, () => createInspectorPresenter({
+        sink: traceSink,
+        settings: traceSettings,
+      }));
 
       // 存储浏览：SQL 执行器是存储的可选成员，localStorage 实现没有——
       // 那时页面负责说清楚，而不是显示一个空库。
