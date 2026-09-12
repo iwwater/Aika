@@ -492,3 +492,11 @@ mark.speaking { color: var(--cyan); background: rgba(55,230,255,.14); border-rad
   font-size: 11px;
   cursor: pointer;
 }
+.live-inspector-timeline { border-top: 1px solid rgba(128,128,128,0.25); padding: 4px 10px; font-size: 11px; }
+.live-inspector-timeline p { margin: 2px 0; }
+.live-inspector-detail {
+  max-height: 30vh; overflow: auto; margin: 0; padding: 8px 10px;
+  font-size: 10px; font-family: ui-monospace, monospace;
+  border-top: 1px solid rgba(128,128,128,0.25); white-space: pre-wrap;
+}
+.live-inspector-row[role="button"] { cursor: pointer; }

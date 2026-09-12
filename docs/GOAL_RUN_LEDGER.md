@@ -64,8 +64,8 @@
 | 3 | TTS-04 设置与错误传播 | AUTO_PASS（待人工） | 见会话日志 | 设置端口/切引擎停队列/降级可见全过；SpeechEngines 接口破坏性扩展（消费者已同步） |
 | 3 | LLM-11 上下文快照 | AUTO_PASS（待人工） | 见会话日志 | context_snapshot 事件+装配期诊断+唯一脱敏点；穷举消费者已同步；516 回归全绿 |
 | 3 | FE-23 时间线 | AUTO_PASS（待人工） | 见会话日志 | 订阅先行合并/隔离/设置联动全过；目视留人工 |
-| 3 | FE-24 实时浮层 | NOT RUN | | **下一节点**；依赖 FE-23 |
-| 3 | FE-25 上下文视图 | NOT RUN | | 依赖 FE-24 |
+| 3 | FE-24 实时浮层 | AUTO_PASS（待人工） | 见会话日志 | 时间线宁缺毋假/导出逐字节一致全过；目视留人工 |
+| 3 | FE-25 上下文视图 | NOT RUN | | **下一节点**；依赖 FE-24 |
 | 3 | LLM-12 用量台账 | NOT RUN | | LLM-04/10 后 |
 | 3 | FE-26 成本页 | NOT RUN | | 硬前置 LLM-12 |
 | 4 | RT-01 契约 | NOT RUN | | |
@@ -114,3 +114,4 @@
 - 2026-09-13 04:30 Wave 3 TTS-04 AUTO_PASS（待人工）：outputSettings 端口（Key 进 SecretStore、空=保持、显式删除）、SpeechEngines.output/resolveOutput 扩展、voicePresenter.applyVoiceOutput（停旧队列+世代隔离）、companionPresenter.setVoiceOutput + App 设置表单。定向 8 例 + 回归 233 全绿，tsc 0。UI 视觉/真实试听留人工/TTS-05。
 - 2026-09-13 04:52 Wave 3 LLM-11 AUTO_PASS（待人工）：trace 新增 context_snapshot（字段冻结），contextAssembler.includeDiagnostics 装配期采集（kept/trimmed 同源、截断如实记录），companionRuntime 记录（record 前复核开关），脱敏走唯一 redactTraceEvent（canary 实测）；pluginGraph/traceView/TracePage 穷举更新。回归 516 全绿 tsc 0。**下一节点：FE-23 时间线（消费 LLM-11）→ FE-24 → FE-25；再 LLM-12→FE-26。**
 - 2026-09-13 05:10 Wave 3 FE-23 AUTO_PASS（待人工）：observableSink（逐监听器独立副本+双重异常隔离）、inspectorPresenter（订阅先行→缓冲→tail 合并、turnId+seq 去重、50轮/5000条/512KB 淘汰、session 作废迟到查询、设置联动：关→退订清视图/重开→恢复、includeText 重投影）、LiveInspector 浮层外壳。184 回归全绿 tsc 0。**下一节点：FE-24 → FE-25；再 LLM-12→FE-26。**
+- 2026-09-13 05:18 Wave 3 FE-24 AUTO_PASS（待人工）：buildTurnTimeline（真实配对才给耗时、负差 null、重复吞掉、缺 turn_end=running）、inspectorPresenter 选中轮/时间线/导出（与页面投影逐字节一致 + coverageNote）、LiveInspector 时间线与详情渲染。170 回归全绿 tsc 0。**下一节点：FE-25；再 LLM-12→FE-26。**

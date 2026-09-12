@@ -18,6 +18,7 @@
 | [FE-12](specs/FE-12.md) | 存储浏览页与只读 SQL 控制台（F8） | REVIEWED_AUTO（2026-09-13 证据审阅：报告逐 AC 齐全，弱项见账本） |
 | [FE-13](specs/FE-13.md) | 语音页露出识别语言并允许改掉 | REVIEWED_AUTO（2026-09-13：报告逐 AC 齐全，16 测试范围复跑全绿；无全量回归已记录） |
 | [FE-23](specs/FE-23.md) | Live Inspector 外壳与实时订阅 | AUTO_PASS（2026-09-13）：A~C 全过，184 测试回归全绿；拖拽/窄窗目视留人工。见[验收报告](reports/FE-23_ACCEPTANCE.md) |
+| [FE-24](specs/FE-24.md) | 泳道时间线、检查器与导出 | AUTO_PASS（2026-09-13）：A~D 全过，170 测试回归全绿；浮层目视留人工。见[验收报告](reports/FE-24_ACCEPTANCE.md) |
 | [FE-14](specs/FE-14.md) | 远程输出协议内核：OutboundChannel 与 schema v1（草案） | READY；执行当前已审阅正文 |
 | [FE-15](specs/FE-15.md) | Tauri 宿主 transport（HTTP 轮询）与手机页迁移（草案） | READY；执行当前已审阅正文 |
 | [FE-16](specs/FE-16.md) | 浏览器 dev 宿主 transport 与 Node ws 中继（草案） | READY；执行当前已审阅正文 |

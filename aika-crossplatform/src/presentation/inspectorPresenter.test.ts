@@ -196,3 +196,53 @@ describe("FE-23-C 设置联动", () => {
     expect(restored.kind === "turn_start" && restored.text).toBe("带正文的用户原话");
   });
 });
+
+describe("FE-24 导出与选中轮", () => {
+  it("导出与页面投影逐字节一致；includeText=false 时不夹带未授权正文", async () => {
+    const sink = createObservableTraceSink(createMemoryTraceSink(100));
+    const settings = createTraceSettings({ enabled: true, includeText: true });
+    const presenter = createInspectorPresenter({ sink, settings });
+    await presenter.open();
+    sink.append(event("t1", 1, "turn_start", { source: "text", mode: "companion", text: "canary-EXPORT-7g2 带正文" }));
+    sink.append(event("t1", 2, "turn_end", { status: "completed", durationMs: 42, tokens: { estimatedPrompt: 5, reportedTotal: null } }));
+    await flush();
+
+    // includeText=true：正文已获授权，导出与页面投影逐字节一致。
+    const result = presenter.exportJsonl();
+    const pageLines = presenter.getSnapshot().events.map((entry) => JSON.stringify(entry));
+    expect(result.body.split("\n")).toEqual(pageLines);
+    expect(result.body).toContain("canary-EXPORT-7g2");
+    expect(result.coverageNote).toContain("不代表完整 Session");
+
+    // includeText=false：导出同样经脱敏，正文不得夹带。
+    settings.set({ includeText: false });
+    await flush();
+    const masked = presenter.exportJsonl();
+    expect(masked.body).not.toContain("canary-EXPORT-7g2");
+    // 与页面当前投影仍逐字节一致。
+    expect(masked.body.split("\n")).toEqual(presenter.getSnapshot().events.map((entry) => JSON.stringify(entry)));
+  });
+
+  it("锁定历史轮与选中轮导出；被淘汰的选中轮回退最新", async () => {
+    const sink = createObservableTraceSink(createMemoryTraceSink(100));
+    const settings = createTraceSettings({ enabled: true, includeText: true });
+    const presenter = createInspectorPresenter({ sink, settings });
+    await presenter.open();
+    sink.append(event("t1", 1, "turn_start", { source: "text", mode: "companion", text: null }));
+    sink.append(event("t1", 2, "turn_end", { status: "completed", durationMs: 10, tokens: { estimatedPrompt: null, reportedTotal: null } }));
+    await flush();
+
+    presenter.selectTurn("t1");
+    expect(presenter.selectedTurnId()).toBe("t1");
+    const scoped = presenter.exportJsonl("t1");
+    expect(scoped.turnCount).toBe(1);
+    expect(scoped.eventCount).toBe(2);
+    expect(scoped.body.split("\n").every((line) => JSON.parse(line).turnId === "t1")).toBe(true);
+
+    const timeline = presenter.timeline("t1");
+    expect(timeline).toMatchObject({ turnId: "t1", status: "completed", totalMs: 10 });
+
+    presenter.selectTurn(null);
+    expect(presenter.selectedTurnId()).toBeNull();
+  });
+});

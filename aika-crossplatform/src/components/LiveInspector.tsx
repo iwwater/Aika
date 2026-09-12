@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronsDownUp, ChevronsUpDown, X } from "lucide-react";
+import { statusLabel } from "../domain/traceView";
 import { useService } from "../app/kernelContext";
 import { usePresenterSnapshot } from "../hooks/usePresenterSnapshot";
 import { InspectorPresenterToken } from "../presentation/tokens";
@@ -53,6 +54,9 @@ function summarize(event: TraceEventV1): string {
 export function LiveInspector() {
   const presenter = useService(InspectorPresenterToken);
   const view = usePresenterSnapshot(presenter);
+  const [selectedTurnId, setSelectedTurnId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<TraceEventV1 | null>(null);
+  const [exportNote, setExportNote] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [position, setPosition] = useState({ x: window.innerWidth - 372, y: 72 });
   const dragState = useRef<{ pointerId: number; offsetX: number; offsetY: number } | null>(null);
@@ -145,7 +149,13 @@ export function LiveInspector() {
       {view.maskingNote && <p className="live-inspector-note">正文开关是关的：这里是显示屏蔽，历史落盘正文不受影响。</p>}
       <div className="live-inspector-list">
         {view.events.slice().reverse().map((event) => (
-          <div key={`${event.turnId}:${event.seq}`} className="live-inspector-row">
+          <div
+            key={`${event.turnId}:${event.seq}`}
+            className="live-inspector-row"
+            onClick={() => setDetail(event)}
+            role="button"
+            tabIndex={0}
+          >
             <span className="live-inspector-kind">{KIND_LABELS[event.kind] ?? event.kind}</span>
             <span className="live-inspector-summary">{summarize(event)}</span>
           </div>
@@ -153,8 +163,62 @@ export function LiveInspector() {
         {!view.events.length && view.historyStatus === "ready" && <p className="live-inspector-empty">还没有事件。发一轮对话试试。</p>}
       </div>
       <footer className="live-inspector-footer">
+        <select
+          value={selectedTurnId ?? ""}
+          onChange={(e) => { setSelectedTurnId(e.target.value || null); setDetail(null); }}
+          title="锁定历史轮；回到最新选空项"
+        >
+          <option value="">最新</option>
+          {presenter.turnSummaries().map((summary) => (
+            <option key={summary.turnId} value={summary.turnId}>
+              {summary.turnId.slice(0, 8)} · {statusLabel(summary.status as never)} · {summary.eventCount}条
+            </option>
+          ))}
+        </select>
+        <button
+          className="icon-button"
+          onClick={() => {
+            const result = presenter.exportJsonl(selectedTurnId);
+            const blob = new Blob([result.body], { type: "application/jsonl" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = `aika-trace-${selectedTurnId ?? "cache"}.jsonl`;
+            link.click();
+            URL.revokeObjectURL(url);
+            setExportNote(result.coverageNote);
+          }}
+        >
+          导出 JSONL
+        </button>
         <button className="icon-button" onClick={() => setCollapsed(true)} title="折叠成胶囊"><ChevronsUpDown size={13} /> 收起</button>
       </footer>
+      {exportNote && <p className="live-inspector-note">{exportNote}</p>}
+      {(() => {
+        const turnId = selectedTurnId;
+        if (!turnId) return null;
+        const timeline = presenter.timeline(turnId);
+        if (!timeline) return null;
+        const metric = (value: number | null, unit: string) => (value === null ? "未知" : `${value}${unit}`);
+        return (
+          <div className="live-inspector-timeline">
+            <p>状态 {statusLabel(timeline.status === "running" ? null : timeline.status)} · 总耗时 {metric(timeline.totalMs, "ms")}</p>
+            <p>首 token（采集测点）{metric(timeline.firstTokenMs, "ms")} · 首可见正文间隔 {metric(timeline.replyIntervalMs, "ms")}</p>
+            <p>用量 估算 {metric(timeline.usage.estimatedPrompt, "")} · 上报 {metric(timeline.usage.reportedTotal, "")}</p>
+            {timeline.stages.map((stage) => (
+              <div key={stage.seq} className="live-inspector-row">
+                <span className="live-inspector-kind">{KIND_LABELS[stage.kind] ?? stage.kind}</span>
+                <span className="live-inspector-summary">
+                  {stage.intervalMs === null ? "间隔未知（时钟差为负）" : `+${stage.intervalMs}ms`}
+                </span>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+      {detail && (
+        <pre className="live-inspector-detail">{JSON.stringify(detail, null, 2)}</pre>
+      )}
     </section>
   );
 }

@@ -17,6 +17,7 @@ import {
   redactTraceEvent, sortTraceEvents,
   type TraceEventV1, type TraceRedactionPolicy,
 } from "../domain/trace";
+import { buildTurnTimeline, groupTurns, toJsonl, type TurnTimeline } from "../domain/traceView";
 import type { TraceSink } from "../services/trace/contracts";
 import { isObservableTraceSink, type TraceAppendListener } from "../services/trace/observableSink";
 import type { TraceSettingsService } from "../services/trace/traceSettings";
@@ -41,6 +42,15 @@ export interface InspectorViewModel {
   maskingNote: boolean;
 }
 
+export interface InspectorExportResult {
+  /** 与页面当前投影逐字节一致的 JSONL（选中轮或全部已加载范围）。 */
+  body: string;
+  eventCount: number;
+  turnCount: number;
+  /** 覆盖范围说明：内存有界淘汰，不代表完整 Session。 */
+  coverageNote: string;
+}
+
 export interface InspectorPresenter {
   /** 打开采集视图：订阅先行，随后查历史合并。幂等。 */
   open(): Promise<void>;
@@ -48,6 +58,15 @@ export interface InspectorPresenter {
   close(): void;
   getSnapshot(): InspectorViewModel;
   subscribe(listener: () => void): () => void;
+  /** 轮次摘要（最新在前）：泳道选择列表。 */
+  turnSummaries(): readonly { turnId: string; startedAt: number; status: string | null; eventCount: number }[];
+  /** 锁定某历史轮；null = 回到最新。 */
+  selectTurn(turnId: string | null): void;
+  selectedTurnId(): string | null;
+  /** 泳道时间线：仅真实配对给耗时，负差不显示。 */
+  timeline(turnId: string): TurnTimeline | null;
+  /** JSONL 导出：与页面当前投影逐字节一致（同一 toJsonl、同一投影数组）。 */
+  exportJsonl(turnId?: string | null): InspectorExportResult;
 }
 
 const MAX_EVENTS = 5000;
@@ -78,6 +97,8 @@ export function createInspectorPresenter(deps: InspectorPresenterDeps): Inspecto
   let unsubscribeSink: (() => void) | null = null;
   /** 设置订阅随 Presenter 生命周期存在（构造期建立），退订函数无需保留。 */
 
+  let selectedTurnId: string | null = null;
+  /** 事件被淘汰时，选中的轮可能已经不在缓存里：此时视为回到最新。 */
   let cached: InspectorViewModel | null = null;
   let dirty = true;
   let listeners = new Set<() => void>();
@@ -137,6 +158,9 @@ export function createInspectorPresenter(deps: InspectorPresenterDeps): Inspecto
       kept.push(event);
     }
     kept.reverse();
+    if (dropped > 0 && selectedTurnId && !kept.some((event) => event.turnId === selectedTurnId)) {
+      selectedTurnId = null; // 选中的轮被淘汰：回到最新，不显示残缺时间线。
+    }
     evictionNote = dropped > 0
       ? `容量已满：只保留最近 ${turns.size} 轮 / ${kept.length} 条，更早的 ${dropped} 条已被淘汰（落盘历史不受影响）。`
       : null;
@@ -269,6 +293,46 @@ export function createInspectorPresenter(deps: InspectorPresenterDeps): Inspecto
       listeners.add(listener);
       return () => {
         listeners.delete(listener);
+      };
+    },
+
+    turnSummaries() {
+      return groupTurns(store).map((summary) => ({
+        turnId: summary.turnId,
+        startedAt: summary.startedAt,
+        status: summary.status,
+        eventCount: summary.eventCount,
+      }));
+    },
+
+    selectTurn(turnId) {
+      selectedTurnId = turnId;
+      commit();
+    },
+
+    selectedTurnId() {
+      return selectedTurnId;
+    },
+
+    timeline(turnId) {
+      return buildTurnTimeline(store, turnId);
+    },
+
+    exportJsonl(turnId) {
+      // 与页面同一投影函数、同一 store：序列化结果逐字节一致（FE-24-D）。
+      const projected = store.map((event) => redactTraceEvent(event, {
+        includeText: settings?.get().includeText ?? false,
+      }));
+      const scoped = turnId ? projected.filter((event) => event.turnId === turnId) : projected;
+      const body = toJsonl(scoped);
+      const turns = new Set(scoped.map((event) => event.turnId));
+      return {
+        body,
+        eventCount: scoped.length,
+        turnCount: turns.size,
+        coverageNote: evictionNote
+          ? `导出范围：当前缓存 ${turns.size} 轮 / ${scoped.length} 条（有界淘汰已生效：${evictionNote}）——不是完整 Session 导出。`
+          : `导出范围：当前缓存 ${turns.size} 轮 / ${scoped.length} 条（受内存上限约束）——不代表完整 Session。`,
       };
     },
   };
