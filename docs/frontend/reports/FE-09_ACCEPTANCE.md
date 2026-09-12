@@ -65,6 +65,7 @@ npx tsc --noEmit     → 退出码 0
 
 ## 待联调项与未覆盖范围
 
+- 部分已补（2026-09-12）：浏览器开发模式冒烟跑通了开发者模式开关 → 标题栏入口 → Trace 页空态 → 开关页，零 console 报错，见 [界面冒烟报告](UI_SMOKE_BROWSER.md)；同时查出并修掉一处本报告没发现的缺陷——工作台打开时 `workspace` 的 `hidden` 被 `.workspace { display: grid }` 压过，聊天页其实没隐藏。桌面真机与真实轮次仍 NOT RUN。原文如下：
 - NOT RUN：真机目视。无 DOM 测试环境，页面渲染以「组件只转发 domain 结果与 Presenter 命令」为可审阅依据。`TracePage` / `DevToolsPage` 里唯一的自有逻辑是 `format()`（null → 破折号）与 `summarizeStep()`（每类事件挑哪几个字段显示），两者都无分支状态。
 - 已知边界（未做）：
   - **不实时**。sink 没有订阅接口，页面是「打开时读 + 手动刷新」。为一个调试页给 sink 加推送不值得。

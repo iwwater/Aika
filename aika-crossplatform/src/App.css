@@ -35,6 +35,10 @@ button { border: 0; cursor: pointer; }
 .icon-button:hover { color: var(--cyan); background: rgba(55,230,255,.09); box-shadow: inset 0 0 0 1px var(--line); }
 
 .workspace { height: calc(100% - 58px); display: grid; grid-template-columns: minmax(250px,30%) minmax(390px,1fr) 278px; }
+/* 工作台打开时聊天页整块 hidden（FE-09）。这条不能省：上面那句 display:grid 的
+   优先级高于浏览器默认的 [hidden]{display:none}，没有它 hidden 属性形同虚设，
+   工作台下面还挂着半页聊天。真机目视才看得出来，单测看不见。 */
+.workspace[hidden] { display: none; }
 .companion-panel { position: relative; overflow: hidden; border-right: 1px solid var(--line); background: radial-gradient(circle at 55% 20%, rgba(55,230,255,.16) 0, transparent 42%), linear-gradient(165deg, #070c18 0%, #0a1122 55%, #0e0a1e 100%); }
 /* 底部网格地平线 */
 .companion-panel::after { content: ""; position: absolute; inset: auto 0 0 0; height: 42%; background: linear-gradient(transparent, rgba(55,230,255,.07)), repeating-linear-gradient(to right, rgba(55,230,255,.12) 0 1px, transparent 1px 42px), repeating-linear-gradient(to bottom, rgba(154,107,255,.10) 0 1px, transparent 1px 34px); mask-image: linear-gradient(transparent, #000 78%); -webkit-mask-image: linear-gradient(transparent, #000 78%); }

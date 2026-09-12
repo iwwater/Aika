@@ -55,12 +55,13 @@
 
 这些跨所有已交付 SPEC，**不是某一份的遗漏**：
 
-1. **真机目视全部 NOT RUN**。仓库没有 DOM 测试环境（devDependencies 无 testing-library），所以每一个界面改动的审阅依据都是「组件只转发 domain 判定与 Presenter 命令」。F1 的六项交互、Trace 页、开发者模式入口、能力页、数据流图、记忆管理页，**没有一项在真实应用里点过**。这是目前最大的证据缺口，跑一次真实对话能一次性验掉大半。
-2. **真实装配下的拓扑图没看过**。FE-10 的图用构造的 `KernelSnapshot` 验过判定，但 `composition.ts` 真实装出来的层数、缺失的 optional token 清单长什么样，要打开工作台才知道。
-3. **记忆管理页的真实数据没看过**。FE-11 的证据跑在生产仓储 + 内存 store 上；真实库里那些迁移来的旧记忆（`legacy`、来源为空）在页面上长什么样、待过目里堆了多少条，要打开工作台才知道。
-4. **`plugin-sql` 上的 SQL 没执行过**。CORE-08 的 `DELETE ... IN (…)`、LLM-06 的 trace 建表与清理，证据都来自 node:sqlite 真实引擎跑生产 SQL，不等于 Tauri 环境验证。留 INT-01。
-5. **`import.meta.env.DEV` 在生产构建下的实际取值**没验过（Trace 默认开关依赖它）。
-6. **真实模型质量**：LLM-09 让「双语退化率」第一次可测了（`reply` 事件的 `translationDuplicatesReply` 比例），FE-10 让它在单轮里一眼可见，但还没跑过真机样本。
+1. **界面渲染：浏览器开发模式已冒烟，桌面真机仍 NOT RUN**。2026-09-12 用 `npm run dev` + 无头浏览器实际打开过应用，工作台五个页签全部渲染成功、零 console 报错，记忆页的列表/确认/编辑三个交互在真实 localStorage 上跑通，装配拓扑用的是真实 `composition.ts` 的 13 插件 / 21 依赖 / 缺失 0。详见 [界面冒烟报告](frontend/reports/UI_SMOKE_BROWSER.md)。
+   **这一次查出了一个单测永远看不见的缺陷并已修**：`.workspace { display: grid }` 压过浏览器默认的 `[hidden] { display: none }`，工作台打开时聊天页根本没隐藏（页面能一直往下滚）。
+   仍然没验的：桌面 Tauri + SQLite、F1 的六项消息交互。
+2. **真实对话一轮仍未跑**（没有 API Key）。Trace 页、能力调用视图、一轮数据流三处目前都只验到空态；一轮真实对话能一次点亮这三处，是下一次验证最划算的一件事。
+3. **`plugin-sql` 上的 SQL 没执行过**。CORE-08 的 `DELETE ... IN (…)`、LLM-06 的 trace 建表与清理，证据都来自 node:sqlite 真实引擎跑生产 SQL，不等于 Tauri 环境验证。留 INT-01。
+4. **`import.meta.env.DEV` 在生产构建下的实际取值**没验过（Trace 默认开关依赖它）：冒烟跑的是 dev server，恰恰是 `DEV === true` 的那一侧。
+5. **真实模型质量**：LLM-09 让「双语退化率」第一次可测了（`reply` 事件的 `translationDuplicatesReply` 比例），FE-10 让它在单轮里一眼可见，但还没跑过真机样本。
 
 ---
 
