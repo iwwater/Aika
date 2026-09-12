@@ -79,6 +79,14 @@
 
 | `TraceEventKind` 增加 `"reply"` | `domain/trace.ts` | 联合类型加一个成员（LLM-09），既有七种事件字段未动。对 kind 做**穷举**的地方必须补分支——仓库内两处（`traceView` 的标签表、`TracePage` 的摘要 switch），都已补，且因为是穷举而不是带 default 的兜底，漏不掉 | 任何消费 Trace 事件的页面与统计 |
 
+### v1 之后的追加（2026-09-12，FE-11 记忆管理页，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `MemoryAccess.onChanged(listener)` / `notifyChanged()` | `services/memory/tokens.ts` | 接口新增**必选**成员，由 `memoryPlugin` 实现；`MemoryRepository` 与 `onInvalidate` 的语义一字未改。任何 `MemoryAccess` 的 fake 都要补这两个成员（仓库内一处测试 fake，已更新） | `memoryPlugin`（扇出）、`companionPresenter`（订阅后重读右栏列表、自身改动后喊一声）、`memoryPresenter`（管理页改完调用） |
+
+分工必须分清，否则等于把摘要作废滥用成刷新信号：`onInvalidate` 的语义是**摘要作废**，只在 `forget` 时发；`onChanged` 的语义是**记忆内容变了**（确认、编辑、删除都算）。删除时两个都发，**顺序是先 invalidate 后 changed**——摘要先作废，界面再重读，读到的才是作废之后的状态。`notifyChanged()` 只发 changed 这一组：确认与编辑不该让摘要失效。
+
 Trace 事件协议本身（`domain/trace.ts` 的 `TraceEventV1`）自带 `schemaVersion`，后续加字段先冻结已有字段再扩展。**apiKey 永不入 Trace**：不是靠过滤，而是没有任何事件带 key 字段，且 `provider_request.endpoint` 的 query string 整段砍掉。
 
 INT-01 的兼容检查项：云端合成一旦在设置页可选，`createOutputEngine` 的 `note` / `degraded` 必须送到界面，降级当错误显示——现在这两个值在 `defaultSpeechEngines` 里被丢弃。

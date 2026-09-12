@@ -7,7 +7,7 @@
 
 ---
 
-> **执行进度（2026-09-12）**：F1～F6 已交付（M0～M3 全部完成），F7/F8/F9 未开始。逐项状态、接手建议与全局未验证项见 [调试工作台 · 进度与未完成项](WORKBENCH_PROGRESS.md)。
+> **执行进度（2026-09-12）**：F1～F7 已交付（M0～M3 完成，M4 的记忆管理页也已交付），F8/F9 未开始且各有前置未定。逐项状态、接手建议与全局未验证项见 [调试工作台 · 进度与未完成项](WORKBENCH_PROGRESS.md)。
 
 ## 0. 触发问题（本期必须先修）
 
@@ -119,6 +119,10 @@ waku 是本地优先个人 Agent（Python，四支柱：Harness / Loop / Memory 
 - 把右栏记忆列表升级为整页：分类筛选、搜索、编辑、批量确认/删除、pending 审核流、跨会话记忆（LLM-03）来源标注。
 - 存储/检索算法不动，只做管理界面与既有接口对齐。
 
+> **已交付**（[FE-11](frontend/specs/FE-11.md)）：按 V2 原貌管理（type / candidate / 来源 / 置信度 / 有效期都不再被压成 V1 视图），待过目置顶的审核流，编辑即标 `userEdit` + 确认，批量确认与删除**逐条执行且部分失败如实报告**（仓储只有逐条 `forget`，批量不是事务）。来源标注不伪造：迁移来的写「来源不明」。
+>
+> 顺带补了一处会让两个界面各说各话的缺口：`MemoryAccess` 增加 `onChanged` / `notifyChanged`（[共享契约](modules/CONTRACTS.md) 已记），否则在管理页删掉一条记忆之后右栏还挂着它。
+
 ### F8 存储浏览页（frontend + storage，可后置）
 
 - 对齐 waku Data Tab：分表浏览、schema 查看、只读 SQL 控制台（Tauri plugin-sql 已具备能力）。
@@ -158,7 +162,7 @@ waku 是本地优先个人 Agent（Python，四支柱：Harness / Loop / Memory 
 | M1 | F1 其余交互（发音/撤回/重生成/Rewind） | **全部交付**：撤回/重新生成 [FE-06](frontend/specs/FE-06.md)、点击朗读 [FE-07](frontend/specs/FE-07.md)、Rewind [FE-08](frontend/specs/FE-08.md)。四项都有 fake Runtime 下的逐项 AC 与突变验证；真机目视一律 NOT RUN。原先「需要按时间截断端口」的推测不成立，原因见 FE-08 |
 | M2 | F3 Trace 协议 + fake sink 全链单测；F2 开发者入口 | 事件 schema 版本化；脱敏用例；sink 故障不影响主链路。**已交付**：[LLM-06](llm/specs/LLM-06_TRACE_PROTOCOL.md) 协议与两个 sink、[LLM-07](llm/specs/LLM-07_TRACE_WIRING.md) Runtime 接入与开关、[LLM-08](llm/specs/LLM-08_TRACE_SOURCES.md) 余下三个事件源、[FE-09](frontend/specs/FE-09.md) 开发者入口与 Trace 页（F4 一并交付） |
 | M3 | F4/F5/F6 工作台页面（读 M2 数据） | 用 harness 回放数据驱动页面，不依赖真实模型。**已交付**：F4 随 [FE-09](frontend/specs/FE-09.md)；F5/F6 [FE-10](frontend/specs/FE-10.md)（能力调用视图、装配拓扑与一轮数据流）。页面渲染无 DOM 测试环境，真机目视 NOT RUN |
-| M4 | F7 记忆管理页；F8/F9 视需要后置 | 管理操作有契约测试；统计口径有单测 |
+| M4 | F7 记忆管理页；F8/F9 视需要后置 | 管理操作有契约测试；统计口径有单测。**F7 已交付**（[FE-11](frontend/specs/FE-11.md)）：管理操作跑在生产仓储 + 内存 store 上，十一处突变命中；真机目视 NOT RUN。F8/F9 仍未开始 |
 
 执行按仓库既有规则：一次一个 SPEC，验收报告落 `docs/<module>/reports/`，mock 不冒充真实模型质量。
 
