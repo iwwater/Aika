@@ -1,6 +1,6 @@
 # LLM-10 · Provider usage 上报
 
-状态：已自测。A–F 六条 AC 全 PASS；八处突变全部命中。证据见 [验收报告](../reports/LLM-10_ACCEPTANCE.md)。前置 [LLM-07](LLM-07_TRACE_WIRING.md)（Trace 接入 Runtime）已通过。
+状态：已自测。A–F 六条 AC 全 PASS；九处突变全部命中（2026-09-13 复核更正：原误记"八处"，报告表列 9 行）。证据见 [验收报告](../reports/LLM-10_ACCEPTANCE.md)。前置 [LLM-07](LLM-07_TRACE_WIRING.md)（Trace 接入 Runtime）已通过。
 
 ## 为什么需要它
 

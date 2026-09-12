@@ -107,7 +107,7 @@ $env:AIKA_REAL_LLM="1"; npx vitest run src/services/memory/crossSession.real.tes
 
 ## 明确未做与后置项
 
-- **AC-D 真实模型 BLOCKED**：等待凭证。拿到 `AIKA_LLM_API_KEY`（或应用在本机运行一次写入标准存储）后，一条命令即可补跑。
+- **AC-D 真实模型 BLOCKED**（已作废，2026-09-13 复核标注）：此条为陈旧段落，与上文 REAL RUN（10/10 命中）矛盾。以正文 REAL RUN 结果为准：AC-D 真实模型已执行，真实 Tauri/plugin-sql 集成仍留 INT-01。
 - **Tauri 内 `plugin-sql` 真机验证 NOT RUN**：本轮真实 SQLite 用的是 Node 内置引擎，SQL 与事务语义一致，但驱动（Rust sqlx）与迁移时序要在应用里跑一次才算集成通过（INT-01）。
 - **UserSoul 尚未持久化**：`domain/userSoul.ts` 的晋升/纠正规则已实现并有测试，但没有存储位；`forget` 的 Soul 联动（`dropSoulSources`）已实现待接入。落库与接入归 LLM-04/05 或 INT-01。
 - **写回抽取未切到 writeback 队列**：Hook 目前直接 `repository.upsert`；`createMemoryWriteback`（重试、失败不丢）已实现并有测试，切换它属于 LLM-04 的「后台写回」范围，本轮不抢跑。
