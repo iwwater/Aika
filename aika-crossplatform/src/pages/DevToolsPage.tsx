@@ -3,6 +3,7 @@ import { Bug, X } from "lucide-react";
 import type { useDevTools } from "../hooks/useDevTools";
 import { CapabilitiesPage } from "./CapabilitiesPage";
 import { GraphPage } from "./GraphPage";
+import { MemoryPage } from "./MemoryPage";
 import { TracePage } from "./TracePage";
 
 /**
@@ -11,7 +12,7 @@ import { TracePage } from "./TracePage";
  * 页签用一个 state 切，不引路由库（规划文档 §2 的边界）。后续 F5/F6/F7/F8/F9
  * 各自是一个页签，各自一个文件——这里只负责切换与标题栏，不承载任何页面逻辑。
  */
-type DevToolsTab = "trace" | "capabilities" | "graph" | "settings";
+type DevToolsTab = "trace" | "capabilities" | "graph" | "memory" | "settings";
 
 export function DevToolsPage(props: { devTools: ReturnType<typeof useDevTools>; onClose: () => void }) {
   const [tab, setTab] = useState<DevToolsTab>("trace");
@@ -31,6 +32,9 @@ export function DevToolsPage(props: { devTools: ReturnType<typeof useDevTools>; 
           <button type="button" className={tab === "graph" ? "active" : ""} onClick={() => setTab("graph")}>
             数据流
           </button>
+          <button type="button" className={tab === "memory" ? "active" : ""} onClick={() => setTab("memory")}>
+            记忆
+          </button>
           <button type="button" className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>
             开关
           </button>
@@ -43,6 +47,8 @@ export function DevToolsPage(props: { devTools: ReturnType<typeof useDevTools>; 
       {tab === "capabilities" && <CapabilitiesPage devTools={view} />}
 
       {tab === "graph" && <GraphPage devTools={view} />}
+
+      {tab === "memory" && <MemoryPage />}
 
       {tab === "settings" && (
         <div className="devtools-switches">

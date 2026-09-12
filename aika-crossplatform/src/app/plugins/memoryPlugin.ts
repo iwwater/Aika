@@ -43,18 +43,27 @@ export function memoryPlugin(): AikaPlugin {
       // 删除联动可能有多方关心（摘要落库 + 界面清显示）。仓储的 onInvalidate 只有一个
       // 回调位，所以由插件扇出；消费方订阅的是插件，不是各自再造一个仓储。
       const listeners = new Set<() => void>();
+      // 「记忆变了」比「摘要作废」范围更大：确认与编辑不该让摘要失效，但同样要让
+      // 另一个界面重读。两组订阅者分开，删除时两组都通知。
+      const changedListeners = new Set<() => void>();
+
+      function fanOut(targets: Set<() => void>): void {
+        for (const listener of [...targets]) {
+          try {
+            listener();
+          } catch {
+            // 一个界面订阅者抛错不影响其它消费者，也不影响这次改动本身。
+          }
+        }
+      }
+
       const repository = createMemoryRepository({
         store,
         clock: () => clock.now(),
         onInvalidate: async () => {
           await storage.deleteSummaries?.();
-          for (const listener of [...listeners]) {
-            try {
-              listener();
-            } catch {
-              // 一个界面订阅者抛错不影响其它消费者，也不影响删除本身。
-            }
-          }
+          fanOut(listeners);
+          fanOut(changedListeners);
         },
       });
       const access: MemoryAccess = {
@@ -64,6 +73,15 @@ export function memoryPlugin(): AikaPlugin {
           return () => {
             listeners.delete(listener);
           };
+        },
+        onChanged(listener) {
+          changedListeners.add(listener);
+          return () => {
+            changedListeners.delete(listener);
+          };
+        },
+        notifyChanged() {
+          fanOut(changedListeners);
         },
       };
 

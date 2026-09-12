@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { token, type AikaPlugin } from "../../kernel";
 import { PROVIDER_PRESETS } from "../../domain/providers";
+import { createMemoryV2 } from "../../domain/memory";
 import { RuntimeToken } from "../../services/runtime/tokens";
 import { RemoteHostToken } from "../../services/remote/tokens";
 import type { RemoteHost } from "../../services/remote/bridge";
@@ -283,6 +284,51 @@ describe("CORE-05-C 扩展点可证伪", () => {
 
     kernel.registry.resolve(SampleCapabilityToken);
     expect(setSetting).not.toHaveBeenCalled();
+
+    await kernel.dispose();
+  });
+});
+
+describe("FE-11 记忆变更通知", () => {
+  it("删除同时通知两组订阅者：先摘要作废，再「记忆变了」", async () => {
+    const { kernel } = await createAikaKernel({
+      hostPlugins: testHostPlugins({ storage: await realStorage() }),
+      installLegacyPorts: false,
+    });
+    const access = kernel.registry.resolve(MemoryAccessToken);
+    const order: string[] = [];
+    access.onInvalidate(() => order.push("invalidate"));
+    access.onChanged(() => order.push("changed"));
+
+    const created = createMemoryV2({ content: "喜欢浅烘焙", type: "preference", sourceMessageIds: ["m1"] });
+    await access.repository.upsert([created!]);
+    await access.repository.forget(created!.id);
+
+    // 顺序有意义：摘要先作废，界面再重读，读到的才是作废之后的状态。
+    expect(order).toEqual(["invalidate", "changed"]);
+
+    await kernel.dispose();
+  });
+
+  it("notifyChanged 只喊 changed 一组：确认与编辑不该让摘要作废", async () => {
+    const { kernel } = await createAikaKernel({
+      hostPlugins: testHostPlugins({ storage: await realStorage() }),
+      installLegacyPorts: false,
+    });
+    const access = kernel.registry.resolve(MemoryAccessToken);
+    const invalidated: string[] = [];
+    const changed: string[] = [];
+    access.onInvalidate(() => invalidated.push("x"));
+    const stop = access.onChanged(() => changed.push("x"));
+
+    access.notifyChanged();
+    expect(invalidated).toEqual([]);
+    expect(changed).toEqual(["x"]);
+
+    // 退订之后不再收到。
+    stop();
+    access.notifyChanged();
+    expect(changed).toEqual(["x"]);
 
     await kernel.dispose();
   });

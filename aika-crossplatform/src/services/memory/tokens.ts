@@ -20,6 +20,16 @@ export interface MemoryAccess {
   repository: MemoryRepository;
   /** 注册删除联动；返回取消注册。 */
   onInvalidate(listener: () => void): () => void;
+  /**
+   * 记忆内容变了（确认、编辑、删除都算）。返回取消注册。
+   *
+   * 与 `onInvalidate` 的分工：后者语义是「摘要作废」，只在 `forget` 时发；确认与
+   * 编辑不该让摘要失效，但**必须**让另一个界面重读——同一份记忆两处显示各说各话，
+   * 比不做管理页更糟。删除时两个都发，顺序是先 invalidate 后 changed。
+   */
+  onChanged(listener: () => void): () => void;
+  /** 管理界面改完之后调用。仓储自己不知道界面存在，所以这一声得由改的人喊。 */
+  notifyChanged(): void;
 }
 
 export const MemoryAccessToken = token<MemoryAccess>("llm.memoryAccess");

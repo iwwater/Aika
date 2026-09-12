@@ -224,6 +224,9 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
   let storage: AikaStorage | null = null;
   let memoryRepository: MemoryRepository | null = null;
   let unsubscribeInvalidation: (() => void) | null = null;
+  let unsubscribeMemoryChanged: (() => void) | null = null;
+  /** 记忆能力包；管理页改完记忆时靠它通知，这里也靠它通知管理页。 */
+  let memoryAccess: MemoryAccess | null = null;
   let writeback: MemoryWriteback | null = null;
   let persist: (message: ChatMessage) => Promise<void> = async () => undefined;
   const trace = deps.trace ?? NO_TRACE;
@@ -348,11 +351,18 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
     if (access) {
       // 记忆插件已经建好仓储并负责删除联动；界面订阅它，不另造第二个仓储。
       memoryRepository = access.repository;
+      memoryAccess = access;
       unsubscribeInvalidation = access.onInvalidate(() => {
         if (disposed) return;
         summary = null;
         summaryCoversUntil = 0;
         commit();
+      });
+      // 管理页（FE-11）改完记忆后这一份列表要跟着变：同一份数据两处显示各说各话，
+      // 比不做管理页更糟。onInvalidate 只在删除时发，所以订阅的是范围更大的 onChanged。
+      unsubscribeMemoryChanged = access.onChanged(() => {
+        if (disposed) return;
+        void refreshMemories();
       });
       if (savedMemories.length) await memoryRepository.migrateLegacy(savedMemories);
       memories = visibleMemories(await memoryRepository.list());
@@ -482,6 +492,8 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
           }
           memories = visibleMemories(await repository.list());
           commit();
+          // 这一轮抽出来的候选要出现在管理页的待过目里，不必等用户手动刷新。
+          memoryAccess?.notifyChanged();
         } else {
           await storage.addMemories(extracted);
           memories = [...memories, ...extracted];
@@ -959,6 +971,18 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
     await setModeConfig(exitScenarioMode(modeConfig));
   }
 
+  /** 从仓储重读界面列表。没有仓储（V1 路径）时什么都不做。 */
+  async function refreshMemories(): Promise<void> {
+    const repository = memoryRepository;
+    if (!repository) return;
+    try {
+      memories = visibleMemories(await repository.list());
+      commit();
+    } catch {
+      // 重读失败不该让对话页报错：列表保持上一次的样子，下一次改动再试。
+    }
+  }
+
   async function confirmMemory(id: string): Promise<void> {
     const repository = memoryRepository;
     if (repository) {
@@ -968,6 +992,8 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
         await repository.upsert([{ ...record, status: "confirmed", lastConfirmedAt: Date.now() }]);
         memories = visibleMemories(await repository.list());
         commit();
+        // 管理页要看到这条已经确认过了。
+        memoryAccess?.notifyChanged();
         return;
       }
     }
@@ -985,6 +1011,7 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
       await repository.forget(id);
       memories = visibleMemories(await repository.list());
       commit();
+      // 这里不喊 notifyChanged：forget 已经经 onInvalidate 扇出到 changed 订阅者了。
       return;
     }
     await storage?.deleteMemory(id);
@@ -1054,6 +1081,8 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
       }
       unsubscribeInvalidation?.();
       unsubscribeInvalidation = null;
+      unsubscribeMemoryChanged?.();
+      unsubscribeMemoryChanged = null;
       listeners = new Set();
       // 迟到事件不再更新快照：disposed 让 commit() 变成 no-op。
     },

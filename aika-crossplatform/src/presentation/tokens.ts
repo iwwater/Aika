@@ -2,6 +2,7 @@ import { token } from "../kernel";
 import type { CompanionPresenter } from "./companionPresenter";
 import type { VoicePresenter } from "./voicePresenter";
 import type { DevToolsPresenter } from "./devToolsPresenter";
+import type { MemoryPresenter } from "./memoryPresenter";
 
 /**
  * 展示层服务标识。
@@ -21,3 +22,10 @@ export const VoicePresenterToken = token<VoicePresenter>("presentation.voice");
  * 而不是连入口都消失让用户以为功能不存在。缺失的是 sink，不是这个 Presenter。
  */
 export const DevToolsPresenterToken = token<DevToolsPresenter>("presentation.devtools");
+/**
+ * 记忆管理 Presenter（FE-11）。
+ *
+ * 同样**总是**注册：宿主装的是 `noMemoryPlugin()` 时页面要能说「这台机器上没有
+ * 记忆能力」，而不是给一份永远为空的列表让人以为记忆丢了。
+ */
+export const MemoryPresenterToken = token<MemoryPresenter>("presentation.memory");

@@ -8,6 +8,7 @@ import type {
 } from "../services/runtime/companionRuntime";
 import { createProviderSettings } from "../services/runtime/providerSettings";
 import { createMemoryRepository } from "../services/memory/memoryRepository";
+import type { MemoryAccess } from "../services/memory/tokens";
 import { createInMemoryMemoryStore } from "../services/memory/memoryStore";
 import { createMemoryV2 } from "../domain/memory";
 import { createMemoryTraceSink } from "../services/trace/memoryTraceSink";
@@ -179,6 +180,22 @@ function setup(options: {
   const seeded = (options.memories ?? []).flatMap((record) => (record ? [record] : []));
   const store = createInMemoryMemoryStore(seeded.length ? { initial: { records: seeded } } : {});
   const repository = createMemoryRepository({ store });
+  // 与 memoryPlugin 同形状的能力包：changed 订阅者真的会被扇出到，
+  // 否则「管理页改完右栏跟着变」这条只能靠读代码相信（FE-11-F）。
+  const changedListeners = new Set<() => void>();
+  const access: MemoryAccess = {
+    repository,
+    onInvalidate: () => () => undefined,
+    onChanged(listener) {
+      changedListeners.add(listener);
+      return () => {
+        changedListeners.delete(listener);
+      };
+    },
+    notifyChanged() {
+      for (const listener of [...changedListeners]) listener();
+    },
+  };
   const presenter: CompanionPresenter = createCompanionPresenter({
     loadStorage: async () => storage,
     notifier: { notify: async () => false },
@@ -193,9 +210,9 @@ function setup(options: {
         }),
       }
       : {}),
-    ...(options.memories ? { memoryAccess: { repository, onInvalidate: () => () => undefined } } : {}),
+    ...(options.memories ? { memoryAccess: access } : {}),
   });
-  return { presenter, storage, fake, repository };
+  return { presenter, storage, fake, repository, notifyChanged: () => access.notifyChanged() };
 }
 
 /**
@@ -405,6 +422,28 @@ describe("CompanionPresenter 无 React 驱动", () => {
     await ctx.presenter.withdraw("welcome");
     await flush();
     expect(ctx.presenter.getSnapshot().messages.some((message) => message.id === "welcome")).toBe(true);
+  });
+
+  it("FE-11：管理页改完记忆后，右栏这份列表跟着变", async () => {
+    const kept = createMemoryV2({ content: "喜欢咖啡", type: "preference", status: "confirmed" });
+    const doomed = createMemoryV2({ content: "住在涩谷", type: "fact", status: "candidate" });
+    const local = setup({ memories: [kept, doomed] });
+    await local.presenter.start();
+
+    expect(local.presenter.getSnapshot().memories.map((memory) => memory.content).sort())
+      .toEqual(["喜欢咖啡", "住在涩谷"].sort());
+
+    // 管理页那边的动作：确认一条、删掉一条，然后喊一声「记忆变了」。
+    await local.repository.upsert([{ ...doomed!, status: "confirmed" as const }]);
+    await local.repository.forget(kept!.id);
+    local.notifyChanged();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const memories = local.presenter.getSnapshot().memories;
+    // 同一份记忆两处显示各说各话，比不做管理页更糟。
+    expect(memories.map((memory) => memory.content)).toEqual(["住在涩谷"]);
+    expect(memories[0].status).toBe("confirmed");
   });
 
   it("撤回连带记忆：来源有交集的候选被遗忘，确认过的保留", async () => {

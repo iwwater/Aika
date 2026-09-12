@@ -10,7 +10,10 @@ import { TraceRecorderToken, TraceSettingsToken, TraceSinkToken } from "../../se
 import { createCompanionPresenter } from "../../presentation/companionPresenter";
 import { createVoicePresenter } from "../../presentation/voicePresenter";
 import { createDevToolsPresenter } from "../../presentation/devToolsPresenter";
-import { CompanionPresenterToken, DevToolsPresenterToken, VoicePresenterToken } from "../../presentation/tokens";
+import { createMemoryPresenter } from "../../presentation/memoryPresenter";
+import {
+  CompanionPresenterToken, DevToolsPresenterToken, MemoryPresenterToken, VoicePresenterToken,
+} from "../../presentation/tokens";
 
 /**
  * 展示层插件。
@@ -48,7 +51,9 @@ export function presentationPlugin(options: PresentationPluginOptions = {}): Aik
       MemoryAccessToken, StickerLibraryToken, SpeechEnginesToken,
       TraceRecorderToken, TraceSinkToken, TraceSettingsToken,
     ],
-    provides: [CompanionPresenterToken, VoicePresenterToken, DevToolsPresenterToken],
+    provides: [
+      CompanionPresenterToken, VoicePresenterToken, DevToolsPresenterToken, MemoryPresenterToken,
+    ],
     activate(context) {
       const storage = context.registrar.tryResolve(StorageToken);
       const notifier = context.registrar.tryResolve(NotifierToken);
@@ -90,6 +95,11 @@ export function presentationPlugin(options: PresentationPluginOptions = {}): Aik
         loadStorage: storage
           ? async () => storage
           : async () => { throw new Error("本地存储尚未装配，开发者设置无法保存"); },
+      }), { disposer: (value) => value.dispose() });
+
+      // 记忆管理 Presenter 同样总是注册：没装记忆能力时它负责说清楚这件事。
+      context.registrar.provide(MemoryPresenterToken, () => createMemoryPresenter({
+        access: memoryAccess ?? null,
       }), { disposer: (value) => value.dispose() });
     },
   };
