@@ -45,7 +45,7 @@
 
 | 规划项 | 内容 | 已知前置 |
 | --- | --- | --- |
-| F9 | Ops 成本页（按日/模型/用途的 token 与估算成本、最慢轮次、错误率） | **前置已解除**（[LLM-10](llm/specs/LLM-10_PROVIDER_USAGE.md)）：四种协议的 usage 现在都解析，`turn_end.tokens.reportedTotal` 写的是平台上报值，取消与失败的轮次也带。**但那些数字来自 fixture，真实平台 NOT RUN**——成本页动工前最好先拿真实 Key 跑一轮看看数字对不对。单价换算仍未做（价目表不该埋进 provider 层） |
+| F9 | Ops 成本页（按日/模型/用途的 token 与估算成本、最慢轮次、错误率） | **前置已解除**（[LLM-10](llm/specs/LLM-10_PROVIDER_USAGE.md)）：四种协议的 usage 现在都解析，`turn_end.tokens.reportedTotal` 写的是平台上报值，取消与失败的轮次也带。**真实平台已验**（2026-09-12，DeepSeek，`reportedTotal` 1069 / 1076 / 1090），但动工前先读 [真实一轮验证报告](frontend/reports/REAL_TURN_VERIFICATION.md) 的两条：`estimatedPrompt` 不含系统指令、比真实 prompt 低约 2.5 倍，不能当没有 usage 时的兜底；取消的轮次在只在末包报 usage 的平台上一定拿不到数字。另外三种协议仍只有 fixture 证据。单价换算仍未做（价目表不该埋进 provider 层） |
 | M4 后置 | 评测（headless harness）入口与历史结果 | 规划文档自己标的 F9+ |
 
 规划文档 §3 末尾的 backlog 也都没做：用户消息编辑后重发、对话导出、Provider 配额提醒、错误气泡文案统一、设置项搜索、标题栏快速换模型。
@@ -59,10 +59,12 @@
 1. **界面渲染：浏览器开发模式已冒烟，桌面真机仍 NOT RUN**。2026-09-12 用 `npm run dev` + 无头浏览器实际打开过应用，工作台五个页签全部渲染成功、零 console 报错，记忆页的列表/确认/编辑三个交互在真实 localStorage 上跑通，装配拓扑用的是真实 `composition.ts` 的 13 插件 / 21 依赖 / 缺失 0。详见 [界面冒烟报告](frontend/reports/UI_SMOKE_BROWSER.md)。
    **这一次查出了一个单测永远看不见的缺陷并已修**：`.workspace { display: grid }` 压过浏览器默认的 `[hidden] { display: none }`，工作台打开时聊天页根本没隐藏（页面能一直往下滚）。
    仍然没验的：桌面 Tauri + SQLite、F1 的六项消息交互。
-2. **真实对话一轮仍未跑**（没有 API Key）。Trace 页、能力调用视图、一轮数据流三处目前都只验到空态；一轮真实对话能一次点亮这三处，是下一次验证最划算的一件事。
+2. **真实对话一轮已跑通**（2026-09-12，DeepSeek 真实 Key，headless harness 与浏览器各两轮）。Trace 页、能力调用视图、一轮数据流三处都已用真实数据点亮，浏览器全程 0 console error；**LLM-10 的 `reportedTotal` 第一次来自真实平台**（1069 / 1076 / 1090，原报告标的 NOT RUN 可销）。详见 [真实一轮验证报告](frontend/reports/REAL_TURN_VERIFICATION.md)。
+   **这一次查出四件只有真实数据才看得见的事**：① 工作台打开时不取数，必须手点刷新，而空态文案会让人以为是 Trace 没记到；② 「首 token」量的是首个**可见正文字符**，比平台首字节晚约 460ms（平台 TTFB 实测 216–338ms，与 prompt 大小无关）；③ `estimatedPrompt` 不含 1831 字系统指令，比真实 prompt 低约 2.5 倍，F9 成本页不能拿它当兜底；④ 取消的轮次在 DeepSeek 上一定拿不到 usage（只在末包报），已烧掉的 token 只能估——而能估的那个数正是 ③。
+   仍然没验的：Tauri 真机（INT-01）、另外三种协议的 usage、语音链路（报告 §5 记了一条没能复现的观察）。
 3. **`plugin-sql` 上的 SQL 没执行过**。CORE-08 的 `DELETE ... IN (…)`、LLM-06 的 trace 建表与清理，证据都来自 node:sqlite 真实引擎跑生产 SQL，不等于 Tauri 环境验证。留 INT-01。
 4. **`import.meta.env.DEV` 在生产构建下的实际取值**没验过（Trace 默认开关依赖它）：冒烟跑的是 dev server，恰恰是 `DEV === true` 的那一侧。
-5. **真实模型质量**：LLM-09 让「双语退化率」第一次可测了（`reply` 事件的 `translationDuplicatesReply` 比例），FE-10 让它在单轮里一眼可见，但还没跑过真机样本。
+5. **真实模型质量**：LLM-09 让「双语退化率」第一次可测了（`reply` 事件的 `translationDuplicatesReply` 比例），FE-10 让它在单轮里一眼可见。已有的真机样本是 **3 轮、全部未退化**（DeepSeek / openai-compatible，见 [真实一轮验证报告](frontend/reports/REAL_TURN_VERIFICATION.md)）——只能说「这三轮没退化」，样本量不够算比率，也没覆盖另外三种协议。
 
 ---
 
