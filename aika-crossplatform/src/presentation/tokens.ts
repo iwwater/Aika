@@ -3,6 +3,7 @@ import type { CompanionPresenter } from "./companionPresenter";
 import type { VoicePresenter } from "./voicePresenter";
 import type { DevToolsPresenter } from "./devToolsPresenter";
 import type { MemoryPresenter } from "./memoryPresenter";
+import type { StoragePresenter } from "./storagePresenter";
 
 /**
  * 展示层服务标识。
@@ -29,3 +30,10 @@ export const DevToolsPresenterToken = token<DevToolsPresenter>("presentation.dev
  * 记忆能力」，而不是给一份永远为空的列表让人以为记忆丢了。
  */
 export const MemoryPresenterToken = token<MemoryPresenter>("presentation.memory");
+/**
+ * 存储浏览 Presenter（FE-12）。
+ *
+ * 同样**总是**注册：浏览器降级没有 `sqlExecutor`，页面要能说「这台机器上没有 SQL
+ * 能力」，而不是给一张空表让人以为库是空的。
+ */
+export const StoragePresenterToken = token<StoragePresenter>("presentation.storage");

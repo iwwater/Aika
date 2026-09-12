@@ -11,8 +11,10 @@ import { createCompanionPresenter } from "../../presentation/companionPresenter"
 import { createVoicePresenter } from "../../presentation/voicePresenter";
 import { createDevToolsPresenter } from "../../presentation/devToolsPresenter";
 import { createMemoryPresenter } from "../../presentation/memoryPresenter";
+import { createStoragePresenter } from "../../presentation/storagePresenter";
 import {
-  CompanionPresenterToken, DevToolsPresenterToken, MemoryPresenterToken, VoicePresenterToken,
+  CompanionPresenterToken, DevToolsPresenterToken, MemoryPresenterToken,
+  StoragePresenterToken, VoicePresenterToken,
 } from "../../presentation/tokens";
 
 /**
@@ -52,7 +54,8 @@ export function presentationPlugin(options: PresentationPluginOptions = {}): Aik
       TraceRecorderToken, TraceSinkToken, TraceSettingsToken,
     ],
     provides: [
-      CompanionPresenterToken, VoicePresenterToken, DevToolsPresenterToken, MemoryPresenterToken,
+      CompanionPresenterToken, VoicePresenterToken, DevToolsPresenterToken,
+      MemoryPresenterToken, StoragePresenterToken,
     ],
     activate(context) {
       const storage = context.registrar.tryResolve(StorageToken);
@@ -100,6 +103,12 @@ export function presentationPlugin(options: PresentationPluginOptions = {}): Aik
       // 记忆管理 Presenter 同样总是注册：没装记忆能力时它负责说清楚这件事。
       context.registrar.provide(MemoryPresenterToken, () => createMemoryPresenter({
         access: memoryAccess ?? null,
+      }), { disposer: (value) => value.dispose() });
+
+      // 存储浏览：SQL 执行器是存储的可选成员，localStorage 实现没有——
+      // 那时页面负责说清楚，而不是显示一个空库。
+      context.registrar.provide(StoragePresenterToken, () => createStoragePresenter({
+        executor: storage?.sqlExecutor ?? null,
       }), { disposer: (value) => value.dispose() });
     },
   };

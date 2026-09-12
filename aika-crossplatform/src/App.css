@@ -393,3 +393,35 @@ mark.speaking { color: var(--cyan); background: rgba(55,230,255,.14); border-rad
 .memory-edit-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 8px; }
 .memory-edit-row select { padding: 4px 8px; border: 1px solid var(--line-soft); border-radius: 7px; background: rgba(19,29,49,.9); color: var(--muted); font-size: 11px; }
 .memory-edit-row button { padding: 4px 10px; border: 1px solid var(--line-soft); border-radius: 7px; color: var(--muted); background: rgba(255,255,255,.04); font-size: 11px; }
+
+/* ── 存储浏览页（FE-12） ──────────────────────────────────────────────── */
+.storage-page { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px 18px 20px; }
+.storage-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; color: var(--muted); font-size: 11px; }
+.storage-head button { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border: 1px solid var(--line-soft); border-radius: 7px; color: var(--muted); background: rgba(255,255,255,.04); font-size: 11px; }
+.storage-error { color: #ffb8d1; word-break: break-all; }
+.storage-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 14px; }
+.storage-tables { overflow-y: auto; display: flex; flex-direction: column; gap: 3px; padding-right: 4px; }
+.storage-tables button { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border: 1px solid transparent; border-radius: 7px; color: var(--muted); background: transparent; font-size: 11px; text-align: left; }
+.storage-tables button:hover { border-color: var(--line-soft); color: var(--ink); }
+.storage-tables button.active { border-color: rgba(55,230,255,.45); background: rgba(55,230,255,.08); color: var(--cyan); }
+.storage-table-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.storage-table-rows { color: var(--dim); font-size: 10px; }
+.storage-table-kind { padding: 0 4px; border-radius: 4px; background: rgba(255,255,255,.06); color: var(--dim); font-size: 9px; }
+.storage-detail { overflow-y: auto; min-width: 0; }
+.storage-detail h3 { margin: 0 0 8px; color: var(--ink); font-size: 12px; }
+.storage-detail h3 + h3, .storage-create-sql + h3 { margin-top: 18px; }
+.storage-schema { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 11px; }
+.storage-schema th { padding: 4px 8px; border-bottom: 1px solid var(--line); color: var(--muted); font-weight: 400; text-align: left; }
+.storage-schema td { padding: 4px 8px; border-bottom: 1px solid rgba(255,255,255,.04); color: var(--ink); }
+.storage-create-sql { max-height: 120px; overflow: auto; margin: 0; padding: 8px 10px; border: 1px solid var(--line-soft); border-radius: 8px; background: rgba(0,0,0,.3); color: var(--muted); font-size: 10px; line-height: 1.6; white-space: pre-wrap; }
+.storage-note { margin: 0 0 8px; color: var(--dim); font-size: 10px; line-height: 1.6; }
+.storage-query { width: 100%; padding: 8px 10px; border: 1px solid var(--line-soft); border-radius: 8px; background: rgba(0,0,0,.3); color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.6; resize: vertical; }
+.storage-actions { display: flex; align-items: center; gap: 10px; margin: 8px 0 12px; }
+.storage-actions button { display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px; border: 1px solid rgba(55,230,255,.35); border-radius: 7px; color: var(--cyan); background: rgba(55,230,255,.08); font-size: 11px; }
+.storage-result-head { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 6px; color: var(--dim); font-size: 10px; }
+.storage-truncated { color: #ffc44d; }
+.storage-result { max-height: 320px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+.storage-result table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.storage-result th { position: sticky; top: 0; padding: 5px 9px; border-bottom: 1px solid var(--line); background: rgba(19,29,49,.98); color: var(--muted); font-weight: 400; text-align: left; white-space: nowrap; }
+.storage-result td { padding: 4px 9px; border-bottom: 1px solid rgba(255,255,255,.04); color: var(--ink); white-space: pre-wrap; word-break: break-word; vertical-align: top; }
+.storage-result td.null { color: var(--dim); font-style: italic; }
