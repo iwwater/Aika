@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { CornerDownLeft, Eraser, LoaderCircle, Mic, X } from "lucide-react";
 import { splitCaption, type CaptionRange } from "../domain/captionHighlight";
-import type { VoiceCaption, VoicePhase } from "../services/voice/contracts";
+import type { VoiceCaption, VoiceInputLanguage, VoicePhase } from "../services/voice/contracts";
 
 interface VoiceModalProps {
   phase: VoicePhase;
@@ -15,10 +15,15 @@ interface VoiceModalProps {
   speakingRange: CaptionRange | null;
   /** 这一轮实际走的识别链路。退回系统识别不能是隐形的。 */
   backendNote: string;
+  /** 这一段按哪个语言识别。系统识别一次只认一种，看不见就没法纠正。 */
+  language: VoiceInputLanguage;
+  /** 用户已经手动指定过了吗。 */
+  languagePinned: boolean;
   onInterrupt(): void;
   onSendNow(): void;
   onClearPending(): void;
   onClose(): void;
+  onCycleLanguage(): void;
 }
 
 export function VoiceModal(props: VoiceModalProps) {
@@ -94,10 +99,20 @@ export function VoiceModal(props: VoiceModalProps) {
                 : "对话结束后会自动继续聆听"}
         </p>
         <p className="voice-privacy">{props.backendNote || "正在选择识别链路…"}<br />个性化声线将通过同一接口接入。</p>
+        <button type="button" className="voice-language" onClick={props.onCycleLanguage}>
+          当前按 <strong>{LANGUAGE_LABELS[props.language]}</strong> 识别
+          <span>{props.languagePinned ? "已手动指定 · 点一下换" : "自动跟随 · 听错了点一下换"}</span>
+        </button>
       </section>
     </div>
   );
 }
+
+const LANGUAGE_LABELS: Record<VoiceInputLanguage, string> = {
+  "ja-JP": "日语",
+  "zh-CN": "中文",
+  "en-US": "英语",
+};
 
 /** 正在念的那一句亮起来，其余的照常显示。没有区间时就是一段普通文本。 */
 function CaptionText(props: { text: string; range: CaptionRange | null }) {

@@ -12,7 +12,7 @@ import { MessageTranslation } from "./components/MessageTranslation";
 import { VoiceModal } from "./components/VoiceModal";
 import { DevToolsPage } from "./pages/DevToolsPage";
 import { DEFAULT_CHARACTER } from "./domain/character";
-import { preferredRecognitionLanguage } from "./domain/language";
+import { nextRecognitionLanguage, type RecognitionInput } from "./domain/language";
 import { PROVIDER_PRESETS, validateProvider, type ProviderConfig } from "./domain/providers";
 import { useCompanionSession } from "./hooks/useCompanionSession";
 import { useDevTools } from "./hooks/useDevTools";
@@ -21,6 +21,14 @@ import { useVoiceConversation, type VoiceTurnHandler } from "./hooks/useVoiceCon
 import { useService } from "./app/kernelContext";
 import { ProviderModelsToken, ProviderProbeToken } from "./services/runtime/tokens";
 import type { VoiceBackend } from "./services/voice/inputEngine";
+import type { VoiceInputLanguage } from "./services/voice/contracts";
+
+/** 语音页那个按钮的顺序：日语 → 中文 → 英语 → 日语。三种就够，不做下拉。 */
+const NEXT_LANGUAGE: Record<VoiceInputLanguage, VoiceInputLanguage> = {
+  "ja-JP": "zh-CN",
+  "zh-CN": "en-US",
+  "en-US": "ja-JP",
+};
 import { createWhisperClient } from "./services/voice/whisperClient";
 
 const QUICK_STARTS = ["今天发生了一件小事…", "有点累，想随便聊聊", "刚才想到你说过的那件事"];
@@ -48,15 +56,34 @@ function App() {
 
   const { connected, sending, provider, messages, memories, relationship, proactive } = session;
 
+  /**
+   * 识别语言的推导依据（STT-04）。
+   *
+   * 不能直接拿 `messages` 算：那里面混着打字输入，而打一句中文就让下一句
+   * 日语按中文听，是最常见的触发路径。这里只记“真的识别出来的那几句”，
+   * 打字内容只在还没有任何语音历史时当起点用。
+   */
+  const spokenRef = useRef<RecognitionInput[]>([]);
+  /** 上一次实际用过的识别语言：证据不足时保持它，而不是重新挑一个。 */
+  const lastLanguageRef = useRef<VoiceInputLanguage>("ja-JP");
+
   const sendVoice = useCallback<VoiceTurnHandler>(
-    (text, onPartial, request) => session.send(text, "voice", onPartial, request),
+    (text, onPartial, request) => {
+      spokenRef.current = [...spokenRef.current, { text, fromVoice: true }].slice(-4);
+      return session.send(text, "voice", onPartial, request);
+    },
     [session],
   );
-  // 识别语言跟着用户最近说的话走，不再让用户在「日语 / 中文」之间选。
   const resolveLanguage = useCallback(
-    () => preferredRecognitionLanguage(
-      messages.filter((message) => message.role === "user").slice(-4).map((message) => message.content),
-    ),
+    () => {
+      const typed = messages
+        .filter((message) => message.role === "user")
+        .slice(-4)
+        .map((message) => message.content);
+      const next = nextRecognitionLanguage(spokenRef.current, typed, lastLanguageRef.current);
+      lastLanguageRef.current = next;
+      return next;
+    },
     [messages],
   );
   const voice = useVoiceConversation(sendVoice, resolveLanguage, session.voiceBackend);
@@ -347,6 +374,9 @@ function App() {
           speakingCaptionId={voice.speakingCaptionId}
           speakingRange={voice.speakingRange}
           backendNote={voice.backendNote}
+          language={voice.language}
+          languagePinned={voice.languagePinned}
+          onCycleLanguage={() => voice.setLanguage(NEXT_LANGUAGE[voice.language])}
           onInterrupt={voice.interruptAndListen}
           onSendNow={voice.sendNow}
           onClearPending={voice.clearPending}

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildMultipartBody } from "../http";
-import { createWhisperClient, isLikelyHallucination, stripMarkers } from "./whisperClient";
+import { createWhisperClient, isLikelyHallucination, stripMarkers, WHISPER_PROBE_TIMEOUT_MS } from "./whisperClient";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -121,5 +121,28 @@ describe("createWhisperClient", () => {
   it("probe 连不上时为假，不抛错", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ECONNREFUSED")));
     expect(await createWhisperClient(() => "http://127.0.0.1:8080").probe()).toBe(false);
+  });
+
+  it("probe 带上浏览器也认的超时，不只靠 connectTimeout（STT-04-G）", async () => {
+    // `connectTimeout` 只有 Tauri 的 plugin-http 认，浏览器 fetch 直接忽略这个字段。
+    // 它挡在「点完实时语音」和「真的开始听」之间，所以必须有一个两边都认的超时。
+    const fetchMock = vi.fn().mockResolvedValue(new Response("ok", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await createWhisperClient(() => "http://127.0.0.1:8080").probe();
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit & { connectTimeout?: number };
+    expect(init.connectTimeout).toBe(WHISPER_PROBE_TIMEOUT_MS);
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("probe 超时后认输，不把语音页挂在那里（STT-04-G）", async () => {
+    // 模拟「端口没人听、连接一直重试」：只有 abort 能结束它。
+    vi.stubGlobal("fetch", vi.fn((_url: string, init?: RequestInit) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+    })));
+
+    const startedAt = Date.now();
+    expect(await createWhisperClient(() => "http://127.0.0.1:8080").probe()).toBe(false);
+    expect(Date.now() - startedAt).toBeLessThan(WHISPER_PROBE_TIMEOUT_MS * 3);
   });
 });

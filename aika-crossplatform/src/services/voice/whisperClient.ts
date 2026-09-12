@@ -63,13 +63,25 @@ export function stripMarkers(text: string): string {
     .trim();
 }
 
+/**
+ * 探活等多久。
+ *
+ * 这是本地回环上的一个 GET `/`：服务活着就是几毫秒，所以等过这个时间就可以当它没开。
+ * 不写成秒级是因为它挡在「点完实时语音到真的开始听」之间，这段时间里用户说的话没人听。
+ */
+export const WHISPER_PROBE_TIMEOUT_MS = 800;
+
 export function createWhisperClient(getEndpoint: () => string): WhisperClient {
   return {
     async probe() {
       try {
         const response = await activeFetch(`${cleanEndpoint(getEndpoint())}/`, {
           method: "GET",
-          connectTimeout: 2_000,
+          // 两个都要：`connectTimeout` 只有 @tauri-apps/plugin-http 认，浏览器的 fetch
+          // 把它当不存在的字段直接忽略——实测就是它让浏览器里每次进语音页都
+          // 白等将近 2 秒（Windows 自己的连接重试）。`signal` 两边都认。
+          connectTimeout: WHISPER_PROBE_TIMEOUT_MS,
+          signal: AbortSignal.timeout(WHISPER_PROBE_TIMEOUT_MS),
         } as RequestInit);
         return response.status < 500;
       } catch {

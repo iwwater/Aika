@@ -24,11 +24,12 @@ interface InputProbe {
   startCalls: number;
   stops: number;
   aborts: number;
+  languages: string[];
 }
 
 function createInput(): InputProbe {
   const probe: InputProbe = {
-    events: {}, startCalls: 0, stops: 0, aborts: 0,
+    events: {}, startCalls: 0, stops: 0, aborts: 0, languages: [],
     engine: null,
   };
   probe.engine = {
@@ -37,8 +38,9 @@ function createInput(): InputProbe {
     continuous: false,
     isAvailable: () => true,
     requestPermission: async () => undefined,
-    start: (_language: string, events: any) => {
+    start: (language: string, events: any) => {
       probe.startCalls += 1;
+      probe.languages.push(language);
       probe.events = events;
       events.onStart?.();
     },
@@ -426,5 +428,74 @@ describe("LLM-08 · tts 事件", () => {
 
     expect(await sink.query({})).toEqual([]);
     presenter.dispose();
+  });
+});
+
+describe("VoicePresenter · 识别语言可见与可改（FE-13）", () => {
+  async function setup(resolved: "ja-JP" | "zh-CN" | "en-US" = "en-US") {
+    const input = createInput();
+    const output = createOutput();
+    const monitor = createMonitor();
+    const timers = createTimers();
+    const presenter = createVoicePresenter({
+      createInputEngine: async () => ({ engine: input.engine, note: "fake", degraded: false }),
+      outputEngine: output.engine,
+      createMonitor: () => monitor.monitor,
+      timers: timers.port,
+    });
+    let resolveCalls = 0;
+    presenter.configure({
+      onTranscript: () => new Promise<CompanionReply | null>(() => undefined),
+      resolveLanguage: () => { resolveCalls += 1; return resolved; },
+    });
+    await presenter.open();
+    return { presenter, input, timers, resolveCalls: () => resolveCalls };
+  }
+
+  it("快照里带着这一段实际用的语言（FE-13-A）", async () => {
+    const { presenter, input } = await setup("en-US");
+
+    // 推导给的是 en-US，引擎拿到的就必须是 en-US，界面看到的也是它
+    expect(input.languages).toEqual(["en-US"]);
+    expect(presenter.getSnapshot().language).toBe("en-US");
+    expect(presenter.getSnapshot().languagePinned).toBe(false);
+  });
+
+  it("点一下就换，不等下一段自然结束（FE-13-B）", async () => {
+    const { presenter, input, timers } = await setup("en-US");
+
+    presenter.setLanguage("ja-JP");
+    expect(presenter.getSnapshot().language).toBe("ja-JP");
+    expect(presenter.getSnapshot().languagePinned).toBe(true);
+    // 旧那段得马上停，否则用户还得再说一句废话才能生效
+    expect(input.aborts).toBe(1);
+    timers.runTimeouts();
+    expect(input.languages).toEqual(["en-US", "ja-JP"]);
+  });
+
+  it("指定过之后不再让推导推翻它（FE-13-B）", async () => {
+    const { presenter, input, timers, resolveCalls } = await setup("en-US");
+    const before = resolveCalls();
+
+    presenter.setLanguage("ja-JP");
+    timers.runTimeouts();
+    // 再起一段：推导还是会说 en-US，但已经不算数了
+    presenter.interruptAndListen("button");
+    timers.runTimeouts();
+
+    expect(input.languages.slice(1)).toEqual(["ja-JP", "ja-JP"]);
+    expect(resolveCalls()).toBe(before);
+  });
+
+  it("退出语音页后指定失效，下次仍然自动跟随（FE-13-C）", async () => {
+    const { presenter, input, timers } = await setup("en-US");
+
+    presenter.setLanguage("ja-JP");
+    timers.runTimeouts();
+    presenter.close();
+    expect(presenter.getSnapshot().languagePinned).toBe(false);
+
+    await presenter.open();
+    expect(input.languages[input.languages.length - 1]).toBe("en-US");
   });
 });

@@ -179,6 +179,10 @@ mark.speaking { color: var(--cyan); background: rgba(55,230,255,.14); border-rad
 .voice-main-button:disabled { opacity: .6; box-shadow: none; cursor: wait; }
 .voice-hint { margin: 12px 0 0; color: var(--muted); font-size: 10px; }
 .voice-privacy { max-width: 490px; margin: 25px 0 0; padding-top: 15px; border-top: 1px solid var(--line-soft); color: var(--dim); font-size: 9px; line-height: 1.55; }
+.voice-language { display: block; margin: 12px auto 0; padding: 7px 14px; border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,.03); color: var(--muted); font: inherit; font-size: 10px; line-height: 1.5; cursor: pointer; transition: border-color .15s, color .15s; }
+.voice-language:hover { border-color: var(--cyan); color: #dff6ff; }
+.voice-language strong { color: #dff6ff; }
+.voice-language span { display: block; margin-top: 2px; color: var(--dim); font-size: 9px; }
 
 .modal-backdrop { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(3,5,11,.72); backdrop-filter: blur(8px); animation: fade-in .18s ease-out; }
 .settings-modal { position: relative; width: min(580px,95vw); max-height: 92vh; overflow: auto; padding: 26px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(165deg, rgba(16,25,43,.98), rgba(9,13,25,.98)); box-shadow: 0 40px 100px rgba(0,0,0,.7), 0 0 60px rgba(55,230,255,.08); animation: rise .2s ease-out; }

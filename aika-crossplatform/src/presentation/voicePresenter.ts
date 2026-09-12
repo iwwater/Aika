@@ -78,6 +78,15 @@ export interface VoiceViewModel {
   /** 聊天页里正在被朗读的那条消息；没有在朗读时为 null。 */
   speakingMessageId: string | null;
   backendNote: string;
+  /**
+   * 这一段实际按哪个语言识别（FE-13）。
+   *
+   * 露出来不是为了让人挑语言，而是因为单语言引擎进错语言之后会自锁：英文引擎听
+   * 日语只会吐罗马字，罗马字又再次被判成英文。用户看不见它就永远不知道该动什么。
+   */
+  language: VoiceInputLanguage;
+  /** 用户显式指定过语言吗。指定过就不再跟着历史推导，直到退出语音页。 */
+  languagePinned: boolean;
 }
 
 export interface VoicePresenter {
@@ -90,6 +99,13 @@ export interface VoicePresenter {
     telemetry?: VoiceTelemetrySink;
   }): void;
   setBackend(config: VoiceBackendConfig): void;
+  /**
+   * 显式指定识别语言，并立刻重开识别让它生效（FE-13）。
+   *
+   * 这是自锁状态唯一的出口：判定拿不到「这是另一种语言」的证据时，只有人能告诉它。
+   * 指定只在本次语音页有效，退出即失效——默认路径仍然是自动跟随。
+   */
+  setLanguage(next: VoiceInputLanguage): void;
   open(): Promise<void>;
   close(): void;
   interruptAndListen(reason?: "barge-in" | "button", audioStartAt?: number): void;
@@ -192,6 +208,10 @@ export function createVoicePresenter(deps: VoicePresenterDeps = {}): VoicePresen
   let backend: VoiceBackendConfig = DEFAULT_VOICE_BACKEND;
   let onTranscript: VoiceTurnHandler = async () => null;
   let resolveLanguage: () => VoiceInputLanguage = () => "ja-JP";
+  /** 这一段实际用的语言。只有 startRecognition 写它，界面据此显示。 */
+  let language: VoiceInputLanguage = "ja-JP";
+  /** 用户点过语言之后，推导就让位。退出语音页时清掉。 */
+  let languagePinned = false;
   let telemetry: VoiceTelemetrySink = () => undefined;
 
   let cached: VoiceViewModel | null = null;
@@ -294,7 +314,12 @@ export function createVoicePresenter(deps: VoicePresenterDeps = {}): VoicePresen
 
     try {
       started = true;
-      input.start(resolveLanguage(), {
+      const next = languagePinned ? language : resolveLanguage();
+      if (next !== language) {
+        language = next;
+        commit();
+      }
+      input.start(next, {
         onStart: () => {
           if (epoch !== inputEpoch) return;
           setPhase(phase === "thinking" || phase === "speaking" ? phase : "listening");
@@ -793,6 +818,27 @@ export function createVoicePresenter(deps: VoicePresenterDeps = {}): VoicePresen
     markVoice();
   }
 
+  /**
+   * 用户点了语言（FE-13）。
+   *
+   * 立刻重开识别，不等下一段自然结束：用户点它的时候正卡在错的语言上，
+   * 让他再说一句废话去触发切换没有道理。
+   */
+  function setLanguage(next: VoiceInputLanguage): void {
+    languagePinned = true;
+    if (next === language && started) return;
+    language = next;
+    setError("");
+    commit();
+    if (!active || !input) return;
+    // 麦克风一直开着的链路自己判语言，重开只会白丢掉缓冲区里的音频。
+    if (continuous()) return;
+    inputEpoch += 1;
+    input.abort();
+    started = false;
+    timers.setTimeout(startRecognition, 160);
+  }
+
   function close(): void {
     const wasSpeaking = phase === "speaking" || queue.isSpeaking();
     const interruptedTurnId = turnRequest?.turnId;
@@ -829,6 +875,8 @@ export function createVoicePresenter(deps: VoicePresenterDeps = {}): VoicePresen
     setSpeakingCaptionId(null);
     clearHighlight();
     setPhase("idle");
+    // 指定只在本次语音页有效：下次进来仍然自动跟随，不把一次临时纠正变成永久设置。
+    languagePinned = false;
     setOpen(false);
   }
 
@@ -845,6 +893,8 @@ export function createVoicePresenter(deps: VoicePresenterDeps = {}): VoicePresen
         speakingRange,
         speakingMessageId,
         backendNote,
+        language,
+        languagePinned,
       });
       dirty = false;
     }
@@ -867,6 +917,7 @@ export function createVoicePresenter(deps: VoicePresenterDeps = {}): VoicePresen
     setBackend(config) {
       backend = config;
     },
+    setLanguage,
     open,
     close,
     speakMessage,
