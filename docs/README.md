@@ -8,7 +8,7 @@
 - [LLM SPEC](llm/SPEC.md) · [STT SPEC](stt/SPEC.md) · [TTS SPEC](tts/SPEC.md) · [前端 SPEC](frontend/SPEC.md)
 - [CORE SPEC](core/SPEC.md)：运行时内核与装配层，方案见 [重构计划书](core/REFACTOR_PLAN.md)、接口见 [内核架构](core/ARCHITECTURE.md)。
 - [共享接口](modules/CONTRACTS.md) · [模块内测试规则](modules/TESTING.md) · [模块验收模板](modules/ACCEPTANCE_TEMPLATE.md)
-- [调试工作台 · 进度与未完成项](WORKBENCH_PROGRESS.md)：F1～F6 已交付什么、F7/F8/F9 还没开始，以及全局未验证项。
+- [调试工作台 · 进度与未完成项](WORKBENCH_PROGRESS.md)：F1～F8 已交付什么、F9 与增量待执行项，以及全局未验证项。
 - [集成验收](integration/SPEC.md)：跨模块链路、全量回归与打包。
 - [旧阶段映射](modules/MIGRATION.md)：旧 S1–S8 要求与证据归属。
 
@@ -35,3 +35,9 @@ CORE-01…06 已自测、待审阅：全仓只剩一条对话编排路径，内�
 研究与历史文档不作为当前模块派发指令。论文原件仍保持 Git 忽略。
 
 模块需求：[LLM PRD](llm/PRD.md) · [TTS PRD](tts/PRD.md) · [STT PRD](stt/PRD.md) · [前端 PRD](frontend/PRD.md)。Agent 自动读取根 [AGENTS.md](../AGENTS.md)。原始导入稿保留在 [归档](archive/PRD_V0.4_ORIGINAL.md)。
+
+## v0.5 与安全批量执行
+
+[PRD v0.5](PRD_V0.5.md) · [审阅结论](REVIEW_V0.5_AND_BACKLOG.md) · [执行顺序及跳过规则](GOAL_EXECUTION_PLAN.md) · [另一位worker提示词](GOAL_WORKER_PROMPT.md)
+
+[Runtime SPEC](runtime/SPEC.md) · [Gateway SPEC](gateway/SPEC.md) · [Agent SPEC](agents/SPEC.md)

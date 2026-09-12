@@ -17,3 +17,7 @@
 不在 STT 模块测 TTFA、TTS 口型、LLM 回复或完整 Barge-in；对应集成 INT-02。
 
 只执行当前 SPEC 的本模块测试；其他模块使用 fake/mock。验收报告放 `../reports/STT-03_ACCEPTANCE.md`。全流程测试仅在必须联调或大任务完成时按 [集成 SPEC](../../integration/SPEC.md) 执行；真人设备后置项不自动恢复。
+
+## 全文审阅结论
+
+保持DEFERRED。P95从20个调度样本按nearest-rank计算并保留原始时间，起点=max(末段ASR完成时刻,尾静音满足时刻)，不能重复计ASR延迟或用墙钟回拨修正数据。识别准确性/语言判定是独立记录项，不因调度通过宣称ASR质量通过。

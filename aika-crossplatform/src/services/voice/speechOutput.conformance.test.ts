@@ -13,9 +13,22 @@ import { webSpeechOutput } from "./webSpeechOutput";
  * 云端那边是 `HttpFetch` 与 `Audio`。不启动真实设备，也不向任何云服务发请求。
  */
 
-/** 让已经排上队的微任务跑完。云端那条链路是 fetch → play() 两层 Promise。 */
-async function flush(times = 4) {
-  for (let index = 0; index < times; index += 1) await Promise.resolve();
+/**
+ * 等一个条件成立，而不是去数「该让出几次微任务」。
+ *
+ * 云端那条链路是 `synthesize()`（`await send()` → `await response.arrayBuffer()`）
+ * 再 `.then(play)` 再 `audio.play()`，中间跨了好几次真实的任务边界——`Response` 的
+ * 正文读取和 `play()` 都是走任务队列的。裸微任务（`await Promise.resolve()`）
+ * 越不过这些边界，数几次都不对：数少了探针在实现还没排上队时就返回，数多了又是
+ * 在赌博。所以这里用真实定时器轮询「探针能观测到的那个结果」，实现多几层 Promise
+ * 也不会漏。条件是探针自己的事，flush 只是通用等待原语。
+ */
+async function until(condition: () => boolean, label: string) {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (condition()) return;
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error(`等待超时：${label}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -130,20 +143,33 @@ function cloudTtsHarness(): SpeechOutputHarness {
     async create(): Promise<SpeechOutputFixture> {
       FakeAudio.last = null;
       FakeAudio.pauses = 0;
+      let errorsReported = 0;
       const transport = pendingFetch();
       vi.stubGlobal("Audio", FakeAudio);
 
+      const subject = createCloudTtsOutput(() => cloudConfig, transport.send);
+      // 包一层只为了记「onError 已经到过」：实现内部怎么调度不该由用例包去猜。
+      const wrapped: typeof subject = {
+        ...subject,
+        speak: (request, events = {}) => subject.speak(request, {
+          ...events,
+          onError: (message) => { errorsReported += 1; events.onError?.(message); },
+        }),
+      };
+
       return {
-        subject: createCloudTtsOutput(() => cloudConfig, transport.send),
+        subject: wrapped,
         probe: {
           async start() {
             transport.settleAll("ok");
-            await flush();
+            // 等实现真的走到了 `new Audio(...)`：这时 `play()` 已经发出，`onStart` 也随之到来。
+            await until(() => FakeAudio.last !== null, "云端合成完成并开始播放");
           },
           finish: () => FakeAudio.last?.onended?.(),
           async fail(message: string) {
             transport.settleAll(new Error(message));
-            await flush();
+            // 失败不产音频，等的是「这一次请求已经落到实现手里并报了错」。
+            await until(() => errorsReported > 0, "云端合成失败已上报");
           },
           stopCalls: () => FakeAudio.pauses,
         },

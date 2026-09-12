@@ -70,6 +70,20 @@ Provider 适配负责一次流式请求，首正文前允许受控 fallback，�
 1. 先确认上述接口与负责范围，再实现当前 SPEC；不要顺带执行下一份 SPEC。
 2. 对本次修改的生产逻辑准备定向测试名单。只 mock 外部依赖，不 mock 本模块被验收逻辑；无需启动其他模块。
 3. 报告每条 AC 的测试文件/样本、真实命令及退出码，质量样本标明实际模型或 fixture。证据不足保留 NOT RUN/BLOCKED，不能降低门槛。
-4. 交付 `../reports/LLM-04_ACCEPTANCE.md`；原任务审阅证据。只在 [集成触发条件](../../integration/SPEC.md) 满足时安排全流程调试，当前小 SPEC 不默认跑全仓测试或产品打包。
+4. 交付 `../reports/LLM-04_AGENT_MEMORY_WRITEBACK_ACCEPTANCE.md`；原任务审阅证据。只在 [集成触发条件](../../integration/SPEC.md) 满足时安排全流程调试，当前小 SPEC 不默认跑全仓测试或产品打包。
 
 共享规则见 [模块测试规则](../../modules/TESTING.md)；输入输出遵循 [共享契约](../../modules/CONTRACTS.md)。
+
+## 2026-09-13 实施约束
+
+先审services/memory/writeback及Runtime现有后台路径，按AC补缺口，不新增第二worker；切换时旧任务必须失效。单次生成不等于ACP AgentSession；保留合法sticker等既有动作，不因本SPEC的actions默认空删除原协议功能。
+
+## 全文审阅：可落地边界
+
+生产services/memory/writeback.ts仅有内存队列，Runtime还有自身维护路径；不能把现状认定为持久批次已实现。选定唯一队列所有者并在切换点取消旧排程。批次至少包含id、owner/scope、策略版本、来源消息与候选快照、attempts、nextAttemptAt、epoch与状态；没有来源内容无法在重启后复原，不能只存ID后假定消息一定还在。
+
+每8个成功且已持久化的轮次触发；sessionEnd是显式事件，不能依赖进程退出时异步flush一定成功。关闭维护后旧epoch批次作废，重新开启不自动复活；dispose停止定时器和在途调用。删除/撤回来源时取消未提交批次，confirmed既有记录保持原策略。单批容量与待处理总量设上限并可见错误，不无限积压。
+
+幂等唯一键与候选写入、批次done必须在同一提交边界，失败不能留“已消费但未写入”。SQLite以真实临时数据库事务验证；localStorage若无多键事务，用单记录原子替换或日志恢复机制，不把SQL能力强加给它。开关关闭和提交必须在同一串行化/条件提交边界判epoch，单纯先if再await不能保证停止。
+
+AC-B增加：写入后标done前崩溃、来源删除、关闭后重新开启、两次flush竞争均不重复写或复活候选；AC-C增加失败存储不拦正文终态。foreground正常无重试轮恰好1请求，失败重试与后台每次物理调用单独记量；不允许为凑恰好1而关闭既有合法fallback。

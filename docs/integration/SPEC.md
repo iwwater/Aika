@@ -12,7 +12,7 @@
 
 旧 [真人验收清单](../archive/stages/HUMAN_ACCEPTANCE.md) 保留作为后置指标来源。新增模块范围不自动解除用户已确定的 DEFERRED 项。
 
-## CORE-03 消费者兼容登记（INT-01 待执行）
+## CORE-03 历史消费者登记（以文末当前AC为准）
 
 CORE-03 已完成模块自测，默认编排切为 kernel，仍保留显式 legacy 回退。模块证据见 [CORE-03 验收报告](../core/reports/CORE-03_ACCEPTANCE.md)。
 
@@ -26,7 +26,7 @@ CORE-03 已完成模块自测，默认编排切为 kernel，仍保留显式 lega
 
 以上集成检查均为 NOT RUN；本次没有启动真实模型、音频设备或 Tauri 产品构建。
 
-## CORE-04 消费者兼容登记（INT-01 待执行）
+## CORE-04 历史消费者登记（以文末当前AC为准）
 
 CORE-04 把会话/语音编排从 `hooks/` 搬进 `src/presentation/`，Hook 降为订阅与派发适配器；模块证据见 [CORE-04 验收报告](../core/reports/CORE-04_ACCEPTANCE.md)。
 
@@ -39,7 +39,7 @@ CORE-04 把会话/语音编排从 `hooks/` 搬进 `src/presentation/`，Hook 降
 
 以上集成检查均为 NOT RUN；本阶段没有启动真实模型、音频设备或 Tauri 产品构建。
 
-## CORE-05 消费者兼容登记（INT-01 待执行）
+## CORE-05 历史消费者登记（以文末当前AC为准）
 
 CORE-05 完成能力插件化与扩展点验证；模块证据见 [CORE-05 验收报告](../core/reports/CORE-05_ACCEPTANCE.md)。其中 CORE-05-G 的输出侧原为 BLOCKED，2026-09-11 取回第二输出实现 `cloudTtsOutput` 后解除；该实现全部证据走假 `HttpFetch`，**真实云 TTS 仍是 NOT RUN**。
 
@@ -56,7 +56,7 @@ CORE-05 完成能力插件化与扩展点验证；模块证据见 [CORE-05 验�
 
 ## CORE-06 触发 INT-01（待执行）
 
-CORE-06 删除生产编排路径并冻结共享契约，按 SPEC 属于 INT-01 的触发条件。模块证据见 [CORE-06 验收报告](../core/reports/CORE-06_ACCEPTANCE.md)。
+CORE-06 删除旧legacy生产编排路径并冻结共享契约，按 SPEC 属于 INT-01 的触发条件。模块证据见 [CORE-06 验收报告](../core/reports/CORE-06_ACCEPTANCE.md)。
 
 | 兼容增量 | 受影响消费者 | INT-01 检查 |
 | --- | --- | --- |
@@ -67,3 +67,22 @@ CORE-06 删除生产编排路径并冻结共享契约，按 SPEC 属于 INT-01 �
 | 云端合成没有用户入口，`note` / `degraded` 被丢弃；真实云 TTS 未试听 | TTS 桥接 | 设置页接上后做一次真实试听，验证音质、延迟与计费，并确认降级当错误显示 |
 
 以上集成检查均为 NOT RUN；本次没有启动真实模型、音频设备、云 TTS 或 Tauri 产品构建，也未执行全量回归与打包（按 INT-03 另行安排）。
+
+## 2026-09-13 当前执行裁决
+
+CORE-03～05登记属于历史增量；CORE-06已删除legacy，当前INT-01不再测试恢复legacy。统一验证唯一Runtime、残留旧设置无害、双id、Presenter兜底、Remote路由、语音交付兼容。上文“CORE-06删除生产编排路径”应读为删除旧legacy生产编排路径，保留CompanionRuntime。
+
+INT-01分自动消费者契约、浏览器真实UI、Tauri/plugin-sql、真实Provider、真实手机五列；部分通过不标整项PASS。INT-04见[远程Coding联调](specs/INT-04.md)，发布仍按INT-03。执行与跳过规则见[计划](../GOAL_EXECUTION_PLAN.md)。
+
+## 当前INT-01逐项验收（全文审阅后冻结）
+
+| AC | 当前检查 | 证据 |
+| --- | --- | --- |
+| INT-01-A | 生产UI→Presenter→唯一Runtime→Provider/Storage；三模式、流式、取消迟到、持久化、装配失败兜底 | 自动契约+浏览器页面分列 |
+| INT-01-B | runtimeTurnId与旧turnId、旧库字段兼容；残留legacy设置被忽略，不恢复旧编排 | 临时存储fixture；Tauri旧库副本独立 |
+| INT-01-C | 当前Remote共用同Runtime及不重复维护；新版网关上线后追加identity/scope隔离 | 旧版基线可先验，新版另增量，不形成RT-01循环前置 |
+| INT-01-D | Tauri启动/重开、plugin-sql生产SQL建表删除、错误UI、生产DEV默认开关 | 真实桌面/生产构建证据，node:sqlite不可替代 |
+| INT-01-E | F1双语去重、点击朗读、撤回、重生成、Rewind、失败重试 | 浏览器操作与真机音频分别标记 |
+| INT-01-F | 真实Provider样本与usage可见；模型质量按各LLM原AC另验 | fixture/真实分别标记，3轮不等于质量通过 |
+
+INT-01报告为reports/INT-01_ACCEPTANCE.md，按AC与宿主分列。INT-02保留全部原台词/打断/耳机外放数量；缺真人不执行。INT-03必须全test/build及桌面cargo/tauri/安装启动，只有全部适用门禁通过才发布就绪。

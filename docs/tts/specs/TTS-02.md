@@ -15,3 +15,7 @@
 | TTS-02-C | 无实际音频测量时 started/stopped 标 proxy；未知语气回退默认，未知语言后端明确降级 |
 
 只执行当前 SPEC 的本模块测试；其他模块使用 fake/mock。验收报告放 `../reports/TTS-02_ACCEPTANCE.md`。全流程测试仅在必须联调或大任务完成时按 [集成 SPEC](../../integration/SPEC.md) 执行；真人设备后置项不自动恢复。
+
+## 全文审阅结论
+
+规范可执行；底层SpeechOutputEngine.stop无turnId，归属验证必须在队列/Presenter adapter内完成，旧turn.stop不能停止新turn输出。AC-A/B覆盖这一反例和prefetch取消；不要求把整个引擎接口破坏性改名。

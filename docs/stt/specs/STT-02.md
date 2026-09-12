@@ -15,3 +15,7 @@
 | STT-02-C | 旧输入会话结果失效，新会话首段不丢；立即发送与清空各自幂等，不提交被清空文本 |
 
 只执行当前 SPEC 的本模块测试；其他模块使用 fake/mock。验收报告放 `../reports/STT-02_ACCEPTANCE.md`。全流程测试仅在必须联调或大任务完成时按 [集成 SPEC](../../integration/SPEC.md) 执行；真人设备后置项不自动恢复。
+
+## 全文审阅结论
+
+规范可执行；现有sendNow/clear需按ARCHITECTURE处理在途ASR：立即发送只提交已确认文本，旧pending结果不得随后重复提交；清空递增epoch，新的输入不丢。ASR失败也必须从pending集合移除并记录丢段，不能让turnReady永远等待。补B/C相应负例，不修改原尾静音指标。

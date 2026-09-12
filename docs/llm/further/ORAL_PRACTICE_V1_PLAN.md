@@ -2,7 +2,7 @@
 
 日期：2026-09-05。
 
-> 2026-09-10 优先级更新：先完成 LLM 回复 Runtime；本计划保留为独立陪练 Mode 的设计，不直接替换 Character Soul。整体顺序以 [当前执行计划](../../archive/DEVELOPMENT_PLAN.md#当前执行计划2026-09-10-更新) 为准，下文原定实施顺序服从该安排。
+> 2026-09-10 优先级更新：先完成 LLM 回复 Runtime；本计划保留为独立陪练 Mode 的设计，不直接替换 Character Soul。整体顺序以 [当前执行计划](../../GOAL_EXECUTION_PLAN.md) 为准，下文原定实施顺序服从该安排。
 
 状态：仅完成计划，尚未开始实现。本轮只检查现有代码，未修改人设、提示词、界面或语音业务逻辑。
 
@@ -135,8 +135,8 @@
 
 这版是用户日常使用的产品版本，可作为以后研究的行为基线，但不会自动把私人对话作为论文数据。情绪修正研究继续参考 [AFFECT_IMPLEMENTATION_PLAN.md](../../archive/research/AFFECT_IMPLEMENTATION_PLAN.md)，等普通版可用后再单独启动。
 
-当前下一步：用户要求开始实现时，从 S0 开始；本次止于计划。
+当前下一步：保持backlog；后续按现有LLM-01三模式差距另立SPEC，不依据本历史S0～S3直接重写角色。
 
 ## PRD v0.4 对齐
 
-本文件保留早期细则；最新角色/Mode 契约以 [S2](../../archive/stages/S2_SOUL_MODE_SCHEMA.md) 为准。不将既有人格替换为新的“普通搭子”，而以同一角色承载 companion、oral_practice、scenario_practice 三模式；练习语言是 Mode 参数。场景身份是临时策略，退出场景不能污染 Character Soul。
+本文件保留早期细则；最新角色/Mode契约以 [LLM-01](../specs/LLM-01_SOUL_MODE_SCHEMA.md) 为准。不将既有人格替换为新的“普通搭子”，而以同一角色承载 companion、oral_practice、scenario_practice 三模式；练习语言是 Mode 参数。场景身份是临时策略，退出场景不能污染 Character Soul。

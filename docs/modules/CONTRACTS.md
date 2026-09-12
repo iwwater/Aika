@@ -107,3 +107,20 @@ INT-01 的兼容检查项：云端合成一旦在设置页可选，`createOutput
 LLM 各自的 `docs/llm/specs/LLM-01…05` 文件内写明实现级接口；[STT](../stt/ARCHITECTURE.md)、[TTS](../tts/ARCHITECTURE.md)、[前端](../frontend/ARCHITECTURE.md) 按共享架构文件引用对应阶段。代码块是拟定逻辑契约，现有类型通过兼容 adapter 映射；不能以名称尚未存在推断已实现，也不要机械新增重复接口。
 
 发生冲突先依据用户最新范围和 SPEC 的行为约束统一接口，在同一改动中更新文档/适配及针对性契约测试。接口细化不自动触发全仓重构或全流程测试。
+
+## 2026-09-13 拟议扩展登记（尚未实现/冻结）
+
+RT-01～04负责身份/会话/可信来源/Permission；GW-01/04负责Channel与Device；AGT-01/02负责AgentSession与ACP；LLM-11与FE-23负责context_snapshot/实时订阅。详见[v0.5](../PRD_V0.5.md)。实现前登记精确类型、版本、受影响消费者，不据此宣称现有源码已经提供接口。
+
+远程Reply使用白名单投影，不外发memoryCandidates；Trace出站需要主体授权，不能仅依赖本地includeText。安全拒绝路径fail-closed，Trace旁路仍fail-open。新SourceEnvelope不得覆盖既有TurnSource语义；历史来源unknown不获得权限。FE-14～17已将全文审阅合入正文，旧原样转发/TLS ack规则不再生效。
+
+### 全文审阅新增的待实现端口
+
+- LLM-05：ContextSourceInput增加本轮只读mode/character/stage scope，Memory/Knowledge/Environment共享源集合只有一个提供者。
+- LLM-12：UsageRecordV1、物理attempt观测及分页存储端口；Provider请求语义不改；FE-26只消费账本，不反推token分项。
+- FE-23：TraceSettings.onChanged、Recorder.subscribe及共同隐私投影；事件身份必须与落盘一致。
+- GW-03：STT拥有音频文件解码/重采样与转写端口，不复用麦克风start冒充文件识别。
+- RT-02：存储/Runtime/Context scope贯通，旧本地数据有显式legacy归属；不新建第二Runtime。
+- AGT-01/05：AgentSession与AgentRun分离、TaskCommand用户入口；远程命令是受控schema扩展，不经ReplyEnvelope.actions触发。
+
+以上均为已审阅设计，生产接口尚未实现，不可仅凭本登记解除集成门禁。

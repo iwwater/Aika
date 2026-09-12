@@ -82,3 +82,13 @@ interface KnowledgeIndex {
 4. 交付 `../reports/LLM-05_ACCEPTANCE.md`；原任务审阅证据。只在 [集成触发条件](../../integration/SPEC.md) 满足时安排全流程调试，当前小 SPEC 不默认跑全仓测试或产品打包。
 
 共享规则见 [模块测试规则](../../modules/TESTING.md)；输入输出遵循 [共享契约](../../modules/CONTRACTS.md)。
+
+## 全文审阅：接口补齐与数据边界
+
+现有ContextSourceInput只有query/now/signal，没有Mode/角色/阶段。实现本份时以可选的只读scope追加并让Assembler从本轮AssembleInput透传，列Memory/Environment源消费者；禁止从UI全局可变状态读取或用用户query覆盖解锁级别。新增knowledge端口与ContextSourcesToken的唯一装配点，必须保留Memory源；memoryV2缺失也不能让Knowledge一起消失。
+
+KnowledgeDocument新增allowedModes或显式type→mode白名单；过滤发生在Top-K前。同内容哈希仅在同一document身份、角色、授权元数据下去重，元数据更新也必须激活新版本，不能因内容相同忽略解锁变化。importDocuments以稳定文档ID/sourcePath定位更新，整批事务激活；不删除未在本批出现的其他文档。remove使新查询看不到文档，历史引文保留ID/version并标“来源已删除”，不能篡改旧对话。
+
+底层使用参数绑定；FTS MATCH表达式需安全token化/转义，异常不扩成全库命中。score阈值在固定语料上预先冻结，不能把BM25排序分数冒充置信概率。5个无答案问题先冻结预期，不能观察结果后移走难例。A/B/C用真实临时SQLite FTS5与生产检索；无FTS采用显式unsupported/空结果降级即可，不能把fake检索当FTS已完成。D保持10个真实模型问答≥9/10，不因本地逻辑完成降低标准。
+
+新增AC-E：source输入scope切换、同哈希不同权限、并发导入失败、恶意MATCH/路径、memory缺失时knowledge独立装配均有证据。导入只读明确选中的文本资源，限制文件数/大小/编码，禁止扫描私人目录。

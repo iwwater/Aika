@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Aika 一次语音调用时序（含记忆与摘要）",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "viewBox": [1080, 1058],
+    "views": [
+      { "id": "listen", "label": "听与识别", "focus": ["user", "voice", "presenter", "runtime"], "note": "VAD 只切语音段，turnEnd 才判定回合完成。" },
+      { "id": "generate", "label": "生成与朗读", "focus": ["runtime", "llm", "presenter"], "note": "流式增量边生成边逐句朗读。" },
+      { "id": "memory", "label": "记忆沉淀", "focus": ["presenter", "memory", "store"], "note": "本轮完成落库后才后台抽取与滚动摘要。" }
+    ]
+  },
+  "participants": [
+    { "id": "user", "type": "external", "label": "用户", "sublabel": "说话 / 打断" },
+    { "id": "voice", "type": "frontend", "label": "VoicePresenter", "sublabel": "VAD · ASR" },
+    { "id": "presenter", "type": "frontend", "label": "Presenter", "sublabel": "Companion · 后台" },
+    { "id": "runtime", "type": "backend", "label": "CompanionRuntime", "sublabel": "唯一编排" },
+    { "id": "llm", "type": "external", "label": "LLM Provider", "sublabel": "四协议 SSE" },
+    { "id": "store", "type": "database", "label": "SQLite", "sublabel": "aika.db" },
+    { "id": "memory", "type": "backend", "label": "MemoryRepository", "sublabel": "抽取 / 检索" }
+  ],
+  "segments": [
+    { "from": 150, "to": 330, "label": "听与识别" },
+    { "from": 350, "to": 610, "label": "编排与流式生成" },
+    { "from": 630, "to": 795, "label": "朗读与交付回执" },
+    { "from": 815, "to": 975, "label": "后台沉淀（本轮完成后）" }
+  ],  "messages": [
+    { "id": "speak", "from": "user", "to": "voice", "y": 180, "label": "开口说话（16 kHz 音频）", "variant": "emphasis" },
+    { "id": "submit-turn", "from": "voice", "to": "presenter", "y": 225, "label": "turnEnd 判定说完 → session.send", "variant": "emphasis", "note": "Silero VAD 380ms 静音切段；base 1350ms（未稳定 2400ms）判回合；120ms tick 轮询" },
+    { "id": "runtime-submit", "from": "presenter", "to": "runtime", "y": 265, "label": "runtime.submit(text)" },
+    { "id": "read-history", "from": "runtime", "to": "store", "y": 385, "label": "listMessages(200) + latestSummary()" },
+    { "id": "history-back", "from": "store", "to": "runtime", "y": 425, "label": "最近 16 轮原文 + 滚动摘要", "variant": "return" },
+    { "id": "persist-user", "from": "runtime", "to": "store", "y": 465, "label": "persist(user 消息)（writeChain 串行）" },
+    { "id": "stream-chat", "from": "runtime", "to": "llm", "y": 505, "label": "streamChat：instructions + 单条 user", "variant": "emphasis" },
+    { "id": "sse-delta", "from": "llm", "to": "runtime", "y": 550, "label": "SSE 增量：mood → replyText → actions", "variant": "return", "note": "ReplyEnvelopeV1：mood 排最前，首包即定语气" },
+    { "id": "runtime-events", "from": "runtime", "to": "presenter", "y": 590, "label": "RuntimeEvent：replyDelta → generated" },
+    { "id": "speak-out", "from": "presenter", "to": "user", "y": 655, "label": "SpeechQueue 逐句播报（barge-in 可打断）", "variant": "emphasis" },
+    { "id": "delivery-receipt", "from": "presenter", "to": "runtime", "y": 745, "label": "reportDelivery 回执" },
+    { "id": "persist-final", "from": "runtime", "to": "store", "y": 775, "label": "persistFinal：completion / playbackStatus" },
+    { "id": "kick-memory", "from": "presenter", "to": "memory", "y": 835, "label": "finish()：后台抽取（最近 4 条）", "variant": "dashed" },
+    { "id": "memory-llm", "from": "memory", "to": "llm", "y": 875, "label": "requestJson：记忆抽取 / 滚动摘要", "variant": "dashed" },
+    { "id": "memory-persist", "from": "memory", "to": "store", "y": 915, "label": "memories_v2 candidate · summaries（≥40 条）", "variant": "dashed" },
+    { "id": "next-inject", "from": "memory", "to": "runtime", "y": 955, "label": "下一轮：latestSummary + 记忆检索 top-8", "variant": "dashed" }
+  ],
+  "activations": [
+    { "participant": "voice", "from": 170, "to": 240 },
+    { "participant": "presenter", "from": 215, "to": 765 },
+    { "participant": "runtime", "from": 255, "to": 790 },
+    { "participant": "llm", "from": 495, "to": 565 },
+    { "participant": "store", "from": 375, "to": 475 },
+    { "participant": "store", "from": 765, "to": 790 },
+    { "participant": "presenter", "from": 825, "to": 845 },
+    { "participant": "memory", "from": 825, "to": 965 },
+    { "participant": "store", "from": 905, "to": 925 }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "回合边界在 Presenter", "items": ["VAD 只切语音段，turnEnd 才判定回合完成", "120ms tick 轮询，speaking / pending 时不提交", "本地 whisper 不可用自动降级 Web Speech"] },
+    { "dot": "orange", "title": "边生成边念", "items": ["mood 置于 JSON 最前，首包即定语气", "partial 经 SentenceEmitter 分句 enqueue 到 SpeechQueue", "连续模式下 onSpeechStart 即 barge-in：abort + queue.stop"] },
+    { "dot": "emerald", "title": "后台沉淀有闸门", "items": ["completed 且已落库才跑后台任务", "最近 4 条 → candidate 记忆（去重 + 抑制标记）", "窗口外 ≥40 条 → ≤200 字滚动摘要，删除记忆整段作废"] }
+  ]
+}

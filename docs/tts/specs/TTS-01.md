@@ -15,3 +15,7 @@
 | TTS-01-C | 单句合成失败可跳过并上报，后续句可继续；全失败不得宣称交付成功 |
 
 只执行当前 SPEC 的本模块测试；其他模块使用 fake/mock。验收报告放 `../reports/TTS-01_ACCEPTANCE.md`。全流程测试仅在必须联调或大任务完成时按 [集成 SPEC](../../integration/SPEC.md) 执行；真人设备后置项不自动恢复。
+
+## 全文审阅结论
+
+规范可执行；B的“清空”须同时满足endTurn、队列空、无在途合成/播放；追加流尚未结束时的暂时空队列不能drained。C的跳过失败句保留error计数和交付unknown/interrupted，drained不代表每句都已听到。重复sentenceId幂等按架构测试。

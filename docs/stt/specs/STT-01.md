@@ -15,3 +15,7 @@
 | STT-01-C | Whisper 使用音频结束时间，Web Speech 估算明确标记；缺本地服务时降级信息与实际后端一致 |
 
 只执行当前 SPEC 的本模块测试；其他模块使用 fake/mock。验收报告放 `../reports/STT-01_ACCEPTANCE.md`。全流程测试仅在必须联调或大任务完成时按 [集成 SPEC](../../integration/SPEC.md) 执行；真人设备后置项不自动恢复。
+
+## 全文审阅结论
+
+规范可执行；当前交付状态仍待补证。逻辑SpeechInputPort是adapter目标，不要求重命名生产SpeechInputEngine；stop与abort/cancel按架构区分。补B负例：识别请求永不返回也须有有界超时/错误，不能永久占pending。

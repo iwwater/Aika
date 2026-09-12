@@ -6,45 +6,393 @@
     "locale": "zh-CN",
     "quality_profile": "showcase",
     "views": [
-      { "id": "conversation-path", "label": "对话主链路", "focus": ["user", "ui", "hooks", "domain", "services", "tauri"], "note": "从用户输入一路到 Tauri 宿主的一条主路径。" },
-      { "id": "voice-and-models", "label": "语音与模型边界", "focus": ["services", "llm", "whisper", "webspeech"], "note": "四协议 LLM，以及可替换的识别与合成引擎。" },
-      { "id": "local-store", "label": "本地存储与密钥", "focus": ["services", "db", "tauri", "secrets"], "note": "业务数据与 API Key 分开存放。" },
-      { "id": "lan-access", "label": "局域网手机访问", "focus": ["mobile", "tauri", "hooks"], "note": "手机只是一块屏幕，数据仍留在本机。" }
+      {
+        "id": "conversation-path",
+        "label": "对话主链路",
+        "focus": [
+          "user",
+          "ui",
+          "presenters",
+          "runtime",
+          "llm"
+        ],
+        "note": "从用户输入经 Presenter 到 CompanionRuntime 再到 LLM 的一条主路径。"
+      },
+      {
+        "id": "voice-loop",
+        "label": "语音闭环",
+        "focus": [
+          "user",
+          "ui",
+          "presenters",
+          "voice",
+          "whisper"
+        ],
+        "note": "采集、VAD、识别与合成的可替换引擎。"
+      },
+      {
+        "id": "memory-loop",
+        "label": "记忆闭环",
+        "focus": [
+          "memory",
+          "runtime",
+          "storage"
+        ],
+        "note": "后台抽取落库，下一轮检索注入提示词。"
+      },
+      {
+        "id": "lan-access",
+        "label": "局域网访问",
+        "focus": [
+          "mobile",
+          "shell",
+          "presenters"
+        ],
+        "note": "手机只是一块屏幕，消息走同一条 submit 管线。"
+      }
     ]
   },
   "components": [
-    { "id": "user", "type": "external", "label": "用户", "sublabel": "语音 / 文字", "pos": [30, 420], "size": [120, 60] },
-    { "id": "ui", "type": "frontend", "label": "界面层", "sublabel": "React 组件", "tag": "App / VoiceModal", "pos": [230, 420], "size": [140, 64] },
-    { "id": "hooks", "type": "frontend", "label": "会话编排", "sublabel": "React Hooks", "tag": "useCompanionSession", "pos": [430, 420], "size": [150, 64] },
-    { "id": "domain", "type": "backend", "label": "领域逻辑", "sublabel": "纯函数 · 无 IO", "tag": "prompt / memory", "pos": [640, 420], "size": [150, 64] },
-    { "id": "services", "type": "backend", "label": "服务适配", "sublabel": "IO 边界", "tag": "provider / voice", "pos": [850, 420], "size": [150, 64] },
-    { "id": "tauri", "type": "cloud", "label": "Tauri 宿主", "sublabel": "Rust · IPC · 托盘", "tag": "remote / secret", "pos": [1090, 420], "size": [150, 64] },
-    { "id": "secrets", "type": "security", "label": "DPAPI 密钥库", "sublabel": "secrets.json", "tag": "API Key", "pos": [850, 570], "size": [150, 64] },
-    { "id": "db", "type": "database", "label": "aika.db", "sublabel": "SQLite 本地库", "tag": "chat / memory", "pos": [1090, 570], "size": [150, 64] },
-    { "id": "webspeech", "type": "external", "label": "Web Speech", "sublabel": "系统识别 / 合成", "tag": "回退链路", "pos": [370, 140], "size": [150, 64] },
-    { "id": "whisper", "type": "external", "label": "whisper-server", "sublabel": "本地进程", "tag": ":8080", "pos": [610, 140], "size": [150, 64] },
-    { "id": "llm", "type": "external", "label": "LLM Provider", "sublabel": "OpenAI / Claude", "tag": "四协议", "pos": [850, 140], "size": [150, 64] },
-    { "id": "mobile", "type": "external", "label": "手机浏览器", "sublabel": "局域网页面", "tag": "token 鉴权", "pos": [1090, 140], "size": [150, 64] }
+    {
+      "id": "llm",
+      "type": "external",
+      "label": "LLM Provider",
+      "sublabel": "OpenAI / Anthropic / Gemini",
+      "tag": "四协议 · SSE",
+      "pos": [
+        620,
+        150
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "mobile",
+      "type": "external",
+      "label": "手机浏览器",
+      "sublabel": "局域网轮询页面",
+      "tag": "token 鉴权",
+      "pos": [
+        850,
+        150
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "user",
+      "type": "external",
+      "label": "用户",
+      "sublabel": "语音 / 文字",
+      "pos": [
+        0,
+        430
+      ],
+      "size": [
+        100,
+        60
+      ]
+    },
+    {
+      "id": "ui",
+      "type": "frontend",
+      "label": "界面层",
+      "sublabel": "useCompanionSession",
+      "tag": "App / VoicePage",
+      "pos": [
+        190,
+        430
+      ],
+      "size": [
+        130,
+        64
+      ]
+    },
+    {
+      "id": "presenters",
+      "type": "frontend",
+      "label": "Presenters",
+      "sublabel": "Companion / Voice",
+      "tag": "Token 注入",
+      "pos": [
+        400,
+        430
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "runtime",
+      "type": "backend",
+      "label": "CompanionRuntime",
+      "sublabel": "唯一编排路径",
+      "tag": "RuntimeEvent",
+      "pos": [
+        620,
+        430
+      ],
+      "size": [
+        170,
+        72
+      ]
+    },
+    {
+      "id": "shell",
+      "type": "cloud",
+      "label": "Tauri 壳 (Rust)",
+      "sublabel": "remote.rs · DPAPI · 托盘",
+      "tag": "8 invoke · 1 事件",
+      "pos": [
+        850,
+        430
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "whisper",
+      "type": "external",
+      "label": "whisper-server",
+      "sublabel": "本地 whisper.cpp",
+      "tag": "127.0.0.1:8080",
+      "pos": [
+        0,
+        620
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "voice",
+      "type": "backend",
+      "label": "语音引擎",
+      "sublabel": "Silero VAD · SpeechQueue",
+      "tag": "双实现可替换",
+      "pos": [
+        230,
+        620
+      ],
+      "size": [
+        160,
+        64
+      ]
+    },
+    {
+      "id": "memory",
+      "type": "backend",
+      "label": "记忆 / 摘要",
+      "sublabel": "MemoryRepository",
+      "tag": "memories_v2",
+      "pos": [
+        620,
+        620
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "storage",
+      "type": "database",
+      "label": "AikaStorage",
+      "sublabel": "SQLite / localStorage",
+      "tag": "4 类业务表",
+      "pos": [
+        850,
+        620
+      ],
+      "size": [
+        160,
+        64
+      ]
+    }
   ],
   "boundaries": [
-    { "kind": "region", "label": "Windows 桌面 · Tauri 应用", "wraps": ["ui", "hooks", "domain", "services", "tauri", "secrets", "db"] }
+    {
+      "kind": "region",
+      "label": "Windows 桌面 · Tauri 应用",
+      "wraps": [
+        "ui",
+        "presenters",
+        "runtime",
+        "shell",
+        "voice",
+        "memory",
+        "storage"
+      ]
+    }
   ],
   "connections": [
-    { "id": "user-to-ui", "from": "user", "to": "ui", "label": "说话 / 打字", "variant": "emphasis" },
-    { "id": "ui-to-hooks", "from": "ui", "to": "hooks", "label": "用户操作" },
-    { "id": "hooks-to-domain", "from": "hooks", "to": "domain", "label": "组装上下文" },
-    { "id": "domain-to-services", "from": "domain", "to": "services", "label": "调用适配" },
-    { "id": "services-to-llm", "from": "services", "to": "llm", "label": "HTTPS + SSE", "fromSide": "top", "toSide": "bottom", "labelAt": [970, 250] },
-    { "id": "services-to-whisper", "from": "services", "to": "whisper", "label": "POST /inference", "fromSide": "top", "toSide": "bottom", "labelAt": [800, 302] },
-    { "id": "services-to-webspeech", "from": "services", "to": "webspeech", "label": "系统识别 / 合成", "fromSide": "top", "toSide": "bottom", "labelAt": [560, 302] },
-    { "id": "services-to-tauri", "from": "services", "to": "tauri", "label": "IPC" },
-    { "id": "tauri-to-db", "from": "tauri", "to": "db", "label": "tauri-plugin-sql", "fromSide": "bottom", "toSide": "top", "labelAt": [1165, 527] },
-    { "id": "services-to-secrets", "from": "services", "to": "secrets", "label": "DPAPI 加解密", "fromSide": "bottom", "toSide": "top", "labelAt": [925, 527] },
-    { "id": "mobile-to-tauri", "from": "mobile", "to": "tauri", "label": "局域网 HTTP", "fromSide": "bottom", "toSide": "top", "labelAt": [1165, 310] }
+    {
+      "id": "user-to-ui",
+      "from": "user",
+      "to": "ui",
+      "label": "说话 / 打字",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left",
+      "labelAt": [
+        145,
+        452
+      ]
+    },
+    {
+      "id": "ui-to-presenters",
+      "from": "ui",
+      "to": "presenters",
+      "label": "命令 / 快照",
+      "fromSide": "right",
+      "toSide": "left",
+      "labelAt": [
+        360,
+        452
+      ]
+    },
+    {
+      "id": "presenters-to-runtime",
+      "from": "presenters",
+      "to": "runtime",
+      "label": "submit / 事件",
+      "fromSide": "right",
+      "toSide": "left",
+      "labelAt": [
+        580,
+        452
+      ]
+    },
+    {
+      "id": "runtime-to-llm",
+      "from": "runtime",
+      "to": "llm",
+      "label": "streamChat · 四协议",
+      "variant": "emphasis",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelAt": [
+        655,
+        300
+      ]
+    },
+    {
+      "id": "presenters-to-voice",
+      "from": "presenters",
+      "to": "voice",
+      "label": "引擎控制 / TTS 队列",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "voice-to-whisper",
+      "from": "voice",
+      "to": "whisper",
+      "label": "POST /inference · VAD",
+      "fromSide": "left",
+      "toSide": "right",
+      "labelAt": [
+        230,
+        606
+      ]
+    },
+    {
+      "id": "memory-to-runtime",
+      "from": "memory",
+      "to": "runtime",
+      "label": "后台沉淀 · 检索注入",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelAt": [
+        635,
+        565
+      ]
+    },
+    {
+      "id": "runtime-to-storage",
+      "from": "runtime",
+      "to": "storage",
+      "label": "appendMessage · persistFinal",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        830,
+        546
+      ]
+    },
+    {
+      "id": "memory-to-storage",
+      "from": "memory",
+      "to": "storage",
+      "label": "记忆 / 摘要",
+      "fromSide": "right",
+      "toSide": "left",
+      "labelAt": [
+        810,
+        698
+      ]
+    },
+    {
+      "id": "storage-to-shell",
+      "from": "storage",
+      "to": "shell",
+      "label": "tauri-plugin-sql",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelAt": [
+        985,
+        560
+      ]
+    },
+    {
+      "id": "mobile-to-shell",
+      "from": "mobile",
+      "to": "shell",
+      "label": "GET /api/messages · POST /api/send",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        930,
+        300
+      ]
+    }
   ],
   "cards": [
-    { "dot": "cyan", "title": "分层前端", "items": ["界面层只做展示与交互，不直接调用模型", "Hooks 承担会话编排，领域层保持纯函数、无 IO", "服务层是唯一的 IO 边界：协议、语音、存储"] },
-    { "dot": "emerald", "title": "Tauri 宿主能力", "items": ["常驻系统托盘，支撑主动消息", "remote.rs 提供局域网 HTTP 与 token 鉴权", "secret_store.rs 用 Windows DPAPI 加密 API Key"] },
-    { "dot": "violet", "title": "可替换边界", "items": ["LLM 支持 OpenAI Responses / 兼容 / Anthropic / Gemini", "STT 走本地 whisper-server，缺服务时回退 Web Speech", "TTS 由 speechSynthesis 逐句合成，接口可换自训声线"] }
+    {
+      "dot": "cyan",
+      "title": "分层与端口",
+      "items": [
+        "Presenters 是唯一入口：Hook 经 Token 取服务、订阅快照",
+        "CompanionRuntime 单编排：state / replyDelta / generated / settled / error",
+        "平台判断收敛在 app/hosts，tauri / browser / test 三宿主可换"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Tauri 壳",
+      "items": [
+        "remote.rs 局域网 HTTP：GET /api/messages · POST /api/send，token 鉴权",
+        "手机消息经 remote://request 事件进同一条 runtime.submit 管线",
+        "API Key 存 DPAPI secret_store，aika.db 经 tauri-plugin-sql"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "记忆与可观测",
+      "items": [
+        "记忆 V2：candidate / confirmed，删除落抑制标记并整段作废摘要",
+        "滚动摘要 ≥40 条触发，≤200 字，经 latestSummary 进 system 提示词",
+        "TraceEventV1 8 种事件落 trace_events，保留 7 天"
+      ]
+    }
   ]
 }

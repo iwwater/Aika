@@ -17,3 +17,7 @@
 用户开口检测、回声与 SpeechEnd→FirstAudio 属于集成，不是 TTS 小阶段门禁；声音训练和 Live2D 不在当前模块阶段。
 
 只执行当前 SPEC 的本模块测试；其他模块使用 fake/mock。验收报告放 `../reports/TTS-03_ACCEPTANCE.md`。全流程测试仅在必须联调或大任务完成时按 [集成 SPEC](../../integration/SPEC.md) 执行；真人设备后置项不自动恢复。
+
+## 全文审阅结论
+
+保持DEFERRED；10次停止的P95按nearest-rank为第10个排序样本，原始值与音频测量手段留档；浏览器onEnd只是proxy，不能代替真实音频停止。C为实测记录与优化前目标冻结，不自动虚构额外首音频门槛；TTS-05九段试听不能替代本份15句。

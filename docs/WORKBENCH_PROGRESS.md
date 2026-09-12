@@ -72,3 +72,9 @@
 
 - **LLM-04 编号被两件事占用**：`docs/llm/SPEC.md` 里 LLM-04 是「单次 Agent / 后台写回（未开始）」，但 `docs/llm/reports/LLM-04_ACCEPTANCE.md` 是「设置页模型列表拉取与下拉选择」的验收报告。两者不是同一件事。没擅自改编号，因为改哪个都会动别人的历史记录。
 - **`aika-crossplatform/vite.err`**：一个空文件，2026-09-11 随 LLM-04 那批提交进来的，看着像误提交的日志。没删。
+
+## 2026-09-13 审阅更新
+
+Live Inspector已拆LLM-11及FE-23～25；F9已拆FE-26，均尚未实现。LLM-04编号冲突已用历史报告迁移+原路径说明处理，后台维护仍未交付。全局未验证项保持原状态；执行入口改为[安全执行计划](GOAL_EXECUTION_PLAN.md)。
+
+全文审阅补充：F9仍待实现；生产Trace仅有总token，已新增LLM-12补齐用量记录，FE-26等待它后接真实数据。当前全部待执行SPEC的设计审阅清单见[审阅记录](REVIEW_V0.5_AND_BACKLOG.md)，不替代实现审阅。

@@ -80,7 +80,7 @@ CORE-04 把编排从 Hook 搬进 Presenter，因此三条 Hook 集成测试的�
 - SPEC 图里的 `VoicePresenter.startListening/stopListening` 落为 `open/close`（`startListening` 是 `open` 建立引擎并开听，`stopListening` 是 `close`）；`interrupt` / `getSnapshot` / `subscribe` / `dispose` 名称与语义不变。命令按「名称可调、语义与 AC 不可省略」处理。
 - `CompanionPresenter` 暴露的快照在原契约字段外补充了 `provider / memories / proactive / voiceBackend / stickers / relationship / summary / ready / storageKind / storageError / keyIsSecure` 等界面既有字段；命令签名沿用现有 Hook（`send(content, source, onPartial?, request?)` 等），消费者无需改调用点。
 - 过渡件：Presenter 在 legacy 模式下仍用 `activeRuntimeServices` + `providerClient`；CORE-06 删除。展示插件不声明硬依赖，配合组合根兜底保证「内核启动失败仍能渲染并显示存储故障」。
-- 受影响消费者：前端 Hook/组件、Remote 手机入口、后续 CORE-05 能力插件。登记到 [INT-01](../integration/SPEC.md)；本阶段只证明模块编排与快照契约。
+- 受影响消费者：前端 Hook/组件、Remote 手机入口、后续 CORE-05 能力插件。登记到 [INT-01](../../integration/SPEC.md)；本阶段只证明模块编排与快照契约。
 - FE-01 与本 SPEC 交付范围重叠：按 SPEC 约定，**Presenter 与 Hook 适配由 CORE-04 交付**，FE-01 只做视图消费与验收，不重复实现；本次未执行 FE-01。
 
 ## 类型与遗留
