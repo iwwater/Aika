@@ -40,11 +40,11 @@
 | 1 | LLM-08 | REVIEWED_AUTO | 见会话日志 | 3处突变命中；AC-D用例理由被自查修正（如实） |
 | 1 | LLM-09 | REVIEWED_AUTO | 见会话日志 | 真实模型退化率 NOT RUN |
 | 1 | LLM-10 | REVIEWED_AUTO | 见会话日志 | DeepSeek真实样本1家；另3协议fixture；突变计数8→9已更正 |
-| 1 | STT-01 | NOT RUN | | 缺早期报告则据实补 |
-| 1 | STT-02 | NOT RUN | | |
-| 1 | STT-04 | NOT RUN | | |
-| 1 | TTS-01 | NOT RUN | | |
-| 1 | TTS-02 | NOT RUN | | |
+| 1 | STT-01 | REVIEWED_AUTO | d78afe3 后批次 | 复核补证报告已写；49/118 测试实跑全绿；真机 NOT RUN |
+| 1 | STT-02 | REVIEWED_AUTO | d78afe3 后批次 | 复核补证报告已写；76 测试全绿；clearPending 幂等证据弱（已标注） |
+| 1 | STT-04 | REVIEWED_AUTO | 见会话日志 | 报告逐 AC 齐全+8条突变；真机归 STT-03；索引状态已更新 |
+| 1 | TTS-01 | REVIEWED_AUTO | d78afe3 后批次 | 复核补证报告已写；54/118 测试全绿 |
+| 1 | TTS-02 | REVIEWED_AUTO | d78afe3 后批次 | 复核补证报告已写；输出契约 12 例全绿；真实音频 NOT RUN |
 | 1 | FE-01 | NOT RUN | | |
 | 1 | FE-02 | NOT RUN | | |
 | 1 | FE-03 | NOT RUN | | |
@@ -106,3 +106,4 @@
 - 2026-09-13 02:22 Wave 0 完成：基线 `049372f`；speechOutput 12/12 exit 0。
 - 2026-09-13 02:30 Wave 1 CORE-01～09 REVIEWED_AUTO：Explore 审阅 8 份 SPEC/报告逐 AC 证据 + 生产抽查（legacy 无生产残留、activeRuntime.ts 已删、CONTRACTS 含内核契约）；合集定向测试 `npx vitest run src/kernel src/app src/presentation src/hooks src/services/{storage,runtime,context,memory,voice}` → 41 文件 / 491 测试全绿 exit 0。修 CORE-02 SPEC 状态行、CORE-07 报告退出码笔误。CORE 批次 commit `eba6e3c`。
 - 2026-09-13 02:38 Wave 1 LLM-01～03/06～10 REVIEWED_AUTO：Explore 审阅 8 份 + 生产符号核实（ProviderUsage/extractUsage/reportedTotal/isSameSentence/describeChatRequest 等）；定向 `npx vitest run src/domain src/services/trace src/services/context src/services/providerClient.test.ts` → 36 文件 / 511 测试 exit 0。修 LLM-01/02 SPEC 状态行、LLM-10 突变计数、LLM-03 报告陈旧 BLOCKED 段。LLM-01-D 的 6 条真实模型质量失败留给 Prompt 修复项（不阻塞后续 SPEC）。
+- 2026-09-13 02:45 Wave 1 STT-01/02/04、TTS-01/02：Explore 初报漏检 STT-02 实现，本人复核确认 vadSegmenter/asrSegments/turnEnd/voicePresenter 管线齐全且被生产消费；实跑 voice+language 118 例、STT 定向 76 例、输出契约 12 例、TTS 54 例全 exit 0。新写 4 份复核补证报告（stt/reports/STT-01、STT-02，tts/reports/TTS-01、TTS-02），更新 stt/tts 索引状态（STT-04 → REVIEWED_AUTO）。证据弱项如实标注：clearPending 幂等、全失败不称成功、重复 dispose。
