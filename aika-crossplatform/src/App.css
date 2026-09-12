@@ -292,3 +292,63 @@ mark.speaking { color: var(--cyan); background: rgba(55,230,255,.14); border-rad
 .trace-detail code { color: var(--muted); word-break: break-all; }
 .trace-raw { margin-top: 20px; }
 .trace-raw pre { max-height: 240px; overflow: auto; margin: 0; padding: 10px; border: 1px solid var(--line-soft); border-radius: 8px; background: rgba(0,0,0,.35); color: var(--muted); font-size: 10px; line-height: 1.6; white-space: pre; }
+
+/* ── 能力调用视图与数据流图（FE-10） ──────────────────────────────────── */
+.turn-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 14px; color: var(--muted); font-size: 11px; }
+.turn-picker-label { margin-right: 2px; }
+.turn-picker button { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border: 1px solid var(--line-soft); border-radius: 7px; color: var(--muted); background: rgba(255,255,255,.04); font-size: 10px; transition: .2s; }
+.turn-picker button:hover:not(:disabled) { border-color: rgba(55,230,255,.35); color: var(--cyan); }
+.turn-picker button.active { border-color: rgba(55,230,255,.5); background: rgba(55,230,255,.08); color: var(--cyan); }
+.turn-picker-refresh { margin-left: auto; }
+.turn-picker-empty { color: var(--dim); }
+
+.capability-page, .graph-page { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 18px 28px; }
+.capability-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.capability-card { padding: 11px 13px; border: 1px solid var(--line); border-left-width: 3px; border-radius: 10px; background: rgba(19,29,49,.6); }
+.capability-card.ok { border-left-color: rgba(55,230,255,.55); }
+.capability-card.empty { border-left-color: var(--line-soft); }
+.capability-card.degraded { border-left-color: #ffc44d; }
+.capability-card.failed { border-left-color: #ff4d92; }
+.capability-card.absent { border-left-color: transparent; opacity: .62; }
+.capability-card header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.capability-card header strong { color: var(--ink); font-size: 12px; }
+.capability-outcome { margin-left: auto; padding: 1px 7px; border-radius: 5px; background: rgba(255,255,255,.06); color: var(--muted); font-size: 10px; }
+.capability-outcome.ok { background: rgba(55,230,255,.12); color: var(--cyan); }
+.capability-outcome.degraded { background: rgba(255,196,77,.14); color: #ffc44d; }
+.capability-outcome.failed { background: rgba(255,77,146,.14); color: #ffb8d1; }
+.capability-card p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.capability-card ul { margin: 7px 0 0; padding-left: 14px; color: var(--dim); font-size: 10px; line-height: 1.7; }
+
+.graph-block { margin-bottom: 22px; }
+.graph-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.graph-head h3 { margin: 0; color: var(--ink); font-size: 12px; }
+.graph-head button { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; padding: 3px 9px; border: 1px solid var(--line-soft); border-radius: 7px; color: var(--muted); background: rgba(255,255,255,.04); font-size: 10px; }
+.graph-note { color: var(--dim); font-size: 10px; }
+.graph-svg { display: block; max-width: 100%; margin-bottom: 10px; }
+.graph-edge { stroke: rgba(55,230,255,.45); stroke-width: 1.4; }
+.graph-edge.optional { stroke: rgba(255,255,255,.28); stroke-dasharray: 4 3; }
+.graph-edge.unregistered { stroke: #ffc44d; stroke-dasharray: 2 3; }
+.graph-node { fill: rgba(19,29,49,.9); stroke: var(--line); stroke-width: 1; }
+.graph-node.activated { stroke: rgba(55,230,255,.45); }
+.graph-node.failed, .graph-node.skipped { stroke: rgba(255,77,146,.5); }
+.graph-node.rolledBack, .graph-node.pending { stroke: rgba(255,196,77,.45); }
+.graph-node-id { fill: var(--ink); font-size: 11px; }
+.graph-node-meta { fill: var(--muted); font-size: 9px; }
+.graph-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 12px; color: var(--dim); font-size: 10px; }
+.graph-legend .swatch { display: inline-block; width: 14px; height: 0; margin-right: 5px; border-top: 2px solid rgba(55,230,255,.45); vertical-align: middle; }
+.graph-legend .swatch.optional { border-top-style: dashed; border-top-color: rgba(255,255,255,.28); }
+.graph-legend .swatch.unregistered { border-top-style: dotted; border-top-color: #ffc44d; }
+.graph-missing h4 { margin: 0 0 6px; color: var(--ink); font-size: 11px; }
+.graph-missing .missing { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 0 0 5px; color: var(--muted); font-size: 11px; }
+.missing-tag { padding: 1px 6px; border-radius: 5px; background: rgba(255,255,255,.06); color: var(--muted); font-size: 10px; }
+.graph-missing .missing.required .missing-tag { background: rgba(255,77,146,.14); color: #ffb8d1; }
+
+.flow-stages { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 5px; }
+.flow-stage { display: flex; gap: 10px; align-items: baseline; padding: 5px 9px; border-left: 2px solid var(--line-soft); border-radius: 0 7px 7px 0; background: rgba(19,29,49,.45); font-size: 11px; }
+.flow-stage.done { border-left-color: rgba(55,230,255,.55); }
+.flow-stage.failed { border-left-color: #ff4d92; }
+.flow-stage.notReached { opacity: .5; }
+.flow-offset { min-width: 62px; color: var(--cyan); font-size: 10px; }
+.flow-stage.notReached .flow-offset { color: var(--dim); }
+.flow-label { min-width: 74px; color: var(--ink); }
+.flow-detail { color: var(--muted); word-break: break-all; }

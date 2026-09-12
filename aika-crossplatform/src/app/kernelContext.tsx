@@ -1,5 +1,5 @@
-import { createContext, createElement, useContext, type ReactNode } from "react";
-import { KernelError, type AikaKernel, type ServiceToken } from "../kernel";
+import { createContext, createElement, useContext, useMemo, type ReactNode } from "react";
+import { KernelError, type AikaKernel, type KernelSnapshot, type ServiceToken } from "../kernel";
 import { resolvePresentationFallback, type PresentationServices } from "../presentation/fallback";
 
 /**
@@ -43,4 +43,16 @@ export function useService<T>(token: ServiceToken<T>): T {
   }
   // 内核 failed/starting/disposed：交回注册表，让它按既有语义抛 KERNEL_FAILED 等。
   return kernel.registry.resolve(token);
+}
+
+/**
+ * 只读诊断入口（FE-10）。
+ *
+ * 露出去的是 `describe` 本身而不是内核实例：工作台要画装配拓扑，但它不该顺手拿到
+ * `registry` ——那等于在展示层开了第四个 resolve 入口。没有内核时返回 null，调用方
+ * 据此显示「装配不可用」，而不是看到一张空图。
+ */
+export function useKernelDescribe(): (() => KernelSnapshot) | null {
+  const { kernel } = useContext(KernelContext);
+  return useMemo(() => (kernel ? () => kernel.describe() : null), [kernel]);
 }

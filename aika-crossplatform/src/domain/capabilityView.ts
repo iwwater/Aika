@@ -8,6 +8,7 @@
  * 没跑抽取」，`candidates: 0` 是「跑了但一条都没抽出来」。两者的排查方向完全不同。
  */
 
+import type { ContextDropReason } from "./context";
 import type { TraceEventV1 } from "./trace";
 
 export type CapabilityOutcome = "ok" | "empty" | "degraded" | "failed" | "absent";
@@ -22,15 +23,21 @@ export interface CapabilityCall {
   items: string[];
 }
 
-const DROP_REASON_LABELS: Record<string, string> = {
-  budget: "超出预算",
+/**
+ * 丢弃原因的中文说明。
+ *
+ * 键按 `ContextDropReason` 全集写死：union 里加了新原因而这里没跟上，`tsc` 会当场
+ * 报错，而不是等到界面上显示出一个英文枚举名才被发现。取值仍留兜底——事件是从库里
+ * 读回来的，旧版本写进去的原因可能已经不在当前 union 里。
+ */
+const DROP_REASON_LABELS: Record<ContextDropReason, string> = {
   timeout: "来源超时",
   error: "来源报错",
-  empty: "来源为空",
-  unavailable: "来源不可用",
+  cancelled: "已取消",
+  trimmed: "超预算被裁",
 };
 
-function dropLabel(reason: string): string {
+function dropLabel(reason: ContextDropReason): string {
   return DROP_REASON_LABELS[reason] ?? reason;
 }
 
