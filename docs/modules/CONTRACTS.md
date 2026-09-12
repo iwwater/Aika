@@ -114,6 +114,15 @@ INT-01 的兼容检查项：云端合成一旦在设置页可选，`createOutput
 
 语义边界：记录按**物理尝试**记（重试/回退各自 attemptId，同一逻辑请求共享 `logicalRequestId`），按 id 幂等 upsert（终态覆盖开始登记）；缺末包 usage/取消记 `coverage: "unknown"`，确切上报一部分记 `partial`，只报 total 保留 total 不拆分；记录不含正文/密钥/完整 URL（同模型不同 endpoint 靠 `providerId` 区分）；写失败旁路化、待写队列有界、丢弃与失败计数在 `diagnostics()` 可见；无 scope 的记录归 `USAGE_LEGACY_SCOPE` 分组，不与任何主体混算。
 
+### v1 之后的追加（2026-09-13，RT-01 身份/来源/宿主契约，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `SourceEnvelope` / `SourceOrigin` / `SourceTrust` / `desktopEnvelope()` / `unknownEnvelopeForLegacy()` / `messageDedupeKey()` / `legacySourceOrigin()` | `domain/sourceEnvelope.ts` | 新类型 + 纯函数，不改任何既有签名。`TurnSource`（text/voice/proactive）语义一字未动。`authenticated` trust 携带不导出 brand：只有认证端口（RT-03）能构造；本地映射 `local`、历史消息一律 `unverified`+unknown 归属。RT-01 仅冻结形状与桌面适配，**尚无生产 submit 调用方**（接线归 RT-02） | RT-02 会话隔离、RT-03 权限、GW/AGT 外部入口 |
+| `PrincipalIdentityV1` / `ConversationV1` / `ThreadRefV1` / `RuntimeTurnRefV1` / `AgentSessionRefV1` / `DeviceSessionV1` / `buildCapabilityMatrix()` | `domain/identity.ts` | 新类型，全部带 `version: 1`。runtimeTurn 显式声明为既有 `CompanionRuntime` turnId（uuid）的引用关系，不新增第二套 turn id | RT-02/RT-03、AGT-01、GW-04 |
+| `HostLifecycle` / `createHostLifecycle()` / `HostLivenessState` | `services/runtime/hostLifecycle.ts` | 新端口（可注入心跳/租约/时钟/定时器），无生产装配调用方（宿主接线归 GW/INT-01 真实轨）；三态 online/offline/recovering 只描述本进程，**不宣称云端接管** | RT-02、GW-05、FE 工作台状态展示（后续） |
+| 单 Runtime facade 门禁 | `app/runtimeFacade.test.ts` | 新增架构测试（不改变行为）：`RuntimeToken`/`companionRuntime` 的生产 import 白名单——app/composition、runtimePlugin、presentationPlugin、runtime/tokens、providerAdapter、provider.conformance | 未来 ACP/远程入口的贡献者（进白名单需审阅） |
+
 ## 详细接口入口
 
 LLM 各自的 `docs/llm/specs/LLM-01…05` 文件内写明实现级接口；[STT](../stt/ARCHITECTURE.md)、[TTS](../tts/ARCHITECTURE.md)、[前端](../frontend/ARCHITECTURE.md) 按共享架构文件引用对应阶段。代码块是拟定逻辑契约，现有类型通过兼容 adapter 映射；不能以名称尚未存在推断已实现，也不要机械新增重复接口。
