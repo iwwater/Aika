@@ -170,6 +170,8 @@ describe("useCompanionSession voice persistence boundary", () => {
       runtime: { runtime, settings },
       // 主动消息 tick 由注入的计时器驱动，测试不需要 stub window。
       interval: { set: (fn: () => void) => { mocks.tick = fn; return 1; }, clear: () => { mocks.tick = null; } },
+      // 本文件关心「每轮之后写回已落库」的重试语义；生产默认 8 轮阈值由维护队列自己的用例包覆盖。
+      maintenanceTurnThreshold: 1,
     });
   });
 

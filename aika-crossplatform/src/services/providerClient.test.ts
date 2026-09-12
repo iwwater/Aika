@@ -488,3 +488,74 @@ describe("listModels", () => {
     await expect(listModels(baseConfig)).resolves.toEqual([]);
   });
 });
+
+describe("物理请求计量（LLM-04 RequestMetric）", () => {
+  function collect() {
+    const metrics: Array<{ turnId: string; purpose: string; attempt: number; status: string }> = [];
+    return {
+      metrics,
+      onRequestMetric: (metric: { turnId: string; purpose: string; attempt: number; status: string }) => {
+        metrics.push(metric);
+      },
+    };
+  }
+
+  it("sendChat 成功：一次物理尝试，started→completed，purpose/turnId 透传", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ choices: [{ message: { content: replyJson } }] })));
+    const sink = collect();
+
+    await sendChat(baseConfig, "system", [{ role: "user", content: "你好" }], [], {
+      requestPurpose: "maintenance",
+      requestTurnId: "turn-9",
+      onRequestMetric: sink.onRequestMetric,
+    });
+
+    expect(sink.metrics).toEqual([
+      { turnId: "turn-9", purpose: "maintenance", attempt: 1, status: "started" },
+      { turnId: "turn-9", purpose: "maintenance", attempt: 1, status: "completed" },
+    ]);
+  });
+
+  it("受控 fallback 的每次尝试独立计数：流式两次失败 + 非流式成功 = attempt 1/2/3", async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ error: { message: "stream not supported" } }, 400))
+      .mockResolvedValueOnce(jsonResponse({ error: { message: "stream not supported" } }, 400))
+      .mockResolvedValueOnce(jsonResponse({ choices: [{ message: { content: replyJson } }] }));
+    vi.stubGlobal("fetch", request);
+    const sink = collect();
+
+    await streamChat(baseConfig, "system", [{ role: "user", content: "hi" }], () => undefined, [], {
+      requestPurpose: "foreground",
+      requestTurnId: "turn-1",
+      onRequestMetric: sink.onRequestMetric,
+    });
+
+    expect(sink.metrics.map((metric) => `${metric.attempt}:${metric.status}`)).toEqual([
+      "1:started", "1:failed", "2:started", "2:failed", "3:started", "3:completed",
+    ]);
+    expect(sink.metrics.every((metric) => metric.purpose === "foreground")).toBe(true);
+  });
+
+  it("取消的轮次计为 cancelled，不冒充 completed", async () => {
+    const controller = new AbortController();
+    const abortError = new Error("aborted");
+    abortError.name = "AbortError";
+    const request = vi.fn().mockImplementation(async () => {
+      controller.abort();
+      throw abortError;
+    });
+    vi.stubGlobal("fetch", request);
+    const sink = collect();
+
+    await expect(sendChat(baseConfig, "system", [{ role: "user", content: "你好" }], [], {
+      signal: controller.signal,
+      requestPurpose: "foreground",
+      requestTurnId: "turn-x",
+      onRequestMetric: sink.onRequestMetric,
+    })).rejects.toThrow();
+    expect(sink.metrics).toEqual([
+      { turnId: "turn-x", purpose: "foreground", attempt: 1, status: "started" },
+      { turnId: "turn-x", purpose: "foreground", attempt: 1, status: "cancelled" },
+    ]);
+  });
+});

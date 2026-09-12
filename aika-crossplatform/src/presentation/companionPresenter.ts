@@ -28,7 +28,8 @@ import { createModelMemoryExtractor, formatTranscript, type MemoryExtractor } fr
 import { createMemoryRepository, type MemoryRepository } from "../services/memory/memoryRepository";
 import type { MemoryAccess } from "../services/memory/tokens";
 import { NO_TRACE, type TraceRecorder } from "../services/trace/traceRecorder";
-import { createMemoryWriteback, type MemoryWriteback } from "../services/memory/writeback";
+import { createMemoryMaintenance, type MemoryMaintenance } from "../services/memory/writeback";
+import { createStorageMaintenanceJournal } from "../services/memory/maintenanceJournal";
 import type { Notifier } from "../services/notification/notifier";
 import type { RuntimeServices } from "../services/runtime/tokens";
 import { loadStickers } from "../services/stickers/library";
@@ -157,6 +158,8 @@ export interface CompanionPresenterDeps {
   interval?: IntervalPort;
   providerFallback?: ProviderConfig;
   randomUUID?: () => string;
+  /** 后台维护的触发阈值（每 N 个成功轮一批）。生产默认 8；测试可注入更小值。 */
+  maintenanceTurnThreshold?: number;
 }
 
 function startOfToday(now: number): number {
@@ -227,7 +230,7 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
   let unsubscribeMemoryChanged: (() => void) | null = null;
   /** 记忆能力包；管理页改完记忆时靠它通知，这里也靠它通知管理页。 */
   let memoryAccess: MemoryAccess | null = null;
-  let writeback: MemoryWriteback | null = null;
+  let maintenance: MemoryMaintenance | null = null;
   let persist: (message: ChatMessage) => Promise<void> = async () => undefined;
   const trace = deps.trace ?? NO_TRACE;
   const persistedMessageIds = new Set<string>();
@@ -378,7 +381,15 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
         },
       });
       memoryRepository = repository;
-      writeback = createMemoryWriteback({ repository });
+      // 唯一后台 worker：候选批次经它落库；journal 用存储 KV 单记录原子替换。
+      maintenance = createMemoryMaintenance({
+        repository,
+        journal: createStorageMaintenanceJournal(storage),
+        ...(deps.maintenanceTurnThreshold !== undefined
+          ? { turnThreshold: deps.maintenanceTurnThreshold }
+          : {}),
+      });
+      void maintenance.restore();
       if (savedMemories.length) await repository.migrateLegacy(savedMemories);
       memories = visibleMemories(await repository.list());
     } else {
@@ -462,7 +473,9 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
     try {
       const recent = allMessages.slice(-4);
       const turns = toCompanionTurns(recent);
-      const extracted = await extractor.extract(turns, memories);
+      const extracted = await extractor.extract(turns, memories, {
+        turnId: runtimeTurnId ?? undefined,
+      });
       if (runtimeTurnId) {
         trace.record(runtimeTurnId, { kind: "memory_extract", candidates: extracted.length, failed: false });
       }
@@ -484,9 +497,9 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
             });
             return candidate ? [candidate] : [];
           });
-          if (runtimeServices && writeback) {
-            writeback.enqueue({ candidates: extracted, sourceMessageIds, now });
-            await writeback.flush();
+          if (runtimeServices && maintenance) {
+            // 批次进队列即返回：落库由唯一 worker 在阈值/显式触发时执行，不挡正文。
+            maintenance.enqueue({ turnId: runtimeTurnId ?? "", sourceMessageIds, candidates: extracted });
           } else {
             await repository.upsert(candidates);
           }
@@ -508,6 +521,9 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
       }
     }
 
+    // 成功轮在这里推进后台维护阈值：候选已入队，触发时批次已经在队列里（LLM-04-A）。
+    if (runtimeTurnId) maintenance?.noteTurn(runtimeTurnId);
+
     try {
       if (!maintenanceEnabled) return;
       const olderThanWindow = allMessages.slice(0, Math.max(0, allMessages.length - RAW_TURN_WINDOW));
@@ -515,7 +531,9 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
       if (!shouldSummarize(uncovered.length)) return;
 
       const transcript = formatTranscript(toCompanionTurns(uncovered.slice(-SUMMARY_INPUT_LIMIT)));
-      const content = await extractor.summarize(summary, transcript);
+      const content = await extractor.summarize(summary, transcript, {
+        turnId: runtimeTurnId ?? undefined,
+      });
       if (!content || !maintenanceEnabled) return;
 
       const coversUntil = uncovered[uncovered.length - 1].createdAt;
@@ -926,6 +944,8 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
   async function setMemoryExtractionEnabled(enabled: boolean): Promise<void> {
     maintenanceEnabled = enabled;
     memoryExtractionEnabled = enabled;
+    // 关闭即作废旧批次并停止排程；重新开启不自动复活（epoch 语义在队列内）。
+    maintenance?.setEnabled(enabled);
     commit();
     await storage?.setSetting(SETTING_KEYS.memoryExtraction, String(enabled));
   }
@@ -1075,6 +1095,8 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
     dispose() {
       if (disposed) return;
       disposed = true;
+      maintenance?.dispose();
+      maintenance = null;
       if (proactiveTimer !== null) {
         interval.clear(proactiveTimer);
         proactiveTimer = null;

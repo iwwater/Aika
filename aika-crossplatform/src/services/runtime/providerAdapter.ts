@@ -12,7 +12,7 @@ import { buildConversationInput, buildInstructions } from "../../domain/prompt";
 import type { ProviderConfig } from "../../domain/providers";
 import { DEFAULT_CHARACTER_SOUL, type CharacterSoul } from "../../domain/soul";
 import type { Sticker } from "../../domain/stickers";
-import { describeChatRequest, isAbortError, streamChat, testProvider, listModels } from "../providerClient";
+import { describeChatRequest, isAbortError, streamChat, testProvider, listModels, type RequestMetric } from "../providerClient";
 import { digestText } from "../../domain/trace";
 import { NO_TRACE, type TraceRecorder } from "../trace/traceRecorder";
 import type { ProviderStreamEvent, RuntimeGenerateInput, RuntimeProvider } from "./companionRuntime";
@@ -24,6 +24,8 @@ export interface StreamChatProviderOptions {
   soul?: CharacterSoul;
   /** Trace 记录器。不传等于不记（NO_TRACE）。 */
   trace?: TraceRecorder;
+  /** 物理请求计量 sink（LLM-04）：前台生成的每次网络尝试从这里出去。 */
+  onRequestMetric?: (metric: RequestMetric) => void;
 }
 
 function toEnvelope(reply: CompanionReply): ReplyEnvelopeV1 {
@@ -118,6 +120,10 @@ async function* generateEvents(
             queue.push({ type: "usage", usage });
             wake();
           },
+          // 前台生成的物理请求计量：attempt 数含受控 fallback，不并成一次（LLM-04-A）。
+          requestPurpose: "foreground",
+          requestTurnId: input.turnId,
+          onRequestMetric: options.onRequestMetric,
         },
       );
       if (!controller.signal.aborted) queue.push({ type: "reply", reply: toEnvelope(reply) });

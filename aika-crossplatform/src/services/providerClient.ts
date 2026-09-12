@@ -36,6 +36,23 @@ export interface ProviderRequestOptions {
    * 已经烧掉的 token 同样要能记账。
    */
   onUsage?: (usage: ProviderUsage) => void;
+  /**
+   * 物理请求计量（LLM-04 RequestMetric）。**每次真实网络尝试各计一条**：
+   * 流式内部退回非流式、受控 fallback 都是独立的 attempt，不能用逻辑回合数
+   * 把重试并成一次。purpose/turnId 由调用方声明——这里不知道自己是前台
+   * 生成还是后台维护。
+   */
+  requestPurpose?: "foreground" | "maintenance";
+  requestTurnId?: string;
+  onRequestMetric?: (metric: RequestMetric) => void;
+}
+
+/** 一次物理 Provider 请求尝试的计量记录（LLM-04-A/C）。 */
+export interface RequestMetric {
+  turnId: string;
+  purpose: "foreground" | "maintenance";
+  attempt: number;
+  status: "started" | "completed" | "failed" | "cancelled";
 }
 
 /** 带状态码的 HTTP 错误：流式重试要靠它分辨「请求体不对」和「网络/服务端炸了」。 */
@@ -277,15 +294,37 @@ async function requestText(
   stickerIds: readonly string[] = [],
   options: ProviderRequestOptions = {},
 ): Promise<string> {
-  const response = await post(prepare(config, systemPrompt, history, format, false, stickerIds), options);
-  const data = await response.json();
-  reportUsage(options, extractUsage(data));
-  return extractText(config, data);
+  emitMetric(options, 1, "started");
+  try {
+    const response = await post(prepare(config, systemPrompt, history, format, false, stickerIds), options);
+    const data = await response.json();
+    reportUsage(options, extractUsage(data));
+    emitMetric(options, 1, "completed");
+    return extractText(config, data);
+  } catch (error) {
+    // post() 会包装连接错误；调用方已取消的轮次按 cancelled 记，不冒充 failed。
+    emitMetric(options, 1, options.signal?.aborted || isAbortError(error) ? "cancelled" : "failed");
+    throw error;
+  }
 }
 
 /** 有东西才叫回调：全 null 的用量等于没拿到，不值得让下游记一笔「都是 null」。 */
 function reportUsage(options: ProviderRequestOptions, usage: ProviderUsage): void {
   if (hasUsage(usage)) options.onUsage?.(usage);
+}
+
+/** 计量回调也没拿到就不发：没挂 sink 的调用方不为它付构造记录的代价。 */
+function emitMetric(
+  options: ProviderRequestOptions,
+  attempt: number,
+  status: RequestMetric["status"],
+): void {
+  options.onRequestMetric?.({
+    turnId: options.requestTurnId ?? "",
+    purpose: options.requestPurpose ?? "foreground",
+    attempt,
+    status,
+  });
 }
 
 /** 从一个 SSE 事件的 data 里取出这一小段新增文本。取不到就返回空串。 */
@@ -398,6 +437,7 @@ export async function streamChat(
 ): Promise<CompanionReply> {
   let raw = "";
   let lastPartial: PartialReply | null = null;
+  let metricAttempt = 0;
 
   function emitPartial(partial: PartialReply) {
     if (!partial.japaneseText && !partial.chineseTranslation
@@ -424,19 +464,29 @@ export async function streamChat(
    * 不认识这个字段的中转站的第二次机会。
    */
   async function runStream(includeUsage: boolean): Promise<void> {
-    const response = await post(
-      prepare(config, systemPrompt, history, "companion-reply", true, stickerIds, includeUsage),
-      options,
-    );
-    await readEventStream(response, (payload) => {
-      // usage 可能挂在一个没有正文的 chunk 上（OpenAI 末尾那个 choices: []），
-      // 所以先收用量再判断有没有 delta，顺序反了就永远收不到。
-      usage = mergeUsage(usage, extractUsage(payload));
-      const delta = deltaOf(config, payload);
-      if (!delta) return;
-      raw += delta;
-      emitPartial(parsePartialReply(raw));
-    }, options.signal);
+    // 计数按物理尝试递增：4xx 去掉 stream_options 的第二次机会也是一次真实请求。
+    metricAttempt += 1;
+    const attempt = metricAttempt;
+    emitMetric(options, attempt, "started");
+    try {
+      const response = await post(
+        prepare(config, systemPrompt, history, "companion-reply", true, stickerIds, includeUsage),
+        options,
+      );
+      await readEventStream(response, (payload) => {
+        // usage 可能挂在一个没有正文的 chunk 上（OpenAI 末尾那个 choices: []），
+        // 所以先收用量再判断有没有 delta，顺序反了就永远收不到。
+        usage = mergeUsage(usage, extractUsage(payload));
+        const delta = deltaOf(config, payload);
+        if (!delta) return;
+        raw += delta;
+        emitPartial(parsePartialReply(raw));
+      }, options.signal);
+      emitMetric(options, attempt, "completed");
+    } catch (error) {
+      emitMetric(options, attempt, options.signal?.aborted || isAbortError(error) ? "cancelled" : "failed");
+      throw error;
+    }
   }
 
   try {
@@ -468,15 +518,26 @@ export async function streamChat(
    * 自己去猜哪一份算数。
    */
   async function fallbackNonStream(): Promise<CompanionReply> {
+    // 这次退回也是一次独立的物理请求：自己计数，并屏蔽内层 sendChat 的重复计量。
+    metricAttempt += 1;
+    const attempt = metricAttempt;
+    emitMetric(options, attempt, "started");
     let fallbackUsage = emptyUsage();
-    const reply = await sendChat(config, systemPrompt, history, stickerIds, {
-      ...options,
-      onUsage: (value) => {
-        fallbackUsage = value;
-      },
-    });
-    reportUsage(options, mergeUsage(usage, fallbackUsage));
-    return reply;
+    try {
+      const reply = await sendChat(config, systemPrompt, history, stickerIds, {
+        ...options,
+        onRequestMetric: undefined,
+        onUsage: (value) => {
+          fallbackUsage = value;
+        },
+      });
+      emitMetric(options, attempt, "completed");
+      reportUsage(options, mergeUsage(usage, fallbackUsage));
+      return reply;
+    } catch (error) {
+      emitMetric(options, attempt, options.signal?.aborted || isAbortError(error) ? "cancelled" : "failed");
+      throw error;
+    }
   }
 }
 
@@ -502,14 +563,24 @@ export function describeChatRequest(
   return { url: prepared.url, bodyChars: JSON.stringify(prepared.body).length };
 }
 
-/** 记忆抽取用：需要 JSON，但结构由提示词约定。 */
-export function requestJson(config: ProviderConfig, systemPrompt: string, history: ChatTurn[]) {
-  return requestText(config, systemPrompt, history, "json");
+/** 记忆抽取用：需要 JSON，但结构由提示词约定。options 允许维护调用带计量。 */
+export function requestJson(
+  config: ProviderConfig,
+  systemPrompt: string,
+  history: ChatTurn[],
+  options: ProviderRequestOptions = {},
+) {
+  return requestText(config, systemPrompt, history, "json", [], options);
 }
 
-/** 滚动摘要用：纯文本。 */
-export function requestPlainText(config: ProviderConfig, systemPrompt: string, history: ChatTurn[]) {
-  return requestText(config, systemPrompt, history, "text");
+/** 滚动摘要用：纯文本。options 允许维护调用带计量。 */
+export function requestPlainText(
+  config: ProviderConfig,
+  systemPrompt: string,
+  history: ChatTurn[],
+  options: ProviderRequestOptions = {},
+) {
+  return requestText(config, systemPrompt, history, "text", [], options);
 }
 
 /** 设置页拉取模型列表用的 GET 请求端点与请求头。 */

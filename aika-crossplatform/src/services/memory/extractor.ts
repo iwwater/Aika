@@ -5,7 +5,7 @@ import {
 } from "../../domain/memory";
 import { buildSummaryInput, SUMMARY_INSTRUCTIONS } from "../../domain/summary";
 import type { ProviderConfig } from "../../domain/providers";
-import { requestJson, requestPlainText } from "../providerClient";
+import { requestJson, requestPlainText, type RequestMetric } from "../providerClient";
 
 /**
  * 记忆抽取与滚动摘要。
@@ -13,9 +13,23 @@ import { requestJson, requestPlainText } from "../providerClient";
  * 用哪个模型做抽取是 DEVELOPMENT_PLAN 里未决的技术选型（主模型 vs 本地小模型），
  * 所以这里只定接口：换成本地小模型时实现 MemoryExtractor 即可，主程序不用改。
  */
+/** 维护请求的计量上下文：purpose 固定 maintenance，物理尝试次数由 providerClient 记。 */
+export interface MaintenanceRequestContext {
+  turnId?: string;
+  onRequestMetric?: (metric: RequestMetric) => void;
+}
+
 export interface MemoryExtractor {
-  extract(turns: readonly ConversationTurn[], existing: readonly MemoryRecord[]): Promise<MemoryRecord[]>;
-  summarize(previousSummary: string | null, transcript: string): Promise<string>;
+  extract(
+    turns: readonly ConversationTurn[],
+    existing: readonly MemoryRecord[],
+    context?: MaintenanceRequestContext,
+  ): Promise<MemoryRecord[]>;
+  summarize(
+    previousSummary: string | null,
+    transcript: string,
+    context?: MaintenanceRequestContext,
+  ): Promise<string>;
 }
 
 const EXTRACTION_INSTRUCTIONS = [
@@ -34,14 +48,18 @@ function formatTurns(turns: readonly ConversationTurn[]): string {
 
 export function createModelMemoryExtractor(getProvider: () => ProviderConfig): MemoryExtractor {
   return {
-    async extract(turns, existing) {
+    async extract(turns, existing, context) {
       if (turns.length === 0) return [];
       const transcript = formatTurns(turns);
       if (!transcript.trim()) return [];
 
       const raw = await requestJson(getProvider(), EXTRACTION_INSTRUCTIONS, [
         { role: "user", content: transcript },
-      ]);
+      ], {
+        requestPurpose: "maintenance",
+        requestTurnId: context?.turnId,
+        onRequestMetric: context?.onRequestMetric,
+      });
 
       const accepted: MemoryRecord[] = [];
       for (const candidate of parseMemoryCandidates(raw)) {
@@ -52,11 +70,15 @@ export function createModelMemoryExtractor(getProvider: () => ProviderConfig): M
       return accepted;
     },
 
-    async summarize(previousSummary, transcript) {
+    async summarize(previousSummary, transcript, context) {
       if (!transcript.trim()) return previousSummary ?? "";
       const text = await requestPlainText(getProvider(), SUMMARY_INSTRUCTIONS, [
         { role: "user", content: buildSummaryInput(previousSummary, transcript) },
-      ]);
+      ], {
+        requestPurpose: "maintenance",
+        requestTurnId: context?.turnId,
+        onRequestMetric: context?.onRequestMetric,
+      });
       return text.trim();
     },
   };
