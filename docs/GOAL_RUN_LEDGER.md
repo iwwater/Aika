@@ -62,7 +62,7 @@
 | 3 | LLM-04 后台写回 | AUTO_PASS（fixture） | 见会话日志 | MemoryMaintenance 重写+计量埋点；274 回归全绿 tsc 0；真实服务 NOT RUN |
 | 3 | LLM-05 RAG | PARTIAL | 见会话日志 | A/B/C/E 全过（15/15 命中）；AC-D 真实模型 NOT RUN 无凭证；装配点改 contextSourcesPlugin |
 | 3 | TTS-04 设置与错误传播 | AUTO_PASS（待人工） | 见会话日志 | 设置端口/切引擎停队列/降级可见全过；SpeechEngines 接口破坏性扩展（消费者已同步） |
-| 3 | LLM-11 上下文快照 | NOT RUN | | |
+| 3 | LLM-11 上下文快照 | NOT RUN | | **下一个执行节点**；SPEC 已读：新增可选 context_snapshot 事件，字段冻结见 SPEC「全文审阅」节；改 domain/trace.ts、contextAssembler 诊断、companionRuntime、唯一脱敏点；AC-D 含旧 kind 穷举消费者更新（TracePage/traceView/pluginGraph） |
 | 3 | FE-23 时间线 | NOT RUN | | 依赖 LLM-11 |
 | 3 | FE-24 实时浮层 | NOT RUN | | 依赖 FE-23 |
 | 3 | FE-25 上下文视图 | NOT RUN | | 依赖 FE-24 |
