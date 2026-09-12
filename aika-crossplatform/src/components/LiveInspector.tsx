@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronsDownUp, ChevronsUpDown, X } from "lucide-react";
 import { statusLabel } from "../domain/traceView";
+import { buildContextLayout } from "../domain/contextLayout";
 import { useService } from "../app/kernelContext";
 import { usePresenterSnapshot } from "../hooks/usePresenterSnapshot";
 import { InspectorPresenterToken } from "../presentation/tokens";
@@ -55,6 +56,7 @@ export function LiveInspector() {
   const presenter = useService(InspectorPresenterToken);
   const view = usePresenterSnapshot(presenter);
   const [selectedTurnId, setSelectedTurnId] = useState<string | null>(null);
+  const [mode, setMode] = useState<"events" | "context">("events");
   const [detail, setDetail] = useState<TraceEventV1 | null>(null);
   const [exportNote, setExportNote] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
@@ -141,6 +143,11 @@ export function LiveInspector() {
       >
         <span>LIVE INSPECTOR · {view.historyStatus === "loading" ? "载入中…" : view.historyStatus === "unavailable" ? "历史不可用（实时继续）" : `${view.events.length} 条`}</span>
         <span className="live-inspector-actions">
+          <button className="icon-button" onClick={() => setMode(mode === "events" ? "context" : "events")} title="切换事件流/上下文布局">
+            {mode === "events" ? "上下文" : "事件"}
+          </button>
+        </span>
+        <span className="live-inspector-actions">
           <button className="icon-button" onClick={() => setCollapsed(true)} title="折叠"><ChevronsDownUp size={14} /></button>
           <button className="icon-button" onClick={() => presenter.close()} title="关闭（Esc）"><X size={14} /></button>
         </span>
@@ -162,6 +169,31 @@ export function LiveInspector() {
         ))}
         {!view.events.length && view.historyStatus === "ready" && <p className="live-inspector-empty">还没有事件。发一轮对话试试。</p>}
       </div>
+      {mode === "context" && (() => {
+        const candidates = view.events.filter((entry) => entry.kind === "context_snapshot"
+          && (!selectedTurnId || entry.turnId === selectedTurnId));
+        const snapshot = candidates.length ? candidates[candidates.length - 1] : null;
+        const layout = buildContextLayout(snapshot && snapshot.kind === "context_snapshot" ? snapshot : null);
+        return (
+          <div className="live-inspector-timeline">
+            {!layout.supported && <p className="live-inspector-note">{layout.notes[0]}</p>}
+            {layout.blocks.map((block) => (
+              <div key={`${block.name}:${block.ordinal}`} className="live-inspector-row">
+                <span className="live-inspector-kind">{block.name}</span>
+                <span className="live-inspector-summary">
+                  {block.status}
+                  {block.estimatedTokens === null ? "" : ` · ≈${block.estimatedTokens}token`}
+                  {block.status === "trimmed" && block.reason ? ` · ${block.reason}` : ""}
+                  {block.status === "notRetrieved" && block.reason ? ` · ${block.reason}` : ""}
+                  {block.content === null && block.status === "kept" ? " · 正文未记录" : ""}
+                  {block.precision && block.precision !== "confirmed" ? ` · ${block.precision}` : ""}
+                </span>
+              </div>
+            ))}
+            {layout.notes.map((note) => <p key={note} className="live-inspector-note">{note}</p>)}
+          </div>
+        );
+      })()}
       <footer className="live-inspector-footer">
         <select
           value={selectedTurnId ?? ""}
