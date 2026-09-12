@@ -7,7 +7,7 @@
 
 ---
 
-> **执行进度（2026-09-12）**：F1～F7 已交付（M0～M3 完成，M4 的记忆管理页也已交付），F8/F9 未开始——F9 的 provider 前置已由 [LLM-10](llm/specs/LLM-10_PROVIDER_USAGE.md) 补上（`turn_end.tokens.reportedTotal` 现在是平台真实上报值），F8 仍卡在 §7 问题 3。逐项状态、接手建议与全局未验证项见 [调试工作台 · 进度与未完成项](WORKBENCH_PROGRESS.md)。
+> **执行进度（2026-09-12）**：F1～F8 已交付（M0～M3 完成，M4 只剩 F9）。F9 的 provider 前置已由 [LLM-10](llm/specs/LLM-10_PROVIDER_USAGE.md) 补上（`turn_end.tokens.reportedTotal` 现在是平台真实上报值），但那些数字来自 fixture，真实平台 NOT RUN。逐项状态、接手建议与全局未验证项见 [调试工作台 · 进度与未完成项](WORKBENCH_PROGRESS.md)。
 
 ## 0. 触发问题（本期必须先修）
 
@@ -127,6 +127,8 @@ waku 是本地优先个人 Agent（Python，四支柱：Harness / Loop / Memory 
 
 - 对齐 waku Data Tab：分表浏览、schema 查看、只读 SQL 控制台（Tauri plugin-sql 已具备能力）。
 
+> **已交付**（[FE-12](frontend/specs/FE-12.md)）：表/视图清单带行数、`pragma_table_info` 的列信息与建表 SQL 原文、前 N 行预览，以及只读控制台。门禁先剥字符串与注释再判，所以 `SELECT 1; DROP TABLE` 拦得住、`LIKE '%delete%'` 不误杀；Presenter 测试跑在 node:sqlite 真引擎上，每条被拦的写语句都真的有机会执行过，再断言库里一行没少。
+
 ### F9 Ops 成本页（frontend，读 F3 派生账本）
 
 - 按日/按模型/按用途（对话、记忆抽取、摘要、主动消息）的 token 与估算成本；最慢轮次、错误率。
@@ -181,5 +183,5 @@ waku 是本地优先个人 Agent（Python，四支柱：Harness / Loop / Memory 
 
 1. ~~Rewind 对滚动摘要的处理~~ **已按建议执行（FE-08）**：摘要不回滚，只在它覆盖到被删范围时在末尾追加一行 gap 标注。这是取舍不是结论——要求「摘要可重建」仍可推翻它，改动落在 LLM 侧（重新压缩剩余消息），FE 侧把追加换成一次重建调用即可。
 2. ~~生产构建 Trace 默认开还是关？~~ **已按建议执行（LLM-07）**：开发构建默认开、生产默认关，读不到构建标记时按关处理（默认不留痕比默认留痕安全）；持久化后以库里的值为准，开关在工作台里（FE-09）。
-3. F8 SQLite 控制台是否只读？（建议只读，写操作只走应用内接口）
+3. ~~F8 SQLite 控制台是否只读？~~ **已按建议执行（[FE-12](frontend/specs/FE-12.md)）：只读**。理由不是「安全起见」：手写的 UPDATE 不触发任何联动（记忆的抑制标记、摘要作废、supersede 关系），库里会留下一份代码认不出来的状态；`DELETE FROM memories` 只让那一行消失、抑制标记没落下，下一轮抽取又把它记回来，用户会认为「删不掉」。代价说清楚：真要改数据得自己开 DB Browser，或走记忆管理页（FE-11）。另注：门禁是**语句文本判定，不是数据库级只读连接**——plugin-sql 只给一个执行器。
 4. ~~撤回是否需要同步清除已入库的记忆候选？~~ **已回答（FE-06）**：采纳但收窄——来源有交集且仍为 `candidate` 的走 `forget()`，`confirmed` 一律保留（用户明确留下的不能因一次撤回悄悄消失）。收窄理由：抽取输入是最近 4 条消息，一条记忆的来源常跨两轮，「来源有交集」是宽判据。V1 记忆路径无来源字段，不假装联动。
