@@ -309,8 +309,13 @@ export function createVoicePresenter(deps: VoicePresenterDeps = {}): VoicePresen
     if (!input || !active || busy) return;
     // 麦克风一直开着的引擎不需要反复启动，重复 start 反而会把缓冲区清掉。
     if (input.continuous && started) return;
-    setError("");
+    if (!interim) setError("");
     const epoch = ++inputEpoch;
+
+    // 单段引擎的新会话不会补回旧 epoch 丢弃的序号。新结果从自身序号开始，
+    // 否则 stop 的迟到 final 会让后续输入永远等一个不存在的片段。
+    // 连续 Whisper 仍必须保留跨片段的乱序等待。
+    if (!input.continuous) asrReorderer.reset(null);
 
     try {
       started = true;
@@ -330,6 +335,7 @@ export function createVoicePresenter(deps: VoicePresenterDeps = {}): VoicePresen
         },
         onInterim: (text, atMonotonicMs) => {
           if (epoch !== inputEpoch) return;
+          setError("");
           markVoice(atMonotonicMs ?? monotonicNow());
           setInterimText(text);
         },
@@ -360,7 +366,12 @@ export function createVoicePresenter(deps: VoicePresenterDeps = {}): VoicePresen
               accepted: acceptAudioFrom === null || result.audioEndAt >= acceptAudioFrom,
             },
           });
-          setInterimText("");
+          if (result.text.trim()) {
+            setInterimText("");
+            setError("");
+          } else if (interim) {
+            setError("这段语音未能确认，暂时保留识别文字。请重说这一段。");
+          }
           for (const ordered of asrReorderer.push(result)) {
             const minAudioTime = acceptAudioFrom;
             if (minAudioTime !== null && ordered.audioEndAt < minAudioTime) continue;
@@ -413,6 +424,7 @@ export function createVoicePresenter(deps: VoicePresenterDeps = {}): VoicePresen
   /** 一轮结束与否由 domain/turnEnd 判断，这里只按时问，不自己定规则。 */
   function tick(): void {
     if (!active || busy) return;
+    if (interim) return;
     // 人还在出声就不要提交，哪怕文字部分暂时没有新内容进来。
     if (speaking) return;
     // VAD 已切段但 Whisper 还没返回时，不能把前一段误认为整轮已结束。
@@ -424,7 +436,7 @@ export function createVoicePresenter(deps: VoicePresenterDeps = {}): VoicePresen
 
   function submitTurn(): void {
     const text = pendingText.trim();
-    if (!text || busy || speaking || pendingAsr.size > 0) return;
+    if (!text || busy || speaking || interim || pendingAsr.size > 0) return;
 
     const nextTurn = draftTurn ?? turn + 1;
     turn = Math.max(turn, nextTurn);

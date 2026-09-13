@@ -16,6 +16,7 @@ interface RecognitionLike {
   continuous: boolean;
   interimResults: boolean;
   onstart: (() => void) | null;
+  onspeechstart: (() => void) | null;
   onresult: ((event: RecognitionEventLike) => void) | null;
   onerror: ((event: { error: string; message?: string }) => void) | null;
   onend: (() => void) | null;
@@ -86,6 +87,11 @@ export function createWebSpeechInputEngine(): SpeechInputEngine {
       currentSegment = null;
       recognition.lang = language;
       recognition.onstart = () => events.onStart?.();
+      recognition.onspeechstart = () => {
+        // 文字可能晚于开口返回；先阻止上层把上一段当成整轮提交。
+        const segment = currentSegment ?? beginSegment(monotonicNow());
+        events.onSpeechStart?.(segment);
+      };
       recognition.onresult = (event) => {
         let finalText = "";
         let interimText = "";
@@ -94,16 +100,17 @@ export function createWebSpeechInputEngine(): SpeechInputEngine {
           if (result.isFinal) finalText += result[0].transcript;
           else interimText += result[0].transcript;
         }
+        const hasFinal = Array.from({ length: event.results.length - event.resultIndex })
+          .some((_, index) => event.results[event.resultIndex + index]?.isFinal);
+        // 先结算旧段，再报告新段；否则旧 final 会清掉刚显示的 interim。
+        if (hasFinal) finishSegment(events, finalText.trim());
         if (interimText.trim()) {
-          // 中间结果就是这个引擎的「有人在说」信号。
+          // 未提供 speechstart 的宿主仍可用中间结果作为开口信号。
           const at = monotonicNow();
           const segment = currentSegment ?? beginSegment(at);
           events.onSpeechStart?.(segment);
           events.onInterim?.(interimText.trim(), at);
         }
-        const hasFinal = Array.from({ length: event.results.length - event.resultIndex })
-          .some((_, index) => event.results[event.resultIndex + index]?.isFinal);
-        if (hasFinal) finishSegment(events, finalText.trim());
       };
       recognition.onerror = (event) => events.onError?.(event.error, event.message);
       recognition.onend = () => {

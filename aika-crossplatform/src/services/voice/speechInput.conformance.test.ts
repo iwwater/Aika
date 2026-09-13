@@ -56,10 +56,10 @@ function webSpeechHarness() {
         dispose: async () => { engine.dispose(); },
         probe: {
           async emitFinal(text: string) {
-            FakeRecognition.current?.emit([
-              { isFinal: false, transcript: text.slice(0, 1) },
-              { isFinal: true, transcript: text },
-            ]);
+            // 同一段从 interim 更新为 final 是两次事件；结果列表不能把
+            // interim 放在 final 前面（MDN SpeechRecognitionEvent.results）。
+            FakeRecognition.current?.emit([{ isFinal: false, transcript: text.slice(0, 1) }]);
+            FakeRecognition.current?.emit([{ isFinal: true, transcript: text }]);
           },
           emitInterim(text: string) {
             FakeRecognition.current?.emit([{ isFinal: false, transcript: text }]);

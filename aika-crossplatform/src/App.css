@@ -176,7 +176,8 @@ mark.speaking { color: var(--cyan); background: rgba(55,230,255,.14); border-rad
 .voice-main-button { width: 64px; height: 64px; display: grid; place-items: center; border-radius: 50%; color: #04070d; background: linear-gradient(145deg, var(--cyan), var(--violet)); box-shadow: 0 0 34px rgba(55,230,255,.4); transition: .2s; }
 .voice-main-button:hover:not(:disabled) { transform: scale(1.06); }
 .voice-main-button.speaking { color: #eaf9ff; background: linear-gradient(145deg,#243450,#141d31); box-shadow: 0 0 0 1px rgba(55,230,255,.4), 0 0 30px rgba(55,230,255,.2); }
-.voice-main-button:disabled { opacity: .6; box-shadow: none; cursor: wait; }
+.voice-main-button:disabled { opacity: .6; box-shadow: none; cursor: default; }
+.voice-main-button.thinking:disabled { cursor: wait; }
 .voice-hint { margin: 12px 0 0; color: var(--muted); font-size: 10px; }
 .voice-privacy { max-width: 490px; margin: 25px 0 0; padding-top: 15px; border-top: 1px solid var(--line-soft); color: var(--dim); font-size: 9px; line-height: 1.55; }
 .voice-language { display: block; margin: 12px auto 0; padding: 7px 14px; border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,.03); color: var(--muted); font: inherit; font-size: 10px; line-height: 1.5; cursor: pointer; transition: border-color .15s, color .15s; }
