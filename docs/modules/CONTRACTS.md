@@ -219,6 +219,12 @@ INT-01 的兼容检查项：云端合成一旦在设置页可选，`createOutput
 | --- | --- | --- | --- |
 | `createPersistentScheduler`（time/interval/event 三触发、misfire skip、幂等 executionKey、到期 authorize 重查 fail-closed、unknown 不重放、重试 3 次退避、容量上限） | `services/runtime/persistentScheduler.ts` | 新服务；KV 持久化重启不重放已消费任务；无时区数据返回 unsupported | RT-06 跨渠道投递、AGT 调度、通知 |
 
+### v1 之后的追加（2026-09-13，RT-06 投递策略，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `createDeliveryPolicy`/`isQuietHour`/`registerOutboxItem`（群私隔离、冷却持久、静默 defer、完成事件去重） | `services/runtime/deliveryPolicy.ts` | 新纯策略模块：唯一 outbox 来自 GW-01；审批不按 urgency 绕过静默 | GW-01 outbox、RT-05 调度投递、AGT-05 完成通知 |
+
 ## 详细接口入口
 
 LLM 各自的 `docs/llm/specs/LLM-01…05` 文件内写明实现级接口；[STT](../stt/ARCHITECTURE.md)、[TTS](../tts/ARCHITECTURE.md)、[前端](../frontend/ARCHITECTURE.md) 按共享架构文件引用对应阶段。代码块是拟定逻辑契约，现有类型通过兼容 adapter 映射；不能以名称尚未存在推断已实现，也不要机械新增重复接口。

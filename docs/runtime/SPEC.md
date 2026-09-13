@@ -9,4 +9,4 @@
 | [RT-03](specs/RT-03.md) | Permission Runtime 与审批状态机 | RT-02 | AUTO_PASS（2026-09-13）：A~D 全过（重放/跨用户/跨会话/过期/参数变化拒、原子认领、重启不自动批准、fail-closed、Windows 路径边界）；真实执行入口 NOT RUN。见[验收报告](reports/RT-03_ACCEPTANCE.md) |
 | [RT-04](specs/RT-04.md) | 来源与记忆写回信任边界 | RT-02、RT-03、LLM-04 | AUTO_PASS（2026-09-13）：A~D 全过（信任分级/模型不自行提升/画像归属门/writeback 提交前重查/旧记录兼容）；真实渠道写回 NOT RUN。见[验收报告](reports/RT-04_ACCEPTANCE.md) |
 | [RT-05](specs/RT-05.md) | 持久 Scheduler | RT-03 | AUTO_PASS（2026-09-13）：A~D 全过（三触发建模/misfire skip/幂等键/权限重查/unknown 不重放/重试上限/坏时区 unsupported）；真实宿主长跑 NOT RUN。见[验收报告](reports/RT-05_ACCEPTANCE.md) |
-| [RT-06](specs/RT-06.md) | 跨渠道主动投递策略 | RT-05、GW-01、AGT-05 | READY（本地实现） |
+| [RT-06](specs/RT-06.md) | 跨渠道主动投递策略 | RT-05、GW-01、AGT-05 | AUTO_PASS（2026-09-13）：A~D 全过（群私隔离/未授权 drop/冷却持久/静默 defer/完成事件去重）；真实渠道发送 NOT RUN。见[验收报告](reports/RT-06_ACCEPTANCE.md) |
