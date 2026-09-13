@@ -90,8 +90,8 @@
 | 7 | INT-04 fixture 轨 | PARTIAL（待人工） | 见会话日志 | fixture 轨 AUTO_PASS：负例先行（未批准/错用户/取消/重启/deny-writes）+ 双成功链路矩阵（Telegram×Codex、Device×Claude）+ 前后 diff/外文件哨兵不变/同 runId；真实轨 NOT RUN-需授权 |
 | 7 | RT-05 | AUTO_PASS（待人工） | 见会话日志 | persistentScheduler（time/interval/event 三触发、misfire skip 不补跑、幂等触发键、到期权限重查 fail-closed、unknown 不重放、重试 3 次退避、容量上限、暂停/恢复/取消、坏时区 unsupported）；8 定向/1301 全量全绿 tsc 0；真实宿主长跑 NOT RUN |
 | 7 | RT-06 | AUTO_PASS（待人工） | 见会话日志 | deliveryPolicy（群私提醒 drop/未授权 drop/冷却 key 持久化/quietHours defer 不按 urgency 绕过/registerOutboxItem 完成事件去重）；5 定向/1306 全量全绿 tsc 0；真实渠道发送 NOT RUN |
-| 7 | GW-05 | NOT RUN | | |
-| 7 | GW-06 | NOT RUN | | |
+| 7 | GW-05 | AUTO_PASS（fixture 轨，待人工） | 见会话日志 | feishuAdapter（官方能力快照、验签/重放/tenant 隔离、最小交付仅绑定私聊文本、token 刷新失败可见不泄漏）；6 定向（GW 合并）/1312 全量全绿 tsc 0；真实账户 NOT RUN |
+| 7 | GW-06 | AUTO_PASS（fixture 轨，待人工） | 见会话日志 | qqAdapter（官方能力快照与差异 QQ_CAPABILITY_GAPS、scope 精确命名、非文本/生命周期 op 明确拒绝、429 retry-after）；真实账户/审核 BLOCKED |
 | 8 | 汇总 + 相关回归 | NOT RUN | | 本轮相关全量 test/build 一次 |
 | 8 | INT-03 发布门禁 | NOT RUN | | 发布前另安排，非本轮 |
 
@@ -134,5 +134,6 @@
 - 2026-09-13 15:42 Wave 7 INT-04 PARTIAL（fixture 轨 AUTO_PASS，待人工）：services/agent/int04.fixture.test——完整 fixture 链路从生产 TaskCommand 入口（不绕 parser/认证/路由）到 canary 临时仓库受控修改再到原渠道结果投递；负例先行（未批准/错误用户/取消收敛/重启 interrupted/deny-writes 批准也不写）；入口×适配器矩阵 Telegram×Codex 与 Device×Claude 两条完整成功链路（未跑组合如实记录）；前后 diff、仓库外哨兵哈希不变、PC 视图同 runId。7 定向/1293 全量全绿 tsc 0。真实轨（真实 diff+测试退出码）NOT RUN-需授权；INT-03 发布门禁独立完成。**下一节点：RT-05 持久 Scheduler。**
 - 2026-09-13 16:31 Wave 7 RT-05 AUTO_PASS（待人工）：services/runtime/persistentScheduler（trigger 三类建模 time/interval/event；任务字段 id/owner/scope/timeZone/nextRunAt/misfirePolicy/enabled/attempts/executionKey/state；misfire 默认 skip 不补跑；幂等触发键同键只执行一次；到期执行前 authorize 重查 fail-closed；unknown 副作用不自动重放；可确认失败重试至多 3 次指数退避；容量 200；暂停/恢复/取消；KV 持久化重启不重放已消费任务、损坏按空 fail-closed；坏时区 unsupported 不硬编码本地时区）。8 定向/1301 全量全绿 tsc 0。真实宿主长跑 NOT RUN。**下一节点：RT-06 跨渠道主动投递策略。**
 - 2026-09-13 17:14 Wave 7 RT-06 AUTO_PASS（待人工）：services/runtime/deliveryPolicy（evaluate：群组永不接私人提醒 drop、未授权目标 drop、quietHours 按本地小时 defer/异常过长丢弃、冷却 key=主体+事件类型+目标且 state 持久化重启不清零；registerOutboxItem 同完成事件多次到达只一项 outbox；审批请求不按 urgency 绕过 quietHours——审批走 RT-03；markDelivered 只写冷却）。5 定向/1306 全量全绿 tsc 0。真实渠道发送 NOT RUN（GW-02 真实轨）。**下一节点：GW-05 飞书适配（fixture 轨）。**
+- 2026-09-13 18:06 Wave 7 GW-05+GW-06 AUTO_PASS（fixture 轨，待人工）：feishuAdapter（官方能力快照；verifyFeishuEvent SHA-256 验签+event_id 重放防御+create_time 秒毫秒归一 5 分钟窗口+tenant 白名单；parseFeishuMessage 最小交付仅绑定私聊文本——群聊/未绑定/非文本明确拒绝；createFeishuTokenManager 刷新失败只暴露状态码不泄漏 secret）+ qqAdapter（官方能力快照与差异 QQ_CAPABILITY_GAPS 三条如实 BLOCKED、QQ_SUPPORTED_SCOPES 精确命名 group@-text/c2c-text、parseQqMessage op/t/d 判别非文本与生命周期 op 拒绝、qqRateLimitVerdict 429 retry-after）。GW 合并 6 定向/1312 全量全绿 tsc 0。真实账户/审核 NOT RUN-BLOCKED。**Wave 7 全部节点完成（INT-04/RT-05/RT-06/GW-05/GW-06）。下一节点：Wave 8 最终状态汇总。**
 - 2026-09-13 12:05 Wave 5 GW-04 AUTO_PASS（待人工）：services/gateway/deviceRegistry（能力=服务端授权∩设备声明逐项可见降级、租约读时计算在线、authorize chat/notification 走能力交集而 trace/approval 独立授权口默认 not-authorized、reconnect epoch 变化/cursor 低于缓存窗口→明确 resync、心跳续租；配对/会话/撤销复用 FE-17-pre 凭证端口不造第二套）。27 定向/1255 全量全绿 tsc 0。真实设备端到端 NOT RUN（FE-15 Rust handler+INT-01）。**Wave 5 本地可执行节点完成；FE-16/FE-17-host 需真实宿主。下一节点：Wave 6 AGT-01 Session/Run 契约。**
 - 2026-09-13 11:38 Wave 5 FE-15 PARTIAL（待人工）：本地部分 tauriTransport（invoke/listen 桥 OutboundTransport、命令事件监听者异常隔离、不做认证不信任 body 身份）+ fake invoke/listen 下复跑 FE-14 conformance 六用例（退订无迟到业务回调）。B/C/D/E（Rust gateway.rs handler、手机页、宿主装配平台选择）需真实 Tauri 宿主：NOT RUN/BLOCKED，留宿主轨。**下一节点：GW-04 设备列表与租约（复用 FE-17-pre 凭证端口）。**

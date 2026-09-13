@@ -225,6 +225,13 @@ INT-01 的兼容检查项：云端合成一旦在设置页可选，`createOutput
 | --- | --- | --- | --- |
 | `createDeliveryPolicy`/`isQuietHour`/`registerOutboxItem`（群私隔离、冷却持久、静默 defer、完成事件去重） | `services/runtime/deliveryPolicy.ts` | 新纯策略模块：唯一 outbox 来自 GW-01；审批不按 urgency 绕过静默 | GW-01 outbox、RT-05 调度投递、AGT-05 完成通知 |
 
+### v1 之后的追加（2026-09-13，GW-05/06 平台适配，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `verifyFeishuEvent`/`parseFeishuMessage`/`createFeishuTokenManager` | `services/gateway/feishuAdapter.ts` | 新模块（fixture 轨）：验签+重放窗口+tenant 隔离；最小交付仅绑定私聊文本；token 失败可见不泄漏 | GW-01 ChannelGateway、真实部署门禁 |
+| `QQ_CAPABILITY_GAPS`/`QQ_SUPPORTED_SCOPES`/`parseQqMessage`/`qqRateLimitVerdict` | `services/gateway/qqAdapter.ts` | 新模块（fixture 轨）：能力差异如实 BLOCKED；仅官方确定支持的文本 scope；不使用逆向协议 | GW-01 ChannelGateway、后续账号审核 |
+
 ## 详细接口入口
 
 LLM 各自的 `docs/llm/specs/LLM-01…05` 文件内写明实现级接口；[STT](../stt/ARCHITECTURE.md)、[TTS](../tts/ARCHITECTURE.md)、[前端](../frontend/ARCHITECTURE.md) 按共享架构文件引用对应阶段。代码块是拟定逻辑契约，现有类型通过兼容 adapter 映射；不能以名称尚未存在推断已实现，也不要机械新增重复接口。
