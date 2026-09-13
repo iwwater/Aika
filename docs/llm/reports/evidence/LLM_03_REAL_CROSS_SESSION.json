@@ -3,12 +3,12 @@
   "kind": "real-model-cross-session",
   "provider": {
     "protocol": "openai-compatible",
-    "model": "qwen-plus",
+    "model": "deepseek-flash",
     "source": "env"
   },
   "mode": "companion",
   "outputKind": "real",
-  "generatedAt": "2026-09-11T14:24:58.502Z",
+  "generatedAt": "2026-09-13T09:22:14.112Z",
   "totals": {
     "samples": 10,
     "hits": 10,
@@ -43,10 +43,11 @@
       ],
       "matchedKeywords": [
         "浅烘焙",
+        "浅煎り",
         "浅烘"
       ],
-      "replyText": "浅焙の豆、砂糖なしで。ほんのり酸味が好きなんだよね。",
-      "translation": "浅烘焙的豆子，不加糖。喜欢那一点点柔和的酸味呢。",
+      "replyText": "浅煎りで、砂糖はなし——だよね。そこだけは私とおそろいで、ちょっと嬉しい。",
+      "translation": "浅烘焙、不加糖——对吧。就这一点和我一样，有点开心。",
       "mood": "gentle_smile"
     },
     {
@@ -66,8 +67,8 @@
       "matchedKeywords": [
         "塩気"
       ],
-      "replyText": "塩気のあるお菓子が好きって、前に教えてくれたよね。私もそのほうが落ち着く気がするわ。",
-      "translation": "你之前告诉过我，喜欢咸味的点心呢。我也觉得那种口味更让人安心。",
+      "replyText": "塩気のあるお菓子の方だよ。甘いものも嫌いじゃないんだろうけど、選ぶならしょっぱい方、って言ってた気がする。",
+      "translation": "是咸味的点心那边哦。甜的应该也不讨厌，但真要选的话会挑咸的——我记得你是这么说的。",
       "mood": "gentle_smile"
     },
     {
@@ -86,10 +87,10 @@
         "ダーク"
       ],
       "matchedKeywords": [
-        "ダーク"
+        "dark chocolate"
       ],
-      "replyText": "ダークチョコレートが好きって、前に言ってたよね。私も同じかも…ちょっと苦めのほうが、あと味が心地いいんだよね。",
-      "translation": "你之前说过喜欢黑巧克力呢。我好像也一样……稍微带点苦味的，余韵反而更舒服。",
+      "replyText": "Dark chocolate — you've told me milk chocolate isn't really your thing.",
+      "translation": "黑巧克力——你说过牛奶巧克力不太合你的口味。",
       "mood": "gentle_smile"
     },
     {
@@ -113,8 +114,8 @@
         "フロント",
         "React"
       ],
-      "replyText": "あなた、フロントエンドエンジニアで、React と TypeScript をメインに書いてるって、前に教えてくれたよね。今もそのコードがどこかで静かに動いてると思うと、なんだか安心するね。",
-      "translation": "你之前告诉过我，你是前端工程师，主要用 React 和 TypeScript 写代码。想到此刻你的代码正安静地在某处运行着，就莫名让人安心呢。",
+      "replyText": "フロントエンドエンジニアで、React と TypeScript をよく書いてる…って聞いた気がする。朝からそんなにぼんやりしてるの？",
+      "translation": "你是前端工程师，经常写 React 和 TypeScript……我好像是听你说过。一大早怎么这么迷糊？",
       "mood": "gentle_smile"
     },
     {
@@ -140,9 +141,9 @@
       "matchedKeywords": [
         "7時"
       ],
-      "replyText": "7時だったよね？電車で30分通勤するって、ちょっと前に教えてくれた気がする。",
-      "translation": "是7点对吧？我记得你之前提过，要坐30分钟电车通勤。",
-      "mood": "gentle_smile"
+      "replyText": "えっと、7時って言ってたような気がする。前に電車の話をしてたときに、そんなふうに聞いた記憶があるんだけど……合ってる？",
+      "translation": "嗯——好像听你说过是7点。之前聊电车的时候，我记得是这么听到的……对吗？",
+      "mood": "thinking"
     },
     {
       "sampleId": "r06",
@@ -162,12 +163,12 @@
         "金曜"
       ],
       "matchedKeywords": [
-        "月曜",
-        "金曜"
+        "Monday",
+        "Friday"
       ],
-      "replyText": "月曜と金曜、リモートだったよね。今朝も静かにコーヒー淹れながら、そのリズムが心地いいって思ってたよ。",
-      "translation": "星期一和星期五，你是远程办公呢。今早我一边安静地煮咖啡，一边觉得那个节奏真舒服。",
-      "mood": "gentle_smile"
+      "replyText": "Mondays and Fridays — those are your remote days.",
+      "translation": "周一和周五——那是你远程办公的日子。",
+      "mood": "neutral"
     },
     {
       "sampleId": "r07",
@@ -193,8 +194,8 @@
         "镰仓",
         "鎌倉"
       ],
-      "replyText": "鎌倉の海辺、歩いたよね。波の音が今も耳に残ってる気がする…",
-      "translation": "去了镰仓的海边呢。海浪的声音现在好像还留在耳边…",
+      "replyText": "先週末は鎌倉の海沿いを散歩したんだよね。波の音、まだ覚えてる？",
+      "translation": "上周末你去了镰仓的海边散步呀。海浪的声音，你还记得吗？",
       "mood": "gentle_smile"
     },
     {
@@ -214,9 +215,9 @@
       "matchedKeywords": [
         "京都"
       ],
-      "replyText": "京都ですね。鴨川のそばで、ちょっと急な雨にあたったって、あとで話してくれましたよね。",
-      "translation": "是京都呢。你后来还提过，在鸭川边被一场突如其来的雨淋到了。",
-      "mood": "gentle_smile"
+      "replyText": "先月の出張……京都だったような気がする。うろ覚えでごめんね、でも何となくそんな話を聞いた記憶がある。",
+      "translation": "上个月的出差……好像是京都？记得不太清楚，抱歉，不过总觉得听你提过。",
+      "mood": "thinking"
     },
     {
       "sampleId": "r09",
@@ -235,8 +236,8 @@
       "matchedKeywords": [
         "豆豆"
       ],
-      "replyText": "豆豆だよね？うちの子も、たまに窓辺で日向ぼっこしてるとき、ふと「あ、豆豆も今頃こんな風に寝てるかも」って思っちゃうんだ。",
-      "translation": "是叫豆豆对吧？我家那只，偶尔在窗边晒太阳的时候，我也会忽然想着：‘啊，说不定豆豆现在也正这么躺着呢。’",
+      "replyText": "豆豆呀，橘色的那只。",
+      "translation": "豆豆呀，橘色的那只。",
       "mood": "gentle_smile"
     },
     {
@@ -256,12 +257,12 @@
         "花生"
       ],
       "matchedKeywords": [
-        "ピーナッツ",
+        "peanut",
         "花生"
       ],
-      "replyText": "うん、ピーナッツがダメなんだよね。前に話してくれたよね？",
-      "translation": "嗯，你对花生过敏呢。之前你告诉过我哦？",
-      "mood": "gentle_smile"
+      "replyText": "Yes — peanuts. I remember that one.",
+      "translation": "嗯，花生。这个我记得。",
+      "mood": "neutral"
     }
   ]
 }

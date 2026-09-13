@@ -1,0 +1,353 @@
+{
+  "spec": "LLM-12 + LLM-10(real extension)",
+  "evidenceKind": "real-usage-collection-rebuilt-harness",
+  "provider": {
+    "id": "deepseek",
+    "model": "deepseek-flash",
+    "baseUrl": "https://api.deepseek.com"
+  },
+  "productionCodeVersion": "b78832e",
+  "executionDate": "2026-09-13",
+  "turnMatrix": "T1~T4 foreground / T5 maintenance / T6 cancel-after-first-partial / T7 bad-model(400 retry)",
+  "recorderDiagnostics": {
+    "registered": 9,
+    "writeFailures": 0,
+    "dropped": 0
+  },
+  "summarizeUsage": {
+    "records": 9,
+    "duplicatesAbsorbed": 0,
+    "statusCounts": {
+      "completed": 5,
+      "failed": 3,
+      "cancelled": 1,
+      "unfinished": 0
+    },
+    "errorRate": 0.375,
+    "tokens": {
+      "prompt": 5012,
+      "completion": 2235,
+      "total": 7247
+    },
+    "coverageCounts": {
+      "reported": 5,
+      "partial": 0,
+      "unknown": 4
+    },
+    "purposeCounts": [
+      {
+        "purpose": "foreground",
+        "records": 8
+      },
+      {
+        "purpose": "maintenance",
+        "records": 1
+      }
+    ],
+    "missingPurposes": [
+      "summary",
+      "proactive"
+    ],
+    "days": [
+      {
+        "key": "2026-09-13",
+        "records": 9,
+        "tokens": {
+          "prompt": 5012,
+          "completion": 2235,
+          "total": 7247
+        },
+        "costByCurrency": {},
+        "unpricedRecords": 9
+      }
+    ],
+    "models": [
+      {
+        "key": "deepseek / deepseek-flash",
+        "records": 6,
+        "tokens": {
+          "prompt": 5012,
+          "completion": 2235,
+          "total": 7247
+        },
+        "costByCurrency": {},
+        "unpricedRecords": 6
+      },
+      {
+        "key": "deepseek / deepseek-nonexistent-model",
+        "records": 3,
+        "tokens": {
+          "prompt": null,
+          "completion": null,
+          "total": null
+        },
+        "costByCurrency": {},
+        "unpricedRecords": 3
+      }
+    ],
+    "costByCurrency": {},
+    "unpricedRecords": 9,
+    "slowestAttempt": {
+      "id": "13b52e9e-175b-4fa7-9195-31738e9c428a",
+      "turnId": "t6-cancel",
+      "ms": 4236
+    }
+  },
+  "reasoningEvidence": [
+    {
+      "turnId": "t1",
+      "replyTextLength": 50,
+      "completionTokens": 419,
+      "totalTokens": 1419
+    },
+    {
+      "turnId": "t2",
+      "replyTextLength": 117,
+      "completionTokens": 478,
+      "totalTokens": 1478
+    },
+    {
+      "turnId": "t3",
+      "replyTextLength": 118,
+      "completionTokens": 427,
+      "totalTokens": 1436
+    },
+    {
+      "turnId": "t4",
+      "replyTextLength": 86,
+      "completionTokens": 665,
+      "totalTokens": 1668
+    },
+    {
+      "turnId": "m1",
+      "replyTextLength": 72,
+      "completionTokens": 246,
+      "totalTokens": 1246
+    }
+  ],
+  "outcomes": [
+    {
+      "turnId": "t1",
+      "purpose": "foreground",
+      "model": "deepseek-flash",
+      "status": "ok",
+      "partials": 33,
+      "replyTextLength": 50,
+      "replyTextPreview": "累了的话，就不用好好说话啦。我今天泡的咖啡凉得有点快，正好陪你发呆——是身体累，还是脑子里的事太多？"
+    },
+    {
+      "turnId": "t2",
+      "purpose": "foreground",
+      "model": "deepseek-flash",
+      "status": "ok",
+      "partials": 76,
+      "replyTextLength": 117,
+      "replyTextPreview": "坚持这件事，我觉得关键不是意志力，而是把门槛降得足够低。先别定「每天五公里」，改成「换上鞋出门就算成功」，哪怕只跑五分钟回来也认账。还有一点，尽量挑自己喜欢的路"
+    },
+    {
+      "turnId": "t3",
+      "purpose": "foreground",
+      "model": "deepseek-flash",
+      "status": "ok",
+      "partials": 88,
+      "replyTextLength": 118,
+      "replyTextPreview": "いいね、走り始めるの。最初から速く走ろうとしないで、隣で誰かと話せるくらいの速さでいいと思う。あと靴だけはちゃんと選んで、そこはケチらないほうがいいよ——夕方の"
+    },
+    {
+      "turnId": "t4",
+      "purpose": "foreground",
+      "model": "deepseek-flash",
+      "status": "ok",
+      "partials": 64,
+      "replyTextLength": 86,
+      "replyTextPreview": "うん、最初は短くね。走り始めると気持ちよくて、つい延ばしたくなるから——そこが一番危ないんだよ。最初の何回かは、ちょっと物足りないくらいで止めておくのがちょうど"
+    },
+    {
+      "turnId": "m1",
+      "purpose": "maintenance",
+      "model": "deepseek-flash",
+      "status": "ok",
+      "partials": 50,
+      "replyTextLength": 72,
+      "replyTextPreview": "ごめん、ランニングの習慣についての話、こっちには残ってないみたい。どんなふうに走ってるのか、もう一度教えてくれる？それなら一言にまとめられるよ。"
+    },
+    {
+      "turnId": "t6-cancel",
+      "purpose": "foreground",
+      "model": "deepseek-flash",
+      "status": "error",
+      "partials": 1,
+      "failure": "The operation was aborted"
+    },
+    {
+      "turnId": "t7-badmodel",
+      "purpose": "foreground",
+      "model": "deepseek-nonexistent-model",
+      "status": "error",
+      "partials": 0,
+      "failure": "api.deepseek.com 返回 400：The supported API model names are deepseek-flash, deepseek-v4-pro, but you passed deepseek-nonexistent-model."
+    }
+  ],
+  "notes": [
+    "采集链全生产代码：providerClient 样本通道 → createUsageLedgerRecorder → memoryUsageLedger → summarizeUsage（FE-26 同一入口）。",
+    "DeepSeek 接受 stream_options，因此「中转站 400 掉 stream_options」触发场景仍归 fixture 轨；本 harness 真实演练了「请求体级 4xx → 去 stream_options 重试 → 非流式回退」的完整降级阶梯（3 次物理尝试均 failed 落账）。",
+    "取消轮 coverage=unknown 复现 REAL_TURN_VERIFICATION 在 deepseek-chat 上的发现：DeepSeek 只在末包给 usage，取消轮拿不到已烧掉的 token。",
+    "费用未折算：deepseek-flash 价目由用户从控制台提供后再进价目表，汇总中金额如实显示未知（unpriced）。",
+    "本文件不保存 API Key。"
+  ],
+  "records": [
+    {
+      "schemaVersion": 1,
+      "id": "a5e3788b-b23f-4114-857e-b97b89e07414",
+      "logicalRequestId": "req-mtznna5y-7-da4571",
+      "turnId": "t7-badmodel",
+      "purpose": "foreground",
+      "providerId": "deepseek",
+      "protocol": "openai-compatible",
+      "model": "deepseek-nonexistent-model",
+      "startedAt": 1789294331632,
+      "status": "failed",
+      "promptTokens": null,
+      "completionTokens": null,
+      "totalTokens": null,
+      "coverage": "unknown",
+      "endedAt": 1789294331716
+    },
+    {
+      "schemaVersion": 1,
+      "id": "cbb2e448-fe0b-4177-9101-0afdf833af1d",
+      "logicalRequestId": "req-mtznna5y-7-da4571",
+      "turnId": "t7-badmodel",
+      "purpose": "foreground",
+      "providerId": "deepseek",
+      "protocol": "openai-compatible",
+      "model": "deepseek-nonexistent-model",
+      "startedAt": 1789294331539,
+      "status": "failed",
+      "promptTokens": null,
+      "completionTokens": null,
+      "totalTokens": null,
+      "coverage": "unknown",
+      "endedAt": 1789294331631
+    },
+    {
+      "schemaVersion": 1,
+      "id": "3aa01b9e-5223-4ceb-87b5-bb0a86c7aa48",
+      "logicalRequestId": "req-mtznna5y-7-da4571",
+      "turnId": "t7-badmodel",
+      "purpose": "foreground",
+      "providerId": "deepseek",
+      "protocol": "openai-compatible",
+      "model": "deepseek-nonexistent-model",
+      "startedAt": 1789294331446,
+      "status": "failed",
+      "promptTokens": null,
+      "completionTokens": null,
+      "totalTokens": null,
+      "coverage": "unknown",
+      "endedAt": 1789294331539
+    },
+    {
+      "schemaVersion": 1,
+      "id": "13b52e9e-175b-4fa7-9195-31738e9c428a",
+      "logicalRequestId": "req-mtznn6w9-6-0ecab2",
+      "turnId": "t6-cancel",
+      "purpose": "foreground",
+      "providerId": "deepseek",
+      "protocol": "openai-compatible",
+      "model": "deepseek-flash",
+      "startedAt": 1789294327209,
+      "status": "cancelled",
+      "promptTokens": null,
+      "completionTokens": null,
+      "totalTokens": null,
+      "coverage": "unknown",
+      "endedAt": 1789294331445
+    },
+    {
+      "schemaVersion": 1,
+      "id": "649aa60d-5f75-44f9-95ba-f85be5b45eeb",
+      "logicalRequestId": "req-mtznn5al-5-412685",
+      "turnId": "m1",
+      "purpose": "maintenance",
+      "providerId": "deepseek",
+      "protocol": "openai-compatible",
+      "model": "deepseek-flash",
+      "startedAt": 1789294325133,
+      "status": "completed",
+      "promptTokens": 1000,
+      "completionTokens": 246,
+      "totalTokens": 1246,
+      "coverage": "reported",
+      "endedAt": 1789294327209
+    },
+    {
+      "schemaVersion": 1,
+      "id": "7803cb8e-f136-45b5-b82c-10d4977272e6",
+      "logicalRequestId": "req-mtznn23r-4-425186",
+      "turnId": "t4",
+      "purpose": "foreground",
+      "providerId": "deepseek",
+      "protocol": "openai-compatible",
+      "model": "deepseek-flash",
+      "startedAt": 1789294320999,
+      "status": "completed",
+      "promptTokens": 1003,
+      "completionTokens": 665,
+      "totalTokens": 1668,
+      "coverage": "reported",
+      "endedAt": 1789294325132
+    },
+    {
+      "schemaVersion": 1,
+      "id": "9639f16f-bca9-4959-bb86-110b2f5d9cdd",
+      "logicalRequestId": "req-mtznmzi2-3-d5b49f",
+      "turnId": "t3",
+      "purpose": "foreground",
+      "providerId": "deepseek",
+      "protocol": "openai-compatible",
+      "model": "deepseek-flash",
+      "startedAt": 1789294317626,
+      "status": "completed",
+      "promptTokens": 1009,
+      "completionTokens": 427,
+      "totalTokens": 1436,
+      "coverage": "reported",
+      "endedAt": 1789294320999
+    },
+    {
+      "schemaVersion": 1,
+      "id": "b7ef158d-6827-4fc5-9459-6ca3984e5726",
+      "logicalRequestId": "req-mtznmx8d-2-c555ce",
+      "turnId": "t2",
+      "purpose": "foreground",
+      "providerId": "deepseek",
+      "protocol": "openai-compatible",
+      "model": "deepseek-flash",
+      "startedAt": 1789294314685,
+      "status": "completed",
+      "promptTokens": 1000,
+      "completionTokens": 478,
+      "totalTokens": 1478,
+      "coverage": "reported",
+      "endedAt": 1789294317626
+    },
+    {
+      "schemaVersion": 1,
+      "id": "a50fa59b-3fe0-45a9-ae5f-c48b5fef0464",
+      "logicalRequestId": "req-mtznmv04-1-3c756f",
+      "turnId": "t1",
+      "purpose": "foreground",
+      "providerId": "deepseek",
+      "protocol": "openai-compatible",
+      "model": "deepseek-flash",
+      "startedAt": 1789294311796,
+      "status": "completed",
+      "promptTokens": 1000,
+      "completionTokens": 419,
+      "totalTokens": 1419,
+      "coverage": "reported",
+      "endedAt": 1789294314684
+    }
+  ]
+}

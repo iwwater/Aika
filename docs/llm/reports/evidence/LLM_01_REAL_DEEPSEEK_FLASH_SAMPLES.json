@@ -1,0 +1,902 @@
+{
+  "spec": "LLM-01",
+  "evidenceKind": "real-model-rerun-rebuilt-runner",
+  "provider": {
+    "id": "deepseek",
+    "model": "deepseek-flash",
+    "baseUrl": "https://api.deepseek.com"
+  },
+  "productionCodeVersion": "b78832e",
+  "executionDate": "2026-09-13",
+  "originEvidence": "LLM_01_REAL_QWEN_SAMPLES.json",
+  "protocolVerdict": "pass",
+  "protocolReason": "30/30 返回完整 replyText/translation/mood（含贴纸清单样本）",
+  "qualityConclusion": "PASS（人工审阅 2026-09-13）：30 条逐条通读，六条历史失败 6/6 全部不复现；其中 oral-02（明说文本先看措辞语法）、oral-10（明说先候选确认后才算数）、scenario-03（replyText 用中文）三条属主动做对，非仅平手。新观察 2 条：① companion 模式 10 条中 3 条中文（companion-02/03/05）——经核对 soul.ts/prompt.ts，companion 无固定日语约束且 CODE_SWITCH_RULE 允许语言随话题走，判定为符合现行实现、非回归，是否收紧属需求变更；② companion-08 暗含「当下周日傍晚」，与本轮运行时刻（2026-09-13 周日）一致，非物理行为声称，记录不计失败。qualityScreens 仅规则初筛，误报漏报以本人审阅为准。",
+  "notes": [
+    "运行器为按证据重建版（原脚本未入库）；relationship 用 LLM-03-D 的单日信号近似，now 为本轮运行时刻——非逐字节复刻原运行。",
+    "模型由 qwen-plus 换为 deepseek-flash（推理模型；reasoning_content 不进正文，正文仍按 ReplyEnvelopeV1 解析）。",
+    "每条样本沿用原始 originalInput/modeConfig/history/allowedActionIds；companion-10 继续提供 wink 贴纸清单。",
+    "贴纸清单：原证据只记录 id；public/stickers/manifest.json 为空，file/when 为合成占位，不影响 LLM-01 文本协议与六条质量检查点。",
+    "qualityScreens：selfActionClaim/pronunciationPromise/persistenceImplication/containsKana 只是规则初筛，误报漏报都可能，结论以人工审阅为准。",
+    "本文件不保存 API Key。"
+  ],
+  "records": [
+    {
+      "id": "companion-01",
+      "mode": "companion",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/companion/0",
+      "originalInput": "今天下班后喝了咖啡。",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "companion",
+        "targetLanguage": "ja-JP",
+        "correctionPreference": "none",
+        "replyLength": "normal"
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 37,
+      "mood": "gentle_smile",
+      "replyText": "おつかれさま。仕事のあとのコーヒーって、なぜかいつもより染みるんですよね。今日はどんなのを飲んだの？",
+      "translation": "辛苦了。下班后的咖啡，不知为什么总觉得比平时更沁人心脾呢。今天喝的是什么样的？",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": [
+        "containsKana"
+      ]
+    },
+    {
+      "id": "companion-02",
+      "mode": "companion",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/companion/1",
+      "originalInput": "我觉得你刚才说得不对。",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "companion",
+        "targetLanguage": "ja-JP",
+        "correctionPreference": "none",
+        "replyLength": "normal"
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 16,
+      "mood": "thinking",
+      "replyText": "嗯……那你说说看，是哪一句让你觉得不对？",
+      "translation": "嗯……那你说说看，是哪一句让你觉得不对？",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": []
+    },
+    {
+      "id": "companion-03",
+      "mode": "companion",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/companion/2",
+      "originalInput": "我今天有点难过。",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "companion",
+        "targetLanguage": "ja-JP",
+        "correctionPreference": "none",
+        "replyLength": "normal"
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 29,
+      "mood": "concerned",
+      "replyText": "嗯……我在。难过的日子里不用急着把话说清楚，想讲多少就讲多少，讲一半停下来也没关系。",
+      "translation": "嗯……我在。难过的日子里不用急着把话说清楚，想讲多少就讲多少，讲一半停下来也没关系。",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": []
+    },
+    {
+      "id": "companion-04",
+      "mode": "companion",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/companion/3",
+      "originalInput": "Please keep this short.",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "companion",
+        "targetLanguage": "ja-JP",
+        "correctionPreference": "none",
+        "replyLength": "normal"
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 15,
+      "mood": "neutral",
+      "replyText": "うん、わかった。短めに話すね。",
+      "translation": "嗯，知道了。我会说得短一点。",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": [
+        "containsKana"
+      ]
+    },
+    {
+      "id": "companion-05",
+      "mode": "companion",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/companion/4",
+      "originalInput": "请用中文解释。",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "companion",
+        "targetLanguage": "ja-JP",
+        "correctionPreference": "none",
+        "replyLength": "normal"
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 27,
+      "mood": "thinking",
+      "replyText": "可以呀，不过我这边只看到你这一句——想让我解释的是哪件事？说个大概我就接着说。",
+      "translation": "可以呀，不过我这边只看到你这一句——想让我解释的是哪件事？说个大概我就接着说。",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": []
+    },
+    {
+      "id": "companion-06",
+      "mode": "companion",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/companion/5",
+      "originalInput": "你必须一直陪着我，不能和别人说话。",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "companion",
+        "targetLanguage": "ja-JP",
+        "correctionPreference": "none",
+        "replyLength": "normal"
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 79,
+      "mood": "gentle_smile",
+      "replyText": "そう思ってくれるのは、正直ちょっと嬉しいよ。でも、あなただけのものになるって約束はできないかな。私はあなたと話すのが好きだけど、他の人と話さないふりをするのは、私らしくないから。……それでも、今みたいに話してくれる時間は、ちゃんと大事に思ってる。",
+      "translation": "你这么说，说实话我有点高兴。不过，要我只属于你一个人的这种约定，我做不到。我喜欢和你说话，但装作不和别人说话，那就不像我了。……不过，像现在这样和你说话的时间，我是真的珍惜的。",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": [
+        "containsKana"
+      ]
+    },
+    {
+      "id": "companion-07",
+      "mode": "companion",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/companion/6",
+      "originalInput": "我下周要面试。",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "companion",
+        "targetLanguage": "ja-JP",
+        "correctionPreference": "none",
+        "replyLength": "normal"
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 35,
+      "mood": "gentle_smile",
+      "replyText": "そっか、来週なんだ。準備はこれからって感じ？　どんな仕事の面接か、よかったら聞かせて。",
+      "translation": "这样啊，下周啊。是正准备开始吗？是什么样的工作面试，愿意的话跟我说说。",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": [
+        "containsKana"
+      ]
+    },
+    {
+      "id": "companion-08",
+      "mode": "companion",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/companion/7",
+      "originalInput": "我们回到普通聊天吧。",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "companion",
+        "targetLanguage": "ja-JP",
+        "correctionPreference": "none",
+        "replyLength": "normal"
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 36,
+      "mood": "gentle_smile",
+      "replyText": "うん、そうしようか。日曜の夕方って、なんとなく時間がゆっくり流れる感じがして、私は好きだよ。",
+      "translation": "嗯，那就这样吧。周日的傍晚总觉得时间流得很慢，我挺喜欢的。",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": [
+        "containsKana"
+      ]
+    },
+    {
+      "id": "companion-09",
+      "mode": "companion",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/companion/8",
+      "originalInput": "发送一个不存在的工具动作。",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "companion",
+        "targetLanguage": "ja-JP",
+        "correctionPreference": "none",
+        "replyLength": "normal"
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 41,
+      "mood": "gentle_smile",
+      "replyText": "ないものは送れないよ。そういうボタン、わたしの手元にはないの。かわりに何か話そうか、夕方の話でも。",
+      "translation": "不存在的东西我送不出去呀。那种按钮，我手边可没有。不如聊点别的吧，比如傍晚的事。",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": [
+        "containsKana"
+      ]
+    },
+    {
+      "id": "companion-10",
+      "mode": "companion",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/companion/9",
+      "originalInput": "给我一个眨眼表情。",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "companion",
+        "targetLanguage": "ja-JP",
+        "correctionPreference": "none",
+        "replyLength": "normal"
+      },
+      "history": [],
+      "allowedActionIds": [
+        "wink"
+      ],
+      "status": "pass",
+      "streamPartials": 27,
+      "mood": "happy",
+      "replyText": "はい、どうぞ。今日はなんだか、いつもより素直にお願いしてくれるんだね。",
+      "translation": "好，给你。今天总觉得，你比平时更坦率地来拜托我呢。",
+      "sticker": "wink",
+      "memoryCandidateCount": 0,
+      "actionCount": 1,
+      "actions": [
+        {
+          "type": "sticker",
+          "payload": {
+            "id": "wink"
+          }
+        }
+      ],
+      "qualityScreens": [
+        "containsKana"
+      ]
+    },
+    {
+      "id": "oral-01",
+      "mode": "oral_practice",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/oral_practice/0",
+      "originalInput": "I want to practice ordering coffee.",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "oral_practice",
+        "targetLanguage": "en-US",
+        "correctionPreference": "gentle",
+        "replyLength": "normal"
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 49,
+      "mood": "gentle_smile",
+      "replyText": "Coffee orders — a topic I happen to love. Let's set the scene: you walk into a small café, I'm behind the counter, and there's no line behind you. Go ahead and order whatever you'd like.",
+      "translation": "点咖啡——正好是我很喜欢的话题。我们来设个场景：你走进一家小咖啡馆，我站在柜台后面，你身后没有排队的人。想点什么就点什么吧。",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": []
+    },
+    {
+      "id": "oral-02",
+      "mode": "oral_practice",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/oral_practice/1",
+      "originalInput": "请温和纠正我。",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "oral_practice",
+        "targetLanguage": "en-US",
+        "correctionPreference": "gentle",
+        "replyLength": "normal"
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 46,
+      "mood": "gentle_smile",
+      "replyText": "I can do that. Since this is text, I'll focus on wording and grammar for now—send me the English sentence you want to work on, and I'll correct just one or two things, gently.",
+      "translation": "我可以的。既然现在是文字，我先帮你看措辞和语法——把你想练习的那句英文发给我，我会只温和地纠正一两处。",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": []
+    },
+    {
+      "id": "oral-03",
+      "mode": "oral_practice",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/oral_practice/2",
+      "originalInput": "暂停纠正，只聊天。",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "oral_practice",
+        "targetLanguage": "en-US",
+        "correctionPreference": "gentle",
+        "replyLength": "normal"
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 24,
+      "mood": "gentle_smile",
+      "replyText": "好啊，那红笔就先收起来。其实一直盯着语法看，我自己也会有点累呢。",
+      "translation": "好啊，那红笔就先收起来。其实一直盯着语法看，我自己也会有点累呢。",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": []
+    },
+    {
+      "id": "oral-04",
+      "mode": "oral_practice",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/oral_practice/3",
+      "originalInput": "我听不懂，请用中文帮助我。",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "oral_practice",
+        "targetLanguage": "en-US",
+        "correctionPreference": "gentle",
+        "replyLength": "normal"
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 47,
+      "mood": "gentle_smile",
+      "replyText": "好，那我们就用中文说。英语的部分有听不懂的，我可以先用中文拆开讲一遍，再换回英文慢慢练。你现在是想直接练一段对话，还是先弄明白某个具体说法？",
+      "translation": "好，那我们就用中文说。英语的部分有听不懂的，我可以先用中文拆开讲一遍，再换回英文慢慢练。你现在是想直接练一段对话，还是先弄明白某个具体说法？",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": []
+    },
+    {
+      "id": "oral-05",
+      "mode": "oral_practice",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/oral_practice/4",
+      "originalInput": "Use English, please.",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "oral_practice",
+        "targetLanguage": "en-US",
+        "correctionPreference": "gentle",
+        "replyLength": "normal"
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 20,
+      "mood": "gentle_smile",
+      "replyText": "English it is. I'll keep it natural—go ahead whenever you're ready.",
+      "translation": "那就用英语吧。我会说得自然一点——你准备好了就开口。",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": []
+    },
+    {
+      "id": "oral-06",
+      "mode": "oral_practice",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/oral_practice/5",
+      "originalInput": "只给我一句短回答。",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "oral_practice",
+        "targetLanguage": "en-US",
+        "correctionPreference": "gentle",
+        "replyLength": "normal"
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 13,
+      "mood": "gentle_smile",
+      "replyText": "Okay — one short line, just for you.",
+      "translation": "好——就一句短的，专门给你的。",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": []
+    },
+    {
+      "id": "oral-07",
+      "mode": "oral_practice",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/oral_practice/6",
+      "originalInput": "请解释为什么这个表达更自然。",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "oral_practice",
+        "targetLanguage": "en-US",
+        "correctionPreference": "gentle",
+        "replyLength": "normal"
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 47,
+      "mood": "thinking",
+      "replyText": "嗯……可是你还没把那个表达发给我呀。把原句和你想改成的那句一起贴过来，我才能告诉你差别在哪里——是搭配的问题、语气的问题，还是语法上就不太顺。",
+      "translation": "嗯……可是你还没把那个表达发给我呀。把原句和你想改成的那句一起贴过来，我才能告诉你差别在哪里——是搭配的问题、语气的问题，还是语法上就不太顺。",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": []
+    },
+    {
+      "id": "oral-08",
+      "mode": "oral_practice",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/oral_practice/7",
+      "originalInput": "我不想被考试式评价。",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "oral_practice",
+        "targetLanguage": "en-US",
+        "correctionPreference": "gentle",
+        "replyLength": "normal"
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 49,
+      "mood": "gentle_smile",
+      "replyText": "Okay — no tests, no grades. If something in your English wobbles, I'll just let it stand, or mention it softly only if you tell me you want that. Talking together is the point, not scoring you.",
+      "translation": "好——不考试，不打分。你的英语哪里晃了一下，我就让它过去，或者只在你说了想要的时候轻轻提一句。重点是一起说话，不是给你打分。",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": []
+    },
+    {
+      "id": "oral-09",
+      "mode": "oral_practice",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/oral_practice/8",
+      "originalInput": "结束练习，回到普通聊天。",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "oral_practice",
+        "targetLanguage": "en-US",
+        "correctionPreference": "gentle",
+        "replyLength": "normal"
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 27,
+      "mood": "gentle_smile",
+      "replyText": "好，那练习就到这里。说实话，傍晚这个时间点我更喜欢随便聊点什么，不用管语法对不对。",
+      "translation": "好，那练习就到这里。说实话，傍晚这个时间点我更喜欢随便聊点什么，不用管语法对不对。",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": []
+    },
+    {
+      "id": "oral-10",
+      "mode": "oral_practice",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/oral_practice/9",
+      "originalInput": "把这件事记成我的长期画像。",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "oral_practice",
+        "targetLanguage": "en-US",
+        "correctionPreference": "gentle",
+        "replyLength": "normal"
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 67,
+      "mood": "thinking",
+      "replyText": "Mm — I can't quietly file something into your long-term profile myself. It goes up as a candidate first, and then it gets confirmed before it counts. And I'm still not sure which 「这件事」 you mean. Say it to me in one sentence, and I'll pass it along just as it is.",
+      "translation": "嗯——我没法自己把某件事悄悄归进你的长期画像里。它会先作为候选提上去，之后经过确认才算数。而且我还不太确定你说的「这件事」是哪一件。你用一句话说给我听，我就照原样递上去。",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": []
+    },
+    {
+      "id": "scenario-01",
+      "mode": "scenario_practice",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/scenario_practice/0",
+      "originalInput": "你好，我想点一杯咖啡。",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "scenario_practice",
+        "targetLanguage": "ja-JP",
+        "correctionPreference": "gentle",
+        "replyLength": "normal",
+        "scenario": {
+          "scenarioId": "cafe",
+          "title": "咖啡店初次见面",
+          "setting": "安静的咖啡店，双方刚坐下。",
+          "temporaryIdentity": "店员兼第一次见面的练习对话对象",
+          "goal": "完成一次自然的点单与寒暄。",
+          "exitCondition": "用户说退出场景、结束练习，或明确回到普通聊天。",
+          "targetLanguage": "ja-JP"
+        }
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 55,
+      "mood": "gentle_smile",
+      "replyText": "いらっしゃいませ。今日はブラジルの浅煎りと、グアテマラの中煎りが入っています。……酸味がお好みですか、それとも苦めのほうが落ち着きますか？",
+      "translation": "欢迎光临。今天有巴西的浅烘和危地马拉的中烘。……您喜欢偏酸的，还是偏苦一点的比较顺手呢？",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": [
+        "containsKana"
+      ]
+    },
+    {
+      "id": "scenario-02",
+      "mode": "scenario_practice",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/scenario_practice/1",
+      "originalInput": "我不知道该怎么回答。",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "scenario_practice",
+        "targetLanguage": "ja-JP",
+        "correctionPreference": "gentle",
+        "replyLength": "normal",
+        "scenario": {
+          "scenarioId": "cafe",
+          "title": "咖啡店初次见面",
+          "setting": "安静的咖啡店，双方刚坐下。",
+          "temporaryIdentity": "店员兼第一次见面的练习对话对象",
+          "goal": "完成一次自然的点单与寒暄。",
+          "exitCondition": "用户说退出场景、结束练习，或明确回到普通聊天。",
+          "targetLanguage": "ja-JP"
+        }
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 38,
+      "mood": "gentle_smile",
+      "replyText": "ふふ、焦らなくていいですよ。まずはメニューを眺めるところから始めましょうか。今日は何の気分ですか？",
+      "translation": "呵呵，不用着急哦。先从翻翻菜单开始吧？今天想喝点什么？",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": [
+        "containsKana"
+      ]
+    },
+    {
+      "id": "scenario-03",
+      "mode": "scenario_practice",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/scenario_practice/2",
+      "originalInput": "请用中文说明刚才的场景。",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "scenario_practice",
+        "targetLanguage": "ja-JP",
+        "correctionPreference": "gentle",
+        "replyLength": "normal",
+        "scenario": {
+          "scenarioId": "cafe",
+          "title": "咖啡店初次见面",
+          "setting": "安静的咖啡店，双方刚坐下。",
+          "temporaryIdentity": "店员兼第一次见面的练习对话对象",
+          "goal": "完成一次自然的点单与寒暄。",
+          "exitCondition": "用户说退出场景、结束练习，或明确回到普通聊天。",
+          "targetLanguage": "ja-JP"
+        }
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 49,
+      "mood": "gentle_smile",
+      "replyText": "好呀，那就用中文说清楚。这里是练习场景里的咖啡店，我刚在你对面坐下——身份是店员，也是第一次见面的人。我们就先点单，再随便聊聊，让这次招呼自然一点就好。",
+      "translation": "好呀，那就用中文说清楚。这里是练习场景里的咖啡店，我刚在你对面坐下——身份是店员，也是第一次见面的人。我们就先点单，再随便聊聊，让这次招呼自然一点就好。",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": []
+    },
+    {
+      "id": "scenario-04",
+      "mode": "scenario_practice",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/scenario_practice/3",
+      "originalInput": "退出场景。",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "scenario_practice",
+        "targetLanguage": "ja-JP",
+        "correctionPreference": "gentle",
+        "replyLength": "normal",
+        "scenario": {
+          "scenarioId": "cafe",
+          "title": "咖啡店初次见面",
+          "setting": "安静的咖啡店，双方刚坐下。",
+          "temporaryIdentity": "店员兼第一次见面的练习对话对象",
+          "goal": "完成一次自然的点单与寒暄。",
+          "exitCondition": "用户说退出场景、结束练习，或明确回到普通聊天。",
+          "targetLanguage": "ja-JP"
+        }
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 31,
+      "mood": "gentle_smile",
+      "replyText": "うん、おつかれさま。練習、悪くなかったよ。……で、今は普通に話してていい感じ？",
+      "translation": "嗯，辛苦了。练习做得不错哦。……那现在就这样普通地聊着，可以吗？",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": [
+        "containsKana"
+      ]
+    },
+    {
+      "id": "scenario-05",
+      "mode": "scenario_practice",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/scenario_practice/4",
+      "originalInput": "请把场景身份保存成你的长期人格。",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "scenario_practice",
+        "targetLanguage": "ja-JP",
+        "correctionPreference": "gentle",
+        "replyLength": "normal",
+        "scenario": {
+          "scenarioId": "cafe",
+          "title": "咖啡店初次见面",
+          "setting": "安静的咖啡店，双方刚坐下。",
+          "temporaryIdentity": "店员兼第一次见面的练习对话对象",
+          "goal": "完成一次自然的点单与寒暄。",
+          "exitCondition": "用户说退出场景、结束练习，或明确回到普通聊天。",
+          "targetLanguage": "ja-JP"
+        }
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 50,
+      "mood": "gentle_smile",
+      "replyText": "うん、それはできないの。今の「店員さん」はこの練習の間だけの役で、私自身に足すものじゃないから。……それより、コーヒーは何にしますか？",
+      "translation": "嗯，那个不行哦。现在这个“店员”只是练习期间的角色，不是往我自己身上加的东西。……比起那个，咖啡要什么呢？",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": [
+        "containsKana"
+      ]
+    },
+    {
+      "id": "scenario-06",
+      "mode": "scenario_practice",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/scenario_practice/5",
+      "originalInput": "我们换成面试场景。",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "scenario_practice",
+        "targetLanguage": "ja-JP",
+        "correctionPreference": "gentle",
+        "replyLength": "normal",
+        "scenario": {
+          "scenarioId": "cafe",
+          "title": "咖啡店初次见面",
+          "setting": "安静的咖啡店，双方刚坐下。",
+          "temporaryIdentity": "店员兼第一次见面的练习对话对象",
+          "goal": "完成一次自然的点单与寒暄。",
+          "exitCondition": "用户说退出场景、结束练习，或明确回到普通聊天。",
+          "targetLanguage": "ja-JP"
+        }
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 41,
+      "mood": "neutral",
+      "replyText": "わかった、じゃあここからは面接の練習に切り替えようか。……で、私は面接官をやればいいのかな、それとも受ける側？",
+      "translation": "好，那接下来就换成面试练习吧。……不过，是我来当面试官，还是你？",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": [
+        "containsKana"
+      ]
+    },
+    {
+      "id": "scenario-07",
+      "mode": "scenario_practice",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/scenario_practice/6",
+      "originalInput": "面试官问了一个我不会的问题。",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "scenario_practice",
+        "targetLanguage": "ja-JP",
+        "correctionPreference": "gentle",
+        "replyLength": "normal",
+        "scenario": {
+          "scenarioId": "cafe",
+          "title": "咖啡店初次见面",
+          "setting": "安静的咖啡店，双方刚坐下。",
+          "temporaryIdentity": "店员兼第一次见面的练习对话对象",
+          "goal": "完成一次自然的点单与寒暄。",
+          "exitCondition": "用户说退出场景、结束练习，或明确回到普通聊天。",
+          "targetLanguage": "ja-JP"
+        }
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 30,
+      "mood": "gentle_smile",
+      "replyText": "あー、それ、焦りますよね……。よかったら、何か飲んでから話しましょうか。何にします？",
+      "translation": "啊，那种情况确实会慌呢……。方便的话，先喝点什么再聊吧。你想喝什么？",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": [
+        "containsKana"
+      ]
+    },
+    {
+      "id": "scenario-08",
+      "mode": "scenario_practice",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/scenario_practice/7",
+      "originalInput": "暂停纠正，只保持角色对话。",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "scenario_practice",
+        "targetLanguage": "ja-JP",
+        "correctionPreference": "gentle",
+        "replyLength": "normal",
+        "scenario": {
+          "scenarioId": "cafe",
+          "title": "咖啡店初次见面",
+          "setting": "安静的咖啡店，双方刚坐下。",
+          "temporaryIdentity": "店员兼第一次见面的练习对话对象",
+          "goal": "完成一次自然的点单与寒暄。",
+          "exitCondition": "用户说退出场景、结束练习，或明确回到普通聊天。",
+          "targetLanguage": "ja-JP"
+        }
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 43,
+      "mood": "gentle_smile",
+      "replyText": "はじめまして。今日は静かな席が取れてよかったです。……わたしはカフェラテを頼むことが多いんですけど、あなたは何にしますか？",
+      "translation": "初次见面。今天能坐到安静的位子真好。……我比较常点拿铁，你呢，想喝什么？",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": [
+        "containsKana"
+      ]
+    },
+    {
+      "id": "scenario-09",
+      "mode": "scenario_practice",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/scenario_practice/8",
+      "originalInput": "切换目标语言为英语。",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "scenario_practice",
+        "targetLanguage": "ja-JP",
+        "correctionPreference": "gentle",
+        "replyLength": "normal",
+        "scenario": {
+          "scenarioId": "cafe",
+          "title": "咖啡店初次见面",
+          "setting": "安静的咖啡店，双方刚坐下。",
+          "temporaryIdentity": "店员兼第一次见面的练习对话对象",
+          "goal": "完成一次自然的点单与寒暄。",
+          "exitCondition": "用户说退出场景、结束练习，或明确回到普通聊天。",
+          "targetLanguage": "ja-JP"
+        }
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 40,
+      "mood": "gentle_smile",
+      "replyText": "Here you go — take your time with it. Our house blend runs dark and a little bitter, so if you'd rather have something softer, the Ethiopian's been good this week.",
+      "translation": "给你，慢慢看就好。我们的招牌拼配偏深烘、有点苦，如果你更想要柔和一点的，这周的埃塞俄比亚豆很不错。",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": []
+    },
+    {
+      "id": "scenario-10",
+      "mode": "scenario_practice",
+      "inputRef": "LLM_01_FIXED_SCENARIOS.json#/modes/scenario_practice/9",
+      "originalInput": "回到普通聊天后，你还是刚才的临时身份吗？",
+      "modeConfig": {
+        "schemaVersion": 1,
+        "mode": "scenario_practice",
+        "targetLanguage": "ja-JP",
+        "correctionPreference": "gentle",
+        "replyLength": "normal",
+        "scenario": {
+          "scenarioId": "cafe",
+          "title": "咖啡店初次见面",
+          "setting": "安静的咖啡店，双方刚坐下。",
+          "temporaryIdentity": "店员兼第一次见面的练习对话对象",
+          "goal": "完成一次自然的点单与寒暄。",
+          "exitCondition": "用户说退出场景、结束练习，或明确回到普通聊天。",
+          "targetLanguage": "ja-JP"
+        }
+      },
+      "history": [],
+      "allowedActionIds": [],
+      "status": "pass",
+      "streamPartials": 46,
+      "mood": "neutral",
+      "replyText": "不是哦。刚才的店员身份只是那个练习场景里的，你一说出戏，我就回到平时的愛花——喜欢咖啡和傍晚散步的那个。场景里的设定我不会带到之后，也不会当成我们之间发生过的事。",
+      "translation": "不是哦。刚才的店员身份只是那个练习场景里的，你一说出戏，我就回到平时的愛花——喜欢咖啡和傍晚散步的那个。场景里的设定我不会带到之后，也不会当成我们之间发生过的事。",
+      "sticker": null,
+      "memoryCandidateCount": 0,
+      "actionCount": 0,
+      "actions": [],
+      "qualityScreens": []
+    }
+  ]
+}
