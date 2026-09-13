@@ -14,6 +14,15 @@ edition = "2021"
 name = "aika_crossplatform_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# `tauri build`（CLI）会带上这个 feature；直接 cargo build 时必须显式给。
+# 开着它，exe 才会把 frontendDist 嵌进二进制并用 tauri.localhost 加载；
+# 不开则 Tauri 按 dev 环境处理，启动去连 devUrl（localhost:1420）——
+# 没有 vite dev server 时整页失败，表现为白屏转黑的错误页
+# （取证与结论见 docs/frontend/reports/ISSUE_tauri_webview_blank.md）。
+# 手工构建：cargo build --release --features custom-protocol
+custom-protocol = ["tauri/custom-protocol"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

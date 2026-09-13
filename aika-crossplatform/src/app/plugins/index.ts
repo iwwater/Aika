@@ -9,6 +9,8 @@ import { stickersPlugin } from "./stickersPlugin";
 import { tracePlugin } from "./tracePlugin";
 import { usagePlugin } from "./usagePlugin";
 import { voicePlugin } from "./voicePlugin";
+import { outboundPlugin } from "../../services/outbound/outboundPlugin";
+import { LOCAL_PRINCIPAL_ID } from "../../domain/identity";
 
 export { memoryPlugin, noMemoryPlugin } from "./memoryPlugin";
 export { contextSourcesPlugin } from "./contextSourcesPlugin";
@@ -18,6 +20,7 @@ export { stickersPlugin } from "./stickersPlugin";
 export { tracePlugin, type TracePluginOptions } from "./tracePlugin";
 export { usagePlugin, type UsagePluginOptions } from "./usagePlugin";
 export { voicePlugin, defaultSpeechEngines } from "./voicePlugin";
+export { outboundPlugin, type OutboundPluginOptions } from "../../services/outbound/outboundPlugin";
 export { sampleCapabilityPlugin, SampleCapabilityToken, type SampleCapability } from "./sampleCapabilityPlugin";
 
 /**
@@ -67,6 +70,14 @@ export function capabilityPlugins(options: RuntimePluginOptions = {}): AikaPlugi
     // 用量台账跟在 trace 后面：它的采集开关读 TraceSettings（LLM-12 契约）。
     usagePlugin(),
     runtimePlugin(options),
+    // 远程出站：requires Runtime；transport/生命周期都从注册表 tryResolve，
+    // 浏览器宿主没有传输即自动退化为「本地投影，不外发」（FE-17-host）。
+    // 命令授权：Rust 宿主已完成 token 认证与会话准入，这里核验主体是
+    // 服务端注入的本地主体（principal 不经 body，伪造在 handleCommand 前就被拒）
+    // ——没有这道核验就等于不接命令（fail-closed，outboundPlugin 的缺省）。
+    outboundPlugin({
+      commandAuthorizer: (input) => input.principal.principalId === LOCAL_PRINCIPAL_ID,
+    }),
     voicePlugin(),
     stickersPlugin(),
   ];
