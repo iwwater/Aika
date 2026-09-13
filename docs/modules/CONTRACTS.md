@@ -201,6 +201,12 @@ INT-01 的兼容检查项：云端合成一旦在设置页可选，`createOutput
 | --- | --- | --- | --- |
 | `createAdapterRegistry`（双适配器独立 manifest/认证槽/失败隔离） | `services/agent/adapterRegistry.ts` | 新服务：认证按 adapter 隔离（LLM API key ≠ 适配器登录态）；选择适配器不改会话/权限语义；实例失败不自动切换 | AGT-05 任务入口、FE 适配器选择页 |
 
+### v1 之后的追加（2026-09-13，AGT-05 TaskCommand facade，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `createTaskCommandFacade`（/agent 结构化命令 parser、workspaceRef 服务端白名单别名、审批单次绑定凭据、进度节流/完成去重/投递失败旁路化、runs() 同 runId 共读） | `services/agent/taskCommand.ts` | 新服务：进入生产 AgentSessionManager；任意本地路径/未知别名/未授权/重放 0 执行 | GW-01 可信命令分支、FE 任务面板、INT-04 端到端 |
+
 ## 详细接口入口
 
 LLM 各自的 `docs/llm/specs/LLM-01…05` 文件内写明实现级接口；[STT](../stt/ARCHITECTURE.md)、[TTS](../tts/ARCHITECTURE.md)、[前端](../frontend/ARCHITECTURE.md) 按共享架构文件引用对应阶段。代码块是拟定逻辑契约，现有类型通过兼容 adapter 映射；不能以名称尚未存在推断已实现，也不要机械新增重复接口。

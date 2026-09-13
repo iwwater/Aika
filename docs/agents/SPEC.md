@@ -8,4 +8,4 @@
 | [AGT-02](specs/AGT-02.md) | ACP 客户端与受限进程宿主 | AGT-01、RT-03 | AUTO_PASS（2026-09-13）：A~D 可自动项全过（分帧/终态映射/permission 原 id+有效 optionId/能力只宣告 prompt/进程配置校验）；真实进程与 Job Object NOT RUN。见[验收报告](reports/AGT-02_ACCEPTANCE.md) |
 | [AGT-03](specs/AGT-03.md) | Codex ACP 适配 | AGT-02 | AUTO_PASS（2026-09-13，fixture 轨）：A~C 可自动项全过（manifest 版本固定/启动探测三态/canary 负例哈希不变+收敛）；D 真实版本与写模式 NOT RUN。见[验收报告](reports/AGT-03_ACCEPTANCE.md) |
 | [AGT-04](specs/AGT-04.md) | Claude ACP 适配 | AGT-02 | AUTO_PASS（2026-09-13，fixture 轨）：A~D 可自动项全过（认证隔离/语义不变/失败隔离/坏 manifest 负例）；真实适配器 NOT RUN。见[验收报告](reports/AGT-04_ACCEPTANCE.md) |
-| [AGT-05](specs/AGT-05.md) | 远程审批、进度与结果投递 | AGT-03或AGT-04、GW-02或GW-04、RT-04 | READY（本地实现） |
+| [AGT-05](specs/AGT-05.md) | 远程审批、进度与结果投递 | AGT-03或AGT-04、GW-02或GW-04、RT-04 | AUTO_PASS（2026-09-13）：A~E 全过（TaskCommand facade 生产 parser→manager 真实 spawn、审批单次绑定凭据负例、进度节流/完成去重/投递失败旁路、同 runId 共享）；端到端真实链路归 INT-04。见[验收报告](reports/AGT-05_ACCEPTANCE.md) |
