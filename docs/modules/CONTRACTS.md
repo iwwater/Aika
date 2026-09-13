@@ -252,6 +252,64 @@ LLM 各自的 `docs/llm/specs/LLM-01…05` 文件内写明实现级接口；[STT
 
 发生冲突先依据用户最新范围和 SPEC 的行为约束统一接口，在同一改动中更新文档/适配及针对性契约测试。接口细化不自动触发全仓重构或全流程测试。
 
+### v1 之后的追加（2026-09-14，FE-22 主动策略接线、最终门禁与发送预约，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `createRuleProactivePolicy()`（替换 FE-18 默认 ignore 占位）：game_event 结算类（victory/defeat/pentakill）confidence ≥0.8 直接候选；弱信号 sustainedMs ≥30000 且 60s 窗口 ≥2 次；busy 未知一律 ignore、busy=true 仅结算类；未达门槛 remember（供缓冲累计）；阈值常量冻结 | `services/environment/ruleProactivePolicy.ts`、`environmentPlugin` | 纯函数；`eventAggregationKey` 供缓冲去重计数 | `environmentPlugin`（ProactivePolicyToken 生产实现）、FE-30 |
+| `ProactiveReasonKind` 增加 `"game-result"` / `"environment-weak"`；`ProactiveReasonInput.environment?`（受控词表 ID 数组）；`environmentProactiveReason(kind, buffer)` | `domain/proactive.ts` | 可选追加；hint 只引用词表 ID，无 OCR 原文；无穷举 switch 消费方 | presenter reason 构建、Trace |
+| `createEnvironmentTrigger({ monitor, policy, busy, clock, gates, attemptSend })` | `presentation/environmentTrigger.ts` | 新模块。remember 缓冲 ≤20/TTL 60s（TTL 先剔再挤）；终门禁=全局 proactive+environmentProactiveEnabled+contextEnabled+source running+事件在摘要 TTL 内+busy 观测 ≤2000ms（决策后等待再复核）；busy 未知零发送（PRO-04）；`attemptSend` 由 presenter 注入走既有路径 | companionPresenter、FE-30 |
+| companionPresenter 集成：`deps.environment?`（monitor/policy/busyObserver/clock）+ 共享发送预约 + `proactivePersistUnknown` 对账 | `presentation/companionPresenter.ts` | 可选 deps：缺省（无 monitor 宿主）零行为变化。预约非排队（同刻第二候选 false）；预约后重验 canSend；submit 成功后持久化失败 → 内存视为已发送、阻止后续主动发送、恢复后按同 sentAt/reason 幂等重写，不重复提交 | FE-22 测试、既有 tick 路径（重构为共用 `attemptSendProactive`） |
+| `EnvironmentBusyObserverToken`（`environment.busyObserver`）；`SETTING_KEYS.environmentProactiveEnabled`；environmentPresenter `setProactiveEnabled` + view.proactiveEnabled | `services/environment/busySource.ts`、`services/storage/contracts.ts`、`presentation/environmentPresenter.ts` | 新 token/新键（默认 false）/新开关；busy 观测由 tauri 宿主 `busyObserverPlugin` 提供（浏览器宿主不注册→永远 unknown→不发送） | presentationPlugin、App.tsx 环境分组 |
+
+### v1 之后的追加（2026-09-14，FE-21 Screen Event：帧 diff、ROI 与离线英文 OCR，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| Rust `environment_screen_supported/_enable/_capture_region`（`src-tauri/src/screen.rs`）：Windows.Graphics.Capture（windows-capture crate）500ms 采样 → 96×54 灰度（luma）→ 归一平均绝对差 ≥0.03 触发 `environment://screen-change`（仅 emit_to main）；首个有效帧只建基线、分辨率改变重建、全黑帧无效；`environment_capture_region` 相对 ROI → PNG base64（黑帧/越界 None） | 同左、`lib.rs`、Cargo.toml（windows-capture 1.5、image 0.25 png-only） | 新命令。diff 纯函数（`bgra_to_gray_thumb`/`mean_abs_diff`/`is_black_frame`/`roi_to_pixels`）带固定矩阵单测；关闭清空帧缓存与基线 | FE-21 screenSource、FE-30 组合 |
+| `DEFAULT_KEYWORD_RULES`（VICTORY/DEFEAT/PENTAKILL→game_event；Error/Failed→screen_keyword；独立词边界、大小写无关；ruleId）/ `matchKeywords(text, wordConfidence)` / `normalizeWordConfidence`（0..100→0..1） | `services/environment/keywordRules.ts` | 新模块。词级证据缺失用保守 0.5（不造 1.0）；事件只携带 ruleId/置信度，OCR 原文不出模块 | FE-22 policy（confidence≥0.8 门禁）、FE-19 contextSource 摘要 |
+| `createOcrEngine({ langPath, corePath?, loadTimeoutMs?=15000, recognizeTimeoutMs?=5000, clock?, timers? })`（tesseract.js 懒加载 worker；超时终止并清理 worker，本次无事件，不无限重试；`reset()` 重初始化） | `services/environment/ocrText.ts` | 新模块。离线资源：eng.traineddata（tessdata_fast，Apache-2.0）本地加载不外联 | screenSource、FE-21 冻结集评估、FE-30 安装包验证 |
+| `createScreenSource({ capture, ocr, clock, hostEpoch })`（id=`screen`）：变化节流 ≥2s、OCR 并发 1/pending≤1（忙时保留最新候选）、10 次/分钟单调滚动窗口、停止先撤销 generation 再 dispose worker | `services/environment/screenSource.ts` | 新 `EnvironmentSource`。事件 timingPrecision=measured、confidence=词级归一 | `environmentPlugin` sources（tauriHostPlugins 装配）、environmentPresenter（screen 开关） |
+| `SETTING_KEYS.environmentScreenEnabled`；fixtures（`src/services/environment/fixtures/`：dev 30 + 冻结验收集 120，manifest 含来源/sha256；eng.traineddata；public/tessdata 供 webview 同源获取） | `services/storage/contracts.ts`、fixtures | 新键默认 false；SET-02 说明文案在设置区 | environmentPresenter、FE-30 组合验收 |
+
+质量证据：冻结集评估 `ocrQuality.eval.test.ts`（生产 OCR+生产规则，120 张）——精确率 100%、召回率 100%、热 OCR P95 96ms（门槛 95%/85%/2000ms）。开发集 30 张用于调参，未与验收集混用。**固定图不证明 WGC 真机识别**（FE-21-I 归设备轨）。
+
+### v1 之后的追加（2026-09-14，FE-20 桌宠窗口与 pet.presentation.v1，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| Rust `pet_window_show/_hide/_set_click_through/_reset_position/_broadcast/_request_snapshot/_focus_main` | `src-tauri/src/petWindow.rs`、`lib.rs`、`capabilities/pet.json` | 新命令。show 幂等（已存在→show+focus）、hide=销毁、reset=工作区居中+关穿透（Windows 用 `rcWork` 物理像素/DPI 换算，窗口超工作区约束尺寸）；**broadcast 只允许 main 调用**（运行时 label 校验 `assert_allowed_caller`，pet 伪造展示帧被拒）；单帧 64KB 上限。pet 窗口 capability 仅 `core:default` | 主窗设置/找回入口、pet 页 |
+| `pet.presentation.v1`（schemaVersion/epoch/seq/runtimeTurnId/speaking/mood/currentSubtitle/lastProactive/可选 snapshot 帧；字幕气泡 2000 字符上限） | `src/pet/petPresentation.ts` | 新协议。主窗聚合→Rust 定向中继→pet 校验后渲染；epoch+seq 合并（旧 epoch/seq 零覆盖；**只有 snapshot 帧允许跨 epoch 重同步**）；字幕 speaking 结束 3000ms 淡出、气泡 8000ms；普通朗读 runtimeTurnId=null 不伪造（播放会话 ID 由 FE-29 追加） | FE-28 CharacterView、FE-29 口型消费（可选字段追加兼容旧壳） |
+| `createPetViewModel` / `connectPetViewModel` / `createPetRelay` / `createPetWindowManager` | 同上、`src/pet/relay.ts`、`src/pet/manager.ts` | 新模块。relay 节流（默认 250ms）+ 快照请求应答；manager generation 裁决 show/show、show/hide 竞态（迟到窗口立即销毁），关闭解绑中继订阅，**全程零 Runtime cancel/TTS stop**；`src/pet/` 静态扫描禁止 import services/runtime\|storage\|voice | PetApp/PetController/Bubble、usePetWindow、App.tsx 桌宠设置 |
+| `SETTING_KEYS.petWindowEnabled` | `services/storage/contracts.ts` | 新键默认 false；打开桌宠不隐式开启传感器 | usePetWindow、App.tsx |
+
+装配：`main.tsx` 按 Tauri 窗口 label（`app/hosts/detect.ts currentWindowLabel`）分流 pet 页；pet 窗口不建内核。主窗保留「找回桌宠/关闭穿透/关闭桌宠」入口。
+
+### v1 之后的追加（2026-09-14，FE-19 前台传感器、摘要授权与可信 busy，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `createForegroundSource(bridge, { hostEpoch })`（id=`foreground`；listen→enable→current 时序、epoch/enableEpoch+seq 去重、enable 失败映射 `EnvironmentSourceError("denied"/"unavailable")`） | `services/environment/foregroundSource.ts` | 新模块；`EnvironmentBridge { invoke, listen }` 注入，不直接 import Tauri。**只取进程名，无标题字段**（2026-09-14 修订删除 `GetWindowTextW`） | `environmentPlugin` sources、FE-21 复用桥形状 |
+| Rust `environment_foreground_supported/_enable/_current/_busy_query`（`src-tauri/src/foreground.rs`，hook 线程消息循环、`emit_to("main")` 定向、`WM_QUIT` 退出线程内 Unhook） | `src-tauri/src/foreground.rs`、`lib.rs` | 新命令。busy 判定纯函数 `classify_busy`（锁定/全屏→true、普通可见→false、锁定未知/无前台/最小化→unknown）；进程名失败跳过事件，不编造 | FE-19 source/busySource、真机轨 |
+| `BusyObservation { value, observedMonotonicMs, hostEpoch, reasonCode }` / `createBusyObserver(adapter, { clock, hostEpoch })`（观测有效期 2000ms，过期 unknown）/ `createTauriBusyAdapter` | `services/environment/busySource.ts` | 新模块。unknown 不折算 false；观测只在传感器开启期间由消费方触发（FE-22 门禁），模块自身不轮询 | FE-22 ruleProactivePolicy/presenter 门禁、FE-30 |
+| `createEnvironmentContextSource({ monitor, getContextEnabled, clock })`（id=`environment`、section=`environment`） | `services/environment/contextSource.ts` | 新 `ContextSource` 实现。授权读取 fail-closed（抛错=未授权）；load 即**每请求装配边界的出口校验接入点**——撤销/停源/TTL 过期后 load 为空，旧摘要不可能进入请求；snippet 只含应用名+时长+词表 ID 计数 | `contextSourcesPlugin`（FE-22 接线）、LLM contextAssembler 消费方 |
+| `SETTING_KEYS.environmentForegroundEnabled` / `.environmentContextEnabled` | `services/storage/contracts.ts` | 新键，默认 false；采集与摘要授权分离；关闭先内存撤销再持久化 | environmentPresenter、contextSource、App.tsx 设置区 |
+| `createEnvironmentPresenter({ monitor, settings })` / `EnvironmentPresenterToken`（`presentation.environment`） | `presentation/environmentPresenter.ts`、`presentation/tokens.ts` | 新 Presenter，**恒注册**（无 monitor 时 available=false）；启动读取失败按关闭处理；stopAll=撤 generation→关摘要授权→清缓存→等资源释放；快照稳定引用 | App.tsx 环境感知分组（FE-21/22 复用） |
+
+装配：`tauriHostPlugins` 注册 foreground source + environmentPlugin（浏览器宿主不注册，monitor token 缺席、设置分组隐藏）；`presentationPlugin` 提供 EnvironmentPresenter。请求出口校验只落在 contextSource.load（既有 ContextSource 边界），未重写 ContextAssembler。
+
+### v1 之后的追加（2026-09-14，FE-18 环境契约与 monitor，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `ENVIRONMENT_SCHEMA_VERSION` / `EnvironmentEvent`（schemaVersion、sourceId、eventId、hostEpoch、timestamp、receivedMonotonicMs、timingPrecision、confidence、payload 五 kind）/ `normalizeEnvironmentEvent` / `eventRuleId` | `domain/environment.ts` | 新类型+纯函数。对外 payload **无 title/text 字段**——自由文本在规范化入口剥离；confidence 有限且 0..1；`timestamp` 仅展示，窗口/TTL 一律用 monitor 打点的 `receivedMonotonicMs` | FE-19/21/22、未来环境消费者 |
+| `EnvironmentSource`（id/kind/start(emit, signal)→幂等 stop）/ `EnvironmentSnapshot` / `EnvironmentMonitor`（snapshot、subscribe、onStateChange、setSourceEnabled、stopAll、statuses、recent、diagnostics、dispose）/ `EnvironmentSourceState`（off/starting/running/stopping/denied/error）/ `EnvironmentSourceError` / `EnvironmentMonitorError` | `services/environment/contracts.ts` | 新端口。source 状态含 generation，stop 同步撤销（零广播）；stopAll 先撤销再等待；错误只含代码 | `environmentPlugin`、FE-19 前台 source / presenter、FE-21 screen source、FE-22 策略接线 |
+| `EnvironmentSourcesToken`（`environment.sources`）/ `EnvironmentMonitorToken`（`environment.monitor`）/ `ProactivePolicyToken`（`environment.proactivePolicy`） | 同上 | 新注册。**能力缺失即 token 不注册**：宿主无传感器时不注册 sources 与 monitor（tryResolve 得 null）；policy 恒注册（FE-18 先冻结契约，生产 rulePolicy 归 FE-22） | `environmentPlugin`（装配）、FE-19/21（提供 sources）、FE-22（消费 policy） |
+| `ProactivePolicyInput` / `ProactiveDecision` / `ProactivePolicy`（纯函数 evaluate） | 同上 | 新端口；`userBusy: boolean \| null`，null=未知不触发；持续时长/窗口计数由显式输入提供，无隐藏全局计数 | FE-22 ruleProactivePolicy（首个生产实现） |
+| `createEnvironmentMonitor(sources, { clock, hostEpoch?, wallClock?, dedupeWindowMs?, maxPerMinute?, recentTtlMs?, recentLimit? })` / `buildEnvironmentSummary(monitor, { clock })` | `services/environment/monitor.ts`、`summary.ts` | 新服务。默认 dedupe 2000ms、maxPerMinute 60、recent TTL 60000ms 上限 20；模型出口 DTO 只含受控 process/kind/词表 ID/置信度/年龄，无原文；conformance 用例包 `environment.conformance.ts`（生产 monitor+fake source 全绿） | FE-19 environmentPresenter、FE-21 screenSource、FE-22 presenter 接线、FE-30 组合 |
+
+语义边界：注册 monitor ≠ 启动 source（初始全 off，开关由 FE-19 控制端口接入）；同一 source 关闭只清其状态与 recent，stopAll 清空全部；去重/频控只约束广播与 recent，前台快照始终落地最新状态；宿主 epoch 不匹配视为旧会话残余丢弃；未来墙钟时间拒绝并单独计数。
+
 ### v1 之后的追加（2026-09-13，FE-17 命令下行收口：Rust emit + 生产授权，向后兼容）
 
 命令下行此前的两处断点：Rust `handle_commands` 受理后无 emit（202 是假确认，TS 网关永远收不到）；生产装配 `outboundPlugin()` 未传 `commandAuthorizer`，按 fail-closed 缺省命令监听根本没接。本轮收口：
