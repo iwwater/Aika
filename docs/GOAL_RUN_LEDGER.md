@@ -75,7 +75,7 @@
 | 4 | GW-01 | AUTO_PASS（待人工） | 见会话日志 | 版本化判别联合+inbox 去重/六态+outbox 重试上限/unknown 终态+目的地绑定+每会话串行链+窄端口；8 定向/1212 全量全绿 tsc 0；真实适配器 NOT RUN |
 | 4 | GW-02 | NOT RUN | | |
 | 4 | GW-03 语音文件 | NOT RUN | | 解码/重采样端口 |
-| 5 | FE-14 白名单投影 | NOT RUN | | |
+| 5 | FE-14 白名单投影 | AUTO_PASS（待人工） | 见会话日志 | outbound contracts/gateway/plugin/conformance：白名单投影、cursor 单调+epoch、重放去重、trace 四门、慢消费者限额、两处突变命中；11 定向/1237 全量全绿 tsc 0；真实传输 NOT RUN |
 | 5 | FE-17-pre | NOT RUN | | |
 | 5 | FE-15 | NOT RUN | | |
 | 5 | FE-17-host/tauri | NOT RUN | | |
@@ -123,3 +123,6 @@
 - 2026-09-13 08:05 Wave 4 RT-03 AUTO_PASS（待人工）：domain/permission（PermissionRequestV1 绑定 principal/conversation/agentSession/workspace/policyVersion/expiresAt/nonce；paramsDigestOf 摘要；checkPathBoundary：..逃逸/相邻前缀/大小写/UNC/换盘/realPathOf 注入 junction-TOCTOU 防线，解析失败即拒）+ permissionStore（内存原子 check-and-set+KV 持久化，重启 pending 不自动批准）+ permissionPolicy（read 放行/write-execute-external 审批/危险名单拒绝/群聊不可批高权限/createDenyAllPolicy fail-closed）+ permissionRuntime（approve-reject-cancel pending 限定、requestCancelAfterApproval 不回滚决定只标记、authorizeExecution 最终检查+原子认领恰好一次、audit 仅摘要无原始参数）。25 定向/1193 全量全绿 tsc 0。真实宿主执行入口 NOT RUN（AGT-02/GW 前置）。**下一节点：RT-04 来源与记忆写回信任边界。**
 - 2026-09-13 08:32 Wave 4 RT-04 AUTO_PASS（待人工）：domain/memory 的 MemorySourceKind 扩展为信任分级（messages/external-bound/untrusted-material/legacy/userEdit，TEXT 零迁移）+ mayElevateToConfirmed（模型候选永不自行提升）+ mayFeedUserSoul（明确归属+经人确认，外部与不可信材料即使人工确认也不入本地画像）+ sourceKindForOrigin（群聊/Agent/引文/unknown 一律 untrusted-material）+ sqlite 读取白名单/管理页标签同步 + writeback.authorizeWriteback 提交前重查（解绑/撤权批次丢弃不重试、denied 计数可见、无钩子=旧行为）。11 定向/1204 全量全绿 tsc 0。真实渠道写回 NOT RUN。**下一节点：GW-01 渠道契约。**
 - 2026-09-13 08:58 Wave 4 GW-01 AUTO_PASS（待人工）：domain/gateway（判别联合 text/voice/image/file/command、inboxKeyOf 平台账户+会话+messageId、六态 inbox、四态 outbox、附件 20MB/白名单校验）+ channelGateway（先持久接收再提交、running 崩溃→unknown 不自动重跑、每会话串行链有序、回信目的地绑定原请求、retry-after+重试上限 3、unknown 不确认不盲目重试、适配器只见三窄端口）。8 定向/1212 全量全绿 tsc 0。真实 Telegram 等适配器 NOT RUN（GW-02，需授权）。**下一节点：GW-02 渠道适配器（真实轨需授权，先做 fixture 轨）。**
+
+- 2026-09-13 10:12 Wave 5 FE-14 AUTO_PASS（待人工）：services/outbound（contracts 版本化帧/命令/主体；outboundGateway 白名单投影+turnId 目标映射未映射零外发+cursor epoch 单调+命令校验矩阵+重放去重+trace 四门+慢消费者限额；plugin transport 缺失启动不受阻、无授权端口不接命令 fail-closed；conformance 包六用例供 FE-15/16 复用）。突变验证两处（投影放行 memoryCandidates、cursor 恒 1）均被定向用例命中后恢复。11 定向/1237 全量全绿 tsc 0。真实传输 NOT RUN（FE-15/16）。
+- 2026-09-13 10:47 Wave 5 FE-17-pre AUTO_PASS（pre 步骤，待人工）：services/outbound/credentials（配对码 TTL5min/原子单次兑换/哈希存储/损坏 fail-closed；设备会话 device+principal 归属、逐设备 rotate/revoke、撤销即时生效共用 authenticate 门）+ exposurePolicy（三层暴露、所有层私有数据需认证、publicTlsAck 不构成证据 public 恒 blocked、路由白名单 SQL/秘密永不进网关、Origin fail-closed/cookie+CSRF/Bearer）。18 定向/1244 全量全绿 tsc 0。tauri/dev-relay NOT RUN；public BLOCKED。**下一节点：FE-15 Tauri HTTP 传输（Rust handler+手机页）——本地可做部分优先；GW-04 不等无关分支。**
