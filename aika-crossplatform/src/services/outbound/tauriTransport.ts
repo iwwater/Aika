@@ -2,12 +2,13 @@
  * Tauri 传输适配（FE-15-A 本地部分）。
  *
  * 把 Tauri 的 invoke/listen 桥成 FE-14 的 `OutboundTransport`：
- * - 出站帧经 Rust 事件 `outbound://frame` 推给手机页（payload = {target, frame}）。
- * - 入站命令经 invoke `outbound_command` 上行，由 Rust 转交主窗（认证在宿主侧
- *   完成后带外注入 principal——本适配不做认证，也不信任 body 身份）。
+ * - 出站帧经 invoke `outbound_publish` 交给 Rust 缓存并供手机页长轮询取；
+ *   Rust 侧只做字节搬运与准入，不做业务投影（那是 TS 侧 FE-14 的事）。
+ * - 入站命令经 Rust 事件 `outbound://command` 下行（认证在宿主侧完成后带外
+ *   注入 principal——本适配不做认证，也不信任 body 身份）。
  *
  * 用 fake invoke/listen 驱动 FE-14 transport 一致性用例包（FE-15-A）；
- * 真实 Rust handler（src-tauri gateway.rs）与手机页归真实宿主轨验收。
+ * 真实 Rust handler（src-tauri/src/gateway.rs）与手机页归真实宿主轨验收。
  */
 
 import type { AuthenticatedCommand, AuthorizedTarget, OutboundFrameV1, OutboundTransport } from "./contracts";
@@ -21,8 +22,13 @@ export interface TauriTransportOptions {
   listen: TauriListen;
   /** 命令到达事件名（Rust 端 emit）。 */
   commandEvent?: string;
-  /** 出站帧事件名（TS→Rust→手机页）。 */
-  frameEvent?: string;
+  /**
+   * 帧发布时携带的 TS 侧 gatewayEpoch。Rust 用它判定 epoch 变化
+   * （变化即要求客户端重同步）；不传时宿主沿用已有 epoch。
+   */
+  gatewayEpoch?: string;
+  /** 发布时归属的主体与会话；缺省用 target 里的值。 */
+  principalId?: string;
 }
 
 interface PendingCommand {
@@ -31,7 +37,6 @@ interface PendingCommand {
 
 export function createTauriOutboundTransport(options: TauriTransportOptions): OutboundTransport & { ready(): Promise<void> } {
   const commandEvent = options.commandEvent ?? "outbound://command";
-  void (options.frameEvent ?? "outbound://frame");
   const commandHandlers: Array<(input: AuthenticatedCommand) => void> = [];
   let started = false;
 
@@ -53,8 +58,18 @@ export function createTauriOutboundTransport(options: TauriTransportOptions): Ou
     },
 
     publish(target: AuthorizedTarget, frame: OutboundFrameV1): void {
-      // 发布经 Rust 中转：invoke 不等待投递结果（长轮询语义由 GET /events 分页承担）。
-      void options.invoke("outbound_publish", { target, frame });
+      // 发布经 Rust 中转：invoke 不等待投递结果（长轮询语义由 GET /api/v1/events 承担）。
+      // 参数名 `input` 与 Rust 侧 `outbound_publish(state, input)` 对应。
+      // `connection_id` 是 TS 侧的投递目标标识（Rust 只用它做会话缓存键的一部分）。
+      void options.invoke("outbound_publish", {
+        input: {
+          principal_id: options.principalId ?? target.principalId,
+          connection_id: target.connectionId,
+          conversation_id: target.conversationId,
+          frame,
+          epoch: options.gatewayEpoch,
+        },
+      });
     },
 
     onCommand(handler) {

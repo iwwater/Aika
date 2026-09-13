@@ -80,6 +80,7 @@
 </footer>
 <script>
   // token 从链接里来，之后存进 sessionStorage：刷新还在，关掉标签页就没了。
+  // 注意：`?t=` 只是**本次请求的凭证**，不是长期授权——新协议里它不换发任何东西。
   const params = new URLSearchParams(location.search);
   const token = params.get("t") || sessionStorage.getItem("aika.token") || "";
   if (params.get("t")) {
@@ -94,8 +95,14 @@
   const input = document.getElementById("input");
   const sendButton = document.getElementById("send");
 
+  const CONVERSATION = params.get("conversation") || "local";
+
   let rendered = "";
   let sending = false;
+  let epoch = null;      // 宿主 epoch；变化即要求重同步
+  let cursor = null;     // 已消费到的 seq
+  let polling = false;
+  let stopped = false;
 
   function online(ok, text) {
     dot.className = ok ? "dot" : "dot off";
@@ -113,7 +120,10 @@
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || ("HTTP " + response.status));
+    // 202 是「已受理」而不是「已完成」——按 ok 放行，终态靠事件流。
+    if (!response.ok && response.status !== 202) {
+      throw new Error(data.error || ("HTTP " + response.status));
+    }
     return data;
   }
 
@@ -131,7 +141,7 @@
 
       const meta = document.createElement("p");
       meta.className = "meta";
-      meta.textContent = (message.role === "user" ? "你" : "愛花") + " · " + message.time;
+      meta.textContent = (message.role === "user" ? "你" : "愛花") + " · " + (message.time || "");
 
       const bubble = document.createElement("div");
       bubble.className = "bubble";
@@ -148,14 +158,75 @@
     if (atBottom) list.scrollTop = list.scrollHeight;
   }
 
-  async function refresh() {
+  // 事件帧 → 消息。reply 帧带 replyText/translation/mood；status 帧表状态。
+  // 投影是白名单的（没有 memoryCandidates），手机端只认这几个字段。
+  // 用 turnId 做键：同一轮的 status→reply→settled 不会各造一条消息。
+  const messages = new Map();
+
+  function applyFrame(frame) {
+    const payload = frame && frame.payload;
+    if (!payload) return;
+    const key = String(frame.turnId || (frame.cursor && frame.cursor.seq) || "");
+    if (payload.channel === "reply" && payload.reply) {
+      messages.set(key, {
+        role: "assistant",
+        text: payload.reply.replyText || "",
+        translation: payload.reply.translation || null,
+        time: timeNow(),
+      });
+      render([...messages.values()]);
+      say("电脑关机时这里就没有回应了——记忆只有电脑上那一份。", false);
+      return;
+    }
+    if (payload.channel === "status" && payload.status) {
+      const code = payload.status.code;
+      if (code === "turn-state") say("她正在想…", false);
+      if (code === "settled") say("这一轮说完了。", false);
+      // 错误状态只显示白名单里的 code，不显示任何内部 message。
+      if (code && code !== "pong" && code !== "turn-state" && code !== "settled") {
+        say("这一轮没能完成（" + code + "）。", true);
+      }
+    }
+  }
+
+  function timeNow() {
+    const now = new Date();
+    return now.toTimeString().slice(0, 5);
+  }
+
+  // 长轮询：宿主会挂住最多 25s，有新帧或状态变化才返回。
+  async function poll() {
+    if (polling || stopped) return;
+    polling = true;
     try {
-      const data = await call("/api/messages");
-      render(data.messages || []);
-      online(true, data.connected ? "已连上电脑" : "电脑上还没配置模型");
+      const query = new URLSearchParams({ conversation: CONVERSATION });
+      if (epoch) query.set("epoch", epoch);
+      if (cursor !== null && cursor !== undefined) query.set("cursor", String(cursor));
+      const data = await call("/api/v1/events?" + query.toString());
+      epoch = data.epoch || epoch;
+      if (data.gap) {
+        // 明确告知重同步，而不是假装连续。
+        say("连接重新同步中…", false);
+      }
+      for (const raw of data.events || []) {
+        let frame = null;
+        try { frame = typeof raw === "string" ? JSON.parse(raw) : raw; } catch { continue; }
+        if (frame && frame.cursor && typeof frame.cursor.seq === "number") cursor = frame.cursor.seq;
+        applyFrame(frame);
+      }
+      if (data.runtimeStatus === "online") {
+        online(true, "已连上电脑");
+      } else {
+        online(false, "电脑上还没配置模型");
+      }
     } catch (error) {
       online(false, "连不上电脑");
       say(String(error.message || error), true);
+      // 出错后退避再试，不要把宿主打满。
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    } finally {
+      polling = false;
+      if (!stopped) setTimeout(poll, 0);
     }
   }
 
@@ -170,9 +241,16 @@
     say("已经发过去了，等她说完这一轮…");
 
     try {
-      const data = await call("/api/send", { method: "POST", body: JSON.stringify({ text }) });
-      // 这一轮落库之后由 refresh() 拉回来：那份才是电脑上真正存下的。
-      say(data.error || "电脑关机时这里就没有回应了——记忆只有电脑上那一份。", Boolean(data.error));
+      // messageId 由客户端生成：宿主按 主体+会话+messageId 去重，重放不会重复提交。
+      const messageId = (crypto.randomUUID && crypto.randomUUID()) || String(Date.now());
+      messages.set(messageId, { role: "user", text, time: timeNow() });
+      render([...messages.values()]);
+      const data = await call("/api/v1/commands", {
+        method: "POST",
+        body: JSON.stringify({ schemaVersion: 1, type: "submit", messageId, text, conversationId: CONVERSATION }),
+      });
+      if (data.error) say(data.error, true);
+      else say("她收到了，正在想…", false);
     } catch (error) {
       // 发失败时把话还给用户，不要让他重打一遍
       input.value = text;
@@ -180,7 +258,6 @@
     } finally {
       sending = false;
       sendButton.disabled = false;
-      refresh();
     }
   });
 
@@ -193,9 +270,22 @@
     online(false, "缺 token");
     say("这个链接少了 token。在电脑上的设置页重新复制一次手机地址。", true);
   } else {
-    refresh();
-    // 主动消息推不到手机（Web Push 要 HTTPS 和 VAPID），所以开着的时候靠轮询。
-    setInterval(() => { if (!sending) refresh(); }, 3000);
+    loadHistory();
+    poll();
+  }
+
+  // 首屏历史：拉一次就好，之后的增量靠事件流。
+  async function loadHistory() {
+    try {
+      const data = await call("/api/v1/history");
+      for (const message of data.messages || []) {
+        // 历史消息没有 turnId，用文本+时间做稳定键避免重复。
+        messages.set("h:" + (message.time || "") + ":" + (message.text || "").slice(0, 24), message);
+      }
+      render([...messages.values()]);
+    } catch (error) {
+      say(String(error.message || error), true);
+    }
   }
 </script>
 </body>

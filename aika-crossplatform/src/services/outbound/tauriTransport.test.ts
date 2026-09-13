@@ -17,8 +17,9 @@ describe("tauriTransport 一致性（FE-15-A，fake invoke/listen）", () => {
       let idCounter = 0;
       const invoke = async (command: string, args?: Record<string, unknown>) => {
         if (command === "outbound_publish" && args) {
-          const target = args.target as { connectionId: string };
-          published.push({ connectionId: target.connectionId, frame: args.frame as OutboundFrameV1 });
+          // 生产参数形状：{ input: { principal_id, connection_id, conversation_id, frame, epoch } }
+          const input = args.input as { connection_id: string; frame: OutboundFrameV1 };
+          published.push({ connectionId: input.connection_id, frame: input.frame });
         }
         return null;
       };

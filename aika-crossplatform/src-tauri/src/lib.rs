@@ -1,3 +1,4 @@
+mod gateway;
 mod remote;
 mod secret_store;
 
@@ -26,6 +27,11 @@ pub fn run() {
             remote::remote_stop,
             remote::remote_status,
             remote::remote_respond,
+            remote::outbound_publish,
+            remote::outbound_heartbeat,
+            remote::outbound_offline,
+            remote::outbound_revoke,
+            remote::outbound_sessions,
             secret_store::secret_available,
             secret_store::secret_set,
             secret_store::secret_get,
