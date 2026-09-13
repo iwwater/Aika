@@ -177,6 +177,12 @@ INT-01 的兼容检查项：云端合成一旦在设置页可选，`createOutput
 | --- | --- | --- | --- |
 | `createDeviceRegistry`（能力交集协商/租约在线读时计算/reconnect epoch+cursor 窗口/authorize 独立授权口） | `services/gateway/deviceRegistry.ts` | 新服务；配对/会话/撤销复用 FE-17-pre 凭证端口；trace/审批授权默认拒绝 | GW-04 设备列表/租约体验、FE 手机页、FE-14 trace 订阅门 |
 
+### v1 之后的追加（2026-09-13，AGT-01 AgentSession/Run，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `AgentSessionV1`/`AgentRunV1`（Session 与 Run 状态机分离）/`AgentRunEventV1`（脱敏）/`createAgentSessionManager`/`AgentAdapter` | `domain/agentSession.ts`、`services/agent/agentSessionManager.ts` | 新服务：spawn/send/cancel 幂等（startRequestId/runId）、并发上限+有界队列、时间预算、取消宽限+强制结束留实际状态、recover 标 interrupted、日志有界脱敏。真实 ACP adapter 待 AGT-03 | AGT-02 权限集成、AGT-05 任务入口 |
+
 ## 详细接口入口
 
 LLM 各自的 `docs/llm/specs/LLM-01…05` 文件内写明实现级接口；[STT](../stt/ARCHITECTURE.md)、[TTS](../tts/ARCHITECTURE.md)、[前端](../frontend/ARCHITECTURE.md) 按共享架构文件引用对应阶段。代码块是拟定逻辑契约，现有类型通过兼容 adapter 映射；不能以名称尚未存在推断已实现，也不要机械新增重复接口。
