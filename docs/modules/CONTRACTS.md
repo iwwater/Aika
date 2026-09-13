@@ -151,6 +151,13 @@ INT-01 的兼容检查项：云端合成一旦在设置页可选，`createOutput
 | `parseTelegramUpdate` / `splitTelegramText` / `redactTelegramUrl` / `createTelegramPoller` / `sendTelegramSlice` | `services/gateway/telegramAdapter.ts` | 新模块（fixture 轨）：token 在 URL 路径——审计只含 method/status/retryAfter；offset 只在 Gateway 持久接收后推进；409 不自动 deleteWebhook | GW-01 ChannelGateway、宿主启停（GW-02 设置入口后续） |
 | `validateAttachmentFile` / `buildControlledDownloadUrl` / `assertAllowedDownloadHost` / `downloadWithLimits` / `AudioTranscriptionPort` / `createFileTranscriptionPort` / `createTempAttachment` | `services/gateway/attachmentPipeline.ts` | 新模块：文件白名单（txt/md/json/受支持音频；image/PDF/office/压缩包明确不支持）；只收平台受控下载地址+重定向再校验；转写端口与麦克风 `SpeechInputEngine` 完全分离（注入 decode→16kHz 单声道→WhisperClient）；能力缺失明确 unsupported | GW-03 入口适配、STT 模块 |
 
+### v1 之后的追加（2026-09-13，FE-14 远程协议内核，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `OutboundFrameV1`（reply/status/trace 判别）/`RemoteReplyV1` 白名单/`OutboundCommandV1`/`AuthenticatedCommand`/`AuthorizedTarget`/`OutboundTransport` | `services/outbound/contracts.ts` | 新类型。reply 四字段白名单投影（无 memoryCandidates）；status 只有 code/state/requestId；命令文本 4000 码点上限 | outboundGateway、FE-15/16 传输、AGT-05 |
+| `createOutboundGateway` / `OutboundGatewayToken` / `outboundPlugin` / `outbound.conformance` 用例包 | `services/outbound/*` | 新服务：turnId→授权目标映射（未映射零外发）；cursor epoch+seq 单调；submit 去重（主体+会话+messageId）；trace 四门（本地采集+远程外发+主体授权+显式订阅）；慢消费者帧数/字节限额。transport 缺失启动不受阻；无授权端口不接命令（fail-closed） | FE-15/16/17、GW-04 |
+
 ## 详细接口入口
 
 LLM 各自的 `docs/llm/specs/LLM-01…05` 文件内写明实现级接口；[STT](../stt/ARCHITECTURE.md)、[TTS](../tts/ARCHITECTURE.md)、[前端](../frontend/ARCHITECTURE.md) 按共享架构文件引用对应阶段。代码块是拟定逻辑契约，现有类型通过兼容 adapter 映射；不能以名称尚未存在推断已实现，也不要机械新增重复接口。

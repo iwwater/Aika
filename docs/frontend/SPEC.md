@@ -20,7 +20,7 @@
 | [FE-23](specs/FE-23.md) | Live Inspector 外壳与实时订阅 | AUTO_PASS（2026-09-13）：A~C 全过，184 测试回归全绿；拖拽/窄窗目视留人工。见[验收报告](reports/FE-23_ACCEPTANCE.md) |
 | [FE-24](specs/FE-24.md) | 泳道时间线、检查器与导出 | AUTO_PASS（2026-09-13）：A~D 全过，170 测试回归全绿；浮层目视留人工。见[验收报告](reports/FE-24_ACCEPTANCE.md) |
 | [FE-25](specs/FE-25.md) | 上下文布局、记忆清单与实时数据流 | AUTO_PASS（2026-09-13）：A~D 全过，577 测试回归全绿；目视留人工。见[验收报告](reports/FE-25_ACCEPTANCE.md) |
-| [FE-14](specs/FE-14.md) | 远程输出协议内核：OutboundChannel 与 schema v1（草案） | READY；执行当前已审阅正文 |
+| [FE-14](specs/FE-14.md) | 远程输出协议内核：OutboundChannel 与 schema v1（草案） | AUTO_PASS（2026-09-13）：A~G 全过（白名单投影/cursor 单调/重放去重/trace 四门/慢消费者限额/conformance 包+两处突变命中）；真实传输归 FE-15/16。见[验收报告](reports/FE-14_ACCEPTANCE.md) |
 | [FE-15](specs/FE-15.md) | Tauri 宿主 transport（HTTP 轮询）与手机页迁移（草案） | READY；执行当前已审阅正文 |
 | [FE-16](specs/FE-16.md) | 浏览器 dev 宿主 transport 与 Node ws 中继（草案） | READY；执行当前已审阅正文 |
 | [FE-17](specs/FE-17.md) | 网关安全收口：分层开关、token 轮换与暴露面审计（草案） | READY；执行当前已审阅正文 |

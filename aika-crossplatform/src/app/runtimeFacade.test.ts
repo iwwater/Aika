@@ -28,6 +28,7 @@ const COMPANION_RUNTIME_WHITELIST = [
   "services/runtime/providerAdapter.ts",
   "services/runtime/provider.conformance.ts",
   "services/runtime/scopedStorage.ts",
+  "services/outbound/outboundGateway.ts",
   "app/plugins/runtimePlugin.ts",
 ];
 
