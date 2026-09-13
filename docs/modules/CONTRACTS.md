@@ -213,6 +213,12 @@ INT-01 的兼容检查项：云端合成一旦在设置页可选，`createOutput
 | --- | --- | --- | --- |
 | INT-04 fixture 链路 harness（生产 TaskCommand 入口→manager→fake ACP→canary→审批→原渠道投递；负例先行+入口×适配器矩阵） | `services/agent/int04.fixture.test.ts` | 测试资产：从生产用户命令入口开始，不绕 parser/认证/路由；真实轨（真实 diff+测试退出码）独立 NOT RUN | INT-04 真实轨、INT-03 发布门禁 |
 
+### v1 之后的追加（2026-09-13，RT-05 持久 Scheduler，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `createPersistentScheduler`（time/interval/event 三触发、misfire skip、幂等 executionKey、到期 authorize 重查 fail-closed、unknown 不重放、重试 3 次退避、容量上限） | `services/runtime/persistentScheduler.ts` | 新服务；KV 持久化重启不重放已消费任务；无时区数据返回 unsupported | RT-06 跨渠道投递、AGT 调度、通知 |
+
 ## 详细接口入口
 
 LLM 各自的 `docs/llm/specs/LLM-01…05` 文件内写明实现级接口；[STT](../stt/ARCHITECTURE.md)、[TTS](../tts/ARCHITECTURE.md)、[前端](../frontend/ARCHITECTURE.md) 按共享架构文件引用对应阶段。代码块是拟定逻辑契约，现有类型通过兼容 adapter 映射；不能以名称尚未存在推断已实现，也不要机械新增重复接口。
