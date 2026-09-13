@@ -72,7 +72,7 @@ CORE-06 删除旧legacy生产编排路径并冻结共享契约，按 SPEC 属于
 
 CORE-03～05登记属于历史增量；CORE-06已删除legacy，当前INT-01不再测试恢复legacy。统一验证唯一Runtime、残留旧设置无害、双id、Presenter兜底、Remote路由、语音交付兼容。上文“CORE-06删除生产编排路径”应读为删除旧legacy生产编排路径，保留CompanionRuntime。
 
-INT-01分自动消费者契约、浏览器真实UI、Tauri/plugin-sql、真实Provider、真实手机五列；部分通过不标整项PASS。INT-04见[远程Coding联调](specs/INT-04.md)，发布仍按INT-03。执行与跳过规则见[计划](../GOAL_EXECUTION_PLAN.md)。
+INT-01分自动消费者契约、浏览器真实UI、Tauri/plugin-sql、真实Provider、真实手机五列；部分通过不标整项PASS。INT-04见[远程Coding联调](specs/INT-04.md)——PARTIAL（2026-09-13）：fixture 轨 AUTO_PASS（负例先行+双成功链路矩阵+canary diff/外文件哨兵，7 定向/1293 全量全绿），真实轨 NOT RUN-需授权，发布仍按INT-03。见[验收报告](reports/INT-04_ACCEPTANCE.md)。执行与跳过规则见[计划](../GOAL_EXECUTION_PLAN.md)。
 
 ## 当前INT-01逐项验收（全文审阅后冻结）
 

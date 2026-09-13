@@ -207,6 +207,12 @@ INT-01 的兼容检查项：云端合成一旦在设置页可选，`createOutput
 | --- | --- | --- | --- |
 | `createTaskCommandFacade`（/agent 结构化命令 parser、workspaceRef 服务端白名单别名、审批单次绑定凭据、进度节流/完成去重/投递失败旁路化、runs() 同 runId 共读） | `services/agent/taskCommand.ts` | 新服务：进入生产 AgentSessionManager；任意本地路径/未知别名/未授权/重放 0 执行 | GW-01 可信命令分支、FE 任务面板、INT-04 端到端 |
 
+### v1 之后的追加（2026-09-13，INT-04 联调 harness，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| INT-04 fixture 链路 harness（生产 TaskCommand 入口→manager→fake ACP→canary→审批→原渠道投递；负例先行+入口×适配器矩阵） | `services/agent/int04.fixture.test.ts` | 测试资产：从生产用户命令入口开始，不绕 parser/认证/路由；真实轨（真实 diff+测试退出码）独立 NOT RUN | INT-04 真实轨、INT-03 发布门禁 |
+
 ## 详细接口入口
 
 LLM 各自的 `docs/llm/specs/LLM-01…05` 文件内写明实现级接口；[STT](../stt/ARCHITECTURE.md)、[TTS](../tts/ARCHITECTURE.md)、[前端](../frontend/ARCHITECTURE.md) 按共享架构文件引用对应阶段。代码块是拟定逻辑契约，现有类型通过兼容 adapter 映射；不能以名称尚未存在推断已实现，也不要机械新增重复接口。
