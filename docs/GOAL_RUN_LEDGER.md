@@ -73,10 +73,10 @@
 | 4 | RT-03 权限 | AUTO_PASS（待人工） | 见会话日志 | 决策/执行两终态+原子认领+重启不自动批准+deny-all fail-closed+审计脱敏+Windows 路径边界（junction/TOCTOU 注入防线）；25 定向/1193 全量全绿 tsc 0；真实执行入口 NOT RUN |
 | 4 | RT-04 来源 | AUTO_PASS（待人工） | 见会话日志 | MemorySourceKind 信任分级扩展+mayElevateToConfirmed/mayFeedUserSoul 门+writeback authorizeWriteback 提交前重查（denied 可见）；11 定向/1204 全量全绿 tsc 0；真实渠道写回 NOT RUN |
 | 4 | GW-01 | AUTO_PASS（待人工） | 见会话日志 | 版本化判别联合+inbox 去重/六态+outbox 重试上限/unknown 终态+目的地绑定+每会话串行链+窄端口；8 定向/1212 全量全绿 tsc 0；真实适配器 NOT RUN |
-| 4 | GW-02 | NOT RUN | | |
-| 4 | GW-03 语音文件 | NOT RUN | | 解码/重采样端口 |
+| 4 | GW-02 | AUTO_PASS（fixture 轨，待人工） | 见会话日志 | parseTelegramUpdate 官方 fixture/Unicode 码点切分/redactTelegramUrl token 整段脱敏/poller offset 持久后推进+429+409 不自动 deleteWebhook；真实双向 NOT RUN-需授权 |
+| 4 | GW-03 语音文件 | AUTO_PASS（待人工） | 见会话日志 | attachmentPipeline（元数据/穿越/盘符/控制字符校验矩阵、受控下载重定向白名单、AudioTranscriptionPort 注入解码→16k 单声道→Whisper、失败不伪造、取消清零）；真实音质人工队列 |
 | 5 | FE-14 白名单投影 | AUTO_PASS（待人工） | 见会话日志 | outbound contracts/gateway/plugin/conformance：白名单投影、cursor 单调+epoch、重放去重、trace 四门、慢消费者限额、两处突变命中；11 定向/1237 全量全绿 tsc 0；真实传输 NOT RUN |
-| 5 | FE-17-pre | NOT RUN | | |
+| 5 | FE-17-pre | AUTO_PASS（pre 步骤，待人工） | 见会话日志 | 凭证 repository（配对码原子单次兑换/哈希存储/撤销即失效/逐设备轮换）+暴露纯策略（public 无 TLS 证据恒 BLOCKED）+请求认证门（Origin/CSRF/Bearer 负例）；18 定向/1244 全量全绿 tsc 0 |
 | 5 | FE-15 | PARTIAL（待人工） | 见会话日志 | A 过：tauriTransport 桥 invoke/listen 复跑 FE-14 conformance 六用例；B/C/D/E（Rust handler/手机页）NOT RUN 需真实宿主 |
 | 5 | FE-17-host/tauri | NOT RUN | | |
 | 5 | GW-04 | AUTO_PASS（待人工） | 见会话日志 | deviceRegistry（能力交集协商/租约读时计算/reconnect epoch+cursor 窗口/trace 审批独立授权口默认拒）；27 定向/1255 全量全绿 tsc 0；真实设备端到端 NOT RUN |
@@ -92,7 +92,7 @@
 | 7 | RT-06 | AUTO_PASS（待人工） | 见会话日志 | deliveryPolicy（群私提醒 drop/未授权 drop/冷却 key 持久化/quietHours defer 不按 urgency 绕过/registerOutboxItem 完成事件去重）；5 定向/1306 全量全绿 tsc 0；真实渠道发送 NOT RUN |
 | 7 | GW-05 | AUTO_PASS（fixture 轨，待人工） | 见会话日志 | feishuAdapter（官方能力快照、验签/重放/tenant 隔离、最小交付仅绑定私聊文本、token 刷新失败可见不泄漏）；6 定向（GW 合并）/1312 全量全绿 tsc 0；真实账户 NOT RUN |
 | 7 | GW-06 | AUTO_PASS（fixture 轨，待人工） | 见会话日志 | qqAdapter（官方能力快照与差异 QQ_CAPABILITY_GAPS、scope 精确命名、非文本/生命周期 op 明确拒绝、429 retry-after）；真实账户/审核 BLOCKED |
-| 8 | 汇总 + 相关回归 | NOT RUN | | 本轮相关全量 test/build 一次 |
+| 8 | 汇总 + 相关回归 | DONE（待人工） | docs/GOAL_FINAL_STATUS.md | 最终回归 119 文件 1312 测试全绿 tsc 0；AUTO_PASS 27 / PARTIAL 4 / REVIEWED_AUTO 34 / FAIL 0 / NOT RUN 15 项 / BLOCKED 4 项 / DEFERRED 6 项；下一步人工清单八条 |
 | 8 | INT-03 发布门禁 | NOT RUN | | 发布前另安排，非本轮 |
 
 后置不动：FE-18～22、STT-03、TTS-03、INT-02、Live2D/Stage3/云Relay/原生Android/Push/Discovery。INT-03 发布前完整门禁不进本轮自动队列。
@@ -135,5 +135,6 @@
 - 2026-09-13 16:31 Wave 7 RT-05 AUTO_PASS（待人工）：services/runtime/persistentScheduler（trigger 三类建模 time/interval/event；任务字段 id/owner/scope/timeZone/nextRunAt/misfirePolicy/enabled/attempts/executionKey/state；misfire 默认 skip 不补跑；幂等触发键同键只执行一次；到期执行前 authorize 重查 fail-closed；unknown 副作用不自动重放；可确认失败重试至多 3 次指数退避；容量 200；暂停/恢复/取消；KV 持久化重启不重放已消费任务、损坏按空 fail-closed；坏时区 unsupported 不硬编码本地时区）。8 定向/1301 全量全绿 tsc 0。真实宿主长跑 NOT RUN。**下一节点：RT-06 跨渠道主动投递策略。**
 - 2026-09-13 17:14 Wave 7 RT-06 AUTO_PASS（待人工）：services/runtime/deliveryPolicy（evaluate：群组永不接私人提醒 drop、未授权目标 drop、quietHours 按本地小时 defer/异常过长丢弃、冷却 key=主体+事件类型+目标且 state 持久化重启不清零；registerOutboxItem 同完成事件多次到达只一项 outbox；审批请求不按 urgency 绕过 quietHours——审批走 RT-03；markDelivered 只写冷却）。5 定向/1306 全量全绿 tsc 0。真实渠道发送 NOT RUN（GW-02 真实轨）。**下一节点：GW-05 飞书适配（fixture 轨）。**
 - 2026-09-13 18:06 Wave 7 GW-05+GW-06 AUTO_PASS（fixture 轨，待人工）：feishuAdapter（官方能力快照；verifyFeishuEvent SHA-256 验签+event_id 重放防御+create_time 秒毫秒归一 5 分钟窗口+tenant 白名单；parseFeishuMessage 最小交付仅绑定私聊文本——群聊/未绑定/非文本明确拒绝；createFeishuTokenManager 刷新失败只暴露状态码不泄漏 secret）+ qqAdapter（官方能力快照与差异 QQ_CAPABILITY_GAPS 三条如实 BLOCKED、QQ_SUPPORTED_SCOPES 精确命名 group@-text/c2c-text、parseQqMessage op/t/d 判别非文本与生命周期 op 拒绝、qqRateLimitVerdict 429 retry-after）。GW 合并 6 定向/1312 全量全绿 tsc 0。真实账户/审核 NOT RUN-BLOCKED。**Wave 7 全部节点完成（INT-04/RT-05/RT-06/GW-05/GW-06）。下一节点：Wave 8 最终状态汇总。**
+- 2026-09-13 19:05 Wave 8 汇总 DONE（待人工）：docs/GOAL_FINAL_STATUS.md 产出全量状态矩阵——AUTO_PASS 27（Wave 3~7 本轮全部实现节点）、PARTIAL 4（INT-01/LLM-05/FE-15/INT-04）、REVIEWED_AUTO 34（波次 1 复核）、FAIL 0、NOT RUN 15 项（真实宿主/凭证/授权）、BLOCKED 4 项（TLS 证据/QQ 能力缺口/真实账户授权/真实只读验证）、DEFERRED 6 项（桌宠/环境感知/Stage3/云 Relay/自动 Discovery/每主体记忆库）；下一步人工清单八条（审阅→INT-03 门禁→真实轨授权→Tauri 宿主工程→dev-relay→真实凭证→设备端到端→后置项重启）。最终回归 119 文件 1312 测试全绿 tsc 0，逐 SPEC commit 全链无推送。**Goal 交接完成：剩余节点全部依赖外部条件（真实宿主/凭证/授权），无本地可执行遗留。**
 - 2026-09-13 12:05 Wave 5 GW-04 AUTO_PASS（待人工）：services/gateway/deviceRegistry（能力=服务端授权∩设备声明逐项可见降级、租约读时计算在线、authorize chat/notification 走能力交集而 trace/approval 独立授权口默认 not-authorized、reconnect epoch 变化/cursor 低于缓存窗口→明确 resync、心跳续租；配对/会话/撤销复用 FE-17-pre 凭证端口不造第二套）。27 定向/1255 全量全绿 tsc 0。真实设备端到端 NOT RUN（FE-15 Rust handler+INT-01）。**Wave 5 本地可执行节点完成；FE-16/FE-17-host 需真实宿主。下一节点：Wave 6 AGT-01 Session/Run 契约。**
 - 2026-09-13 11:38 Wave 5 FE-15 PARTIAL（待人工）：本地部分 tauriTransport（invoke/listen 桥 OutboundTransport、命令事件监听者异常隔离、不做认证不信任 body 身份）+ fake invoke/listen 下复跑 FE-14 conformance 六用例（退订无迟到业务回调）。B/C/D/E（Rust gateway.rs handler、手机页、宿主装配平台选择）需真实 Tauri 宿主：NOT RUN/BLOCKED，留宿主轨。**下一节点：GW-04 设备列表与租约（复用 FE-17-pre 凭证端口）。**
