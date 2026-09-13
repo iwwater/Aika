@@ -19,6 +19,9 @@ const RUNTIME_TOKEN_WHITELIST = [
   "app/plugins/runtimePlugin.ts",
   "app/plugins/presentationPlugin.ts",
   "services/runtime/tokens.ts",
+  // 远程出站（FE-14/15）是 facade 的正当消费方：它 resolve 同一个 Runtime
+  // 来提交远程命令并订阅事件，不 new 第二个编排。放行它是门禁的本意。
+  "services/outbound/outboundPlugin.ts",
 ];
 
 /** 允许 import companionRuntime 本体（类型/实现）的白名单。 */
@@ -30,6 +33,9 @@ const COMPANION_RUNTIME_WHITELIST = [
   "services/runtime/scopedStorage.ts",
   "services/outbound/outboundGateway.ts",
   "app/plugins/runtimePlugin.ts",
+  // 与 RUNTIME_TOKEN_WHITELIST 同理：出站插件只是把 facade 的 `submit`/`cancel`/
+  // `subscribe` 适配成 Gateway 端口，不复制编排状态。
+  "services/outbound/outboundPlugin.ts",
 ];
 
 function walk(dir: string): string[] {

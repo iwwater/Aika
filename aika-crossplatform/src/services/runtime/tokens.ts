@@ -1,6 +1,7 @@
 import { token } from "../../kernel";
 import type { ProviderConfig } from "../../domain/providers";
 import type { CompanionRuntime, RuntimeProvider } from "./companionRuntime";
+import type { HostLifecycle } from "./hostLifecycle";
 import type { ProviderSettings } from "./providerSettings";
 
 /**
@@ -45,3 +46,12 @@ export const ProviderProbeToken = token<ProviderProbe>("llm.providerProbe");
 export type ProviderModels = (config: ProviderConfig) => Promise<string[]>;
 
 export const ProviderModelsToken = token<ProviderModels>("llm.providerModels");
+
+/**
+ * 宿主存活状态（RT-01-D）。
+ *
+ * 它不只在桌面有用：浏览器 dev 同样是「本进程还活着吗」这个问题的实例，
+ * 所以由宿主装配层（`app/hosts`）而非某个平台专属插件提供。远端出站用它的
+ * `epoch()` 作为 `gatewayEpoch`——宿主重启必然换 epoch，客户端据此重同步。
+ */
+export const HostLifecycleToken = token<HostLifecycle>("host.lifecycle");

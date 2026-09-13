@@ -89,4 +89,13 @@ export interface AuthorizedTarget {
 export interface OutboundTransport {
   publish(target: AuthorizedTarget, frame: OutboundFrameV1): void;
   onCommand(handler: (input: AuthenticatedCommand) => void): () => void;
+  /**
+   * 传输自己的异步摸底（Tauri 的 listen 注册、WS 的连接建立）。
+   *
+   * 可选：纯内存传输没有这一步。宿主装配后必须 await 它（若存在）——
+   * 否则命令可能在监听器装好之前到达而丢失。
+   */
+  ready?(): Promise<void>;
+  /** 关闭底层连接；无连接的传输不需要它。 */
+  close?(): void;
 }

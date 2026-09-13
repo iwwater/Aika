@@ -1,10 +1,13 @@
 import type { AikaPlugin } from "../../kernel";
+import { LOCAL_PRINCIPAL_ID } from "../../domain/identity";
 import { createBrowserFetch, type HttpFetch } from "../../services/http";
 import { createTauriFetch } from "../../services/http/tauriFetch";
 import {
   createDesktopNotifier, createNoopNotifier, type Notifier,
 } from "../../services/notification/notifier";
+import { createTauriOutboundTransport } from "../../services/outbound/tauriTransport";
 import { createTauriRemoteHost } from "../../services/remote/bridge";
+import { createHostLifecycle, type HostLifecycle } from "../../services/runtime/hostLifecycle";
 import type { AikaStorage } from "../../services/storage/contracts";
 import {
   createDesktopSecretStore, createInsecureSecretStore, type SecretStore,
@@ -14,8 +17,8 @@ import type { Clock, Timers } from "../../services/time/tokens";
 import { createSystemClock, createSystemTimers } from "../../services/time/systemTime";
 import { isTauriHost } from "./detect";
 import {
-  fetchPlugin, notifierPlugin, remotePlugin, secretsPlugin, settingsPlugin,
-  storagePlugin, timePlugin,
+  fetchPlugin, hostLifecyclePlugin, notifierPlugin, outboundTransportPlugin, remotePlugin,
+  secretsPlugin, settingsPlugin, storagePlugin, timePlugin,
 } from "./plugins";
 
 /**
@@ -29,6 +32,13 @@ export interface HostOptions {
   clock?: Clock;
   timers?: Timers;
   onSettingsFallback?: (key: string, reason: string) => void;
+  /**
+   * 宿主存活状态；缺省新建一个。
+   *
+   * 允许注入是为了让测试用假时钟驱动「离线 → 恢复」而不用真等 15 秒，
+   * 也让宿主装配层能与心跳共用同一个实例（epoch 必须一致）。
+   */
+  hostLifecycle?: HostLifecycle;
 }
 
 function baseHost(
@@ -37,6 +47,7 @@ function baseHost(
   notifier: Notifier,
   fetchImpl: HttpFetch,
   options: HostOptions,
+  lifecycle: HostLifecycle,
 ): AikaPlugin[] {
   return [
     timePlugin(options.clock ?? createSystemClock(), options.timers ?? createSystemTimers()),
@@ -45,6 +56,7 @@ function baseHost(
     settingsPlugin(options.onSettingsFallback),
     notifierPlugin(notifier),
     fetchPlugin(fetchImpl),
+    hostLifecyclePlugin(lifecycle),
   ];
 }
 
@@ -56,11 +68,13 @@ export function browserHostPlugins(options: HostOptions = {}): AikaPlugin[] {
     createNoopNotifier(),
     createBrowserFetch(),
     options,
+    resolveLifecycle(options),
   );
 }
 
-/** Tauri 桌面：SQLite + DPAPI + 系统通知 + plugin-http + 远程能力。 */
+/** Tauri 桌面：SQLite + DPAPI + 系统通知 + plugin-http + 远程能力 + 出站传输。 */
 export function tauriHostPlugins(options: HostOptions = {}): AikaPlugin[] {
+  const lifecycle = resolveLifecycle(options);
   const secrets = createDesktopSecretStore({
     invoke: async (command, args) => {
       const { invoke } = await import("@tauri-apps/api/core");
@@ -82,9 +96,27 @@ export function tauriHostPlugins(options: HostOptions = {}): AikaPlugin[] {
   });
 
   return [
-    ...baseHost(() => openDesktopStorage(secrets), secrets, notifier, createTauriFetch(), options),
+    ...baseHost(() => openDesktopStorage(secrets), secrets, notifier, createTauriFetch(), options, lifecycle),
     remotePlugin(createTauriRemoteHost()),
+    // 出站传输：帧经 Rust 缓存供手机页长轮询；命令经 `outbound://command` 下行。
+    // invoke/listen 在这里才 import——架构测试允许 `app/hosts/` 触碰 @tauri-apps。
+    outboundTransportPlugin(createTauriOutboundTransport({
+      invoke: async (command, args) => {
+        const { invoke } = await import("@tauri-apps/api/core");
+        return invoke(command, args);
+      },
+      listen: async (event, handler) => {
+        const { listen } = await import("@tauri-apps/api/event");
+        return listen(event, (payload) => handler(payload));
+      },
+      gatewayEpoch: lifecycle.epoch(),
+      principalId: LOCAL_PRINCIPAL_ID,
+    })),
   ];
+}
+
+function resolveLifecycle(options: HostOptions): HostLifecycle {
+  return options.hostLifecycle ?? createHostLifecycle();
 }
 
 export interface TestHostOptions extends HostOptions {
@@ -109,6 +141,7 @@ export function testHostPlugins(options: TestHostOptions): AikaPlugin[] {
       throw new Error("test host has no fetch; inject one if the test needs it");
     }),
     options,
+    resolveLifecycle(options),
   );
 }
 

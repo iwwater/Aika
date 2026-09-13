@@ -98,6 +98,12 @@ describe("宿主装配", () => {
 
     expect(desktop).toContain("host.remote");
     expect(browser).not.toContain("host.remote");
+    // 出站传输同理：桌面有 Rust 侧中转，浏览器 dev 走 relay（未装配即没有）。
+    expect(desktop).toContain("host.outboundTransport");
+    expect(browser).not.toContain("host.outboundTransport");
+    // 存活状态两边都有：它只描述「本进程还活着吗」，与平台无关。
+    expect(desktop).toContain("host.lifecycle");
+    expect(browser).toContain("host.lifecycle");
     // 其余端口两边都有，只是实现不同。
     for (const id of ["host.time", "host.storage", "host.secrets", "host.settings", "host.notifier", "host.fetch"]) {
       expect(desktop).toContain(id);

@@ -1,11 +1,13 @@
 import { createKernel, type AikaKernel, type AikaPlugin, type KernelLogger, type KernelStartReport } from "../kernel";
 import { createNoopNotifier } from "../services/notification/notifier";
 import { installHttpFetch, FetchToken } from "../services/http";
+import { OutboundTransportToken } from "../services/outbound/tokens";
 import { installRemoteHost } from "../services/remote/bridge";
 import { RemoteHostToken } from "../services/remote/tokens";
-import { ProviderSettingsToken, RuntimeToken } from "../services/runtime/tokens";
+import { HostLifecycleToken, ProviderSettingsToken, RuntimeToken } from "../services/runtime/tokens";
 import { installSecretStore } from "../services/storage/secretStore";
 import { SecretStoreToken } from "../services/storage/tokens";
+import { TimersToken } from "../services/time/tokens";
 import { createPresentationServices, type PresentationServiceDeps } from "../presentation/services";
 import type { PresentationServices } from "../presentation/fallback";
 import { capabilityPlugins } from "./plugins";
@@ -63,6 +65,7 @@ export async function createAikaKernel(options: CompositionOptions = {}): Promis
     if (report.ok) installLegacyForwarders(kernel);
     // 启动失败时不装任何转发：兜底 Presenter 直接用抛错的 loadStorage 把故障显示出来。
   }
+  if (report.ok) await startHostRuntime(kernel);
 
   // 成功时注册表就是唯一来源；失败时注册表不可用，才需要兜底实例。
   const presentation = report.ok ? null : failedPresentation(report, options.presentation);
@@ -88,6 +91,58 @@ function installLegacyForwarders(kernel: AikaKernel): void {
   // remoteAvailable() 继续如实返回 false。
   const remote = kernel.registry.tryResolve(RemoteHostToken);
   if (remote) installRemoteHost(remote);
+}
+
+/**
+ * 宿主装配后的启动动作（FE-17-host）。
+ *
+ * 两件事，都**不阻断启动**：远程是可选能力，它出问题不该让整个应用起不来。
+ *
+ * 1. **传输摸底**：Tauri 的 `listen("outbound://command")`、WS 的连接建立都是
+ *    异步的。必须 await 之后才算真正就绪——否则命令可能在监听器装好前到达而丢。
+ *    失败只记录，`OutboundGatewayToken` 仍可用（本地投影照常工作）。
+ * 2. **心跳**：`HostLifecycle` 的租约 15s 到期即判 offline，而 epoch 是远端
+ *    重同步的依据。这里按租约的 1/3 喂 `markAlive()`，留出两次容错。
+ *
+ * `markStopping()` 挂在窗口的 `beforeunload`/`pagehide` 上：桌面关 WebView 时
+ * 立即 offline，不必等租约过期——这正是三态存在的理由。
+ */
+async function startHostRuntime(kernel: AikaKernel): Promise<void> {
+  const transport = kernel.registry.tryResolve(OutboundTransportToken);
+  if (transport?.ready) {
+    try {
+      await transport.ready();
+    } catch (error) {
+      // 传输起不来 = 这台机器暂时没有远程；本地一切照旧（网关仍在注册表里）。
+      console.warn("[host] outbound transport 就绪失败，远程不可用", error);
+    }
+  }
+
+  const lifecycle = kernel.registry.tryResolve(HostLifecycleToken);
+  const timers = kernel.registry.tryResolve(TimersToken);
+  if (!lifecycle || !timers) return;
+
+  // 按租约（默认 15s）的 1/3 喂心跳，留两次容错。
+  const HEARTBEAT_MS = 5_000;
+  let stopped = false;
+  let handle: unknown = null;
+
+  const tick = () => {
+    if (stopped) return;
+    lifecycle.markAlive();
+    handle = timers.setTimeout(tick, HEARTBEAT_MS);
+  };
+  handle = timers.setTimeout(tick, HEARTBEAT_MS);
+
+  const stop = () => {
+    stopped = true;
+    if (handle !== null) timers.clearTimeout(handle);
+    // 关窗即 offline：不等租约过期，远端立刻知道宿主走了。
+    lifecycle.markStopping();
+  };
+  if (typeof globalThis.addEventListener === "function") {
+    globalThis.addEventListener("pagehide", stop, { once: true });
+  }
 }
 
 /**

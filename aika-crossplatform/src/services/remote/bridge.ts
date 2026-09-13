@@ -28,8 +28,22 @@ export interface RemoteRequest {
   body: string;
 }
 
+/**
+ * 启动参数（FE-17-host）。
+ *
+ * `allowedOrigins` 与 `lanEnabled` 由宿主侧的策略（exposurePolicy）算好后传入，
+ * Rust 只照单执行：白名单空 = 只接受无 Origin 的客户端；`lanEnabled` 未显式打开
+ * 时只绑 loopback。**默认值就是最严的那一档**，不依赖调用方记得传。
+ */
+export interface RemoteStartOptions {
+  /** Origin 白名单：浏览器页面跨源访问时校验。空/缺省 = 只接受无 Origin 客户端。 */
+  allowedOrigins?: readonly string[];
+  /** LAN 曝光：需用户显式启用。缺省 false = 只绑 loopback。 */
+  lanEnabled?: boolean;
+}
+
 export interface RemoteHost {
-  start(port: number, token: string): Promise<RemoteInfo>;
+  start(port: number, token: string, options?: RemoteStartOptions): Promise<RemoteInfo>;
   stop(): Promise<void>;
   status(): Promise<RemoteInfo | null>;
   /** 把这次请求的结果交回 Rust。晚了也要交：找不到 id 时那边会安静丢掉。 */
@@ -49,7 +63,14 @@ export function createTauriRemoteHost(): RemoteHost {
   };
 
   return {
-    start: (port, token) => invoke<RemoteInfo>("remote_start", { port, token }),
+    // 参数名必须与 Rust `remote_start(port, token, allowed_origins, lan_enabled)` 一致；
+    // 缺省不传时 Rust 侧 `unwrap_or_default()` / `unwrap_or(false)`，即最严档。
+    start: (port, token, options) => invoke<RemoteInfo>("remote_start", {
+      port,
+      token,
+      allowedOrigins: options?.allowedOrigins ? [...options.allowedOrigins] : undefined,
+      lanEnabled: options?.lanEnabled ?? false,
+    }),
     stop: async () => {
       await invoke("remote_stop");
     },
@@ -96,9 +117,13 @@ export function remoteAvailable(): boolean {
   return installed !== null;
 }
 
-export async function startRemote(port: number, token: string): Promise<RemoteInfo> {
+export async function startRemote(
+  port: number,
+  token: string,
+  options?: RemoteStartOptions,
+): Promise<RemoteInfo> {
   if (!installed) throw new Error("remote host is not available on this platform");
-  return installed.start(port, token);
+  return installed.start(port, token, options);
 }
 
 export async function stopRemote(): Promise<void> {

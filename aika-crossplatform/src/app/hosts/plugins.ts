@@ -5,12 +5,16 @@ import {
 } from "../../services/notification/notifier";
 import { RemoteHostToken } from "../../services/remote/tokens";
 import type { RemoteHost } from "../../services/remote/bridge";
+import type { OutboundTransport } from "../../services/outbound/contracts";
+import { OutboundTransportToken } from "../../services/outbound/tokens";
 import type { AikaStorage } from "../../services/storage/contracts";
 import { createInsecureSecretStore, type SecretStore } from "../../services/storage/secretStore";
 import { createSettingsStore } from "../../services/storage/settingsStore";
 import { SecretStoreToken, SettingsToken, StorageToken } from "../../services/storage/tokens";
 import { createSystemClock, createSystemTimers } from "../../services/time/systemTime";
 import { ClockToken, TimersToken, type Clock, type Timers } from "../../services/time/tokens";
+import { HostLifecycleToken } from "../../services/runtime/tokens";
+import { createHostLifecycle, type HostLifecycle } from "../../services/runtime/hostLifecycle";
 
 /**
  * 宿主插件工厂。
@@ -118,6 +122,48 @@ export function remotePlugin(host: RemoteHost): AikaPlugin {
     provides: [RemoteHostToken],
     activate(context) {
       context.registrar.provide(RemoteHostToken, () => host);
+    },
+  };
+}
+
+/**
+ * 出站传输。**只有具备远程能力的宿主装它**（桌面 Tauri、浏览器 dev-relay）。
+ *
+ * 与 remotePlugin 同理：没有这个插件时 OutboundTransportToken 根本不存在，
+ * outbound 插件照常注册网关（本地投影可测），只是帧没有去处——这正是
+ * 「能力缺失即 token 不注册」的用法，比注册一个「发布即丢弃」的假实现诚实。
+ *
+ * `ready()` 不在这里 await：activate 保持同步，宿主可在装配后自行等待
+ * （Tauri 的 listen 注册需要一次异步摸底）。失败由调用方处理，不静默吞掉。
+ */
+export function outboundTransportPlugin(transport: OutboundTransport): AikaPlugin {
+  return {
+    id: "host.outboundTransport",
+    version: VERSION,
+    provides: [OutboundTransportToken],
+    activate(context) {
+      context.registrar.provide(OutboundTransportToken, () => transport);
+    },
+  };
+}
+
+/**
+ * 宿主存活状态（RT-01-D）。
+ *
+ * 装上它，`HostLifecycleToken` 才存在；远端出站与诊断面板据此拿 `epoch()`。
+ * 心跳由宿主装配层负责喂（见 `app/hosts/index.ts` 的 `startHostHeartbeat`）——
+ * 插件本身不启动定时器，是为了让「谁在喂心跳」可被测试替换，也让 dispose
+ * 只做一件事：解除订阅。
+ */
+export function hostLifecyclePlugin(lifecycle: HostLifecycle = createHostLifecycle()): AikaPlugin {
+  return {
+    id: "host.lifecycle",
+    version: VERSION,
+    provides: [HostLifecycleToken],
+    activate(context) {
+      context.registrar.provide(HostLifecycleToken, () => lifecycle, {
+        disposer: () => lifecycle.dispose(),
+      });
     },
   };
 }
