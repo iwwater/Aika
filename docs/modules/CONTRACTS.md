@@ -195,6 +195,12 @@ INT-01 的兼容检查项：云端合成一旦在设置页可选，`createOutput
 | --- | --- | --- | --- |
 | `AgentAdapterManifestV1`/`validateAdapterManifest`/`probeStartup`/`createCanaryRepo` | `services/agent/adapterManifest.ts` | 新模块：manifest 版本固定（latest 拒绝）、权限模式 deny-writes/ask/allow、capabilities 白名单+unsupported 明细；启动探测不自动安装；canary 临时仓库为只读负例取证（不证明全系统沙箱） | AGT-02 acpClient、AGT-05 任务入口、FE 适配器选择页 |
 
+### v1 之后的追加（2026-09-13，AGT-04 适配器注册表，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `createAdapterRegistry`（双适配器独立 manifest/认证槽/失败隔离） | `services/agent/adapterRegistry.ts` | 新服务：认证按 adapter 隔离（LLM API key ≠ 适配器登录态）；选择适配器不改会话/权限语义；实例失败不自动切换 | AGT-05 任务入口、FE 适配器选择页 |
+
 ## 详细接口入口
 
 LLM 各自的 `docs/llm/specs/LLM-01…05` 文件内写明实现级接口；[STT](../stt/ARCHITECTURE.md)、[TTS](../tts/ARCHITECTURE.md)、[前端](../frontend/ARCHITECTURE.md) 按共享架构文件引用对应阶段。代码块是拟定逻辑契约，现有类型通过兼容 adapter 映射；不能以名称尚未存在推断已实现，也不要机械新增重复接口。

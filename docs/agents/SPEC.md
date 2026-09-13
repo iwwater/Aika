@@ -7,5 +7,5 @@
 | [AGT-01](specs/AGT-01.md) | AgentSessionManager 生命周期 | RT-03 | AUTO_PASS（2026-09-13）：A~D 全过（Session/Run 分离、幂等、取消宽限、recover、脱敏日志；fake adapter 跑生产实现）；真实 ACP NOT RUN。见[验收报告](reports/AGT-01_ACCEPTANCE.md) |
 | [AGT-02](specs/AGT-02.md) | ACP 客户端与受限进程宿主 | AGT-01、RT-03 | AUTO_PASS（2026-09-13）：A~D 可自动项全过（分帧/终态映射/permission 原 id+有效 optionId/能力只宣告 prompt/进程配置校验）；真实进程与 Job Object NOT RUN。见[验收报告](reports/AGT-02_ACCEPTANCE.md) |
 | [AGT-03](specs/AGT-03.md) | Codex ACP 适配 | AGT-02 | AUTO_PASS（2026-09-13，fixture 轨）：A~C 可自动项全过（manifest 版本固定/启动探测三态/canary 负例哈希不变+收敛）；D 真实版本与写模式 NOT RUN。见[验收报告](reports/AGT-03_ACCEPTANCE.md) |
-| [AGT-04](specs/AGT-04.md) | Claude ACP 适配 | AGT-02 | READY（本地实现） |
+| [AGT-04](specs/AGT-04.md) | Claude ACP 适配 | AGT-02 | AUTO_PASS（2026-09-13，fixture 轨）：A~D 可自动项全过（认证隔离/语义不变/失败隔离/坏 manifest 负例）；真实适配器 NOT RUN。见[验收报告](reports/AGT-04_ACCEPTANCE.md) |
 | [AGT-05](specs/AGT-05.md) | 远程审批、进度与结果投递 | AGT-03或AGT-04、GW-02或GW-04、RT-04 | READY（本地实现） |
