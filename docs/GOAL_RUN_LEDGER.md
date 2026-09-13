@@ -79,7 +79,7 @@
 | 5 | FE-17-pre | NOT RUN | | |
 | 5 | FE-15 | PARTIAL（待人工） | 见会话日志 | A 过：tauriTransport 桥 invoke/listen 复跑 FE-14 conformance 六用例；B/C/D/E（Rust handler/手机页）NOT RUN 需真实宿主 |
 | 5 | FE-17-host/tauri | NOT RUN | | |
-| 5 | GW-04 | NOT RUN | | 只消费 pre+tauri 门禁 |
+| 5 | GW-04 | AUTO_PASS（待人工） | 见会话日志 | deviceRegistry（能力交集协商/租约读时计算/reconnect epoch+cursor 窗口/trace 审批独立授权口默认拒）；27 定向/1255 全量全绿 tsc 0；真实设备端到端 NOT RUN |
 | 5 | FE-16 | NOT RUN | | |
 | 5 | FE-17-host/dev-relay | NOT RUN | | 独立分支 |
 | 6 | AGT-01 Session/Run | NOT RUN | | |
@@ -126,4 +126,5 @@
 
 - 2026-09-13 10:12 Wave 5 FE-14 AUTO_PASS（待人工）：services/outbound（contracts 版本化帧/命令/主体；outboundGateway 白名单投影+turnId 目标映射未映射零外发+cursor epoch 单调+命令校验矩阵+重放去重+trace 四门+慢消费者限额；plugin transport 缺失启动不受阻、无授权端口不接命令 fail-closed；conformance 包六用例供 FE-15/16 复用）。突变验证两处（投影放行 memoryCandidates、cursor 恒 1）均被定向用例命中后恢复。11 定向/1237 全量全绿 tsc 0。真实传输 NOT RUN（FE-15/16）。
 - 2026-09-13 10:47 Wave 5 FE-17-pre AUTO_PASS（pre 步骤，待人工）：services/outbound/credentials（配对码 TTL5min/原子单次兑换/哈希存储/损坏 fail-closed；设备会话 device+principal 归属、逐设备 rotate/revoke、撤销即时生效共用 authenticate 门）+ exposurePolicy（三层暴露、所有层私有数据需认证、publicTlsAck 不构成证据 public 恒 blocked、路由白名单 SQL/秘密永不进网关、Origin fail-closed/cookie+CSRF/Bearer）。18 定向/1244 全量全绿 tsc 0。tauri/dev-relay NOT RUN；public BLOCKED。**下一节点：FE-15 Tauri HTTP 传输（Rust handler+手机页）——本地可做部分优先；GW-04 不等无关分支。**
+- 2026-09-13 12:05 Wave 5 GW-04 AUTO_PASS（待人工）：services/gateway/deviceRegistry（能力=服务端授权∩设备声明逐项可见降级、租约读时计算在线、authorize chat/notification 走能力交集而 trace/approval 独立授权口默认 not-authorized、reconnect epoch 变化/cursor 低于缓存窗口→明确 resync、心跳续租；配对/会话/撤销复用 FE-17-pre 凭证端口不造第二套）。27 定向/1255 全量全绿 tsc 0。真实设备端到端 NOT RUN（FE-15 Rust handler+INT-01）。**Wave 5 本地可执行节点完成；FE-16/FE-17-host 需真实宿主。下一节点：Wave 6 AGT-01 Session/Run 契约。**
 - 2026-09-13 11:38 Wave 5 FE-15 PARTIAL（待人工）：本地部分 tauriTransport（invoke/listen 桥 OutboundTransport、命令事件监听者异常隔离、不做认证不信任 body 身份）+ fake invoke/listen 下复跑 FE-14 conformance 六用例（退订无迟到业务回调）。B/C/D/E（Rust gateway.rs handler、手机页、宿主装配平台选择）需真实 Tauri 宿主：NOT RUN/BLOCKED，留宿主轨。**下一节点：GW-04 设备列表与租约（复用 FE-17-pre 凭证端口）。**

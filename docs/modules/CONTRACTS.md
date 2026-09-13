@@ -171,6 +171,12 @@ INT-01 的兼容检查项：云端合成一旦在设置页可选，`createOutput
 | --- | --- | --- | --- |
 | `createTauriOutboundTransport`（invoke/listen 桥 OutboundTransport；命令事件 outbound://command、帧经 outbound_publish invoke） | `services/outbound/tauriTransport.ts` | 新模块；不做认证（principal 由 Rust 宿主带外注入）；FE-14 conformance 用 fake invoke/listen 复跑 | FE-15 Rust handler、FE-17-host/tauri、手机页 |
 
+### v1 之后的追加（2026-09-13，GW-04 设备注册表，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `createDeviceRegistry`（能力交集协商/租约在线读时计算/reconnect epoch+cursor 窗口/authorize 独立授权口） | `services/gateway/deviceRegistry.ts` | 新服务；配对/会话/撤销复用 FE-17-pre 凭证端口；trace/审批授权默认拒绝 | GW-04 设备列表/租约体验、FE 手机页、FE-14 trace 订阅门 |
+
 ## 详细接口入口
 
 LLM 各自的 `docs/llm/specs/LLM-01…05` 文件内写明实现级接口；[STT](../stt/ARCHITECTURE.md)、[TTS](../tts/ARCHITECTURE.md)、[前端](../frontend/ARCHITECTURE.md) 按共享架构文件引用对应阶段。代码块是拟定逻辑契约，现有类型通过兼容 adapter 映射；不能以名称尚未存在推断已实现，也不要机械新增重复接口。
