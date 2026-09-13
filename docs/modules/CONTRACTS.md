@@ -189,6 +189,12 @@ INT-01 的兼容检查项：云端合成一旦在设置页可选，`createOutput
 | --- | --- | --- | --- |
 | `parseAcpStream`/`validateProcessConfig`/`buildPermissionResponse`/`denyOptionId`/`ADVERTISED_CAPABILITIES`/`createAcpClientAdapter` | `services/agent/acpProtocol.ts`、`acpClient.ts` | 新模块：实现 AGT-01 AgentAdapter 协议面。可执行白名单+参数数组+cwd 规范化+环境最小化；request_permission 响应原 JSON-RPC id+有效 optionId；六类失败全部终态不悬空。真实进程宿主（Job Object）待真实轨 | AGT-01 manager（经 AgentAdapter）、AGT-03/04 |
 
+### v1 之后的追加（2026-09-13，AGT-03 adapter manifest，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `AgentAdapterManifestV1`/`validateAdapterManifest`/`probeStartup`/`createCanaryRepo` | `services/agent/adapterManifest.ts` | 新模块：manifest 版本固定（latest 拒绝）、权限模式 deny-writes/ask/allow、capabilities 白名单+unsupported 明细；启动探测不自动安装；canary 临时仓库为只读负例取证（不证明全系统沙箱） | AGT-02 acpClient、AGT-05 任务入口、FE 适配器选择页 |
+
 ## 详细接口入口
 
 LLM 各自的 `docs/llm/specs/LLM-01…05` 文件内写明实现级接口；[STT](../stt/ARCHITECTURE.md)、[TTS](../tts/ARCHITECTURE.md)、[前端](../frontend/ARCHITECTURE.md) 按共享架构文件引用对应阶段。代码块是拟定逻辑契约，现有类型通过兼容 adapter 映射；不能以名称尚未存在推断已实现，也不要机械新增重复接口。
