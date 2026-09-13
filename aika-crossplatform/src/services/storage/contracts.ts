@@ -101,6 +101,16 @@ export const SETTING_KEYS = {
   permissionRequests: "permission.requests.v1",
   /** 渠道网关 inbox/outbox 状态（GW-01）。损坏按空网关处理。 */
   gatewayState: "gateway.state.v1",
+  /** 前台应用感知开关（FE-19）。默认 false：默认关 = Rust 根本没装 hook。 */
+  environmentForegroundEnabled: "environment.foregroundEnabled",
+  /** 「将环境摘要用于对话」授权（FE-19）。与采集开关分离，默认 false。 */
+  environmentContextEnabled: "environment.contextEnabled",
+  /** 桌宠窗口开关（FE-20）。默认 false；打开桌宠不隐式开启任何传感器。 */
+  petWindowEnabled: "pet.windowEnabled",
+  /** 屏幕感知开关（FE-21）。默认 false：默认关 = Rust 根本没有采集线程。 */
+  environmentScreenEnabled: "environment.screenEnabled",
+  /** 环境主动搭话开关（FE-22）。与全局 proactive、摘要授权分层。 */
+  environmentProactiveEnabled: "environment.proactiveEnabled",
   /**
    * CORE-03 迁移期用过 `core.orchestrator = legacy | kernel`。CORE-06 删除旧编排后
    * 这个 key 不再被读写；旧库里残留的值会被当作普通未知设置忽略，不报错、不迁移。

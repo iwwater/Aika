@@ -17,9 +17,12 @@ import {
   DEFAULT_MODE_CONFIG, exitScenarioMode, normalizeModeConfig, type ModeConfig,
 } from "../domain/soul";
 import {
-  canSend, chooseProactiveReason, DEFAULT_PROACTIVE_SETTINGS,
-  type ProactiveReasonKind, type ProactiveSettings,
+  canSend, chooseProactiveReason, environmentProactiveReason, DEFAULT_PROACTIVE_SETTINGS,
+  type ProactiveReason, type ProactiveReasonKind, type ProactiveSettings,
 } from "../domain/proactive";
+import type { EnvironmentMonitor, ProactivePolicy } from "../services/environment/contracts";
+import type { BusyObserver } from "../services/environment/busySource";
+import { createEnvironmentTrigger, type EnvironmentTrigger } from "./environmentTrigger";
 import type { Sticker } from "../domain/stickers";
 import { RAW_TURN_WINDOW, SUMMARY_INPUT_LIMIT, shouldSummarize } from "../domain/summary";
 import type { PartialReply } from "../domain/streamingReply";
@@ -176,6 +179,14 @@ export interface CompanionPresenterDeps {
   voiceOutputSettings?: VoiceOutputSettingsPort;
   /** 把新输出配置推给 VoicePresenter（重建引擎与队列）。 */
   applyVoiceOutput?: (config: VoiceOutputConfig) => void;
+  /** 环境事件驱动主动消息（FE-22）。缺省 = 本宿主无环境能力，零行为变化。 */
+  environment?: {
+    monitor: EnvironmentMonitor;
+    policy: ProactivePolicy;
+    busyObserver: BusyObserver | null;
+    /** 与 monitor 构造相同的时钟：TTL/时限计算必须同源。 */
+    clock?: { now(): number };
+  };
 }
 
 function startOfToday(now: number): number {
@@ -236,6 +247,8 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
   const interval = deps.interval ?? DEFAULT_INTERVAL;
   const providerFallback = deps.providerFallback ?? PROVIDER_PRESETS[1];
   const uuid = deps.randomUUID ?? (() => crypto.randomUUID());
+  /** 环境触发器（FE-22）；无 monitor 时为 null，主动消息只有时间驱动一种来源。 */
+  let environmentTrigger: EnvironmentTrigger | null = null;
 
   let disposed = false;
   let startPromise: Promise<void> | null = null;
@@ -327,6 +340,55 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
       interval.clear(proactiveTimer);
       proactiveTimer = null;
     }
+  }
+
+  /** 环境触发器接线（FE-22）：monitor 存在才创建；attemptSend 走共享发送路径。 */
+  function ensureEnvironmentTrigger(): void {
+    if (environmentTrigger || disposed) return;
+    const environment = deps.environment;
+    if (!environment?.monitor) return;
+    const clock = environment.clock ?? { now: () => Date.now() };
+    environmentTrigger = createEnvironmentTrigger({
+      monitor: environment.monitor,
+      policy: environment.policy,
+      busy: environment.busyObserver,
+      clock,
+      gates: {
+        globalProactive: async () => proactive.enabled,
+        environmentProactive: async () => {
+          try {
+            return (await storage?.getSetting(SETTING_KEYS.environmentProactiveEnabled)) === "true";
+          } catch {
+            return false;
+          }
+        },
+        contextEnabled: async () => {
+          try {
+            return (await storage?.getSetting(SETTING_KEYS.environmentContextEnabled)) === "true";
+          } catch {
+            return false;
+          }
+        },
+        canSend: async () => {
+          if (!storage || !ready || !connected() || !proactive.enabled) return false;
+          const now = Date.now();
+          const lastMessageAt = timestamps.length ? timestamps[timestamps.length - 1] : null;
+          const messagesToday = await storage.countProactiveSince(startOfToday(now));
+          return canSend({
+            nowMillis: now,
+            hour: new Date(now).getHours(),
+            quietStartHour: proactive.quietStartHour,
+            quietEndHour: proactive.quietEndHour,
+            messagesToday,
+            lastMessageAt,
+            enabled: proactive.enabled,
+          });
+        },
+      },
+      attemptSend: async (_event, reasonKind, bufferSummary) =>
+        attemptSendProactive(environmentProactiveReason(reasonKind, bufferSummary)),
+    });
+    environmentTrigger.start();
   }
 
   async function load(): Promise<void> {
@@ -449,6 +511,7 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
     ready = true;
     commit();
     syncProactiveTimer();
+    ensureEnvironmentTrigger();
   }
 
   function start(): Promise<void> {
@@ -919,9 +982,77 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
     }
   }
 
-  /** 主动消息。频率闸门与理由选择都在 domain/proactive.ts，这里只负责跑一次。 */
+  /**
+   * 共享发送预约（FE-22）：时间驱动 tick 与环境触发都从这里进入。
+   * 预约是非排队的：同刻第二个候选直接得到 false，不积压。
+   */
+  let proactiveSlotBusy = false;
+  /** submit 成功但计数/设置持久化失败：内存视为已发送并阻止不确定状态下继续主动发送。 */
+  let proactivePersistUnknown: { sentAt: number; reason: ProactiveReasonKind } | null = null;
+
+  async function persistProactiveKeys(sentAt: number, reason: ProactiveReasonKind): Promise<boolean> {
+    try {
+      await storage?.setSetting(SETTING_KEYS.proactiveLastReason, reason);
+      await storage?.setSetting(SETTING_KEYS.proactiveLastSentAt, String(sentAt));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** 持久化失败的对账：按同一 sentAt/reason 重写，幂等；成功前阻止后续主动发送。 */
+  async function reconcileProactivePersist(): Promise<boolean> {
+    if (!proactivePersistUnknown) return true;
+    const ok = await persistProactiveKeys(proactivePersistUnknown.sentAt, proactivePersistUnknown.reason);
+    if (ok) proactivePersistUnknown = null;
+    return ok;
+  }
+
+  async function attemptSendProactive(reason: ProactiveReason): Promise<boolean> {
+    if (!runtimeServices || !storage || !ready || !connected() || sending) return false;
+    if (proactiveSlotBusy) return false;
+    proactiveSlotBusy = true;
+    try {
+      // 取得预约后重新检查边界（任何等待后的边界重新验证）。
+      if (proactivePersistUnknown && !(await reconcileProactivePersist())) return false;
+      if (!proactive.enabled || !connected() || sending) return false;
+      const now = Date.now();
+      const lastMessageAt = timestamps.length ? timestamps[timestamps.length - 1] : null;
+      const messagesToday = await storage.countProactiveSince(startOfToday(now));
+      if (!canSend({
+        nowMillis: now,
+        hour: new Date(now).getHours(),
+        quietStartHour: proactive.quietStartHour,
+        quietEndHour: proactive.quietEndHour,
+        messagesToday,
+        lastMessageAt,
+        enabled: proactive.enabled,
+      })) {
+        return false;
+      }
+
+      const context = await buildContext(messages, now, { recentFallback: true });
+      const reply = await sendTurn(runtimeServices, buildProactiveInput(context, reason), "proactive");
+      if (!reply) return false;
+
+      // submit 已成功：内存额度先记，持久化失败不重发，只阻止不确定状态下继续。
+      const message = companionMessage(reply, Date.now(), uuid(), "proactive");
+      const persisted = await persistProactiveKeys(message.createdAt, reason.kind);
+      if (!persisted) proactivePersistUnknown = { sentAt: message.createdAt, reason: reason.kind };
+      await notifier.notify({ title: DEFAULT_CHARACTER.name, body: reply.japaneseText || reply.chineseTranslation });
+      return true;
+    } catch {
+      // 主动消息发不出去就安静地跳过：不要用错误提示打扰用户。
+      return false;
+    } finally {
+      proactiveSlotBusy = false;
+    }
+  }
+
+  /** 主动消息（时间驱动）。频率闸门与理由选择都在 domain/proactive.ts。 */
   async function runProactiveTick(): Promise<void> {
     if (!runtimeServices || !storage || !ready || !connected() || !proactive.enabled || sending) return;
+    if (proactiveSlotBusy) return;
 
     const now = Date.now();
     const lastMessageAt = timestamps.length ? timestamps[timestamps.length - 1] : null;
@@ -946,15 +1077,11 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
         now: new Date(now),
         hoursSinceLastUserMessage: lastUserAt === null ? null : (now - lastUserAt) / 3_600_000,
         lastReasonKind: (await storage.getSetting(SETTING_KEYS.proactiveLastReason)) as ProactiveReasonKind | null,
+        ...(environmentTrigger && environmentTrigger.buffer().length > 0
+          ? { environment: environmentTrigger.buffer() }
+          : {}),
       });
-
-      const reply = await sendTurn(runtimeServices, buildProactiveInput(context, reason), "proactive");
-      if (!reply) return;
-
-      const message = companionMessage(reply, Date.now(), uuid(), "proactive");
-      await storage.setSetting(SETTING_KEYS.proactiveLastReason, reason.kind);
-      await storage.setSetting(SETTING_KEYS.proactiveLastSentAt, String(message.createdAt));
-      await notifier.notify({ title: DEFAULT_CHARACTER.name, body: reply.japaneseText || reply.chineseTranslation });
+      await attemptSendProactive(reason);
     } catch {
       // 主动消息发不出去就安静地跳过：不要用错误提示打扰用户。
     }
@@ -1174,6 +1301,8 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
     dispose() {
       if (disposed) return;
       disposed = true;
+      environmentTrigger?.dispose();
+      environmentTrigger = null;
       maintenance?.dispose();
       maintenance = null;
       if (proactiveTimer !== null) {

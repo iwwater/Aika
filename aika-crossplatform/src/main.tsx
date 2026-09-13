@@ -2,9 +2,11 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { createAikaKernel } from "./app/composition";
+import { currentWindowLabel } from "./app/hosts/detect";
 import { KernelProvider } from "./app/kernelContext";
 import type { AikaKernel } from "./kernel";
 import type { PresentationServices } from "./presentation/fallback";
+import { PetApp } from "./pet/PetApp";
 
 /**
  * 先装配再渲染。
@@ -37,4 +39,17 @@ async function boot() {
   );
 }
 
-void boot();
+/**
+ * 窗口分流（FE-20）：pet 是独立的薄展示窗口，不建内核、不碰 Runtime/存储/语音，
+ * 展示态全部来自 Rust 中继的 pet.presentation.v1 帧。判定依据是 Tauri 窗口
+ * label（平台判断收在 app/hosts/detect.ts，浏览器 dev 直接走 boot）。
+ */
+if (currentWindowLabel() === "pet") {
+  ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+    <React.StrictMode>
+      <PetApp />
+    </React.StrictMode>,
+  );
+} else {
+  void boot();
+}

@@ -6,6 +6,7 @@ import type { MemoryPresenter } from "./memoryPresenter";
 import type { StoragePresenter } from "./storagePresenter";
 import type { InspectorPresenter } from "./inspectorPresenter";
 import type { OpsPresenter } from "./opsPresenter";
+import type { EnvironmentPresenter } from "./environmentPresenter";
 
 /**
  * 展示层服务标识。
@@ -47,3 +48,10 @@ export const StoragePresenterToken = token<StoragePresenter>("presentation.stora
  * 同样**总是**注册：没装用量台账时页面要能说「没有采集」，而不是入口消失。
  */
 export const OpsPresenterToken = token<OpsPresenter>("presentation.ops");
+/**
+ * 环境感知设置 Presenter（FE-19）。
+ *
+ * 同样**总是**注册：宿主没有 monitor 时（浏览器 dev / 无传感器）页面要说
+ * 「此环境不支持环境感知」，而不是入口凭空消失。
+ */
+export const EnvironmentPresenterToken = token<EnvironmentPresenter>("presentation.environment");

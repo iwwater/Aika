@@ -17,10 +17,17 @@ import { createMemoryPresenter } from "../../presentation/memoryPresenter";
 import { createStoragePresenter } from "../../presentation/storagePresenter";
 import { createInspectorPresenter } from "../../presentation/inspectorPresenter";
 import { createOpsPresenter } from "../../presentation/opsPresenter";
+import { createEnvironmentPresenter } from "../../presentation/environmentPresenter";
 import { UsageLedgerStoreToken, UsageLedgerToken } from "../../services/usage/tokens";
+import {
+  EnvironmentMonitorToken, ProactivePolicyToken,
+} from "../../services/environment/contracts";
+import { EnvironmentBusyObserverToken } from "../../services/environment/busySource";
+import { SettingsToken } from "../../services/storage/tokens";
 import {
   CompanionPresenterToken, DevToolsPresenterToken, MemoryPresenterToken,
   StoragePresenterToken, VoicePresenterToken, InspectorPresenterToken, OpsPresenterToken,
+  EnvironmentPresenterToken,
 } from "../../presentation/tokens";
 
 /**
@@ -59,10 +66,12 @@ export function presentationPlugin(options: PresentationPluginOptions = {}): Aik
       MemoryAccessToken, StickerLibraryToken, SpeechEnginesToken,
       TraceRecorderToken, TraceSinkToken, TraceSettingsToken,
       UsageLedgerToken, UsageLedgerStoreToken,
+      EnvironmentMonitorToken, ProactivePolicyToken, EnvironmentBusyObserverToken, SettingsToken,
     ],
     provides: [
       CompanionPresenterToken, VoicePresenterToken, DevToolsPresenterToken,
       MemoryPresenterToken, StoragePresenterToken, InspectorPresenterToken, OpsPresenterToken,
+      EnvironmentPresenterToken,
     ],
     activate(context) {
       const storage = context.registrar.tryResolve(StorageToken);
@@ -99,12 +108,18 @@ export function presentationPlugin(options: PresentationPluginOptions = {}): Aik
         return presenter;
       }, { disposer: (value) => value.dispose() });
 
+      const environmentMonitor = context.registrar.tryResolve(EnvironmentMonitorToken);
+      const environmentPolicy = context.registrar.tryResolve(ProactivePolicyToken);
+      const environmentBusy = context.registrar.tryResolve(EnvironmentBusyObserverToken);
       context.registrar.provide(CompanionPresenterToken, () => createCompanionPresenter({
         loadStorage: storage
           ? async () => storage
           : async () => { throw new Error("本地存储尚未装配，对话与记忆无法读写"); },
         notifier: notifier ?? createNoopNotifier(),
         runtime: options.resolveRuntime?.() ?? null,
+        ...(environmentMonitor && environmentPolicy
+          ? { environment: { monitor: environmentMonitor, policy: environmentPolicy, busyObserver: environmentBusy } }
+          : {}),
         ...(memoryAccess ? { memoryAccess } : {}),
         ...(stickers ? { loadStickers: stickers } : {}),
         ...(trace ? { trace } : {}),
@@ -154,6 +169,14 @@ export function presentationPlugin(options: PresentationPluginOptions = {}): Aik
           ? async () => storage
           : async () => { throw new Error("本地存储尚未装配，价目无法保存"); },
         ...(traceSettings ? { isCaptureEnabled: () => traceSettings.get().enabled } : {}),
+      }), { disposer: (value) => value.dispose() });
+
+      // 环境感知设置（FE-19）：monitor 缺失时 available=false，设置页显示
+      // 「此环境不支持」，而不是把入口藏起来让人以为功能不存在。
+      const environmentSettings = context.registrar.tryResolve(SettingsToken);
+      context.registrar.provide(EnvironmentPresenterToken, () => createEnvironmentPresenter({
+        monitor: environmentMonitor,
+        ...(environmentSettings ? { settings: environmentSettings } : {}),
       }), { disposer: (value) => value.dispose() });
     },
   };

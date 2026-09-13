@@ -1,0 +1,59 @@
+{
+  "frozenSet": "fixtures/validation (120 images; synthetic-selfmade)",
+  "counts": {
+    "tp": 60,
+    "fp": 0,
+    "fn": 0,
+    "total": 120
+  },
+  "precision": 1,
+  "recall": 1,
+  "precisionGate": 0.95,
+  "recallGate": 0.85,
+  "hotOcrP95Ms": 105,
+  "hotOcrP95GateMs": 2000,
+  "perWord": {
+    "VICTORY": {
+      "tp": 12,
+      "fn": 0
+    },
+    "DEFEAT": {
+      "tp": 12,
+      "fn": 0
+    },
+    "PENTAKILL": {
+      "tp": 12,
+      "fn": 0
+    },
+    "Error": {
+      "tp": 12,
+      "fn": 0
+    },
+    "Failed": {
+      "tp": 12,
+      "fn": 0
+    },
+    "none": {
+      "tp": 0,
+      "fn": 0
+    }
+  },
+  "perScene": {
+    "game": {
+      "tp": 36,
+      "fp": 0,
+      "fn": 0
+    },
+    "ide": {
+      "tp": 24,
+      "fp": 0,
+      "fn": 0
+    },
+    "video": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 0
+    }
+  },
+  "generatedAt": "2026-09-13T18:56:26.281Z"
+}

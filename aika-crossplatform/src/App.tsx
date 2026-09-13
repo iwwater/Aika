@@ -1,7 +1,8 @@
 import { FormEvent, useCallback, useRef, useState } from "react";
 import {
   Bell, BellOff, Bot, Check, ChevronDown, KeyRound, Languages, LoaderCircle, MessageCircleMore,
-  Bug, Mic, PanelRightClose, RefreshCw, SendHorizontal, Settings2, Smartphone, Sparkles, Trash2, Volume2, X,
+  Monitor, Bug, Mic, PanelRightClose, PowerOff, RefreshCw, SendHorizontal, Settings2, Smartphone,
+  Sparkles, Trash2, Volume2, X,
 } from "lucide-react";
 import "./App.css";
 import { AvatarPlaceholder } from "./components/AvatarPlaceholder";
@@ -17,6 +18,8 @@ import { DEFAULT_CHARACTER } from "./domain/character";
 import { nextRecognitionLanguage, type RecognitionInput } from "./domain/language";
 import { PROVIDER_PRESETS, validateProvider, type ProviderConfig } from "./domain/providers";
 import { useCompanionSession } from "./hooks/useCompanionSession";
+import { useEnvironment } from "./hooks/useEnvironment";
+import { usePetWindow } from "./hooks/usePetWindow";
 import { useDevTools } from "./hooks/useDevTools";
 import { useRemoteAccess } from "./hooks/useRemoteAccess";
 import { useVoiceConversation, type VoiceTurnHandler } from "./hooks/useVoiceConversation";
@@ -35,9 +38,27 @@ import { createWhisperClient } from "./services/voice/whisperClient";
 
 const QUICK_STARTS = ["今天发生了一件小事…", "有点累，想随便聊聊", "刚才想到你说过的那件事"];
 
+/** 环境源状态的用户可见文案（SET-04）：失败不得显示为已运行。 */
+const ENVIRONMENT_STATE_LABELS: Record<string, string> = {
+  off: "已关闭",
+  starting: "启动中",
+  running: "运行中",
+  stopping: "停止中",
+  denied: "权限被拒",
+  error: "错误",
+};
+
+/** SET-02：屏幕感知开启前要说明采集范围与本地处理方式。 */
+const ENVIRONMENT_SOURCE_HINTS: Record<string, string> = {
+  foreground: "识别当前正在使用的应用（仅进程名），只用于本地状态显示。",
+  screen: "做变化检测仍会获取屏幕帧：仅在画面显著变化时，对主屏中央固定区域做本地英文识别（VICTORY/DEFEAT/PENTAKILL/Error/Failed）；画面不出本机、不落盘。",
+};
+
 function App() {
   const session = useCompanionSession();
   const devTools = useDevTools();
+  const environment = useEnvironment();
+  const pet = usePetWindow();
   const [showDevTools, setShowDevTools] = useState(false);
   // 连接自检是 Provider 侧能力，经注册表取；App 不再直接 import providerClient。
   const probeProvider = useService(ProviderProbeToken);
@@ -466,6 +487,96 @@ function App() {
               </button>
               <span className="toggle-hint">开启后每轮对话结束会额外发一次抽取请求，会产生平台调用费用。</span>
             </div>
+
+            {environment.snapshot.available && (
+              <>
+                <div className="settings-divider" />
+                <div className="modal-heading"><div><p className="eyebrow">Awareness</p><h3>环境感知</h3></div></div>
+                <p className="modal-intro">感知与「把摘要用于对话」是两层开关，互不牵连。摘要只包含应用名与持续时间，不包含窗口标题；屏幕画面不出本机。</p>
+                {environment.snapshot.sources.map((source) => (
+                  <div className="toggle-row" key={source.sourceId}>
+                    <button
+                      className={`toggle ${source.enabled ? "on" : ""}`}
+                      onClick={() => void environment.presenter.setSourceEnabled(source.sourceId, !source.enabled)}
+                    >
+                      <Monitor size={15} />
+                      <span>{source.label} · {ENVIRONMENT_STATE_LABELS[source.state] ?? source.state}</span>
+                    </button>
+                    <span className="toggle-hint">{source.error ?? ENVIRONMENT_SOURCE_HINTS[source.sourceId] ?? "本机环境传感器。"}</span>
+                  </div>
+                ))}
+                <div className="toggle-row">
+                  <button
+                    className={`toggle ${environment.snapshot.contextEnabled ? "on" : ""}`}
+                    onClick={() => void environment.presenter.setContextEnabled(!environment.snapshot.contextEnabled)}
+                  >
+                    <MessageCircleMore size={15} />
+                    <span>将环境摘要用于对话 · {environment.snapshot.contextEnabled ? "开" : "关"}</span>
+                  </button>
+                  <span className="toggle-hint">开启后，应用名与持续时长可能随当前 Provider 的请求一起发送。</span>
+                </div>
+                <div className="toggle-row">
+                  <button
+                    className={`toggle ${environment.snapshot.proactiveEnabled ? "on" : ""}`}
+                    onClick={() => void environment.presenter.setProactiveEnabled(!environment.snapshot.proactiveEnabled)}
+                  >
+                    <Bell size={15} />
+                    <span>允许环境主动搭话 · {environment.snapshot.proactiveEnabled ? "开" : "关"}</span>
+                  </button>
+                  <span className="toggle-hint">与全局「主动消息」开关叠加：两层都开、感知在跑且摘要授权开启时才会触发；勿扰时段与每日上限仍然生效。</span>
+                </div>
+                <div className="toggle-row">
+                  <button
+                    className="toggle"
+                    onClick={() => void environment.presenter.stopAll()}
+                    disabled={environment.snapshot.stopping}
+                  >
+                    <PowerOff size={15} />
+                    <span>{environment.snapshot.stopping ? "正在停止…" : "停止全部感知"}</span>
+                  </button>
+                  <span className="toggle-hint">立即停止采集、清空环境缓存，并使在途结果失效。</span>
+                </div>
+                {environment.snapshot.error && (
+                  <p className="modal-intro" style={{ color: "#e5484d" }}>{environment.snapshot.error}</p>
+                )}
+              </>
+            )}
+
+            {pet.available && (
+              <>
+                <div className="settings-divider" />
+                <div className="modal-heading"><div><p className="eyebrow">Companion</p><h3>桌宠</h3></div></div>
+                <p className="modal-intro">独立小窗口，只展示状态与最近消息，不影响这里的对话。打开桌宠不会开启任何感知。</p>
+                <div className="toggle-row">
+                  <button
+                    className={`toggle ${pet.open ? "on" : ""}`}
+                    onClick={() => void (pet.open ? pet.closePet() : pet.openPet())}
+                    disabled={pet.busy}
+                  >
+                    <Sparkles size={15} />
+                    <span>{pet.open ? "已显示" : "显示桌宠"}</span>
+                  </button>
+                  <span className="toggle-hint">拖动移动；左键点它回到主窗；右键有它的菜单。</span>
+                </div>
+                <div className="toggle-row">
+                  <button className="toggle" onClick={() => void pet.resetPosition()} disabled={pet.busy || !pet.open}>
+                    <RefreshCw size={15} />
+                    <span>找回桌宠</span>
+                  </button>
+                  <span className="toggle-hint">把窗口移回屏幕内的工作区中央，并自动关闭点击穿透。</span>
+                </div>
+                <div className="toggle-row">
+                  <button className="toggle" onClick={() => void pet.disableClickThrough()} disabled={pet.busy || !pet.open}>
+                    <X size={15} />
+                    <span>关闭点击穿透</span>
+                  </button>
+                  <span className="toggle-hint">穿透开启时桌宠不再接收点击，恢复入口在这里。</span>
+                </div>
+                {pet.error && (
+                  <p className="modal-intro" style={{ color: "#e5484d" }}>{pet.error}</p>
+                )}
+              </>
+            )}
 
             <div className="settings-divider" />
             <div className="modal-heading"><div><p className="eyebrow">Listening</p><h3>语音识别</h3></div></div>

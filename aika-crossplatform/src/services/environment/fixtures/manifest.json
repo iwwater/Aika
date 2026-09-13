@@ -1,0 +1,1063 @@
+{
+  "source": "synthetic-selfmade",
+  "generator": "scripts/generate-ocr-fixtures.py",
+  "font": {
+    "name": "Anonymous Pro Regular",
+    "license": "SIL OFL 1.1",
+    "file": "scripts/fonts/AnonymousPro-Regular.ttf"
+  },
+  "license": "self-made synthetic images; OFL font; no third-party copyrighted material; no personal data",
+  "note": "dev set for tuning; validation set frozen for evaluation. Matching is case-insensitive.",
+  "images": {
+    "dev/dev_victory_0.png": {
+      "kind": "dev",
+      "scene": "game",
+      "rendered": "VICTORY",
+      "expected": "VICTORY",
+      "sha256": "4e302fbfef32cfd243e8e930238000e2f357b028c5294d178c774df1434eb45e"
+    },
+    "dev/dev_victory_1.png": {
+      "kind": "dev",
+      "scene": "game",
+      "rendered": "VICTORY",
+      "expected": "VICTORY",
+      "sha256": "7309d6a721008bf57fd4784e60774e300a312938bdc6e7f306b50294d0a79548"
+    },
+    "dev/dev_victory_2.png": {
+      "kind": "dev",
+      "scene": "game",
+      "rendered": "VICTORY",
+      "expected": "VICTORY",
+      "sha256": "d993b79605e35005a97e83a0cd174a419528c3b3c0c7d9794bb9d2695e0c41ec"
+    },
+    "dev/dev_victory_3.png": {
+      "kind": "dev",
+      "scene": "game",
+      "rendered": "VICTORY",
+      "expected": "VICTORY",
+      "sha256": "68bbd3acb3db8bf9b6649c5c0db81890407f46bb5ae87eec7228369513eaeacc"
+    },
+    "dev/dev_defeat_0.png": {
+      "kind": "dev",
+      "scene": "game",
+      "rendered": "DEFEAT",
+      "expected": "DEFEAT",
+      "sha256": "f03515ddaa3a4879752c14f3c5e7a0faae7bbbaddabbc7d52b6101787859a90f"
+    },
+    "dev/dev_defeat_1.png": {
+      "kind": "dev",
+      "scene": "game",
+      "rendered": "DEFEAT",
+      "expected": "DEFEAT",
+      "sha256": "46541f0f9cbdbd74d2804147f44c12c7eae44af3df839d0f658101a53924a466"
+    },
+    "dev/dev_defeat_2.png": {
+      "kind": "dev",
+      "scene": "game",
+      "rendered": "DEFEAT",
+      "expected": "DEFEAT",
+      "sha256": "a19d989dc49da43ec24e1e191883665c71dd0e9123b9586c2041b2fbd1164d7d"
+    },
+    "dev/dev_defeat_3.png": {
+      "kind": "dev",
+      "scene": "game",
+      "rendered": "DEFEAT",
+      "expected": "DEFEAT",
+      "sha256": "f844bf3e926abe6b31b756b29060c9942efdf1eba437004311c7a171dad43258"
+    },
+    "dev/dev_pentakill_0.png": {
+      "kind": "dev",
+      "scene": "game",
+      "rendered": "PENTAKILL",
+      "expected": "PENTAKILL",
+      "sha256": "6f1a26db8efed2be953903a5906b2aa693f7f7bc68b5131f306544ca8d3f6670"
+    },
+    "dev/dev_pentakill_1.png": {
+      "kind": "dev",
+      "scene": "game",
+      "rendered": "PENTAKILL",
+      "expected": "PENTAKILL",
+      "sha256": "d000ab5893dc08a01a5ba3a36115d3987f2a5962bbada6486276ffe28aa62129"
+    },
+    "dev/dev_pentakill_2.png": {
+      "kind": "dev",
+      "scene": "game",
+      "rendered": "PENTAKILL",
+      "expected": "PENTAKILL",
+      "sha256": "ebce305b6f7994e15d6a1451a74e3cc655e7202283fe70bfbadca28810adeced"
+    },
+    "dev/dev_pentakill_3.png": {
+      "kind": "dev",
+      "scene": "game",
+      "rendered": "PENTAKILL",
+      "expected": "PENTAKILL",
+      "sha256": "9bf701d1eb78be42ef7ffc7756f4a5d30377230ba461afa5413600d62fae382d"
+    },
+    "dev/dev_error_0.png": {
+      "kind": "dev",
+      "scene": "ide",
+      "rendered": "Error",
+      "expected": "Error",
+      "sha256": "31d5636e4c4dc522e1feef0a1ed0cf99bb21e27bd95469ba97e8ebd215e61f88"
+    },
+    "dev/dev_error_1.png": {
+      "kind": "dev",
+      "scene": "ide",
+      "rendered": "Error",
+      "expected": "Error",
+      "sha256": "1a70370b0f6f6e7d6a95d25d94ccdc0c41d98f783d732df835ebb74caf18f80e"
+    },
+    "dev/dev_error_2.png": {
+      "kind": "dev",
+      "scene": "ide",
+      "rendered": "Error",
+      "expected": "Error",
+      "sha256": "923ae5bf0463a075ad2bc02e28736a7e19630b72ad58b577bd80fba412804469"
+    },
+    "dev/dev_error_3.png": {
+      "kind": "dev",
+      "scene": "ide",
+      "rendered": "Error",
+      "expected": "Error",
+      "sha256": "0cbb49ed64420b47109883a1297562450ce2004b5f245125a3518eb37551e84e"
+    },
+    "dev/dev_failed_0.png": {
+      "kind": "dev",
+      "scene": "ide",
+      "rendered": "Failed",
+      "expected": "Failed",
+      "sha256": "35d45b2ab7e943f94d30796882097c16d7cb0e489366a3bfacbe803e0d2ad839"
+    },
+    "dev/dev_failed_1.png": {
+      "kind": "dev",
+      "scene": "ide",
+      "rendered": "Failed",
+      "expected": "Failed",
+      "sha256": "d825a3db301d3eb1f34a37671a9f099f3110101e8b4c1b96e40baaae2f4a7318"
+    },
+    "dev/dev_failed_2.png": {
+      "kind": "dev",
+      "scene": "ide",
+      "rendered": "Failed",
+      "expected": "Failed",
+      "sha256": "504e6e1608cc1e72a9eb7434c48a21a551f0a5617dfb77e3c3f08773a2dc4c77"
+    },
+    "dev/dev_failed_3.png": {
+      "kind": "dev",
+      "scene": "ide",
+      "rendered": "Failed",
+      "expected": "Failed",
+      "sha256": "23362e0653d87558863e05e35902869ddb05c7411cf1d28bd34a1073ea527001"
+    },
+    "dev/dev_neg_00.png": {
+      "kind": "dev",
+      "scene": "game",
+      "rendered": "PAUSED",
+      "expected": null,
+      "sha256": "357d6cfa12641fa48afab82b2c1a9c34debfecdbf8882c64596dee085b66f4d3"
+    },
+    "dev/dev_neg_01.png": {
+      "kind": "dev",
+      "scene": "video",
+      "rendered": "VIEWS",
+      "expected": null,
+      "sha256": "fbf5261faa7bd58fc99a04b97ce747b79a1f976d5cb80e3862c4cb5967ecdd05"
+    },
+    "dev/dev_neg_02.png": {
+      "kind": "dev",
+      "scene": "ide",
+      "rendered": "TERMINAL",
+      "expected": null,
+      "sha256": "36b72bf26cb676a5d46164a4c401d7d6e626533ff497bf9978fb0da7fc20c2ae"
+    },
+    "dev/dev_neg_03.png": {
+      "kind": "dev",
+      "scene": "game",
+      "rendered": "SETTINGS",
+      "expected": null,
+      "sha256": "20795b18caf523eb70f6487637206052b3aab013b47e1713f8f2b879dadcedf2"
+    },
+    "dev/dev_neg_04.png": {
+      "kind": "dev",
+      "scene": "video",
+      "rendered": "WATCH",
+      "expected": null,
+      "sha256": "15119999e2ac3b986a8820918539fe972f74dbff0ac6cf06df729ef627a8cd50"
+    },
+    "dev/dev_neg_05.png": {
+      "kind": "dev",
+      "scene": "ide",
+      "rendered": "PLUGIN",
+      "expected": null,
+      "sha256": "a440cb45b68b2606bebb176f58d107617e7be9ea44f16e8664f9ff7e2531d77a"
+    },
+    "dev/dev_neg_06.png": {
+      "kind": "dev",
+      "scene": "game",
+      "rendered": "MISSION",
+      "expected": null,
+      "sha256": "1d1add816ef233fd921950c03dcbf0b2be2584e2c9bb9f45ed341b1933b1870b"
+    },
+    "dev/dev_neg_07.png": {
+      "kind": "dev",
+      "scene": "video",
+      "rendered": "COMMENT",
+      "expected": null,
+      "sha256": "9de6e8b0551e898b526bac813bf6f8ac15c8a840fb11b13e2fe9f7e20d22929a"
+    },
+    "dev/dev_neg_08.png": {
+      "kind": "dev",
+      "scene": "ide",
+      "rendered": "PROBLEMS",
+      "expected": null,
+      "sha256": "be7d4a5b8a8c72c7eb86086b4aadb883460d8e8c33b90bd465c1c13bf16d37cc"
+    },
+    "dev/dev_neg_09.png": {
+      "kind": "dev",
+      "scene": "game",
+      "rendered": "WAVE",
+      "expected": null,
+      "sha256": "221057d379fa6e30292316bc0fd796d5cf989a145d9fcb3f3febe83bc026bd19"
+    },
+    "validation/val_pos_victory_00.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "VICTORY",
+      "expected": "VICTORY",
+      "sha256": "777fda43364c42f1c7a90284e2f6a5e542a475af7041dbc7161d8a681caaeb98"
+    },
+    "validation/val_pos_victory_01.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "VICTORY",
+      "expected": "VICTORY",
+      "sha256": "0a2a5540e620341c3182b4db72ff2d4b3c0fc94d0627c2d6b2f39cd8252fa276"
+    },
+    "validation/val_pos_victory_02.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "VICTORY",
+      "expected": "VICTORY",
+      "sha256": "588b5c080ade316098f76a397deee8fdf7da8eb70dc051425b09a3d6fff953e9"
+    },
+    "validation/val_pos_victory_03.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "VICTORY",
+      "expected": "VICTORY",
+      "sha256": "d67c2366fd9d2d945149f79f8fe8dfb4a66e8510989f302d5ad8547984d47f66"
+    },
+    "validation/val_pos_victory_04.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "VICTORY",
+      "expected": "VICTORY",
+      "sha256": "d3e0bd9156dec95a25e2aa338cfa4912eb641c4b12a4a1ada263c267735ac371"
+    },
+    "validation/val_pos_victory_05.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "VICTORY",
+      "expected": "VICTORY",
+      "sha256": "d12284945bed9a640d9783b64f0afd28383c2aa3e0bb96ddae7641b96a3f60c4"
+    },
+    "validation/val_pos_victory_06.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "VICTORY",
+      "expected": "VICTORY",
+      "sha256": "183783e0cbe4284350c945519d74247ee7fb262903c1e205531c2a8f61b311e6"
+    },
+    "validation/val_pos_victory_07.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "VICTORY",
+      "expected": "VICTORY",
+      "sha256": "764e6a7bc4d98345cdf7b5b42fbf930e2818fac226eec26bb3d268d913e16659"
+    },
+    "validation/val_pos_victory_08.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "VICTORY",
+      "expected": "VICTORY",
+      "sha256": "cb0fdbacdb6c9195e560c2eaef1d8ea2ee04a761bed6d6b07c8b747908a91a5f"
+    },
+    "validation/val_pos_victory_09.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "VICTORY",
+      "expected": "VICTORY",
+      "sha256": "670d06c8be2036010721dc1b2c5017a7d85473d621b8f9b8d7fcbb2aefd1675c"
+    },
+    "validation/val_pos_victory_10.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "VICTORY",
+      "expected": "VICTORY",
+      "sha256": "d993b79605e35005a97e83a0cd174a419528c3b3c0c7d9794bb9d2695e0c41ec"
+    },
+    "validation/val_pos_victory_11.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "VICTORY",
+      "expected": "VICTORY",
+      "sha256": "cfb33d7a3fd0d86e6aa3c467db385c92c11caf630b90275f0b1b85ae5af93d22"
+    },
+    "validation/val_pos_defeat_00.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "DEFEAT",
+      "expected": "DEFEAT",
+      "sha256": "4464df3cd406dc2f3b691376252d0a3aa1bf17056a9e7a7919fdae7a29ded49a"
+    },
+    "validation/val_pos_defeat_01.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "DEFEAT",
+      "expected": "DEFEAT",
+      "sha256": "93d3f496abaee0b20ba914e6ca4904ae8676c4976d90aef1ae80b6e585c62357"
+    },
+    "validation/val_pos_defeat_02.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "DEFEAT",
+      "expected": "DEFEAT",
+      "sha256": "1d5f4cbd89f269088c28e630bd5e3a59ed3ebc5b12075f66f4b5bf166e0777b4"
+    },
+    "validation/val_pos_defeat_03.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "DEFEAT",
+      "expected": "DEFEAT",
+      "sha256": "aa90a6ac93ee5b7751d62432a6a70e21bf98e130ea5f897df3b044d90ef9f6b4"
+    },
+    "validation/val_pos_defeat_04.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "DEFEAT",
+      "expected": "DEFEAT",
+      "sha256": "bb0250da5e0537ee58edaf34e72e8a2f1aa8bb339a5849360486a3822ef80507"
+    },
+    "validation/val_pos_defeat_05.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "DEFEAT",
+      "expected": "DEFEAT",
+      "sha256": "79379279dc514ae0147061af7e2efad54b4980afba60252b4b3b2ee06bf4a814"
+    },
+    "validation/val_pos_defeat_06.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "DEFEAT",
+      "expected": "DEFEAT",
+      "sha256": "a4f5d7cdc2148c02051e4142080a20f58cae2b2177d4c512770b5a4cc5267d47"
+    },
+    "validation/val_pos_defeat_07.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "DEFEAT",
+      "expected": "DEFEAT",
+      "sha256": "bdfc65a115a74eff14f2f6994651418f6b1bb7e52b4574dc8f6fb795dc061232"
+    },
+    "validation/val_pos_defeat_08.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "DEFEAT",
+      "expected": "DEFEAT",
+      "sha256": "52b5df5683bda8acbcb1af705e64b5ecca055adf244fc8b9eaccfdf89e521334"
+    },
+    "validation/val_pos_defeat_09.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "DEFEAT",
+      "expected": "DEFEAT",
+      "sha256": "4e21183b776e6cea8baf3357502ae95fa703752bc1877473d92faf4efe545d19"
+    },
+    "validation/val_pos_defeat_10.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "DEFEAT",
+      "expected": "DEFEAT",
+      "sha256": "a19d989dc49da43ec24e1e191883665c71dd0e9123b9586c2041b2fbd1164d7d"
+    },
+    "validation/val_pos_defeat_11.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "DEFEAT",
+      "expected": "DEFEAT",
+      "sha256": "b97df0e1e02c7794259397ca68d184993f86247136a325e868937c47ab74a655"
+    },
+    "validation/val_pos_pentakill_00.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "PENTAKILL",
+      "expected": "PENTAKILL",
+      "sha256": "02a982a891645b1d2b35167d09c69db02854eedd5d8ed0c1450266d58eb9c55e"
+    },
+    "validation/val_pos_pentakill_01.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "PENTAKILL",
+      "expected": "PENTAKILL",
+      "sha256": "81c0df848107045a94edafb83b9be63b6b2fdad8e3c6b1571e638127ed953da8"
+    },
+    "validation/val_pos_pentakill_02.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "PENTAKILL",
+      "expected": "PENTAKILL",
+      "sha256": "83a6dadd882670c2090f3ff2db56d228e9b7c95fdaef757ef0d7162ab7d85391"
+    },
+    "validation/val_pos_pentakill_03.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "PENTAKILL",
+      "expected": "PENTAKILL",
+      "sha256": "79de345359c572f1a1991c489efdd44096b8a18fc62d097fd12cb0ff9548f035"
+    },
+    "validation/val_pos_pentakill_04.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "PENTAKILL",
+      "expected": "PENTAKILL",
+      "sha256": "a41bc3ced38b6be0fd5579aabba9205cff25af0c6953d3f1848879d964c23523"
+    },
+    "validation/val_pos_pentakill_05.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "PENTAKILL",
+      "expected": "PENTAKILL",
+      "sha256": "b59825b1d4d3d7826ae49594ed17a1d6e30c91f3cd858f1cfe686e5c236378f7"
+    },
+    "validation/val_pos_pentakill_06.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "PENTAKILL",
+      "expected": "PENTAKILL",
+      "sha256": "19d46809db821d381bc30d79c422a1c80762a52dc3581d3f17d8289fa30f5afc"
+    },
+    "validation/val_pos_pentakill_07.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "PENTAKILL",
+      "expected": "PENTAKILL",
+      "sha256": "07bd2dd5ac6488b84bef62a61004e3b96608def558049f572d0129fa4d15a052"
+    },
+    "validation/val_pos_pentakill_08.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "PENTAKILL",
+      "expected": "PENTAKILL",
+      "sha256": "d2eb18604504c2276bf517e44c0f5b396a98de580ed4b94b27caa0bca60f66bd"
+    },
+    "validation/val_pos_pentakill_09.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "PENTAKILL",
+      "expected": "PENTAKILL",
+      "sha256": "016c3a373b0344ea714dd563fff59f52a0af0771804eadab51e3fd4ac1563c90"
+    },
+    "validation/val_pos_pentakill_10.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "PENTAKILL",
+      "expected": "PENTAKILL",
+      "sha256": "ebce305b6f7994e15d6a1451a74e3cc655e7202283fe70bfbadca28810adeced"
+    },
+    "validation/val_pos_pentakill_11.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "PENTAKILL",
+      "expected": "PENTAKILL",
+      "sha256": "9625755dd8ad68be2f4d2e4c33e517ced8e7da8089b6d3af0ffec722a8c28150"
+    },
+    "validation/val_pos_error_00.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "Error",
+      "expected": "Error",
+      "sha256": "ef7f44db2db247b7b7cfd45ad46cb0d372e916746d04b9b7063a1c7431ce08c4"
+    },
+    "validation/val_pos_error_01.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "Error",
+      "expected": "Error",
+      "sha256": "352f9ed8b87169af32ebbafb6434ad53591dda2279100f93b34da14dd44866d9"
+    },
+    "validation/val_pos_error_02.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "Error",
+      "expected": "Error",
+      "sha256": "6a43dd90f806e8a2a089529859f02d64275fe3217c0b4c74b9c25809c4fcea1c"
+    },
+    "validation/val_pos_error_03.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "Error",
+      "expected": "Error",
+      "sha256": "a6959015b502e9c0f58358e8d03e5a90741308403733caf59c11b2de724b7b77"
+    },
+    "validation/val_pos_error_04.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "Error",
+      "expected": "Error",
+      "sha256": "28a4937702053c0cbd3292a20fda52af7db01bf363e23dc9b59e3798bfe60ae7"
+    },
+    "validation/val_pos_error_05.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "Error",
+      "expected": "Error",
+      "sha256": "cd25c7ef229325f26f530efec740214e7e74b0a6715755086723d16bf0cb3009"
+    },
+    "validation/val_pos_error_06.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "Error",
+      "expected": "Error",
+      "sha256": "6a4f899f7332438a763a9e5a7fec3857f1dbf62034fb6326c32a3d5914a71567"
+    },
+    "validation/val_pos_error_07.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "Error",
+      "expected": "Error",
+      "sha256": "e08f97c991913ea3aebda0ea7a0948904bcb47ea9c581a2c49281bee69e1ffdb"
+    },
+    "validation/val_pos_error_08.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "Error",
+      "expected": "Error",
+      "sha256": "d717ccf477e0dfdc1d5e20d48618a958558628b3b70acabf44fdda1adb71b31b"
+    },
+    "validation/val_pos_error_09.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "Error",
+      "expected": "Error",
+      "sha256": "5a954ff07b37b6a2892502685d62db895f323eadfef6c8e5351e785da0763f49"
+    },
+    "validation/val_pos_error_10.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "Error",
+      "expected": "Error",
+      "sha256": "923ae5bf0463a075ad2bc02e28736a7e19630b72ad58b577bd80fba412804469"
+    },
+    "validation/val_pos_error_11.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "Error",
+      "expected": "Error",
+      "sha256": "df6fd5c6fd116b16002d2855d71482caaa3f43e61ae9882d9b2e4379ddbd08b7"
+    },
+    "validation/val_pos_failed_00.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "Failed",
+      "expected": "Failed",
+      "sha256": "ca7c53249251c65774934babc227d48428f7453fb12b72c358a5725f9e43e1bd"
+    },
+    "validation/val_pos_failed_01.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "Failed",
+      "expected": "Failed",
+      "sha256": "d45bb61e9887d249d20867d42bb0bc53ff39aad0572762b3c4fc1f76e3c88081"
+    },
+    "validation/val_pos_failed_02.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "Failed",
+      "expected": "Failed",
+      "sha256": "4a2304d36c430ab444e7618bb4b83e69c864adf5bea10d63362c2edfa44046a6"
+    },
+    "validation/val_pos_failed_03.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "Failed",
+      "expected": "Failed",
+      "sha256": "f1c11be84b6b99382b2f3d28459ba67b05b1e5b966d8709fc8b2fa027d97cb95"
+    },
+    "validation/val_pos_failed_04.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "Failed",
+      "expected": "Failed",
+      "sha256": "331da4da27d2821bd034d23353336b000f6d28f988b0a6c6b8363603d5860d79"
+    },
+    "validation/val_pos_failed_05.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "Failed",
+      "expected": "Failed",
+      "sha256": "e8c5d49eaf8cfe1ea20d467d6315ef7f2f774fb562efb559dc5cf25c6801580a"
+    },
+    "validation/val_pos_failed_06.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "Failed",
+      "expected": "Failed",
+      "sha256": "2250fc3c32f12f0846e62bf8740071ab3be82b3980f45612e60708fb074b3b18"
+    },
+    "validation/val_pos_failed_07.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "Failed",
+      "expected": "Failed",
+      "sha256": "ba1325762225cda6be62a20171fc2e21a394d7106573cf1ca3488699b5ca880c"
+    },
+    "validation/val_pos_failed_08.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "Failed",
+      "expected": "Failed",
+      "sha256": "1a9b733a96475a0c65e678bed97c94a7e5f2a31ca366af7ec9c83e34c5c00fcc"
+    },
+    "validation/val_pos_failed_09.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "Failed",
+      "expected": "Failed",
+      "sha256": "b31f8cebf9c5cba61f8beea981bd67930c5e614e2078319f85b9ff0785f48533"
+    },
+    "validation/val_pos_failed_10.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "Failed",
+      "expected": "Failed",
+      "sha256": "504e6e1608cc1e72a9eb7434c48a21a551f0a5617dfb77e3c3f08773a2dc4c77"
+    },
+    "validation/val_pos_failed_11.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "Failed",
+      "expected": "Failed",
+      "sha256": "68fd6b597739841200d972fbd7b1cb29b8b01965da04f6f2bdbcc695c02e8167"
+    },
+    "validation/val_neg_game_00.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "PAUSED",
+      "expected": null,
+      "sha256": "5f638b0e9d3768d7e522b1598bed590c0fdeb8e2990710f3c2cc883c67492859"
+    },
+    "validation/val_neg_game_01.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "LOADING",
+      "expected": null,
+      "sha256": "0518b7abaac442e2780e8d1faf27b97a3979207f1d5f8b96d79b6e5fdfa465c0"
+    },
+    "validation/val_neg_game_02.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "REPLAY",
+      "expected": null,
+      "sha256": "6ae37bdf91d66aaec9515dca1366216bc06b895f28ee8613163af89b7d1a72cf"
+    },
+    "validation/val_neg_game_03.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "SETTINGS",
+      "expected": null,
+      "sha256": "7f3ea01081165dbb358490299c529127cddba0272e21ebaa8ceaaa4af73abd7f"
+    },
+    "validation/val_neg_game_04.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "EXIT",
+      "expected": null,
+      "sha256": "63f92578f27fd8bf752c125565c8134e64fea480502ab8ec2855ec564cdf54c8"
+    },
+    "validation/val_neg_game_05.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "SCORE",
+      "expected": null,
+      "sha256": "b92bd8f3b332317422e6394d62cc8beabbedd5b368ca226392402cfe517338ac"
+    },
+    "validation/val_neg_game_06.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "MISSION",
+      "expected": null,
+      "sha256": "7c12f4396d08233eb6c4c7c29b9c4a79b1a49889c686a1c04b32c6c7e519e265"
+    },
+    "validation/val_neg_game_07.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "PENTAKILLED",
+      "expected": null,
+      "sha256": "5f7b7099bca6778ec3db05f480082a14b73e02e014b4dea1c0033216014d70a7"
+    },
+    "validation/val_neg_game_08.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "ERRORS",
+      "expected": null,
+      "sha256": "ef29c18d7495f970edd7874aa7a63791de9201183a08779839fa29f9925ddd1f"
+    },
+    "validation/val_neg_game_09.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "WAVE",
+      "expected": null,
+      "sha256": "368bbacfc43deb803baafff870c20fdfcab43edf5b5142142c526b96a73cdea3"
+    },
+    "validation/val_neg_game_10.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "LOADING",
+      "expected": null,
+      "sha256": "1ae04392a166a58bc2564e75f4e95c5a1f95b93eda2339e428ffb7bbd894f229"
+    },
+    "validation/val_neg_game_11.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "REPLAY",
+      "expected": null,
+      "sha256": "5054a33ca2d90093ccffe3c0354f0469e62fabfce0bc1cfd650261498b6397f8"
+    },
+    "validation/val_neg_game_12.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "SETTINGS",
+      "expected": null,
+      "sha256": "f14da97ee64eee73dafd0f3a9d58a3e5a5486036c6aef36f5f145ac5a03e038c"
+    },
+    "validation/val_neg_game_13.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "EXIT",
+      "expected": null,
+      "sha256": "30b01cca605ca7d2c5de18839b927a70ee8046fae9caca9e6cfacf36d77f120f"
+    },
+    "validation/val_neg_game_14.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "SCORE",
+      "expected": null,
+      "sha256": "49a46babe83a643081cdce2a857a0d7fda7a70ca815499e2dd8b0462ea3e77b1"
+    },
+    "validation/val_neg_game_15.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "MISSION",
+      "expected": null,
+      "sha256": "a60fad35f850acb1f79b4090ecacfeab8574cd236c2489fe480ca35febeb6d4d"
+    },
+    "validation/val_neg_game_16.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "PENTAKILLED",
+      "expected": null,
+      "sha256": "3c5c21fc2f4899a0ce6ee4972c3e4dab442b358e92a4af7fdf47eb08afc01726"
+    },
+    "validation/val_neg_game_17.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "ERRORS",
+      "expected": null,
+      "sha256": "8c97fd0658fcf4629ea9a819f294f032a5348e10c5873f7564332e12856179c6"
+    },
+    "validation/val_neg_game_18.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "WAVE",
+      "expected": null,
+      "sha256": "219b4366a55fe27ad081ce3f0ead1444a62c916966866d836b6995ebcff29753"
+    },
+    "validation/val_neg_game_19.png": {
+      "kind": "validation",
+      "scene": "game",
+      "rendered": "PAUSED",
+      "expected": null,
+      "sha256": "af9d1b2454837694baec79476e9243d81c2e38eaabe0cea761642379938d485b"
+    },
+    "validation/val_neg_video_00.png": {
+      "kind": "validation",
+      "scene": "video",
+      "rendered": "LIVE",
+      "expected": null,
+      "sha256": "a56a7632b43859e219b844ad24a8a0fcf2567b5834f4969dc7da6ba8064a4b1d"
+    },
+    "validation/val_neg_video_01.png": {
+      "kind": "validation",
+      "scene": "video",
+      "rendered": "VIEWS",
+      "expected": null,
+      "sha256": "f377975f16277102e5685c376d78b8087cf3f37cad595b4ecdd1a50de0d9c635"
+    },
+    "validation/val_neg_video_02.png": {
+      "kind": "validation",
+      "scene": "video",
+      "rendered": "SUBSCRIBE",
+      "expected": null,
+      "sha256": "982ea7de68edb30179e6e59b01e71df9e16b2233cc93698cf2bda0cad7e3d7e1"
+    },
+    "validation/val_neg_video_03.png": {
+      "kind": "validation",
+      "scene": "video",
+      "rendered": "NEXT",
+      "expected": null,
+      "sha256": "f0020d9885d3b1a60d0391d1f98f1f62b9a0642542f928074d4958d4843917b9"
+    },
+    "validation/val_neg_video_04.png": {
+      "kind": "validation",
+      "scene": "video",
+      "rendered": "WATCH",
+      "expected": null,
+      "sha256": "ff25021b95234e4e28952662adf128533d678c8f15058769aeb9beff8b25b76b"
+    },
+    "validation/val_neg_video_05.png": {
+      "kind": "validation",
+      "scene": "video",
+      "rendered": "FAILURES",
+      "expected": null,
+      "sha256": "7949396b9a1da4ce1e64d53d2ba3d6c5bf5338621ec80ccecc426f6fd2179aff"
+    },
+    "validation/val_neg_video_06.png": {
+      "kind": "validation",
+      "scene": "video",
+      "rendered": "DEFEATED",
+      "expected": null,
+      "sha256": "3e64d9649a38f75091ef2a5839089e4c372e40dd2a354e15bcbee680ab32d047"
+    },
+    "validation/val_neg_video_07.png": {
+      "kind": "validation",
+      "scene": "video",
+      "rendered": "COMMENT",
+      "expected": null,
+      "sha256": "84890216cf869a8e9524116e0c0e35b5d62378ba24a04dc0d7d30e985f91f5cb"
+    },
+    "validation/val_neg_video_08.png": {
+      "kind": "validation",
+      "scene": "video",
+      "rendered": "SHARE",
+      "expected": null,
+      "sha256": "62073eb4755d8321207e892df8cacb5c98449b9705670ce27a90be643303ee26"
+    },
+    "validation/val_neg_video_09.png": {
+      "kind": "validation",
+      "scene": "video",
+      "rendered": "CLIP",
+      "expected": null,
+      "sha256": "b470e18a8fe578f7e2aad23042bbc0303062e3a0e2ef6a3774a3b8df7ff0008c"
+    },
+    "validation/val_neg_video_10.png": {
+      "kind": "validation",
+      "scene": "video",
+      "rendered": "VIEWS",
+      "expected": null,
+      "sha256": "7b6b6da7fcb10347442323c2b7f06fc57be66690ee468157b5211ec53fd07b51"
+    },
+    "validation/val_neg_video_11.png": {
+      "kind": "validation",
+      "scene": "video",
+      "rendered": "SUBSCRIBE",
+      "expected": null,
+      "sha256": "8674e684e4e97c8c5d922103099b2a923c3cefc114cc2248c12118a09360a13c"
+    },
+    "validation/val_neg_video_12.png": {
+      "kind": "validation",
+      "scene": "video",
+      "rendered": "NEXT",
+      "expected": null,
+      "sha256": "ebdf9e8cc2c4a63cb434e992c46a88c1e8e4f53ffc2fe7924d5f3fbd6e479e6a"
+    },
+    "validation/val_neg_video_13.png": {
+      "kind": "validation",
+      "scene": "video",
+      "rendered": "WATCH",
+      "expected": null,
+      "sha256": "56d0972a12ae87acace8b4b3d783717521a26a028b6aaaa5de04bb95e62c31fc"
+    },
+    "validation/val_neg_video_14.png": {
+      "kind": "validation",
+      "scene": "video",
+      "rendered": "FAILURES",
+      "expected": null,
+      "sha256": "a25de6e96c127497463eca96937411fed0802f255a89334705a3477adb710958"
+    },
+    "validation/val_neg_video_15.png": {
+      "kind": "validation",
+      "scene": "video",
+      "rendered": "DEFEATED",
+      "expected": null,
+      "sha256": "55369007e14bacdbabc1fb87ffaa9a10dcd59e6f64a76168ccf92afb7580ec4b"
+    },
+    "validation/val_neg_video_16.png": {
+      "kind": "validation",
+      "scene": "video",
+      "rendered": "COMMENT",
+      "expected": null,
+      "sha256": "5f8fddaad87e4732aaca66711b061ae2a96c251a65fde6e2bb5dbb4423692ac5"
+    },
+    "validation/val_neg_video_17.png": {
+      "kind": "validation",
+      "scene": "video",
+      "rendered": "SHARE",
+      "expected": null,
+      "sha256": "f23db100ad6415c25e4b41fcc294b081c05186fb6dbb4e041dc7bc7a1cf71660"
+    },
+    "validation/val_neg_video_18.png": {
+      "kind": "validation",
+      "scene": "video",
+      "rendered": "CLIP",
+      "expected": null,
+      "sha256": "9b80cfe07a4b9931ac2cc4357ce08d7b4999c7c6e92dc6fcf6785945ed9bd4cb"
+    },
+    "validation/val_neg_video_19.png": {
+      "kind": "validation",
+      "scene": "video",
+      "rendered": "LIVE",
+      "expected": null,
+      "sha256": "3376424179118956888b10560ba7a4a87117ff3bb1f7f9ec51b32fac58ad6c51"
+    },
+    "validation/val_neg_ide_00.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "BUILD",
+      "expected": null,
+      "sha256": "41441b5132a2a18310903a7f0169d7cbf97dca0ed13e76bac444472d10a06379"
+    },
+    "validation/val_neg_ide_01.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "WARNINGS",
+      "expected": null,
+      "sha256": "6b98fc26a38d0cdb488e913e77c50f03624ca87fe5073dabbe9e4ebe2bd84189"
+    },
+    "validation/val_neg_ide_02.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "TERMINAL",
+      "expected": null,
+      "sha256": "611f48a65987816cbe8f26059fd4879ff1c5f02778c682cbb23412eaeb03d9ed"
+    },
+    "validation/val_neg_ide_03.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "OUTPUT",
+      "expected": null,
+      "sha256": "2b92ce9c8d8a8b9d05ef0f444ef802fc1f3f60837927e8d7a2669a56a7b56706"
+    },
+    "validation/val_neg_ide_04.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "DEBUG",
+      "expected": null,
+      "sha256": "4d355d8e913d7404d326b0388986dd135773820e516c360f0b8e48e8944be7c5"
+    },
+    "validation/val_neg_ide_05.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "PLUGIN",
+      "expected": null,
+      "sha256": "8e77500fe8105a8244536102e2553ca9aad7d9c518c437a71a90e9f365d9107f"
+    },
+    "validation/val_neg_ide_06.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "VICTORS",
+      "expected": null,
+      "sha256": "1db1ca2bdda073d579f73d2170b4849ec9cb87b6a3d9c01512760f5c1c2317c9"
+    },
+    "validation/val_neg_ide_07.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "FAILING",
+      "expected": null,
+      "sha256": "d5263544edfb2312a8ab17701698b2ceb3330037b877c84e6ce4b1207a80433f"
+    },
+    "validation/val_neg_ide_08.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "PROBLEMS",
+      "expected": null,
+      "sha256": "32e41b1399075100c7792559642347f1c81a3270d4def3dc1d9893e0bc68a038"
+    },
+    "validation/val_neg_ide_09.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "TRACE",
+      "expected": null,
+      "sha256": "7c75b1beca2bdc85c06c905748d9aaa3e95cf814289b6c8c59b453d7e66a1951"
+    },
+    "validation/val_neg_ide_10.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "WARNINGS",
+      "expected": null,
+      "sha256": "f7efcafd2dcacd12d3ee3395712504662e65b7002dd2899a5435826606719923"
+    },
+    "validation/val_neg_ide_11.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "TERMINAL",
+      "expected": null,
+      "sha256": "b8dc143cda6e2d39a50d97e64c47aec02376595c5142e2743e973ba7fa3cfea0"
+    },
+    "validation/val_neg_ide_12.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "OUTPUT",
+      "expected": null,
+      "sha256": "c2f09059e033ce7d72fa8513c7caa856f5d17702a5129618dd0d9a47097946f5"
+    },
+    "validation/val_neg_ide_13.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "DEBUG",
+      "expected": null,
+      "sha256": "848532358208a77ff1ba456535efce51e75cbfb4d9b60b0ad1cdaa4e5e44b3f2"
+    },
+    "validation/val_neg_ide_14.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "PLUGIN",
+      "expected": null,
+      "sha256": "56e21cf5aadd2865aa0a1fac9fa6001bac82bc4128234f50c6bc7bb6c349e939"
+    },
+    "validation/val_neg_ide_15.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "VICTORS",
+      "expected": null,
+      "sha256": "3e3073f581f3963d5d7bd61e12de7673e2a80d2fe1f5417417386916d18cdedf"
+    },
+    "validation/val_neg_ide_16.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "FAILING",
+      "expected": null,
+      "sha256": "4c3786e0da3c9059856720167faa6af4dbd0f9f4ddb3cd6d2e1d8b0757c6aa54"
+    },
+    "validation/val_neg_ide_17.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "PROBLEMS",
+      "expected": null,
+      "sha256": "1872065926d669fa17d688eec62e91bdc8f385330b6c80ed3e243478308497f9"
+    },
+    "validation/val_neg_ide_18.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "TRACE",
+      "expected": null,
+      "sha256": "f3cbf2df0ce2ef317b1f70a2225f0697a6f5958849f05f85c72d3afb8aea358c"
+    },
+    "validation/val_neg_ide_19.png": {
+      "kind": "validation",
+      "scene": "ide",
+      "rendered": "BUILD",
+      "expected": null,
+      "sha256": "63eb95a899446c5c226601ca986fdf57fc1d1d2a5520f01c094b300ba8608bda"
+    }
+  }
+}

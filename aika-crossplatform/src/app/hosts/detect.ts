@@ -12,3 +12,15 @@
 export function isTauriHost(): boolean {
   return "__TAURI_INTERNALS__" in globalThis;
 }
+
+/**
+ * 当前 Tauri 窗口 label；非 Tauri 宿主返回 null（FE-20 的 pet 窗口分流依据）。
+ * 平台判断收在 detect.ts，主入口只问 label，不碰 internals。
+ */
+export function currentWindowLabel(): string | null {
+  if (!isTauriHost()) return null;
+  const metadata = (globalThis as { __TAURI_INTERNALS__?: { metadata?: { currentWindow?: { label?: unknown } } } })
+    .__TAURI_INTERNALS__?.metadata;
+  const label = metadata?.currentWindow?.label;
+  return typeof label === "string" ? label : null;
+}

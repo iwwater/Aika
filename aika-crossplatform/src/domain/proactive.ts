@@ -56,7 +56,11 @@ export type ProactiveReasonKind =
   | "user-plan"
   | "time-semantics"
   | "memory-date"
-  | "small-thought";
+  | "small-thought"
+  /** 环境事件驱动（FE-22）：游戏结算类（victory/defeat/pentakill）。 */
+  | "game-result"
+  /** 环境事件驱动（FE-22）：弱信号陪伴（长会话/屏幕关键词），只引用词表 ID。 */
+  | "environment-weak";
 
 export interface ProactiveReason {
   kind: ProactiveReasonKind;
@@ -71,6 +75,11 @@ export interface ProactiveReasonInput {
   hoursSinceLastUserMessage: number | null;
   /** 上一次用过的理由类型，用来避免连着两次同一个角度。 */
   lastReasonKind: ProactiveReasonKind | null;
+  /**
+   * 环境事件摘要（FE-22）：来自 remember 环形缓冲的**受控词表 ID**
+   * （如 "victory"/"error"），不含 OCR 原文。空/缺省 = 本轮无环境素材。
+   */
+  environment?: readonly string[];
 }
 
 const PLAN_PATTERNS = [
@@ -148,12 +157,42 @@ function collectReasons(input: ProactiveReasonInput): ProactiveReason[] {
     });
   }
 
+  // 环境事件素材（FE-22）：只引用受控词表 ID，不引用任何屏幕原文。
+  if (input.environment && input.environment.length > 0) {
+    reasons.push(environmentProactiveReasonFor(input.environment));
+  }
+
   reasons.push({
     kind: "small-thought",
     hint: "没有特别的事，只是忽然想起对方。分享一个属于你自己的小念头就好。",
   });
 
   return reasons;
+}
+
+const GAME_RESULT_HINT = (settle: string): string =>
+  `你注意到屏幕上出现了「${settle}」的英文提示。可以就这件事自然地聊一句，不要复述游戏术语以外的内容，也不要假装看了整场比赛。`;
+const ENVIRONMENT_WEAK_HINT =
+  "你在环境里留意到一点小动静（应用或提示）。可以轻轻提一句自己的感受，不要断言对方在做什么、心情如何。";
+
+/** 事件驱动触发（FE-22）直接构造环境 reason；不与时间驱动候选混选。 */
+export function environmentProactiveReason(
+  kind: ProactiveReasonKind,
+  buffer: readonly string[],
+): ProactiveReason {
+  const settle = buffer.find((id) => id === "victory" || id === "defeat" || id === "pentakill");
+  if (kind === "game-result" && settle) {
+    return { kind: "game-result", hint: `${GAME_RESULT_HINT(settle)}${SHARED_TAIL}` };
+  }
+  return { kind: "environment-weak", hint: `${ENVIRONMENT_WEAK_HINT}${SHARED_TAIL}` };
+}
+
+function environmentProactiveReasonFor(buffer: readonly string[]): ProactiveReason {
+  const settle = buffer.find((id) => id === "victory" || id === "defeat" || id === "pentakill");
+  if (settle) {
+    return { kind: "game-result", hint: GAME_RESULT_HINT(settle) };
+  }
+  return { kind: "environment-weak", hint: ENVIRONMENT_WEAK_HINT };
 }
 
 /**

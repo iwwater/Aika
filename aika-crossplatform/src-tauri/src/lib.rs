@@ -1,5 +1,10 @@
+mod foreground;
 mod gateway;
+// SPEC 声明的文件名 petWindow.rs；Rust 命名规范告警在此豁免。
+#[allow(non_snake_case)]
+mod petWindow;
 mod remote;
+mod screen;
 mod secret_store;
 
 use tauri::menu::{Menu, MenuItem};
@@ -22,7 +27,22 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
         .manage(remote::RemoteState::default())
+        .manage(foreground::ForegroundState::default())
         .invoke_handler(tauri::generate_handler![
+            foreground::environment_foreground_supported,
+            foreground::environment_foreground_enable,
+            foreground::environment_foreground_current,
+            foreground::environment_busy_query,
+            petWindow::pet_window_show,
+            petWindow::pet_window_hide,
+            petWindow::pet_window_set_click_through,
+            petWindow::pet_window_reset_position,
+            petWindow::pet_window_broadcast,
+            petWindow::pet_window_request_snapshot,
+            petWindow::pet_window_focus_main,
+            screen::environment_screen_supported,
+            screen::environment_screen_enable,
+            screen::environment_capture_region,
             remote::remote_start,
             remote::remote_stop,
             remote::remote_status,
