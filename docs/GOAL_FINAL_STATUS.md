@@ -9,10 +9,11 @@
 | 分类 | 数量 | 节点 |
 | --- | --- | --- |
 | **AUTO_PASS**（可自动 AC 全过，待人工审阅） | 27 | Wave 3：LLM-04、LLM-11、LLM-12、TTS-04、FE-23、FE-24、FE-25、FE-26；Wave 4：RT-01、RT-02、RT-03、RT-04、GW-01、GW-02（fixture）、GW-03、GW-05（fixture）、GW-06（fixture）；Wave 5：FE-14、FE-17-pre、GW-04；Wave 6：AGT-01、AGT-02、AGT-03（fixture）、AGT-04（fixture）、AGT-05；Wave 7：RT-05、RT-06 |
-| **PARTIAL** | 4 | Wave 2：INT-01（自动契约 PASS；浏览器/Tauri/手机/真实 Provider 四列 NOT RUN）；Wave 3：LLM-05（AC-D 真实模型 NOT RUN）；Wave 5：FE-15（A 过；B/C/D/E 需真实 Rust 宿主）；Wave 7：INT-04（fixture 轨 PASS；真实轨需授权） |
+| **PARTIAL** | 3 | Wave 2：INT-01（自动契约 PASS；浏览器/Tauri/手机/真实 Provider 四列 NOT RUN）；Wave 3：LLM-05（AC-D 真实模型 NOT RUN）；Wave 7：INT-04（fixture 轨 PASS；真实轨需授权）。**FE-15 已前移为「PASS（Rust 侧 + 装配轨）」见下** |
+| **PASS（本地/真实进程轨，待人工）** | 2 | **FE-15**：Rust 侧 gateway.rs/remote.rs + 手机页迁移 + tauriTransport 对齐（cargo test 18/18）；**FE-17-host/tauri**：宿主装配接线（两个宿主插件 + 出站传输装配 + 命令入口 fail-closed + epoch 取自生命周期 + ready/心跳启动动作）+ **真实 Tauri 进程端到端 PASS**（2026-09-13 修复 Cargo.toml 缺 custom-protocol 导致的白屏与 principal 不一致后：CDP 证 React 挂载、HTTP 读帧、命令 202；见 ISSUE_tauri_webview_blank_RESOLUTION.md） |
 | **REVIEWED_AUTO**（波次 1 既有工作复核，非本轮实现） | 34 | CORE-01～09、LLM-01～03、LLM-06～10、STT-01/02/04、TTS-01/02、FE-01～13（复核发现的出入已在账本逐条记录，如 LLM-01 六条质量失败待修、CORE-04 行数漂移、FE-06 弱项等） |
 | **FAIL** | 0 | 本轮无 FAIL 遗留（过程中 FAIL 均已定向修复，如架构门禁违规重构、内核拒启动漏声明等） |
-| **NOT RUN**（真实宿主/凭证/授权缺失） | 15 项 | 真实 Tauri plugin-sql 迁移与长跑（INT-01/RT-02/RT-05）；真实 Provider 计费比对（LLM-12/FE-26）；真实模型质量（LLM-01/05/10 部分）；真实 ACP 进程与 Windows Job Object（AGT-02/03）；真实 Telegram/Feishu/QQ 双向消息（GW-02/05/06）；真实语音音质（STT/AGT）；Rust gateway.rs handler 与手机页（FE-15 B~E）；FE-16 dev-relay；FE-17-host/tauri 与 dev-relay；INT-04 真实轨 |
+| **NOT RUN**（真实宿主/凭证/授权缺失） | 12 项 | 真实 Tauri plugin-sql 迁移与长跑（INT-01/RT-02/RT-05）；真实 Provider 计费比对（LLM-12/FE-26）；真实模型质量（LLM-01/05/10 部分）；真实 ACP 进程与 Windows Job Object（AGT-02/03）；真实 Telegram/Feishu/QQ 双向消息（GW-02/05/06）；真实语音音质（STT/AGT）；**多 WebView 越权与 exposurePolicy 接入 Rust 认证门（FE-15 D/E 剩余、FE-17-host/tauri）**（真实 Tauri 进程端到端已 PASS，见 RESOLUTION 报告）；真实手机浏览器/Origin 白名单/Tailscale（远程联调里程碑）；FE-17-host/dev-relay（前置缺口：宿主 producer 入口与 ticket 通路）；INT-04 真实轨 |
 | **BLOCKED**（外部条件/授权） | 4 项 | public 暴露层（无真实 TLS 证据，策略层已实现恒拒绝）；QQ 官方能力缺口（C2C 审核/文件语音受限/个人 QQ 私聊不在官方范围）；真实账户接通（Telegram/Codex/Claude/Feishu/QQ 全部需用户明确授权）；真实只读写能力验证 |
 | **DEFERRED**（用户明确后置，维持后置） | 6 项 | 桌宠/Live2D 回顾、环境感知（FE-18~22 五份草案未评审）、Stage3、云 Relay、GW LAN 自动 Discovery（手填地址已交付）、每主体独立记忆库（RT-04 已做来源分级） |
 
@@ -30,8 +31,8 @@
 1. **审阅本轮 27 个 AUTO_PASS 报告与代码证据**（docs/*/reports/，账本含逐节点指针）；AUTO_PASS 仅代表可自动 AC 通过，不代表人工验收通过。
 2. **INT-03 发布门禁独立完成**（INT-04 已声明不代偿；真实部署前必须单独过门禁）。
 3. **授权真实账户后执行真实轨**：Telegram Bot token（GW-02 真实双向）→ Codex/Claude 账户（AGT-03 真实版本探测与写模式）→ INT-04 真实轨（可控失败项目修复 diff + 测试命令退出码）。
-4. **Tauri 宿主工程**：src-tauri gateway.rs/remote.rs 路由实现（events/commands + 凭证接线，FE-17-pre 端口已就绪）、手机页迁移（FE-15 B~D）、FE-17-host/tauri 逐宿主验收；plugin-sql 真实迁移验证（RT-02 try-ALTER）。
-5. **Node dev-relay**（FE-16）→ FE-17-host/dev-relay 验收；public 层需真实 TLS 入口与后端不可直连证据，否则维持 BLOCKED。
+4. **Tauri 宿主真实轨**（核心链路已通，剩目视与边界）：`src-tauri` gateway.rs/remote.rs 路由 ✅、手机页迁移 ✅、FE-17-host/tauri 装配接线 ✅、**真实启动 + React 挂载 + HTTP 读帧/命令 202 ✅（2026-09-13 修复 Cargo.toml custom-protocol 白屏与 principal 不一致后，见 ISSUE_tauri_webview_blank_RESOLUTION.md）**、**命令下行收口 ✅（Rust emit + 生产授权，本地测试全绿；真实进程上复测命令到达桌面网关待做）** —— 剩「真实手机浏览器目视、多 WebView 越权、exposurePolicy 接入 Rust 认证门」；plugin-sql 真实迁移验证（RT-02 try-ALTER）仍 NOT RUN。**注意构建命令：`cargo build --release --features custom-protocol`（改前端后需 `npx vite build` 再 touch lib.rs 重新嵌入）**。
+5. **FE-17-host/dev-relay 验收**：前置缺口已定位（relay 不做认证，ticket 须由宿主 producer 侧签发，需新增跑 TS Runtime 的 Node 入口 + ticket 通路）；public 层需真实 TLS 入口与后端不可直连证据，否则维持 BLOCKED。
 6. **真实 Provider 凭证**：LLM-05 AC-D 真实模型问答、LLM-12/FE-26 真实计费比对、STT 真实音质（人工队列）。
 7. **GW-04 设备端到端**：Android/Web 终端连真实宿主（租约/重连/能力降级的真机目视）。
 8. **DEFERRED 项重启需用户明示**：桌宠/Live2D、环境感知 FE-18~22、Stage3、云 Relay。

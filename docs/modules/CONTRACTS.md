@@ -170,6 +170,20 @@ INT-01 的兼容检查项：云端合成一旦在设置页可选，`createOutput
 | 追加 | 位置 | 兼容方式 | 受影响消费者 |
 | --- | --- | --- | --- |
 | `createTauriOutboundTransport`（invoke/listen 桥 OutboundTransport；命令事件 outbound://command、帧经 outbound_publish invoke） | `services/outbound/tauriTransport.ts` | 新模块；不做认证（principal 由 Rust 宿主带外注入）；FE-14 conformance 用 fake invoke/listen 复跑 | FE-15 Rust handler、FE-17-host/tauri、手机页 |
+| `TauriTransportOptions.gatewayEpoch?` / `.principalId?` | 同上 | **可选**字段；不传时 Rust 沿用已有 epoch、主体取 target 的 principalId。`publish` 的 invoke 参数形状为 `{input:{principal_id,connection_id,conversation_id,frame,epoch}}` | 只有 `tauriTransport.test.ts`（已同步） |
+| 宿主侧远程网关与路由（`GET /api/v1/events` 长轮询 ≤25s、`POST /api/v1/commands` 202/503、`GET /api/v1/history`；旧 `/api/messages`、`/api/send` 同一鉴权门不再授予长期权限） | `src-tauri/src/gateway.rs`、`remote.rs` | 新增 Rust 模块与路由；`remote_start` 增可选 `allowed_origins`/`lan_enabled`（默认只绑 loopback）；新增 invoke `outbound_publish`/`outbound_heartbeat`/`outbound_offline`/`outbound_revoke`/`outbound_sessions` | 手机页、FE-17-host/tauri 宿主装配（**尚未接线**） |
+| 缓存上限常量（500 帧 / 4MB / 256KB body / epoch 变化或 cursor 过期报 gap） | `src-tauri/src/gateway.rs` | 宿主**只做字节搬运与准入**，不做业务投影（白名单投影仍在 TS 侧 FE-14）；`gap` 如实上报不谎称连续 | 手机页重同步逻辑、FE-17-host 诊断 |
+
+### v1 之后的追加（2026-09-13，FE-17-host/tauri 宿主装配接线，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `outboundTransportPlugin` / `hostLifecyclePlugin` | `app/hosts/plugins.ts` | 两个新宿主插件。**装了才有对应 token**：无 `host.outboundTransport` 即无 `OutboundTransportToken`（浏览器 dev 现状），无 `host.lifecycle` 即无 `HostLifecycleToken`。桌面装前者、两宿主都装后者 | `composition.ts` 启动动作、`outboundPlugin` |
+| `OutboundTransportToken`（`outbound.transport`）/ `HostLifecycleToken`（`host.lifecycle`） | `services/outbound/tokens.ts`、`services/runtime/tokens.ts` | 新增两个 token。前者刻意独立成文件，让宿主层只依赖 token 与类型，不拖入 Gateway 实现 | 宿主装配、测试注入 |
+| `outboundPlugin` 声明调整 | `services/outbound/outboundPlugin.ts` | `requires:[RuntimeToken]`、`optional:[HostLifecycleToken, OutboundTransportToken]`。入参加入 `fallbackEpoch?`/`commandAuthorizer?`；**`gatewayEpoch` 改由注册表里的宿主存活状态提供**（原为必填参数）——旧调用方不传 epoch 仍可用 | `capabilityPlugins()`（已默认装配）、FE-17-host 测试 |
+| `OutboundTransport.ready?()` / `.close?()` | `services/outbound/contracts.ts` | **可选**方法。宿主装配后 await `ready()`（Tauri 的 listen 注册）；纯内存传输不需要 | `tauriTransport`、`wsTransport`、`composition.ts` |
+| `RemoteHost.start(port, token, options?)` / `RemoteStartOptions{allowedOrigins?, lanEnabled?}` | `services/remote/bridge.ts` | **可选第三参**；不传时 Rust 侧 `unwrap_or_default()/unwrap_or(false)` = 最严档（只绑 loopback）。invoke 键用 camelCase，Tauri v2 自动映射到 Rust 的 `allowed_origins`/`lan_enabled` | `useRemoteAccess`（暂未传，行为不变）、FE-17-host 后续 |
+| `createGatewayRuntimePort` / `createOutboundPluginGateway` | `services/outbound/outboundPlugin.ts` | 新增导出的组装函数：把 `CompanionRuntime` 适配成 `OutboundRuntimePort`（`mode` 经 `normalizeModeConfig` 补全、`done` 收窄）。测试可不经内核直接组装 | FE-17-host 测试、将来的远程轨 |
 
 ### v1 之后的追加（2026-09-13，GW-04 设备注册表，向后兼容）
 
@@ -237,6 +251,17 @@ INT-01 的兼容检查项：云端合成一旦在设置页可选，`createOutput
 LLM 各自的 `docs/llm/specs/LLM-01…05` 文件内写明实现级接口；[STT](../stt/ARCHITECTURE.md)、[TTS](../tts/ARCHITECTURE.md)、[前端](../frontend/ARCHITECTURE.md) 按共享架构文件引用对应阶段。代码块是拟定逻辑契约，现有类型通过兼容 adapter 映射；不能以名称尚未存在推断已实现，也不要机械新增重复接口。
 
 发生冲突先依据用户最新范围和 SPEC 的行为约束统一接口，在同一改动中更新文档/适配及针对性契约测试。接口细化不自动触发全仓重构或全流程测试。
+
+### v1 之后的追加（2026-09-13，FE-17 命令下行收口：Rust emit + 生产授权，向后兼容）
+
+命令下行此前的两处断点：Rust `handle_commands` 受理后无 emit（202 是假确认，TS 网关永远收不到）；生产装配 `outboundPlugin()` 未传 `commandAuthorizer`，按 fail-closed 缺省命令监听根本没接。本轮收口：
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `handle_commands` Accepted 分支补 emit | `src-tauri/src/remote.rs` | 回 202 前先 `app.emit("outbound://command", payload)`，payload 形状 `{command:{raw, principal:{principalId}, conversationId, connectionId}}`（与 `AuthenticatedCommand` 对齐，`connectionId` 用 `http:{request_id}`）；**emit 失败回 502 不假确认**。旧行为（无 emit）无消费者依赖，属缺陷修复 | `tauriTransport`（listen 侧）、`outboundGateway.handleCommand`、手机页命令链路 |
+| `capabilityPlugins()` 默认 `commandAuthorizer` | `app/plugins/index.ts` | 生产装配补 `commandAuthorizer: (input) => input.principal.principalId === LOCAL_PRINCIPAL_ID`（服务端注入主体核验，伪造主体在 `handleCommand` 之前被拒）。测试可用替换 `outbound.core` 覆盖；缺省无 authorizer 时监听器仍不接（fail-closed 语义不变） | 桌面宿主命令入口、`outboundHostWiring` 测试 |
+
+验证：`outboundHostWiring.test.ts` 10/10（新增「生产装配默认携带本地主体授权」用例，并保留显式无授权端口的 fail-closed 用例）；outbound+hosts 定向 53/53；cargo test 19/19；tsc 0。真实进程命令下行复测 NOT RUN（见 FE-17_ACCEPTANCE.md 追加节）。
 
 ## 2026-09-13 拟议扩展登记（尚未实现/冻结）
 
