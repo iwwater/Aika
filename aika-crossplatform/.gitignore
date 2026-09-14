@@ -34,3 +34,7 @@ output/playwright/
 public/stickers/*
 !public/stickers/manifest.json
 !public/stickers/README.md
+
+# tesseract.js 在工作目录留下的 traineddata 缓存副本（真正随包的两份在
+# public/tessdata 与 src/services/environment/fixtures，此处只忽略仓库根的副本）。
+/*.traineddata
