@@ -1,6 +1,7 @@
 import {
   PET_PRESENTATION_SCHEMA,
   PET_SNAPSHOT_REQUEST_EVENT,
+  type PetCompanionState,
   type PetPresentationData,
   type PetPresentationFrameV1,
   type PetRelaySnapshot,
@@ -130,6 +131,12 @@ export function createPetRelay(deps: PetRelayDeps): PetRelay {
 export function aggregatePresentation(
   companion: { getSnapshot(): { messages: readonly { role: string; mood?: string; source?: string; content: string; createdAt: number; error?: boolean }[] } },
   voice: { getSnapshot(): { speakingCaptionId: number | null; captions: readonly { id: number; speaker: string; text: string }[] } } | null,
+  /**
+   * 陪伴会话展示态（FE-31）。缺省 = 宿主没有该能力，帧里不带这个字段。
+   * **只投影状态，不投影任何屏幕文字**——pet 端永远拿不到摘录。
+   */
+  session?: { getSnapshot(): { mode: PetCompanionState["mode"]; readState: PetCompanionState["readState"]; notice: string | null } } | null,
+  petEpoch?: string | null,
 ): PetPresentationData {
   const messages = companion.getSnapshot().messages;
   const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant" && !message.error);
@@ -158,7 +165,16 @@ export function aggregatePresentation(
     lastProactive: lastProactiveMessage
       ? { text: lastProactiveMessage.content, sentAtMs: lastProactiveMessage.createdAt }
       : null,
+    ...(session ? { companion: projectCompanion(session.getSnapshot()) } : {}),
+    ...(petEpoch ? { petEpoch } : {}),
   };
+}
+
+/** 会话快照 → pet 展示态：只留三个字段，其余（代数、配额、错误明细）不外投。 */
+function projectCompanion(
+  snapshot: { mode: PetCompanionState["mode"]; readState: PetCompanionState["readState"]; notice: string | null },
+): PetCompanionState {
+  return { mode: snapshot.mode, readState: snapshot.readState, notice: snapshot.notice };
 }
 
 export type { PetRelaySnapshot };

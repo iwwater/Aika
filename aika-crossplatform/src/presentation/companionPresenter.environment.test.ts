@@ -227,3 +227,26 @@ describe("companionPresenter 环境主动集成（FE-22）", () => {
     expect(storage.values.get(SETTING_KEYS.proactiveLastSentAt)).toBeTruthy();
   });
 });
+
+describe("sendEnvironmentProactive（FE-31 接线）", () => {
+  it("走同一份共享预约与同一套门禁；理由里不出现任何屏幕文字", async () => {
+    const { presenter, fake, storage } = await setup();
+
+    expect(await presenter.sendEnvironmentProactive(["screen-text"])).toBe(true);
+    await settle(20);
+    expect(fake.submitted).toHaveLength(1);
+    expect(fake.requests[0].source).toBe("proactive");
+    // 传进去的只是一个受控标识；摘录由 FE-32 的上下文源另行裁决，不从理由进模型。
+    expect(fake.requests[0].text).not.toContain("screen-text");
+    expect(storage.values.get(SETTING_KEYS.proactiveLastReason)).toBe("environment-weak");
+  });
+
+  it("与环境事件同刻竞争时至多一次提交（预约非排队）", async () => {
+    const { presenter, fake, emitVictory } = await setup();
+    emitVictory();
+    const second = presenter.sendEnvironmentProactive(["screen-text"]);
+    await settle(40);
+    await second;
+    expect(fake.submitted).toHaveLength(1);
+  });
+});

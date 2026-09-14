@@ -28,6 +28,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(remote::RemoteState::default())
         .manage(foreground::ForegroundState::default())
+        // 缺 manage 时 `tauri::State<ScreenState>` 在真实进程里取不到（FE-21 只跑了
+        // 逻辑轨，这条装配断点没被覆盖）。FE-32 的窗口抓取同样依赖它。
+        .manage(screen::ScreenState::default())
         .invoke_handler(tauri::generate_handler![
             foreground::environment_foreground_supported,
             foreground::environment_foreground_enable,
@@ -40,9 +43,11 @@ pub fn run() {
             petWindow::pet_window_broadcast,
             petWindow::pet_window_request_snapshot,
             petWindow::pet_window_focus_main,
+            petWindow::pet_intent_submit,
             screen::environment_screen_supported,
             screen::environment_screen_enable,
             screen::environment_capture_region,
+            screen::environment_capture_window,
             remote::remote_start,
             remote::remote_stop,
             remote::remote_status,

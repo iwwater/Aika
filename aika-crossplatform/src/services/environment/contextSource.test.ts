@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createManualClock, createFakeEnvironmentSource, fakeEventInput } from "./fakeEnvironment";
 import { createEnvironmentMonitor } from "./monitor";
-import { createEnvironmentContextSource } from "./contextSource";
+import { createEnvironmentContextSource, createScreenTextContextSource } from "./contextSource";
+import { SCREEN_CONTEXT_SCHEMA_VERSION, SCREEN_CONTEXT_SOURCE_ID } from "./screenContextProjection";
 
 /**
  * FE-19-D/E/H：环境上下文源。
@@ -110,6 +111,104 @@ describe("environmentContextSource（FE-19-D/E/H）", () => {
       getContextEnabled: async () => {
         throw new Error("storage broken");
       },
+    });
+    expect(await source.load({})).toEqual([]);
+  });
+});
+
+/**
+ * FE-32-C：屏幕文字摘录上下文源的出口校验。
+ *
+ * 与上面的环境摘要源分开授权：`environment.screenTextEnabled` 关着时，
+ * 请求装配这一层拿到的是空数组——没有任何摘录能被发出去。
+ */
+describe("createScreenTextContextSource 出口校验（FE-32-C）", () => {
+  function screenResult(capturedAt: number) {
+    return {
+      schemaVersion: SCREEN_CONTEXT_SCHEMA_VERSION,
+      id: `ctx-${capturedAt}`,
+      sourceId: SCREEN_CONTEXT_SOURCE_ID,
+      sourceTrust: "environment",
+      captureGeneration: 1,
+      sessionGeneration: 1,
+      reason: "manual",
+      window: { processName: "chrome.exe", windowId: "w1", monitorId: "primary" },
+      region: { x: 0, y: 0, width: 10, height: 10 },
+      capturedMonotonicMs: capturedAt,
+      expiresAtMonotonicMs: capturedAt + 60_000,
+      language: "zh",
+      confidence: 0.9,
+      readStatus: "ok",
+      excerpts: [{ order: 0, text: "页面上的一段中文", confidence: 0.9, truncated: false }],
+      truncated: false,
+      retryAtMonotonicMs: null,
+    } as const;
+  }
+
+  it("未授权 → 零摘录；授权 → 带来源的受限摘录", async () => {
+    const clock = createManualClock(1000);
+    let authorized = false;
+    const source = createScreenTextContextSource({
+      current: () => screenResult(1000),
+      getScreenTextEnabled: async () => authorized,
+      clock,
+    });
+    expect(await source.load({})).toEqual([]);
+
+    authorized = true;
+    const snippets = await source.load({});
+    expect(snippets).toHaveLength(1);
+    expect(snippets[0].source).toBe(SCREEN_CONTEXT_SOURCE_ID);
+    expect(snippets[0].content).toContain("页面上的一段中文");
+    expect(snippets[0].precision).toBe("proxy");
+  });
+
+  it("没有当前上下文 / 已过期 → 零摘录，且不去读授权（不做无谓的库访问）", async () => {
+    const clock = createManualClock(1000);
+    let reads = 0;
+    const empty = createScreenTextContextSource({
+      current: () => null,
+      getScreenTextEnabled: async () => {
+        reads += 1;
+        return true;
+      },
+      clock,
+    });
+    expect(await empty.load({})).toEqual([]);
+    expect(reads).toBe(0);
+
+    clock.advance(60_000);
+    const expired = createScreenTextContextSource({
+      current: (now) => (now >= 61_000 ? null : screenResult(1000)),
+      getScreenTextEnabled: async () => true,
+      clock,
+    });
+    expect(await expired.load({})).toEqual([]);
+  });
+
+  it("授权读取期间上下文被撤销/刷新 → 不发旧摘录", async () => {
+    const clock = createManualClock(1000);
+    let generation = 0;
+    const source = createScreenTextContextSource({
+      current: () => (generation === 0 ? screenResult(1000) : null),
+      getScreenTextEnabled: async () => {
+        // 模拟「读授权这段等待里用户按了暂停」。
+        generation = 1;
+        return true;
+      },
+      clock,
+    });
+    expect(await source.load({})).toEqual([]);
+  });
+
+  it("授权读取抛错按未授权处理（fail-closed）", async () => {
+    const clock = createManualClock(1000);
+    const source = createScreenTextContextSource({
+      current: () => screenResult(1000),
+      getScreenTextEnabled: async () => {
+        throw new Error("storage broken");
+      },
+      clock,
     });
     expect(await source.load({})).toEqual([]);
   });

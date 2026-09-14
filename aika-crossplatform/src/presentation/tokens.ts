@@ -7,6 +7,7 @@ import type { StoragePresenter } from "./storagePresenter";
 import type { InspectorPresenter } from "./inspectorPresenter";
 import type { OpsPresenter } from "./opsPresenter";
 import type { EnvironmentPresenter } from "./environmentPresenter";
+import type { CompanionSessionController } from "./companionSessionController";
 
 /**
  * 展示层服务标识。
@@ -55,3 +56,12 @@ export const OpsPresenterToken = token<OpsPresenter>("presentation.ops");
  * 「此环境不支持环境感知」，而不是入口凭空消失。
  */
 export const EnvironmentPresenterToken = token<EnvironmentPresenter>("presentation.environment");
+/**
+ * 桌宠陪伴会话控制器（FE-31）的类型出口。
+ *
+ * 它**不是**注册表里的服务：控制器要同时够到 pet 窗口管理器（主窗 Hook 持有）、
+ * 屏幕上下文源与既有发送路径，与 `PetWindowManager` 同属「主窗 Hook 拥有的
+ * 会话对象」。放进注册表就得为「宿主没有屏幕能力」造一个假实现，那比现在更糟。
+ */
+export type { CompanionSessionController };
+

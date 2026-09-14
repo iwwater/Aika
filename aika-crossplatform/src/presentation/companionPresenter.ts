@@ -137,6 +137,17 @@ export interface CompanionPresenter {
   rewind(messageId: string): Promise<void>;
   setProvider(next: ProviderConfig): Promise<void>;
   setProactive(next: ProactiveSettings): Promise<void>;
+  /**
+   * 环境驱动的主动一轮（FE-31 接线用）。
+   *
+   * 走的是与时间驱动 tick、FE-22 环境触发器**同一个**共享发送预约与同一份
+   * 每日额度/勿扰门禁——不是第二条发送路径，也不是第二套额度。
+   *
+   * `buffer` 只放受控摘要标识（词表 ID 之类）。屏幕文字摘录**不从这里进模型**：
+   * 它由 FE-32 的上下文源在请求装配时按独立授权决定，这样「没授权就零摘录」
+   * 才守得住。resolve false = 没发出去（门禁不过 / 正忙 / 预约被占）。
+   */
+  sendEnvironmentProactive(buffer: readonly string[]): Promise<boolean>;
   setMemoryExtractionEnabled(enabled: boolean): Promise<void>;
   setVoiceBackend(next: VoiceBackendConfig): Promise<void>;
   /** 保存并应用语音输出配置（TTS-04）；持久化失败时抛错且不切内存。 */
@@ -1274,6 +1285,8 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
   return {
     start,
     getSnapshot,
+    sendEnvironmentProactive: (buffer: readonly string[]) =>
+      attemptSendProactive(environmentProactiveReason("environment-weak", buffer)),
     subscribe(listener) {
       listeners.add(listener);
       return () => {

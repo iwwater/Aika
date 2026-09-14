@@ -26,6 +26,19 @@ export interface PetProactiveContent {
   sentAtMs: number;
 }
 
+/**
+ * 陪伴会话的展示态（FE-31 追加，可选字段）。
+ *
+ * 旧壳（没有这个字段的帧）照常渲染——pet 只是少显示一行状态，不报错。
+ * 这里只有**状态**，没有屏幕文字：pet 永远看不到摘录。
+ */
+export interface PetCompanionState {
+  mode: "off" | "active" | "quiet";
+  readState: "off" | "starting" | "reading" | "paused" | "denied" | "failed";
+  /** 面向用户的一行状态（限流/未读到屏幕/无权限）；没有就是 null。 */
+  notice: string | null;
+}
+
 export interface PetPresentationData {
   /** 当前说话轮次；无轮次（普通朗读/空闲）为 null，不伪造。 */
   runtimeTurnId: string | null;
@@ -33,6 +46,10 @@ export interface PetPresentationData {
   mood: string;
   currentSubtitle: string | null;
   lastProactive: PetProactiveContent | null;
+  /** FE-31 追加；缺省 = 宿主还没有陪伴会话能力。 */
+  companion?: PetCompanionState | null;
+  /** pet 这一次打开的代数；pet 提交意图时原样带回，主窗据此丢弃旧 epoch。 */
+  petEpoch?: string | null;
 }
 
 export interface PetPresentationFrameV1 extends PetPresentationData {
@@ -82,6 +99,23 @@ export function validatePetPresentationFrame(raw: unknown): PetPresentationFrame
     if (typeof proactive.sentAtMs !== "number" || !Number.isFinite(proactive.sentAtMs)) return null;
     lastProactive = { text, sentAtMs: proactive.sentAtMs };
   }
+  let companion: PetCompanionState | null = null;
+  if (frame.companion !== null && frame.companion !== undefined) {
+    if (typeof frame.companion !== "object") return null;
+    const state = frame.companion as Record<string, unknown>;
+    const mode = state.mode;
+    const readState = state.readState;
+    if (mode !== "off" && mode !== "active" && mode !== "quiet") return null;
+    if (!["off", "starting", "reading", "paused", "denied", "failed"].includes(readState as string)) return null;
+    companion = {
+      mode,
+      readState: readState as PetCompanionState["readState"],
+      notice: boundedText(state.notice),
+    };
+  }
+  const petEpoch = typeof frame.petEpoch === "string" && frame.petEpoch.length > 0 && frame.petEpoch.length <= 128
+    ? frame.petEpoch
+    : null;
   return {
     schemaVersion: PET_PRESENTATION_SCHEMA,
     epoch: frame.epoch,
@@ -91,12 +125,18 @@ export function validatePetPresentationFrame(raw: unknown): PetPresentationFrame
     mood: frame.mood,
     currentSubtitle,
     lastProactive,
+    companion,
+    petEpoch,
     ...(frame.snapshot === true ? { snapshot: true } : {}),
   };
 }
 
 export interface PetViewModel {
   mood: string;
+  /** 陪伴会话展示态（FE-31）；宿主没有该能力时为 null。 */
+  companion: PetCompanionState | null;
+  /** 提交意图时要原样带回的 epoch。 */
+  petEpoch: string | null;
   /** 当前可见的说话字幕（含淡出窗口内的）；无则 null。 */
   subtitle: string | null;
   /** 当前可见的主动气泡；无则 null。 */
@@ -119,11 +159,17 @@ export function createPetViewModel() {
   let subtitleActiveAt = -1;
   let proactiveReceivedAt = -1;
   const listeners = new Set<() => void>();
-  let view: PetViewModel = { mood: "neutral", subtitle: null, proactive: null, speaking: false, runtimeTurnId: null };
+  let view: PetViewModel = {
+    mood: "neutral", companion: null, petEpoch: null,
+    subtitle: null, proactive: null, speaking: false, runtimeTurnId: null,
+  };
 
   function rebuild(now: number): void {
     if (!latest) {
-      view = { mood: "neutral", subtitle: null, proactive: null, speaking: false, runtimeTurnId: null };
+      view = {
+        mood: "neutral", companion: null, petEpoch: null,
+        subtitle: null, proactive: null, speaking: false, runtimeTurnId: null,
+      };
       return;
     }
     const subtitleVisible = latest.currentSubtitle !== null
@@ -132,6 +178,8 @@ export function createPetViewModel() {
       && now - proactiveReceivedAt < PROACTIVE_BUBBLE_MS;
     view = {
       mood: latest.mood,
+      companion: latest.companion ?? null,
+      petEpoch: latest.petEpoch ?? null,
       subtitle: subtitleVisible ? latest.currentSubtitle : null,
       proactive: proactiveVisible ? latest.lastProactive : null,
       speaking: latest.speaking,

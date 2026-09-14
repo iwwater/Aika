@@ -5,7 +5,16 @@ import { createKnowledgeContextSource } from "../../services/knowledge/knowledge
 import { createKnowledgeIndex } from "../../services/knowledge/knowledgeIndex";
 import { createMemorySource } from "../../services/memory/memorySource";
 import { MemoryRepositoryToken } from "../../services/memory/tokens";
-import { StorageToken } from "../../services/storage/tokens";
+import { SettingsToken, StorageToken } from "../../services/storage/tokens";
+import {
+  createEnvironmentContextSource, createScreenTextContextSource,
+} from "../../services/environment/contextSource";
+import {
+  EnvironmentMonitorToken, ScreenContextSourceToken,
+} from "../../services/environment/contracts";
+import { SETTING_KEYS } from "../../services/storage/contracts";
+import { ClockToken } from "../../services/time/tokens";
+import { createSystemClock } from "../../services/time/systemTime";
 
 /**
  * 上下文来源的**唯一装配点**（LLM-05）。
@@ -20,7 +29,7 @@ export function contextSourcesPlugin(): AikaPlugin {
     id: "llm.contextSources",
     version: "1.0.0",
     requires: [StorageToken],
-    optional: [MemoryRepositoryToken],
+    optional: [MemoryRepositoryToken, EnvironmentMonitorToken, ScreenContextSourceToken, SettingsToken, ClockToken],
     provides: [ContextSourcesToken],
     activate(context) {
       const storage = context.registrar.resolve(StorageToken);
@@ -29,6 +38,39 @@ export function contextSourcesPlugin(): AikaPlugin {
       if (memoryRepository) sources.push(createMemorySource(memoryRepository));
       const db = storage.sqlExecutor;
       if (db) sources.push(createKnowledgeContextSource(createKnowledgeIndex({ db })));
+
+      /**
+       * 环境来源（FE-19 摘要 + FE-32 屏幕文字摘录）。
+       *
+       * 这两条在本次之前**从未接进请求装配**——模块写好了却没人装，等于
+       * 摘要与摘录永远到不了模型。两者分开注册、分开授权：
+       * `environment.contextEnabled` 只放行「应用名 + 词表 ID 计数」，
+       * `environment.screenTextEnabled` 才放行可见文字摘录。
+       * 授权读取失败一律按未授权（fail-closed），装配期不缓存授权值。
+       */
+      const monitor = context.registrar.tryResolve(EnvironmentMonitorToken);
+      const settings = context.registrar.tryResolve(SettingsToken);
+      const clock = context.registrar.tryResolve(ClockToken) ?? createSystemClock();
+      if (monitor) {
+        sources.push(createEnvironmentContextSource({
+          monitor,
+          clock,
+          getContextEnabled: async () => settings
+            ? settings.getBoolean(SETTING_KEYS.environmentContextEnabled, false)
+            : false,
+        }));
+      }
+      const screenContext = context.registrar.tryResolve(ScreenContextSourceToken);
+      if (screenContext) {
+        sources.push(createScreenTextContextSource({
+          current: (now) => screenContext.current(now),
+          getScreenTextEnabled: async () => settings
+            ? settings.getBoolean(SETTING_KEYS.environmentScreenTextEnabled, false)
+            : false,
+          clock,
+        }));
+      }
+
       context.registrar.provide(ContextSourcesToken, () => sources);
     },
   };

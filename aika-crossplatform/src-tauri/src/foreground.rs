@@ -295,6 +295,19 @@ unsafe extern "system" fn foreground_callback(
 
 /// 取进程名（镜像文件名）。OpenProcess / QueryFullProcessImageNameW 失败返回 None，
 /// 由调用方决定跳过该事件——不把空串/编造名当结果。
+/// 按原始窗口句柄取进程名（FE-32 受限窗口抓取复用同一条只取进程名的路径）。
+/// **仍然只取进程名，不读标题**——复用而不是另开一条采集路径。
+#[cfg(windows)]
+pub fn process_name_of_window(raw: isize) -> Option<String> {
+    let hwnd = windows::Win32::Foundation::HWND(raw as *mut core::ffi::c_void);
+    process_name_of(hwnd)
+}
+
+#[cfg(not(windows))]
+pub fn process_name_of_window(_raw: isize) -> Option<String> {
+    None
+}
+
 #[cfg(windows)]
 fn process_name_of(hwnd: windows::Win32::Foundation::HWND) -> Option<String> {
     use windows::Win32::Foundation::HANDLE;

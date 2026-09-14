@@ -145,5 +145,12 @@ export interface ProactivePolicy {
 
 /** 宿主发布它探测到的传感器集合；无能力时不注册（缺失是常态）。 */
 export const EnvironmentSourcesToken = token<readonly EnvironmentSource[]>("environment.sources");
+/**
+ * 统一 capture/OCR 调度器（FE-32）。词表轨与全文读屏**共用同一个实例**，
+ * 这样「每分钟 10 次」才是一份总额而不是两份。宿主没有屏幕能力时不注册。
+ */
+export const CaptureSchedulerToken = token<import("./captureScheduler").CaptureScheduler>("environment.captureScheduler");
+/** 按需读屏上下文源（FE-32）；宿主没有屏幕能力时不注册。 */
+export const ScreenContextSourceToken = token<import("./screenContextSource").ScreenContextSource>("environment.screenContext");
 export const EnvironmentMonitorToken = token<EnvironmentMonitor>("environment.monitor");
 export const ProactivePolicyToken = token<ProactivePolicy>("environment.proactivePolicy");

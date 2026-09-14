@@ -15,6 +15,11 @@ import {
 import { openBrowserStorage, openDesktopStorage } from "../../services/storage";
 import type { Clock, Timers } from "../../services/time/tokens";
 import { createSystemClock, createSystemTimers } from "../../services/time/systemTime";
+import { createForegroundSource } from "../../services/environment/foregroundSource";
+import { createScreenSource, SCREEN_CHANGE_EVENT } from "../../services/environment/screenSource";
+import { createOcrEngine } from "../../services/environment/ocrText";
+import { environmentPlugin } from "../plugins/environmentPlugin";
+import { environmentHostPlugin } from "../plugins/environmentHostPlugin";
 import { isTauriHost } from "./detect";
 import {
   fetchPlugin, hostLifecyclePlugin, notifierPlugin, outboundTransportPlugin, remotePlugin,
@@ -73,6 +78,15 @@ export function browserHostPlugins(options: HostOptions = {}): AikaPlugin[] {
 }
 
 /** Tauri 桌面：SQLite + DPAPI + 系统通知 + plugin-http + 远程能力 + 出站传输。 */
+/** OCR 离线资源目录：随包的 `public/tessdata`，运行时不外联。 */
+const TESSDATA_PATH = "/tessdata";
+/**
+ * 识别语言。`eng.traineddata` 与 `chi_sim.traineddata` 都随包在 `public/tessdata`
+ * 下（tessdata_fast 4.1.0，Apache-2.0，哈希登记见 THIRD_PARTY_NOTICES.md），
+ * 运行时不外联；资源缺失会让 worker 创建失败 → 本次无结果，不会偷偷去网上取。
+ */
+const OCR_LANGUAGES = "eng+chi_sim";
+
 export function tauriHostPlugins(options: HostOptions = {}): AikaPlugin[] {
   const lifecycle = resolveLifecycle(options);
   const secrets = createDesktopSecretStore({
@@ -95,8 +109,47 @@ export function tauriHostPlugins(options: HostOptions = {}): AikaPlugin[] {
     },
   });
 
+  const clock = options.clock ?? createSystemClock();
+  const invoke = async (command: string, args?: Record<string, unknown>): Promise<unknown> => {
+    const { invoke: call } = await import("@tauri-apps/api/core");
+    return call(command, args);
+  };
+  const listen = async (event: string, handler: (payload: unknown) => void): Promise<() => void> => {
+    const { listen: subscribe } = await import("@tauri-apps/api/event");
+    return subscribe(event, (payload) => handler(payload));
+  };
+  const environmentBridge = { invoke: invoke as <T>(c: string, a?: Record<string, unknown>) => Promise<T>, listen };
+  /**
+   * 环境传感器（FE-19/21）。
+   *
+   * 这里不预先探测平台：命令在不支持的平台上会失败，source 的 start 把失败映射成
+   * `unavailable`/`denied`，设置页如实显示——比装配期猜一个 supported 布尔诚实。
+   * OCR 引擎在两条轨之间共用一个实例（不另开 worker）。
+   */
+  const ocr = createOcrEngine({ langPath: TESSDATA_PATH, languages: OCR_LANGUAGES, clock });
+  const environmentSources = [
+    createForegroundSource(environmentBridge, { hostEpoch: lifecycle.epoch() }),
+    createScreenSource({
+      capture: {
+        listenChange: (handler) => listen(SCREEN_CHANGE_EVENT, (payload) => handler(payload as never)),
+        captureRegion: async () => {
+          const raw = await invoke("environment_capture_region", {});
+          const result = raw as { pngBase64?: unknown } | null;
+          return typeof result?.pngBase64 === "string" ? result.pngBase64 : null;
+        },
+        invoke: (command, args) => invoke(command, args),
+      },
+      ocr,
+      clock,
+      hostEpoch: lifecycle.epoch(),
+    }),
+  ];
+
   return [
     ...baseHost(() => openDesktopStorage(secrets), secrets, notifier, createTauriFetch(), options, lifecycle),
+    // 环境感知（FE-18～22/31/32）：在此之前生产装配里一个传感器都没接。
+    environmentPlugin({ sources: environmentSources, clock, hostEpoch: lifecycle.epoch() }),
+    environmentHostPlugin({ invoke, hostEpoch: lifecycle.epoch(), ocr }),
     remotePlugin(createTauriRemoteHost()),
     // 出站传输：帧经 Rust 缓存供手机页长轮询；命令经 `outbound://command` 下行。
     // invoke/listen 在这里才 import——架构测试允许 `app/hosts/` 触碰 @tauri-apps。

@@ -20,9 +20,21 @@ export interface OcrWordConfidence {
   confidence: number;
 }
 
+/** 行级识别结果（FE-32）：全文读屏按阅读顺序保留行与行置信度。 */
+export interface OcrLine {
+  text: string;
+  /** 0..1 归一化后。 */
+  confidence: number;
+}
+
 export interface OcrResult {
   text: string;
   words: readonly OcrWordConfidence[];
+  /**
+   * 行级结果。FE-21 的词表轨不消费它（旧调用方不受影响）；FE-32 的全文读屏
+   * 按它投影摘录。引擎结构变化时安全降级为空数组，不编造行。
+   */
+  lines?: readonly OcrLine[];
 }
 
 export interface OcrTimers {
@@ -33,6 +45,12 @@ export interface OcrTimers {
 export interface OcrEngineOptions {
   /** traineddata 所在目录（node/测试：本地路径；Tauri：resource 目录）。 */
   langPath: string;
+  /**
+   * tesseract 语言串（FE-32）。默认 `eng`（FE-21 词表轨口径不变）；
+   * 中英文读屏用 `eng+chi_sim`，对应 traineddata 必须**离线**在 langPath 下，
+   * 缺资源时 worker 创建失败 → state=failed → 本次无结果，不运行时外联补包。
+   */
+  languages?: string;
   /** tesseract.js-core wasm 与 worker 脚本所在目录；缺省用包内默认。 */
   corePath?: string;
   loadTimeoutMs?: number;
@@ -63,28 +81,83 @@ interface TesseractWord {
   confidence?: unknown;
 }
 
-/** 从 tesseract blocks 树里收集词级置信度；结构变化时安全降级为空表。 */
+/**
+ * 从 tesseract 结果里按阅读顺序收集行（FE-32）。
+ *
+ * 与 `collectWords` 同一个坑：扁平 `lines` 与 `blocks → paragraphs → lines`
+ * 指向同一批行，全收会把每行数三遍——真实 `eng+chi_sim` 识别结果实测就是 3 倍。
+ * 行被复读会白白吃掉 20 段 / 2000 字符的摘录预算，还会让模型看到重复内容。
+ */
+export function collectLines(data: unknown): OcrLine[] {
+  const lines: OcrLine[] = [];
+  for (const node of descendToLines(data)) {
+    if (!node || typeof node !== "object") continue;
+    const line = node as Record<string, unknown>;
+    const text = typeof line.text === "string" ? line.text.trim() : "";
+    const confidence = typeof line.confidence === "number" && Number.isFinite(line.confidence)
+      ? Math.max(0, Math.min(1, line.confidence / 100))
+      : 0;
+    if (text) lines.push({ text, confidence });
+  }
+  return lines;
+}
+
+/**
+ * 从 tesseract 结果里收集词级置信度。
+ *
+ * **注意结构冗余**：`data` 同时给了扁平的 `words` 与嵌套的
+ * `blocks → paragraphs → lines → words`，两者指向同一批词。全都收会把每个词
+ * 数三遍，所以优先用最外层的扁平数组，没有再逐层下降。
+ * 结构变化时安全降级为空表，不猜、不编。
+ */
 function collectWords(data: unknown): OcrWordConfidence[] {
   const words: OcrWordConfidence[] = [];
-  const visit = (node: unknown): void => {
+  const push = (node: unknown): void => {
     if (!node || typeof node !== "object") return;
-    const record = node as Record<string, unknown>;
-    if (Array.isArray(record.words)) {
-      for (const word of record.words as TesseractWord[]) {
-        if (!word || typeof word !== "object") continue;
-        if (typeof word.text === "string" && typeof word.confidence === "number" && Number.isFinite(word.confidence)) {
-          const clean = word.text.trim().toLowerCase();
-          if (clean) words.push({ word: clean, confidence: Math.max(0, Math.min(1, word.confidence / 100)) });
-        }
-      }
-    }
-    for (const key of ["blocks", "paragraphs", "lines"]) {
-      const list = record[key];
-      if (Array.isArray(list)) for (const child of list) visit(child);
-    }
+    const word = node as TesseractWord;
+    if (typeof word.text !== "string" || typeof word.confidence !== "number" || !Number.isFinite(word.confidence)) return;
+    const clean = word.text.trim().toLowerCase();
+    if (clean) words.push({ word: clean, confidence: Math.max(0, Math.min(1, word.confidence / 100)) });
   };
-  visit(data);
+
+  const flat = flatArray(data, "words");
+  if (flat) {
+    for (const node of flat) push(node);
+    return words;
+  }
+  for (const line of descendToLines(data)) {
+    const lineWords = flatArray(line, "words");
+    if (lineWords) for (const node of lineWords) push(node);
+  }
   return words;
+}
+
+/** 取 `node[key]` 这个数组；不是数组就返回 null。 */
+function flatArray(node: unknown, key: string): readonly unknown[] | null {
+  if (!node || typeof node !== "object") return null;
+  const value = (node as Record<string, unknown>)[key];
+  return Array.isArray(value) ? value : null;
+}
+
+/**
+ * 没有扁平 `lines` 时，按 blocks → paragraphs → lines 逐层找行。
+ * 每层只取一条路径，避免同一批行被重复收集。
+ */
+function descendToLines(data: unknown): readonly unknown[] {
+  const direct = flatArray(data, "lines");
+  if (direct) return direct;
+  const lines: unknown[] = [];
+  for (const block of flatArray(data, "blocks") ?? []) {
+    const paragraphs = flatArray(block, "paragraphs");
+    if (paragraphs) {
+      for (const paragraph of paragraphs) {
+        for (const line of flatArray(paragraph, "lines") ?? []) lines.push(line);
+      }
+      continue;
+    }
+    for (const line of flatArray(block, "lines") ?? []) lines.push(line);
+  }
+  return lines;
 }
 
 const systemTimers: OcrTimers = {
@@ -108,7 +181,7 @@ export function createOcrEngine(options: OcrEngineOptions): OcrEngine {
     let timer: unknown = null;
     const attempt = (async () => {
       const { createWorker } = await import("tesseract.js");
-      return createWorker("eng", 1, {
+      return createWorker(options.languages ?? "eng", 1, {
         langPath: options.langPath,
         gzip: false,
         ...(options.corePath ? { corePath: options.corePath } : {}),
@@ -152,6 +225,7 @@ export function createOcrEngine(options: OcrEngineOptions): OcrEngine {
         return {
           text: typeof data?.text === "string" ? data.text : "",
           words: collectWords(result.data),
+          lines: collectLines(result.data),
         };
       } catch {
         // 识别超时/失败：终止并清理 worker，本次无事件；reset 后可重建。

@@ -2,6 +2,7 @@ import type { Clock } from "../time/tokens";
 import type { EnvironmentEventInput } from "../../domain/environment";
 import { EnvironmentSourceError, type EnvironmentSource } from "./contracts";
 import type { OcrEngine } from "./ocrText";
+import type { CaptureScheduler } from "./captureScheduler";
 import { matchKeywords } from "./keywordRules";
 
 /**
@@ -45,6 +46,12 @@ export interface ScreenSourceDeps {
   hostEpoch: string;
   throttleMs?: number;
   maxPerMinute?: number;
+  /**
+   * 统一调度器（FE-32）。传入时本 source 的采集+识别改走它，与按需读屏
+   * **共用同一份每分钟 10 次的总额**；不传时沿用自带的滚动限流（既有行为不变，
+   * FE-21 的用例因此不需要改）。
+   */
+  scheduler?: CaptureScheduler;
 }
 
 export function createScreenSource(deps: ScreenSourceDeps): EnvironmentSource {
@@ -71,6 +78,21 @@ export function createScreenSource(deps: ScreenSourceDeps): EnvironmentSource {
         return false;
       };
 
+      /** 一次「抓图 + 识别」。走不走统一调度器只影响在哪里排队与计额度。 */
+      const captureAndRecognize = async () => {
+        if (deps.scheduler) {
+          const outcome = await deps.scheduler.submit(async () => {
+            const png = await deps.capture.captureRegion();
+            if (png === null) return null;
+            return deps.ocr.recognize(png);
+          }, { priority: "auto", signal });
+          return outcome.status === "done" ? outcome.value : null;
+        }
+        const png = await deps.capture.captureRegion();
+        if (png === null) return null;
+        return deps.ocr.recognize(png);
+      };
+
       const processCandidate = async (): Promise<void> => {
         if (processing || stopped) return;
         processing = true;
@@ -79,15 +101,13 @@ export function createScreenSource(deps: ScreenSourceDeps): EnvironmentSource {
             pending = null;
             const now = deps.clock.now();
             if (now - lastProcessedAt < throttleMs) break;
-            if (rateLimited(now)) break;
+            // 自带限流只在没有统一调度器时生效，避免同一次识别被算两遍额度。
+            if (!deps.scheduler && rateLimited(now)) break;
             lastProcessedAt = now;
 
-            const png = await deps.capture.captureRegion();
+            const result = await captureAndRecognize();
             if (stopped || signal.aborted) return;
-            if (png === null) continue; // 无效帧：丢弃，不解释为任何事件。
-            const result = await deps.ocr.recognize(png);
-            if (stopped || signal.aborted) return;
-            if (result === null) continue; // 超时/失败：本次无事件。
+            if (result === null) continue; // 黑帧/超时/失败/被顶掉：本次无事件。
             // 原文到此为止：只留下规则命中。
             const wordConfidence = new Map(result.words.map((word) => [word.word, word.confidence]));
             const matches = matchKeywords(result.text, wordConfidence);

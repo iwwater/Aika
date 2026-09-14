@@ -46,6 +46,20 @@ export function useService<T>(token: ServiceToken<T>): T {
 }
 
 /**
+ * 可选服务入口（FE-31）。
+ *
+ * 与 `useService` 的区别只有一条：**能力缺失是常态时用它**。宿主没注册该 token
+ * 就返回 null，由调用方降级（隐藏分组、显示「此环境不支持」），而不是抛错把整个
+ * 界面拖垮。它仍然只是 `registry.tryResolve` 的 React 包装，不新增第四个
+ * resolve 入口。
+ */
+export function useOptionalService<T>(token: ServiceToken<T>): T | null {
+  const { kernel } = useContext(KernelContext);
+  if (!kernel || kernel.state !== "ready") return null;
+  return kernel.registry.tryResolve(token);
+}
+
+/**
  * 只读诊断入口（FE-10）。
  *
  * 露出去的是 `describe` 本身而不是内核实例：工作台要画装配拓扑，但它不该顺手拿到

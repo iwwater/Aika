@@ -109,8 +109,23 @@ export const SETTING_KEYS = {
   petWindowEnabled: "pet.windowEnabled",
   /** 屏幕感知开关（FE-21）。默认 false：默认关 = Rust 根本没有采集线程。 */
   environmentScreenEnabled: "environment.screenEnabled",
+  /**
+   * 桌宠陪伴会话模式（FE-31）：`off` / `active` / `quiet`，默认 off。
+   * 「已经授权过」单独记在 companionConsent——模式值本身不是同意凭据。
+   */
+  companionMode: "pet.companionMode",
+  /**
+   * 陪伴范围与外发边界的一次性确认（FE-31）。默认 false；
+   * 范围或 Provider 外发边界变化时由调用方清掉，强制重新确认。
+   */
+  companionConsent: "pet.companionConsent",
   /** 环境主动搭话开关（FE-22）。与全局 proactive、摘要授权分层。 */
   environmentProactiveEnabled: "environment.proactiveEnabled",
+  /**
+   * 「屏幕文字用于对话」授权（FE-32）。默认 false，且**独立于**摘要授权：
+   * 它放行的是可见文字摘录本身，范围只限 FE-32 的按需读屏上下文源。
+   */
+  environmentScreenTextEnabled: "environment.screenTextEnabled",
   /**
    * CORE-03 迁移期用过 `core.orchestrator = legacy | kernel`。CORE-06 删除旧编排后
    * 这个 key 不再被读写；旧库里残留的值会被当作普通未知设置忽略，不报错、不迁移。

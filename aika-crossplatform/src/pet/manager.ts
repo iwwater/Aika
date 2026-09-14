@@ -35,6 +35,8 @@ export interface PetWindowManager {
   setClickThrough(enabled: boolean): Promise<void>;
   /** 找回：工作区居中并关闭穿透。 */
   resetPosition(): Promise<void>;
+  /** 把主窗叫到前台（pet 菜单与陪伴会话的「打开主窗口」）。 */
+  focusMain(): Promise<void>;
   readonly relay: PetRelay;
   isOpen(): boolean;
   /** 当前 generation（诊断/测试用）。 */
@@ -105,6 +107,11 @@ export function createPetWindowManager(deps: PetWindowManagerDeps): PetWindowMan
     async resetPosition(): Promise<void> {
       if (!open) return;
       await deps.bridge.invoke("pet_window_reset_position", {});
+    },
+
+    async focusMain(): Promise<void> {
+      // 与 pet 右键菜单走同一条命令；桌宠没开时也允许（主窗本来就该能叫回来）。
+      await deps.bridge.invoke("pet_window_focus_main", {});
     },
 
     isOpen(): boolean {

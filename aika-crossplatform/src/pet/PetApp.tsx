@@ -1,5 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPetViewModel, connectPetViewModel, type PetViewModel } from "./petPresentation";
+import {
+  PET_INTENT_COMMAND,
+  PET_INTENT_SCHEMA,
+  PET_INTENT_TEXT_LIMIT,
+  type PetIntentKind,
+} from "./petIntent";
 import { AvatarPlaceholder } from "../components/AvatarPlaceholder";
 import "./pet.css";
 
@@ -60,24 +66,65 @@ interface PetControllerProps {
 }
 
 /**
- * 交互层：拖拽（drag region）、左键回主窗、右键菜单。
- * 菜单里的「隐藏」与主窗设置里的开关走同一命令；点击穿透打开后 pet 收不到
- * 任何点击，恢复入口在主窗（不允许依赖已点不到的 pet 菜单）。
+ * 交互层：拖拽（drag region）、左键快捷操作、右键菜单、轻量输入（FE-31）。
+ *
+ * pet 能做的事只有 `pet.intent.v1` 里那 5 种；它不碰 Runtime、存储、语音，
+ * 也拿不到任何屏幕文字。**拖动结束不算点击**——按下与抬起的位移超过阈值就
+ * 当成拖窗，不展开快捷操作。
  */
+
+/** 位移超过它就算拖动，不算点击。 */
+const DRAG_SLOP_PX = 4;
+
 export function PetController({ view }: PetControllerProps) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [clickThrough, setClickThrough] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const [inputOpen, setInputOpen] = useState(false);
+  const [draft, setDraft] = useState("");
+  const pressRef = useRef<{ x: number; y: number } | null>(null);
 
   const invoke = (command: string, args?: Record<string, unknown>): void => {
     void bridgeOf().invoke(command, args).catch(() => undefined);
   };
+
+  /**
+   * 提交一条受控意图。requestId 每次新生成：主窗按它去重，
+   * 双击/重放最多只算一轮。epoch 原样带回主窗下发的值，没有就不发
+   * （宁可不响应，也不伪造一个 epoch 去撞运气）。
+   */
+  const submitIntent = (kind: PetIntentKind, text?: string): void => {
+    if (!view.petEpoch) return;
+    invoke(PET_INTENT_COMMAND, {
+      payload: {
+        schemaVersion: PET_INTENT_SCHEMA,
+        requestId: crypto.randomUUID(),
+        petEpoch: view.petEpoch,
+        kind,
+        ...(kind === "talk" ? { text } : {}),
+      },
+    });
+  };
+
+  const companionReading = view.companion?.readState === "reading";
 
   return (
     <div className="pet-root">
       <div className="pet-stage" data-tauri-drag-region>
         <div
           className="pet-hit"
-          onClick={() => invoke("pet_window_focus_main")}
+          onPointerDown={(event) => {
+            pressRef.current = { x: event.clientX, y: event.clientY };
+          }}
+          onPointerUp={(event) => {
+            const press = pressRef.current;
+            pressRef.current = null;
+            if (!press) return;
+            const moved = Math.abs(event.clientX - press.x) > DRAG_SLOP_PX
+              || Math.abs(event.clientY - press.y) > DRAG_SLOP_PX;
+            // 拖动结束不算点击：只把窗口挪了个位置，不展开任何东西。
+            if (moved) return;
+            setActionsOpen((open) => !open);
+          }}
           onContextMenu={(event) => {
             event.preventDefault();
             setMenuOpen((open) => !open);
@@ -86,27 +133,69 @@ export function PetController({ view }: PetControllerProps) {
           <AvatarPlaceholder />
           {view.speaking && <span className="pet-speaking-dot" aria-label="说话中" />}
         </div>
+        {view.companion && view.companion.mode !== "off" && (
+          <div className="pet-session-state">
+            {view.companion.mode === "active" ? "主动陪伴" : "安静陪伴"}
+            {companionReading ? " · 正在读屏" : view.companion.readState === "paused" ? " · 已暂停读屏" : ""}
+          </div>
+        )}
+        {view.companion?.notice && <div className="pet-session-notice">{view.companion.notice}</div>}
         <Bubble view={view} />
+        {actionsOpen && (
+          <div className="pet-menu pet-actions">
+            <button onClick={() => { submitIntent("screen_talk"); setActionsOpen(false); }}>看屏幕聊聊</button>
+            <button onClick={() => { setInputOpen(true); setActionsOpen(false); }}>聊两句</button>
+            <button onClick={() => { submitIntent("pause_reading"); setActionsOpen(false); }}>暂停读屏</button>
+            <button onClick={() => { submitIntent("end_session"); setActionsOpen(false); }}>结束陪伴</button>
+            <button onClick={() => { submitIntent("open_main"); setActionsOpen(false); }}>打开主窗口</button>
+          </div>
+        )}
+        {inputOpen && (
+          <form
+            className="pet-input"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const text = draft.trim();
+              if (!text) return;
+              submitIntent("talk", text.slice(0, PET_INTENT_TEXT_LIMIT));
+              setDraft("");
+              setInputOpen(false);
+            }}
+          >
+            <input
+              autoFocus
+              value={draft}
+              maxLength={PET_INTENT_TEXT_LIMIT}
+              placeholder="说点什么…"
+              onChange={(event) => setDraft(event.target.value)}
+            />
+            <button type="submit">发送</button>
+            <button type="button" onClick={() => { setDraft(""); setInputOpen(false); }}>取消</button>
+          </form>
+        )}
         {menuOpen && (
           <div className="pet-menu">
             <button
               onClick={() => {
-                const next = !clickThrough;
-                setClickThrough(next);
+                const next = !clickThroughRef.current;
+                clickThroughRef.current = next;
                 invoke("pet_window_set_click_through", { enabled: next });
                 setMenuOpen(false);
               }}
             >
-              {clickThrough ? "关闭点击穿透" : "开启点击穿透"}
+              切换点击穿透
             </button>
             <button onClick={() => { invoke("pet_window_hide"); setMenuOpen(false); }}>隐藏桌宠</button>
-            <button onClick={() => { invoke("pet_window_focus_main"); setMenuOpen(false); }}>打开主窗</button>
+            <button onClick={() => { submitIntent("open_main"); setMenuOpen(false); }}>打开主窗</button>
           </div>
         )}
       </div>
     </div>
   );
 }
+
+/** 穿透开关只是一个本地切换标志；恢复入口始终在主窗（点不到 pet 时才用得上）。 */
+const clickThroughRef = { current: false };
 
 function Bubble({ view }: { view: PetViewModel }) {
   return (

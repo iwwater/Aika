@@ -13,12 +13,17 @@ use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindo
 
 pub const PET_PRESENTATION_EVENT: &str = "pet://presentation";
 pub const PET_SNAPSHOT_REQUEST_EVENT: &str = "pet://snapshot-request";
+/// pet → 主窗的受控意图（FE-31）。
+pub const PET_INTENT_EVENT: &str = "pet://intent";
 pub const PET_WINDOW_LABEL: &str = "pet";
 pub const MAIN_WINDOW_LABEL: &str = "main";
 
 /// 展示帧单帧上限：字幕/气泡各 2000 字符 + 结构开销，64KB 足够宽裕；
 /// 超限在 Rust 侧直接拒绝，不依赖调用方自觉。
 pub const MAX_BROADCAST_BYTES: usize = 64 * 1024;
+
+/// pet 意图单条上限：文本 2000 字符 + 结构开销，8KB 足够宽裕。
+pub const MAX_INTENT_BYTES: usize = 8 * 1024;
 
 /// 运行时调用方校验（纯函数，单元可测）。
 pub fn assert_allowed_caller(caller: &str, allowed: &[&str]) -> Result<(), String> {
@@ -115,6 +120,26 @@ pub fn pet_window_request_snapshot(window: WebviewWindow, app: AppHandle) -> Res
         .map_err(|error| format!("failed to request snapshot: {error}"))
 }
 
+/// pet 意图上行（FE-31，`pet.intent.v1`）。**只允许 pet 窗口调用**。
+///
+/// 与 broadcast 正好相反的方向与权限：主窗不能伪造 pet 的用户动作，pet 也不能
+/// 伪造展示帧。这里只做两件事——来源校验与体积上限；形状白名单校验在主窗的
+/// `validatePetIntent` 里（Rust 不复制那张表，避免两处口径漂移）。
+#[tauri::command]
+pub fn pet_intent_submit(
+    window: WebviewWindow,
+    app: AppHandle,
+    payload: Value,
+) -> Result<(), String> {
+    assert_allowed_caller(window.label(), &[PET_WINDOW_LABEL])?;
+    let bytes = serde_json::to_vec(&payload).map_err(|error| error.to_string())?;
+    if bytes.len() > MAX_INTENT_BYTES {
+        return Err("pet intent payload too large".to_string());
+    }
+    app.emit_to(MAIN_WINDOW_LABEL, PET_INTENT_EVENT, payload)
+        .map_err(|error| format!("failed to emit pet intent: {error}"))
+}
+
 /// pet 的「回到主窗」。
 #[tauri::command]
 pub fn pet_window_focus_main(app: AppHandle) -> Result<(), String> {
@@ -197,8 +222,9 @@ mod tests {
         assert!(assert_allowed_caller("main", &[MAIN_WINDOW_LABEL]).is_ok());
         assert!(assert_allowed_caller("pet", &[MAIN_WINDOW_LABEL]).is_err());
         assert!(assert_allowed_caller("unknown", &[MAIN_WINDOW_LABEL]).is_err());
-        // 快照请求：只有 pet 发起。
+        // 快照请求与意图上行：只有 pet 发起，主窗不能伪造用户动作（FE-31-F）。
         assert!(assert_allowed_caller("pet", &[PET_WINDOW_LABEL]).is_ok());
         assert!(assert_allowed_caller("main", &[PET_WINDOW_LABEL]).is_err());
+        assert!(assert_allowed_caller("unknown", &[PET_WINDOW_LABEL]).is_err());
     }
 }

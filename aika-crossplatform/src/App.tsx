@@ -48,6 +48,16 @@ const ENVIRONMENT_STATE_LABELS: Record<string, string> = {
   error: "错误",
 };
 
+/** FE-31：陪伴读屏状态的用户可见文案。失败不得显示为运行中。 */
+const COMPANION_READ_LABELS: Record<string, string> = {
+  off: "未开启",
+  starting: "启动中",
+  reading: "正在读屏",
+  paused: "已暂停读屏",
+  denied: "未授权",
+  failed: "启动失败",
+};
+
 /** SET-02：屏幕感知开启前要说明采集范围与本地处理方式。 */
 const ENVIRONMENT_SOURCE_HINTS: Record<string, string> = {
   foreground: "识别当前正在使用的应用（仅进程名），只用于本地状态显示。",
@@ -517,6 +527,22 @@ function App() {
                 </div>
                 <div className="toggle-row">
                   <button
+                    className={`toggle ${environment.snapshot.screenTextEnabled ? "on" : ""}`}
+                    onClick={() => void environment.presenter.setScreenTextEnabled(!environment.snapshot.screenTextEnabled)}
+                  >
+                    <Monitor size={15} />
+                    <span>允许屏幕文字用于对话 · {environment.snapshot.screenTextEnabled ? "开" : "关"}</span>
+                  </button>
+                  <span className="toggle-hint">
+                    这一层放行的不是摘要，而是当前前台窗口上可见文字的摘录（最多 20 段、2000 字符），
+                    随你这一轮对话发给当前设置的 Provider。摘录可能包含邮件、聊天、代码、账号等私人信息；
+                    截图与完整识别原文只留在本机内存，不落库、不进 Trace，但已发出的摘录无法撤回，
+                    模型也可能在回复里复述其中内容——不承诺脱敏能消除全部敏感信息。
+                    关掉它之后，下一次请求装配立刻拿不到任何摘录；「暂停读屏」只停采集，这一层单独控制外发。
+                  </span>
+                </div>
+                <div className="toggle-row">
+                  <button
                     className={`toggle ${environment.snapshot.proactiveEnabled ? "on" : ""}`}
                     onClick={() => void environment.presenter.setProactiveEnabled(!environment.snapshot.proactiveEnabled)}
                   >
@@ -572,6 +598,59 @@ function App() {
                   </button>
                   <span className="toggle-hint">穿透开启时桌宠不再接收点击，恢复入口在这里。</span>
                 </div>
+                {pet.session && pet.sessionView && (
+                  <>
+                    <div className="modal-heading"><div><p className="eyebrow">Companion session</p><h3>陪伴</h3></div></div>
+                    <p className="modal-intro">
+                      开启陪伴后，她会读取<strong>主显示器上当前前台窗口</strong>里可见的文字（本地识别，截图不出本机），
+                      并按你选的模式决定要不要主动搭话。点她可以随时「看屏幕聊聊」「聊两句」「暂停读屏」「结束陪伴」。
+                      是否把读到的文字随对话发给 Provider，由上面「允许屏幕文字用于对话」单独控制——这一步不会被开启陪伴顺带打开。
+                    </p>
+                    <div className="toggle-row">
+                      <button
+                        className={`toggle ${pet.sessionView.mode === "active" ? "on" : ""}`}
+                        onClick={() => void (pet.sessionView?.mode === "active"
+                          ? pet.session?.setMode("quiet")
+                          : pet.session?.enable("active", { consent: true }))}
+                      >
+                        <Sparkles size={15} />
+                        <span>主动陪伴 · {pet.sessionView.mode === "active" ? "开" : "关"}</span>
+                      </button>
+                      <span className="toggle-hint">画面上的文字有明显变化时她可能主动说一句；仍受全局主动消息的每日上限、最小间隔与勿扰时段限制。</span>
+                    </div>
+                    <div className="toggle-row">
+                      <button
+                        className={`toggle ${pet.sessionView.mode === "quiet" ? "on" : ""}`}
+                        onClick={() => void (pet.sessionView?.mode === "quiet"
+                          ? pet.session?.end()
+                          : pet.session?.enable("quiet", { consent: true }))}
+                      >
+                        <BellOff size={15} />
+                        <span>安静陪伴 · {pet.sessionView.mode === "quiet" ? "开" : "关"}</span>
+                      </button>
+                      <span className="toggle-hint">照常读屏更新本地上下文，但绝不主动说话——只有你点她或打字她才回。</span>
+                    </div>
+                    <div className="toggle-row">
+                      <button
+                        className="toggle"
+                        onClick={() => void pet.session?.pause()}
+                        disabled={pet.sessionView.mode === "off"}
+                      >
+                        <PowerOff size={15} />
+                        <span>暂停读屏</span>
+                      </button>
+                      <span className="toggle-hint">
+                        停止采集并清空已读到的屏幕内容，桌宠保留、普通聊天照常。
+                        当前状态：{COMPANION_READ_LABELS[pet.sessionView.readState] ?? pet.sessionView.readState}
+                        {pet.sessionView.quota ? `（本分钟已读屏 ${pet.sessionView.quota.used}/${pet.sessionView.quota.limit} 次）` : ""}
+                      </span>
+                    </div>
+                    {pet.sessionView.notice && <p className="modal-intro">{pet.sessionView.notice}</p>}
+                    {pet.sessionView.error && (
+                      <p className="modal-intro" style={{ color: "#e5484d" }}>{pet.sessionView.error}</p>
+                    )}
+                  </>
+                )}
                 {pet.error && (
                   <p className="modal-intro" style={{ color: "#e5484d" }}>{pet.error}</p>
                 )}

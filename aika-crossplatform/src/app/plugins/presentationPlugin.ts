@@ -178,6 +178,7 @@ export function presentationPlugin(options: PresentationPluginOptions = {}): Aik
         monitor: environmentMonitor,
         ...(environmentSettings ? { settings: environmentSettings } : {}),
       }), { disposer: (value) => value.dispose() });
+
     },
   };
 }

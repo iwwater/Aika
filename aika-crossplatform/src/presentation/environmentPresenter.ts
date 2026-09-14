@@ -5,6 +5,7 @@ import {
 import { FOREGROUND_SOURCE_ID } from "../services/environment/foregroundSource";
 import { SCREEN_SOURCE_ID } from "../services/environment/screenSource";
 import { SETTING_ENVIRONMENT_CONTEXT_ENABLED } from "../services/environment/contextSource";
+import { SETTING_SCREEN_TEXT_ENABLED } from "../services/environment/screenContextSource";
 import { SETTING_KEYS } from "../services/storage/contracts";
 
 /**
@@ -40,6 +41,13 @@ export interface EnvironmentPresenterView {
   contextEnabled: boolean;
   /** 「允许环境主动搭话」（FE-22）：与全局 proactive、摘要授权分层。 */
   proactiveEnabled: boolean;
+  /**
+   * 「允许屏幕文字用于对话」（FE-32）：又一层独立授权。
+   *
+   * 它放行的不是摘要，而是屏幕上可见文字的**受限摘录**；与采集开关、摘要授权
+   * 三者互不隐式开启。关闭时请求装配那一层拿到零摘录。
+   */
+  screenTextEnabled: boolean;
   /** stopAll 进行中：真实的停止等待期，不是装饰态。 */
   stopping: boolean;
   error: string | null;
@@ -63,6 +71,7 @@ export interface EnvironmentPresenter {
   setSourceEnabled(sourceId: string, enabled: boolean): Promise<void>;
   setContextEnabled(enabled: boolean): Promise<void>;
   setProactiveEnabled(enabled: boolean): Promise<void>;
+  setScreenTextEnabled(enabled: boolean): Promise<void>;
   stopAll(): Promise<void>;
   dispose(): void;
 }
@@ -88,6 +97,7 @@ export function createEnvironmentPresenter(deps: EnvironmentPresenterDeps): Envi
 
   let contextEnabled = false;
   let proactiveEnabled = false;
+  let screenTextEnabled = false;
   let stopping = false;
   let error: string | null = null;
   let started = false;
@@ -100,6 +110,7 @@ export function createEnvironmentPresenter(deps: EnvironmentPresenterDeps): Envi
     sources: [],
     contextEnabled,
     proactiveEnabled,
+    screenTextEnabled,
     stopping,
     error,
   };
@@ -110,6 +121,7 @@ export function createEnvironmentPresenter(deps: EnvironmentPresenterDeps): Envi
       sources: sourceViews(),
       contextEnabled,
       proactiveEnabled,
+      screenTextEnabled,
       stopping,
       error,
     };
@@ -152,6 +164,13 @@ export function createEnvironmentPresenter(deps: EnvironmentPresenterDeps): Envi
           : false;
       } catch {
         proactiveEnabled = false;
+      }
+      try {
+        screenTextEnabled = settings
+          ? await settings.getBoolean(SETTING_SCREEN_TEXT_ENABLED, false)
+          : false;
+      } catch {
+        screenTextEnabled = false;
       }
       const pending: Array<{ sourceId: string; enabled: boolean }> = [];
       for (const [sourceId, settingKey] of Object.entries(SOURCE_SETTING_KEYS)) {
@@ -276,6 +295,31 @@ export function createEnvironmentPresenter(deps: EnvironmentPresenterDeps): Envi
       commit();
     },
 
+    async setScreenTextEnabled(enabled: boolean): Promise<void> {
+      // 文字摘录授权：开启先落库再生效；关闭先撤销内存（下一次请求装配立刻为空）
+      // 再持久化——存储失败不能让摘录继续外发。
+      if (enabled) {
+        try {
+          await settings?.setBoolean(SETTING_SCREEN_TEXT_ENABLED, true);
+        } catch (caught) {
+          error = `设置保存失败：${detailOf(caught)}`;
+          commit();
+          return;
+        }
+        screenTextEnabled = true;
+        commit();
+        return;
+      }
+      screenTextEnabled = false;
+      commit();
+      try {
+        await settings?.setBoolean(SETTING_SCREEN_TEXT_ENABLED, false);
+      } catch (caught) {
+        error = `设置保存失败：${detailOf(caught)}`;
+      }
+      commit();
+    },
+
     async stopAll(): Promise<void> {
       if (!monitor) return;
       stopping = true;
@@ -283,9 +327,10 @@ export function createEnvironmentPresenter(deps: EnvironmentPresenterDeps): Envi
       try {
         // 1. 撤销 monitor generation、停采集（等待资源释放）。
         await monitor.stopAll();
-        // 2. 关闭摘要使用与环境主动（内存立即生效）。
+        // 2. 关闭摘要使用、环境主动与屏幕文字摘录（内存立即生效）。
         contextEnabled = false;
         proactiveEnabled = false;
+        screenTextEnabled = false;
         commit();
         // 3. 持久化关闭；失败可见但不回滚内存状态。
         try {
@@ -294,6 +339,7 @@ export function createEnvironmentPresenter(deps: EnvironmentPresenterDeps): Envi
           }
           await settings?.setBoolean(SETTING_ENVIRONMENT_CONTEXT_ENABLED, false);
           await settings?.setBoolean(SETTING_KEYS.environmentProactiveEnabled, false);
+          await settings?.setBoolean(SETTING_SCREEN_TEXT_ENABLED, false);
         } catch (caught) {
           error = `设置保存失败：${detailOf(caught)}`;
         }

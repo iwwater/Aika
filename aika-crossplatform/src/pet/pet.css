@@ -99,3 +99,35 @@
 .pet-menu button:hover {
   background: rgba(255, 255, 255, 0.08);
 }
+
+/* FE-31：陪伴会话状态、快捷操作与轻量输入。 */
+.pet-session-state {
+  font-size: 11px;
+  opacity: 0.75;
+  text-align: center;
+  padding: 2px 6px;
+}
+
+.pet-session-notice {
+  font-size: 11px;
+  text-align: center;
+  padding: 2px 6px;
+  opacity: 0.9;
+}
+
+.pet-actions button {
+  text-align: left;
+}
+
+.pet-input {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+}
+
+.pet-input input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  padding: 4px 6px;
+}
