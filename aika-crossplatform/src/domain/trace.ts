@@ -22,7 +22,8 @@ export type TraceEventKind =
   | "reply"
   | "memory_extract"
   | "tts"
-  | "turn_end";
+  | "turn_end"
+  | "pet_command";
 
 export type TraceTurnStatus = "completed" | "failed" | "cancelled";
 
@@ -181,6 +182,14 @@ export type TraceEventV1 =
     durationMs: number;
     errorCode?: string;
     tokens: TraceTokens;
+  })
+  | (TraceEventBase & {
+    // 桌宠命令诊断（MVP-04 真机排障）：只记结果与代码，**永不记正文**——
+    // 回复文本属于对话记录，trace 里出现它就破坏了「旁路不留内容」的边界。
+    kind: "pet_command";
+    command: string;
+    outcome: string;
+    code: string | null;
   });
 
 /**

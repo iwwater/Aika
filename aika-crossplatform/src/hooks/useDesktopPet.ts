@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useOptionalService, useService } from "../app/kernelContext";
 import { isTauriHost } from "../app/hosts/detect";
 import { DesktopPetServiceToken } from "../services/desktopPet/contracts";
+import { PresentationLifecycleToken } from "../services/desktopPet/lifecycle";
 import type { PetCapabilityMap, PetConfig, PetConfigInput, PetConnection } from "../services/desktopPet/contracts";
 import { validatePetProfile, type PetProfileV1 } from "../services/desktopPet/profile";
 import { createDesktopPetSettings } from "../services/desktopPet/settings";
@@ -11,8 +12,7 @@ import { DesktopPetPresenterToken } from "../presentation/tokens";
 /**
  * 主窗侧的外部桌宠设置与状态（PET-06）。
  *
- * 与 `usePetWindow` 的分工：那个管 Aiki 自研的小窗口，这个管**第三方桌宠**。
- * 两者是互斥的表现出口——集成启用时旧窗口让位（见 `usePetWindow`）。
+ * 唯一桌宠出口是外部运行时；陪伴会话由主窗独立管理。
  *
  * 一条硬规则：**关着的时候零网络、零进程**。`testConnection()` 也只在启用后
  * 才真的发请求；关闭状态下如实返回 `disabled`，不偷偷探测。
@@ -59,6 +59,7 @@ export interface DesktopPetState {
 
 export function useDesktopPet(): DesktopPetState {
   const service = useOptionalService(DesktopPetServiceToken);
+  const lifecycle = useOptionalService(PresentationLifecycleToken);
   const presenter = useOptionalService(DesktopPetPresenterToken);
   const settings = useService(SettingsToken);
   const store = useMemo(() => createDesktopPetSettings(settings), [settings]);
@@ -151,7 +152,8 @@ export function useDesktopPet(): DesktopPetState {
         await store.writeConfig(next);
         await service.setConfig(next);
         setConfig(next);
-        await service.enable();
+        if (lifecycle) await lifecycle.start();
+        else await service.enable();
         setNotice("已启用。桌宠未启动时请先启动它，再点「测试连接」。");
       });
     },
@@ -159,7 +161,8 @@ export function useDesktopPet(): DesktopPetState {
     async disable() {
       if (!service || !config) return;
       await run(async () => {
-        await service.disable();
+        if (lifecycle) await lifecycle.stop();
+        else await service.disable();
         const next = { ...config, enabled: false };
         await store.writeConfig(next);
         await service.setConfig(next);

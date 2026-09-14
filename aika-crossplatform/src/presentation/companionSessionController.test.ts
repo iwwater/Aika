@@ -4,7 +4,7 @@ import { createCaptureScheduler } from "../services/environment/captureScheduler
 import { createScreenContextSource, type WindowCaptureOutcome, type WindowCapturePort } from "../services/environment/screenContextSource";
 import type { OcrEngine, OcrResult } from "../services/environment/ocrText";
 import { SETTING_KEYS } from "../services/storage/contracts";
-import { PET_INTENT_SCHEMA, type PetIntentV1, type PetIntentKind } from "../pet/petIntent";
+import { COMPANION_INTENT_SCHEMA, type CompanionIntentV1, type CompanionIntentKind } from "./companionIntent";
 import {
   SCREEN_TALK_TEXT,
   createCompanionSessionController,
@@ -14,7 +14,7 @@ import {
 /**
  * FE-31-A～F（生产逻辑轨）。
  *
- * 外部端口（采集、OCR、pet 窗口、发送路径）全部是 fake：证明的是**会话控制、
+ * 外部端口（采集、OCR、可选视图端口、发送路径）全部是 fake：证明的是**会话控制、
  * 门禁与撤销**，不是真实读屏、真实回复或真实角色表现。FE-31-G（真实设备逐项
  * 演示）不在本文件，记 NOT RUN。
  */
@@ -42,7 +42,7 @@ interface Harness {
   capture: WindowCapturePort & { calls: number };
   submitted: Array<{ text: string; trigger: string }>;
   proactive: number;
-  petCalls: string[];
+  viewCalls: string[];
   settingsStore: Map<string, string>;
   sensorCalls: boolean[];
   setOcr(next: () => OcrResult | null): void;
@@ -83,7 +83,7 @@ function harness(options?: { captureAuthorized?: boolean }): Harness {
   const sensorCalls: boolean[] = [];
   let sensorError: Error | null = null;
   const submitted: Array<{ text: string; trigger: string }> = [];
-  const petCalls: string[] = [];
+  const viewCalls: string[] = [];
   const state = { proactive: 0 };
   let submitUser = async (input: { text: string; trigger: string }) => {
     submitted.push(input);
@@ -113,15 +113,17 @@ function harness(options?: { captureAuthorized?: boolean }): Harness {
         settingsStore.set(key, String(value));
       },
     },
-    pet: {
+    // 主窗不再拥有任何桌宠窗口（MVP-03 删掉了自研窗口），所以只给可选视图端口。
+    // 不传也能工作：会话控制不该依赖某个窗口是否存在。
+    view: {
       async open() {
-        petCalls.push("open");
+        viewCalls.push("open");
       },
       async close() {
-        petCalls.push("close");
+        viewCalls.push("close");
       },
       async focusMain() {
-        petCalls.push("focusMain");
+        viewCalls.push("focusMain");
       },
     },
     submitUser: (input) => submitUser(input),
@@ -140,7 +142,7 @@ function harness(options?: { captureAuthorized?: boolean }): Harness {
     get proactive() {
       return state.proactive;
     },
-    petCalls,
+    viewCalls,
     settingsStore,
     sensorCalls,
     setOcr(next) {
@@ -155,11 +157,11 @@ function harness(options?: { captureAuthorized?: boolean }): Harness {
   };
 }
 
-function petIntent(kind: PetIntentKind, overrides: Partial<PetIntentV1> = {}): PetIntentV1 {
+function intent(kind: CompanionIntentKind, overrides: Partial<CompanionIntentV1> = {}): CompanionIntentV1 {
   return {
-    schemaVersion: PET_INTENT_SCHEMA,
+    schemaVersion: COMPANION_INTENT_SCHEMA,
     requestId: `req-${Math.random().toString(36).slice(2)}`,
-    petEpoch: "epoch-1",
+    sessionEpoch: "epoch-1",
     kind,
     text: kind === "talk" ? "聊两句" : null,
     ...overrides,
@@ -196,7 +198,7 @@ describe("FE-31-A 默认关闭与一次确认", () => {
     expect(view.mode).toBe("active");
     expect(view.readState).toBe("reading");
     expect(h.sensorCalls).toEqual([true]);
-    expect(h.petCalls).toEqual(["open"]);
+    expect(h.viewCalls).toEqual(["open"]);
     expect(h.settingsStore.get(SETTING_KEYS.companionConsent)).toBe("true");
     expect(h.settingsStore.get(SETTING_KEYS.companionMode)).toBe("active");
 
@@ -296,14 +298,14 @@ describe("FE-31-B active / quiet 的自动路径", () => {
   });
 });
 
-describe("FE-31-C/D pet 点击与普通输入", () => {
+describe("FE-31-C/D 意图（视图端口）与普通输入", () => {
   it("screen_talk：静止画面也触发一次新 OCR，并走用户发送路径", async () => {
     const h = harness();
     await h.controller.start();
     await h.controller.enable("active", { consent: true });
     const before = h.capture.calls;
 
-    expect(await h.controller.handleIntent(petIntent("screen_talk"), "epoch-1")).toBe(true);
+    expect(await h.controller.handleIntent(intent("screen_talk"), "epoch-1")).toBe(true);
     expect(h.capture.calls).toBe(before + 1);
     expect(h.submitted).toEqual([{ text: SCREEN_TALK_TEXT, trigger: "pet_screen_talk" }]);
   });
@@ -312,11 +314,11 @@ describe("FE-31-C/D pet 点击与普通输入", () => {
     const h = harness();
     await h.controller.start();
     await h.controller.enable("quiet", { consent: true });
-    expect(await h.controller.handleIntent(petIntent("screen_talk"), "epoch-1")).toBe(true);
+    expect(await h.controller.handleIntent(intent("screen_talk"), "epoch-1")).toBe(true);
 
     await h.controller.pause();
     expect(h.controller.getSnapshot().readState).toBe("paused");
-    expect(await h.controller.handleIntent(petIntent("screen_talk"), "epoch-1")).toBe(true);
+    expect(await h.controller.handleIntent(intent("screen_talk"), "epoch-1")).toBe(true);
     expect(h.submitted).toHaveLength(2);
   });
 
@@ -326,7 +328,7 @@ describe("FE-31-C/D pet 点击与普通输入", () => {
     await h.controller.start();
     await h.controller.enable("active", { consent: true });
 
-    expect(await h.controller.handleIntent(petIntent("screen_talk"), "epoch-1")).toBe(true);
+    expect(await h.controller.handleIntent(intent("screen_talk"), "epoch-1")).toBe(true);
     const view = h.controller.getSnapshot();
     expect(view.lastReadStatus).toBe("timeout");
     expect(view.notice).toContain("没读完屏幕");
@@ -339,7 +341,7 @@ describe("FE-31-C/D pet 点击与普通输入", () => {
     await h.controller.start();
     await h.controller.enable("quiet", { consent: true });
 
-    expect(await h.controller.handleIntent(petIntent("talk", { text: "在吗" }), "epoch-1")).toBe(true);
+    expect(await h.controller.handleIntent(intent("talk", { text: "在吗" }), "epoch-1")).toBe(true);
     expect(h.submitted).toEqual([{ text: "在吗", trigger: "pet_talk" }]);
     expect(h.capture.calls).toBe(0);
   });
@@ -353,9 +355,9 @@ describe("FE-31-C/D pet 点击与普通输入", () => {
     await h.controller.start();
     await h.controller.enable("active", { consent: true });
 
-    const first = h.controller.handleIntent(petIntent("talk", { text: "第一句" }), "epoch-1");
+    const first = h.controller.handleIntent(intent("talk", { text: "第一句" }), "epoch-1");
     await new Promise((resolve) => setTimeout(resolve, 0));
-    const second = await h.controller.handleIntent(petIntent("talk", { text: "第一句" }), "epoch-1");
+    const second = await h.controller.handleIntent(intent("talk", { text: "第一句" }), "epoch-1");
     expect(second).toBe(false);
     expect(h.controller.getSnapshot().notice).toContain("还在发送中");
 
@@ -367,10 +369,10 @@ describe("FE-31-C/D pet 点击与普通输入", () => {
     const h = harness();
     await h.controller.start();
     await h.controller.enable("active", { consent: true });
-    const intent = petIntent("talk", { text: "只发一次" });
+    const replayed = intent("talk", { text: "只发一次" });
 
-    expect(await h.controller.handleIntent(intent, "epoch-1")).toBe(true);
-    expect(await h.controller.handleIntent(intent, "epoch-1")).toBe(false);
+    expect(await h.controller.handleIntent(replayed, "epoch-1")).toBe(true);
+    expect(await h.controller.handleIntent(replayed, "epoch-1")).toBe(false);
     expect(h.submitted).toHaveLength(1);
   });
 
@@ -379,21 +381,21 @@ describe("FE-31-C/D pet 点击与普通输入", () => {
     await h.controller.start();
     await h.controller.enable("active", { consent: true });
 
-    await h.controller.handleIntent(petIntent("open_main"), "epoch-1");
-    expect(h.petCalls).toContain("focusMain");
+    await h.controller.handleIntent(intent("open_main"), "epoch-1");
+    expect(h.viewCalls).toContain("focusMain");
 
-    await h.controller.handleIntent(petIntent("pause_reading"), "epoch-1");
+    await h.controller.handleIntent(intent("pause_reading"), "epoch-1");
     expect(h.controller.getSnapshot().readState).toBe("paused");
 
-    await h.controller.handleIntent(petIntent("end_session"), "epoch-1");
+    await h.controller.handleIntent(intent("end_session"), "epoch-1");
     expect(h.controller.getSnapshot().mode).toBe("off");
-    expect(h.petCalls).toContain("close");
+    expect(h.viewCalls).toContain("close");
     expect(h.submitted).toEqual([]);
   });
 });
 
 describe("FE-31-E 暂停/结束/撤销与迟到结果", () => {
-  it("暂停：停采集、清空上下文与候选，pet 保留，普通聊天仍可用", async () => {
+  it("暂停：停采集、清空上下文与候选，可选视图保留，普通聊天仍可用", async () => {
     const h = harness();
     await h.controller.start();
     await h.controller.enable("active", { consent: true });
@@ -402,17 +404,17 @@ describe("FE-31-E 暂停/结束/撤销与迟到结果", () => {
 
     await h.controller.pause();
     expect(h.sensorCalls).toEqual([true, false]);
-    expect(h.petCalls).toEqual(["open"]); // 没有 close：pet 保留
+    expect(h.viewCalls).toEqual(["open"]); // 没有 close：可选视图保留
 
     // 暂停后自动路径彻底不动。
     h.setOcr(() => lines("暂停之后的新一屏 epsilon"));
     await settleAuto(h);
     expect(h.proactive).toBe(1);
 
-    expect(await h.controller.handleIntent(petIntent("talk", { text: "还能聊" }), "epoch-1")).toBe(true);
+    expect(await h.controller.handleIntent(intent("talk", { text: "还能聊" }), "epoch-1")).toBe(true);
   });
 
-  it("结束：撤销代数、停自己的采集、清缓存并关闭 pet", async () => {
+  it("结束：撤销代数、停自己的采集、清缓存并关闭可选视图", async () => {
     const h = harness();
     await h.controller.start();
     await h.controller.enable("active", { consent: true });
@@ -424,7 +426,7 @@ describe("FE-31-E 暂停/结束/撤销与迟到结果", () => {
     expect(view.readState).toBe("off");
     expect(view.generation).toBeGreaterThan(before);
     expect(h.sensorCalls).toEqual([true, false]);
-    expect(h.petCalls).toEqual(["open", "close"]);
+    expect(h.viewCalls).toEqual(["open", "close"]);
     expect(h.settingsStore.get(SETTING_KEYS.companionMode)).toBe("off");
   });
 
@@ -463,12 +465,12 @@ describe("FE-31-E 暂停/结束/撤销与迟到结果", () => {
 });
 
 describe("FE-31-F 越权与竞争", () => {
-  it("旧 petEpoch 的意图被丢弃", async () => {
+  it("旧 sessionEpoch 的意图被丢弃", async () => {
     const h = harness();
     await h.controller.start();
     await h.controller.enable("active", { consent: true });
 
-    expect(await h.controller.handleIntent(petIntent("talk", { petEpoch: "epoch-0" }), "epoch-1")).toBe(false);
+    expect(await h.controller.handleIntent(intent("talk", { sessionEpoch: "epoch-0" }), "epoch-1")).toBe(false);
     expect(h.submitted).toEqual([]);
   });
 
@@ -488,7 +490,7 @@ describe("FE-31-F 越权与竞争", () => {
     await h.controller.onScreenChanged();
     h.clock.advance(3000);
 
-    const userTurn = h.controller.handleIntent(petIntent("talk", { text: "我先说" }), "epoch-1");
+    const userTurn = h.controller.handleIntent(intent("talk", { text: "我先说" }), "epoch-1");
     await new Promise((resolve) => setTimeout(resolve, 0));
     await h.controller.onScreenChanged();
 

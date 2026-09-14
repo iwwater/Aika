@@ -461,7 +461,7 @@ pub fn environment_capture_window(
     state: tauri::State<'_, ScreenState>,
     window_id: Option<String>,
 ) -> Result<WindowCaptureOutcome, String> {
-    crate::petWindow::assert_allowed_caller(window.label(), &[crate::petWindow::MAIN_WINDOW_LABEL])?;
+    crate::window_access::assert_allowed_caller(window.label(), &[crate::window_access::MAIN_WINDOW_LABEL])?;
     #[cfg(windows)]
     {
         capture_window_impl(&app, &state, window_id.as_deref())
@@ -489,9 +489,9 @@ fn capture_window_impl(
         GetClientRect, GetForegroundWindow, GetWindowRect, IsIconic, IsWindow, IsWindowVisible,
     };
 
-    /// 自身窗口（pet / 主窗）的句柄集合。
+    /// 自身窗口（主窗）的句柄集合：这些窗口不该出现在被抓取的内容里。
     fn self_hwnds(app: &AppHandle) -> Vec<isize> {
-        [crate::petWindow::MAIN_WINDOW_LABEL, crate::petWindow::PET_WINDOW_LABEL]
+        [crate::window_access::MAIN_WINDOW_LABEL]
             .iter()
             .filter_map(|label| app.get_webview_window(label))
             .filter_map(|webview| webview.hwnd().ok())

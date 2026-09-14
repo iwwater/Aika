@@ -15,6 +15,12 @@ export interface MemorySourceOptions {
   id?: string;
   limit?: number;
   tokenBudget?: number;
+  /**
+   * 长期记忆读写总开关（MVP-06 AC-D）。resolve false = 一个片段都不产、
+   * **也不调用 `repository.retrieve`**——「禁止长期读」必须是零查询，不是「查了不用」。
+   * 开关读取失败按关闭处理（个人数据宁可不读）。不传 = 恒开（既有行为）。
+   */
+  isEnabled?: () => Promise<boolean>;
 }
 
 /**
@@ -40,6 +46,16 @@ export function createMemorySource(
       if (!mayReadPersonalMemories(input.scope?.principalId)) {
         // 未授权主体：一个片段都不给。这是隔离，不是「没检索到」。
         return [];
+      }
+      if (options.isEnabled) {
+        let enabled = true;
+        try {
+          enabled = await options.isEnabled();
+        } catch {
+          // 开关读不出来就当关着：个人数据的读取宁可保守。
+          enabled = false;
+        }
+        if (!enabled) return [];
       }
       const query: MemoryQuery = {
         text: input.query,

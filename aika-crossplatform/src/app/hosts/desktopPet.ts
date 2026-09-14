@@ -12,6 +12,8 @@ import type { PetProfileV1 } from "../../services/desktopPet/profile";
 import { SettingsToken } from "../../services/storage/tokens";
 import { ClockToken, TimersToken } from "../../services/time/tokens";
 import { createSystemClock, createSystemTimers } from "../../services/time/systemTime";
+import { PET_CONFIG_DEFAULTS } from "../../services/desktopPet/contracts";
+import { createPresentationLifecycle, OPENPET_PRESENTATION_MANIFEST, PresentationLifecycleToken } from "../../services/desktopPet/lifecycle";
 
 /**
  * 外部桌宠宿主插件（PET-06）。
@@ -43,17 +45,20 @@ export const DESKTOP_PET_PLUGIN_ID = "host.desktopPet";
 export function desktopPetPlugin(options: DesktopPetHostOptions): AikaPlugin {
   return {
     id: DESKTOP_PET_PLUGIN_ID,
-    version: "1.0.0",
+    version: OPENPET_PRESENTATION_MANIFEST.version,
     requires: [SettingsToken],
     optional: [ClockToken, TimersToken],
-    provides: [DesktopPetServiceToken],
+    provides: [DesktopPetServiceToken, PresentationLifecycleToken],
     async activate(context) {
       const settings = context.registrar.resolve(SettingsToken);
       const clock = context.registrar.tryResolve(ClockToken) ?? createSystemClock();
       const timers = context.registrar.tryResolve(TimersToken) ?? createSystemTimers();
 
       const store = createDesktopPetSettings(settings);
-      const initial = await store.read();
+      const initial = await store.read().catch(() => {
+        context.logger.warn("presentation configuration unavailable; integration disabled");
+        return { config: { ...PET_CONFIG_DEFAULTS }, profile: null };
+      });
 
       // profile 与 endpoint 都是活配置：adapter 通过 getter 读，避免重建对象。
       let currentProfile: PetProfileV1 | null = initial.profile;
@@ -106,6 +111,8 @@ export function desktopPetPlugin(options: DesktopPetHostOptions): AikaPlugin {
       service = createDesktopPetService(deps);
 
       const instance = service;
+      const lifecycle = createPresentationLifecycle(instance);
+      context.registrar.provide(PresentationLifecycleToken, () => lifecycle);
       // 状态快照是唯一的同步点：每次通知都把地址与探测结论分别送给 adapter 与
       // 进程管理器。`setConfig` 会 notify，所以改端口不需要重建任何对象。
       const unsubscribe = instance.subscribe(() => {
@@ -116,6 +123,7 @@ export function desktopPetPlugin(options: DesktopPetHostOptions): AikaPlugin {
       context.registrar.provide(DesktopPetServiceToken, () => instance, {
         disposer: async () => {
           unsubscribe();
+          await lifecycle.stop();
           try {
             await processManager.dispose();
           } finally {
@@ -126,7 +134,7 @@ export function desktopPetPlugin(options: DesktopPetHostOptions): AikaPlugin {
 
       // 启用状态在装配期就已经确定：开着的用户不该再点一次。
       if (initial.config.enabled) {
-        void instance.enable().catch(() => {
+        void lifecycle.start().catch(() => {
           // 起不来就是 offline；界面显示原因并允许重连。
         });
       }

@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { createManualClock } from "./fakeEnvironment";
 import {
   BUSY_OBSERVATION_MAX_AGE_MS,
+  BUSY_REASON_LOCKED,
   createBusyObserver,
   createTauriBusyAdapter,
+  readBusyObservation,
   type BusyHostAdapter,
 } from "./busySource";
 
@@ -88,5 +90,44 @@ describe("busySource（FE-19-J）", () => {
 
     const nothing = createTauriBusyAdapter(async () => null);
     expect(await nothing.query()).toEqual({ busy: null, reason: "malformed" });
+  });
+});
+
+describe("readBusyObservation（MVP-04-B：只报确认过的锁定）", () => {
+  it("锁定与全屏分开：锁屏 locked=true，全屏 locked=false（都是 value=true）", async () => {
+    const clock = createManualClock(0);
+    const locked = createBusyObserver(adapterWith(true, BUSY_REASON_LOCKED), { clock, hostEpoch: "e" });
+    expect(await readBusyObservation(locked, clock)).toMatchObject({
+      value: true, locked: true, reasonCode: BUSY_REASON_LOCKED,
+    });
+
+    const fullscreen = createBusyObserver(adapterWith(true, "fullscreen"), { clock, hostEpoch: "e" });
+    expect(await readBusyObservation(fullscreen, clock)).toMatchObject({
+      value: true, locked: false, reasonCode: "fullscreen",
+    });
+  });
+
+  it("无观测者 / 查询失败 / 观测过期 → value=null 且 locked=false（不谎报锁定）", async () => {
+    const clock = createManualClock(0);
+    expect(await readBusyObservation(null, clock)).toMatchObject({ value: null, locked: false, reasonCode: "no_observer" });
+
+    const failing = createBusyObserver({
+      query: async () => {
+        throw new Error("ipc gone");
+      },
+    }, { clock, hostEpoch: "e" });
+    expect(await readBusyObservation(failing, clock)).toMatchObject({ value: null, locked: false });
+
+    // 查询本身耗时超过观测有效期：这一次的锁定**不算数**（时效优先于结论）。
+    const slowLocked = {
+      query: async () => {
+        clock.advance(BUSY_OBSERVATION_MAX_AGE_MS + 1);
+        return { busy: true, reason: BUSY_REASON_LOCKED };
+      },
+    };
+    const slowObserver = createBusyObserver(slowLocked, { clock, hostEpoch: "e" });
+    expect(await readBusyObservation(slowObserver, clock)).toMatchObject({
+      value: null, locked: false, reasonCode: "stale",
+    });
   });
 });

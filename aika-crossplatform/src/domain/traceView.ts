@@ -108,6 +108,7 @@ const KIND_LABELS: Record<TraceEventKind, string> = {
   memory_extract: "记忆抽取",
   tts: "语音播放",
   turn_end: "结束",
+  pet_command: "桌宠命令",
 };
 
 export function kindLabel(kind: TraceEventKind): string {

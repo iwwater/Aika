@@ -126,5 +126,7 @@ function summarizeStep(event: import("../domain/trace").TraceEventV1): string {
       return `${event.sentences} 句 · ${event.played ? "播过" : "未播出"} · 失败 ${event.errorCount}`;
     case "turn_end":
       return `${statusLabel(event.status)} · ${event.durationMs}ms${event.errorCode ? ` · ${event.errorCode}` : ""}`;
+    case "pet_command":
+      return `桌宠 ${event.command} · ${event.outcome}${event.code ? ` · ${event.code}` : ""}`;
   }
 }

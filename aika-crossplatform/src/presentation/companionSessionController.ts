@@ -14,15 +14,15 @@ import {
 } from "../services/environment/screenContextProjection";
 import {
   createIntentDedupe,
-  type PetIntentV1,
-} from "../pet/petIntent";
+  type CompanionIntentV1,
+} from "./companionIntent";
 
 /**
  * 桌宠陪伴会话控制器（FE-31）。
  *
  * 它**协调**已有的传感器、屏幕上下文源与既有发送路径，不自建 OCR 循环、
  * 不自建第二个 Runtime，也不自建第二套主动额度。整个产品仍然只有一套
- * CompanionRuntime，pet 只是一个受控的用户交互入口。
+ * CompanionRuntime：本控制器只是它的一个**受控入口**，不新增生成通道。
  *
  * 三态：
  * - `off`：默认。什么都不采集。
@@ -56,7 +56,7 @@ export interface CompanionSessionView {
   readState: CompanionReadState;
   /** 当前会话代数；每次启动/暂停/结束递增。 */
   generation: number;
-  /** 有一轮由 pet 发起的请求在途。 */
+  /** 有一轮由本会话发起的用户请求在途。 */
   sending: boolean;
   /** 上一次读屏的结果状态（界面据此显示「未读到屏幕」等）。 */
   lastReadStatus: ScreenReadStatus | null;
@@ -78,7 +78,14 @@ export interface CompanionSettingsPort {
   setBoolean(key: string, value: boolean): Promise<void>;
 }
 
-export interface CompanionPetPort {
+/**
+ * 可选窗口视图端口。
+ *
+ * MVP-03 之后主窗不再拥有任何桌宠窗口，所以生产装配**不传**它：会话控制不该
+ * 因为某个窗口不存在而失败。保留端口是为了让「打开/收起视图」这类宿主能力仍可
+ * 注入——测试用它断言生命周期，将来的宿主若再引入自己的窗口也可以复用。
+ */
+export interface CompanionViewPort {
   open(): Promise<void>;
   close(): Promise<void>;
   focusMain(): Promise<void>;
@@ -88,10 +95,11 @@ export interface CompanionSessionDeps {
   screenContext: ScreenContextSource;
   sensors: CompanionSensorPort;
   settings: CompanionSettingsPort | null;
-  pet: CompanionPetPort;
+  view?: CompanionViewPort;
   /**
-   * 主窗既有用户发送路径。pet 的点击与输入在**可信主窗**被映射成用户触发的
-   * submit；resolve false = 没发出去（busy/未连接），调用方显示状态。
+   * 主窗既有用户发送路径。会话里的用户动作（看屏幕聊聊、等价于用户输入的
+   * 桌宠点击）在**可信主窗**被映射成用户触发的 submit；resolve false =
+   * 没发出去（busy/未连接），调用方显示状态。
    */
   submitUser(input: { text: string; trigger: "pet_talk" | "pet_screen_talk" }): Promise<boolean>;
   /**
@@ -117,12 +125,12 @@ export interface CompanionSessionController {
   enable(mode: "active" | "quiet", options?: { consent?: boolean }): Promise<boolean>;
   /** 在 active / quiet 之间切换；不重启采集。 */
   setMode(mode: "active" | "quiet"): Promise<void>;
-  /** 暂停读屏：停采集、清空屏幕上下文与候选，pet 保留、普通聊天可用。 */
+  /** 暂停读屏：停采集、清空屏幕上下文与候选，可选视图保留、普通聊天可用。 */
   pause(): Promise<void>;
-  /** 结束陪伴：撤销代数、停自己的采集、清缓存并关闭 pet。 */
+  /** 结束陪伴：撤销代数、停自己的采集、清缓存并关闭可选视图。 */
   end(): Promise<void>;
-  /** 处理一条已通过 Rust 窗口校验的 pet 意图。返回是否被接受。 */
-  handleIntent(intent: PetIntentV1, petEpoch: string): Promise<boolean>;
+  /** 处理一条受控意图（`companion.intent.v1`）。返回是否被接受。 */
+  handleIntent(intent: CompanionIntentV1, sessionEpoch: string): Promise<boolean>;
   /** 画面变化通知（自动路径入口）。 */
   onScreenChanged(): Promise<void>;
   /** 全局「停止全部感知」：把本会话读屏标为暂停（不冒充仍在运行）。 */
@@ -289,7 +297,7 @@ export function createCompanionSessionController(
       readState = "reading";
       await persistMode(next);
       try {
-        await deps.pet.open();
+        await deps.view?.open();
       } catch (caught) {
         // 窗口没开起来不等于会话失败，但也**不能**冒充陪伴已就绪。
         error = detailOf(caught);
@@ -342,17 +350,17 @@ export function createCompanionSessionController(
       }
       await persistMode("off");
       try {
-        await deps.pet.close();
+        await deps.view?.close();
       } catch (caught) {
         error = detailOf(caught);
       }
       commit();
     },
 
-    async handleIntent(intent: PetIntentV1, currentPetEpoch: string): Promise<boolean> {
+    async handleIntent(intent: CompanionIntentV1, currentSessionEpoch: string): Promise<boolean> {
       if (disposed) return false;
-      // 1. epoch：pet 这一次打开的代数必须是当前的；旧 epoch 丢弃。
-      if (intent.petEpoch !== currentPetEpoch) return false;
+      // 1. epoch：调用方这一次会话的代数必须是当前的；旧 epoch 丢弃。
+      if (intent.sessionEpoch !== currentSessionEpoch) return false;
       // 2. requestId 去重：重放与双击只算一次。
       const now = deps.clock.now();
       if (dedupe.isDuplicate(intent.requestId, now)) return false;
@@ -360,7 +368,7 @@ export function createCompanionSessionController(
 
       switch (intent.kind) {
         case "open_main":
-          await deps.pet.focusMain();
+          await deps.view?.focusMain();
           return true;
         case "pause_reading":
           await controller.pause();

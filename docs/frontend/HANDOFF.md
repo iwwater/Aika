@@ -1,6 +1,7 @@
 # 前端 SPEC Handoff · 三维度交接清单
 
 日期：2026-09-14（**FE-31/32 执行后更新**）。范围：`docs/frontend/specs/` 全部 32 份 SPEC（FE-01～32）及其验收报告。源码根 `aika-crossplatform/`。
+> **2026-09-15 注**：MVP-03 已删除 Legacy Pet（`src/pet/`、`usePetWindow.ts`、`petWindow.rs` 等），本文件中涉及旧自研桌宠窗口的待办已随之失效；MVP 0.5 六份 SPEC 的收口状态与遗留清单见 [HANDOFF_MVP_0.5.md](../HANDOFF_MVP_0.5.md)。
 用途：任何接手者（人或 worker）据此确定「还有什么没做、什么需要真实服务、什么需要人」。
 
 ## 当前快照

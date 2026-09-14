@@ -212,4 +212,35 @@ describe("createScreenTextContextSource 出口校验（FE-32-C）", () => {
     });
     expect(await source.load({})).toEqual([]);
   });
+
+  it("锁屏 → 零摘录：锁屏前那一眼的文字不再进模型（MVP-04 AC-B）", async () => {
+    const clock = createManualClock(1000);
+    let locked = false;
+    const source = createScreenTextContextSource({
+      current: () => screenResult(1000),
+      getScreenTextEnabled: async () => true,
+      clock,
+      isLocked: async () => locked,
+    });
+    // 解锁状态：授权通过 → 摘录照常（TTL 内）。
+    expect(await source.load({})).toHaveLength(1);
+
+    // 锁屏：同一份仍在 TTL 内的旧摘录一个都不出。
+    locked = true;
+    expect(await source.load({})).toEqual([]);
+
+    // 解锁后立刻恢复：只挡了锁屏那一段，没有把源永久关掉。
+    locked = false;
+    expect(await source.load({})).toHaveLength(1);
+  });
+
+  it("不提供锁屏观测时行为与之前一致（浏览器/测试装配）", async () => {
+    const clock = createManualClock(1000);
+    const source = createScreenTextContextSource({
+      current: () => screenResult(1000),
+      getScreenTextEnabled: async () => true,
+      clock,
+    });
+    expect(await source.load({})).toHaveLength(1);
+  });
 });

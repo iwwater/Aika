@@ -77,7 +77,7 @@ export interface DesktopPetPresenterDeps {
   clock: Clock;
   profile?: () => PetProfileV1 | null;
   buffer?: PetCommandBuffer;
-  onDiagnostic?: (event: { type: string; code?: string }) => void;
+  onDiagnostic?: (event: { type: string; command?: string; outcome?: string; code?: string }) => void;
 }
 
 export interface DesktopPetPresenter {
@@ -219,9 +219,11 @@ export function createDesktopPetPresenter(deps: DesktopPetPresenterDeps): Deskto
           : skipped("invalid_input");
         break;
     }
-    // 诊断只带代码与结果，不带正文——日志里不该出现她说的话。
+    // 诊断只带类别、结果与代码，不带正文——日志里不该出现她说的话。
     deps.onDiagnostic?.({
       type: "command",
+      command: command.kind,
+      outcome: result.outcome,
       ...(result.code !== undefined ? { code: result.code } : {}),
     });
     return result;

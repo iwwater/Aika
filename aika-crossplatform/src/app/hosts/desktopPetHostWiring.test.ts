@@ -5,6 +5,7 @@ import type { AikaPlugin } from "../../kernel";
 import { createAikaKernel } from "../composition";
 import { testHostPlugins } from "../hosts";
 import { desktopPetPlugin } from "./desktopPet";
+import { PresentationLifecycleToken } from "../../services/desktopPet/lifecycle";
 import { DesktopPetServiceToken, PET_CONFIG_DEFAULTS } from "../../services/desktopPet/contracts";
 import { createDesktopPetSettings } from "../../services/desktopPet/settings";
 import {
@@ -33,6 +34,23 @@ import type { DesktopPetRuntimeEvent } from "../../presentation/desktopPetPresen
 
 afterEach(() => {
   // 内核 dispose 由每个用例自己负责；这里只做全局槽位的复位兜底。
+});
+
+describe("MVP-02 optional presentation lifecycle", () => {
+  it("is registered in production and can stop/restart without rebuilding Core", async () => {
+    const { composition, http } = await boot({ http: createFakePetHttp(alwaysRespond(OK_POST)) });
+    const lifecycle = composition.kernel.registry.resolve(PresentationLifecycleToken);
+    const service = composition.kernel.registry.resolve(DesktopPetServiceToken);
+    await lifecycle.start();
+    expect((await lifecycle.health()).state).toBe("running");
+    await lifecycle.stop();
+    const calls = http.calls.length;
+    await service.say("disabled");
+    expect(http.calls.length).toBe(calls);
+    await lifecycle.start();
+    expect(composition.kernel.state).toBe("ready");
+    await composition.kernel.dispose();
+  });
 });
 
 async function realStorage(): Promise<AikaStorage> {
@@ -217,9 +235,9 @@ describe("PET-06-B 生产事件 → 生产 Service → 外部端口", () => {
       text: string; ttlMs: number;
     };
     expect(sayBody.text).toBe("在的哦");
-    // TTL 是「剩余寿命」，由时钟算出：在 4s 期限内、不小于下限。
-    expect(sayBody.ttlMs).toBeGreaterThanOrEqual(3_000);
-    expect(sayBody.ttlMs).toBeLessThanOrEqual(4_000);
+    // PET-04已经拆分发送deadline与显示TTL：三字短句为4000+3*120ms。
+    expect(sayBody.ttlMs).toBeGreaterThanOrEqual(4_000);
+    expect(sayBody.ttlMs).toBeLessThanOrEqual(4_360);
 
     // 唯一的 Runtime 就是我们注入的那个：没有第二条编排。
     expect(composition.kernel.registry.tryResolve(RuntimeToken)).toBe(runtime.runtime);
@@ -241,25 +259,11 @@ describe("PET-06-B 生产事件 → 生产 Service → 外部端口", () => {
 });
 
 describe("PET-06-C 表现出口只保留一个", () => {
-  it("usePetWindow 在集成启用时让位，且拒绝手动打开自研窗口", () => {
-    const source = readFileSync(
-      join(import.meta.dirname ?? ".", "../../hooks/usePetWindow.ts"),
-      "utf8",
-    );
-    expect(source).toContain("createDesktopPetSettings");
-    expect(source).toContain("desktopPetSettings.isEnabled()");
-    // 启动恢复那一段：让位判断必须发生在打开自研窗口之前。
-    const recovery = source.slice(
-      source.indexOf("startedRef.current = true;"),
-      source.indexOf("}, [manager, settings, desktopPetSettings]);"),
-    );
-    const guard = recovery.indexOf("if (desktopPetEnabled) return;");
-    const open = recovery.indexOf("await manager.open();");
-    expect(guard).toBeGreaterThan(-1);
-    expect(open).toBeGreaterThan(guard);
-    // 手动入口也要挡住，而不是只在启动时让位。
-    expect(source).toContain("legacyBlocked");
-    expect(source).toMatch(/applyLegacyBlock/);
+  it("main入口与窗口配置不再提供旧桌宠", () => {
+    const main = readFileSync(join(import.meta.dirname, "../../main.tsx"), "utf8");
+    expect(main).not.toContain("PetApp");
+    const config = JSON.parse(readFileSync(join(import.meta.dirname, "../../../src-tauri/tauri.conf.json"), "utf8"));
+    expect(config.app.windows.map((w: { label: string }) => w.label)).toEqual(["main"]);
   });
 
   it("集成开关落地到存储后 isEnabled 为真（让位判断的输入）", async () => {

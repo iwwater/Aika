@@ -7,7 +7,11 @@ import type {
   ProactivePolicy,
 } from "../services/environment/contracts";
 import { eventAggregationKey } from "../services/environment/ruleProactivePolicy";
-import type { BusyObserver } from "../services/environment/busySource";
+import {
+  readBusyObservation,
+  type BusyObserver,
+  type BusyReading,
+} from "../services/environment/busySource";
 import { eventRuleId } from "../domain/environment";
 
 /**
@@ -19,6 +23,9 @@ import { eventRuleId } from "../domain/environment";
  *
  * 红线：
  * - 忙碌未知（无观测/过期/null）一律不发送（PRO-04）。
+ * - **锁屏一律不发送**（MVP-04 AC-B）：宿主把锁定与全屏分开报，锁屏时用户不在
+ *   桌面前，谈不上「一起看看」，同时清空缓冲——否则解锁后会带着锁屏期间累计的
+ *   「持续时长」补一轮。全屏是另一回事：那是玩游戏，结算类候选照常（FE-22 冻结语义）。
  * - 摘要年龄 ≥60000ms 的过期事件不作为触发依据（TTL 边界由门禁复核）。
  * - reason/请求内容只引用词表 ID，OCR 原文永不进入。
  * - 关闭（source off / stopAll / dispose）清空缓冲；缓冲是易失的，不写长期记忆。
@@ -109,14 +116,9 @@ export function createEnvironmentTrigger(deps: EnvironmentTriggerDeps): Environm
     return { occurrences: inWindow.length + 1, sustainedMs: now - earliest };
   }
 
-  async function refreshBusy(): Promise<boolean | null> {
-    if (!deps.busy) return null;
-    await deps.busy.refresh();
-    const observation = deps.busy.current();
-    if (observation.value === null) return null;
-    const age = deps.clock.now() - observation.observedMonotonicMs;
-    if (age > BUSY_MAX_AGE_MS) return null;
-    return observation.value;
+  /** 刷新并读回一次观测；「值是否可用」与「是否锁屏」由共享读法统一判定。 */
+  function observeBusy(): Promise<BusyReading> {
+    return readBusyObservation(deps.busy, deps.clock, BUSY_MAX_AGE_MS);
   }
 
   async function runGates(event: EnvironmentEvent): Promise<boolean> {
@@ -153,10 +155,16 @@ export function createEnvironmentTrigger(deps: EnvironmentTriggerDeps): Environm
     if (disposed || !started) return;
 
     // 忙碌观测：提交前按需刷新；未知一律不发送。
-    const busyValue = await refreshBusy();
-    if (busyValue === null) {
+    const busy = await observeBusy();
+    if (busy.value === null) {
       busyUnknownCount += 1;
       lastDecision = { eventId: event.eventId, action: "ignore", reason: "busy-unknown" };
+      return;
+    }
+    // 锁屏：不在桌面前就没什么可说的，且清掉已记住的弱信号（MVP-04 AC-B）。
+    if (busy.locked) {
+      clearBuffer();
+      lastDecision = { eventId: event.eventId, action: "ignore", reason: "session-locked" };
       return;
     }
 
@@ -167,7 +175,7 @@ export function createEnvironmentTrigger(deps: EnvironmentTriggerDeps): Environm
       now: deps.clock.now(),
       lastSentAt: null,
       proactiveToday: null,
-      userBusy: busyValue,
+      userBusy: busy.value,
       sustainedMs: stats.sustainedMs,
       occurrencesInWindow: stats.occurrences,
     });
@@ -179,10 +187,10 @@ export function createEnvironmentTrigger(deps: EnvironmentTriggerDeps): Environm
     if (decision.action === "remember") return;
 
     if (!(await runGates(event))) return;
-    // 决策后等待过异步门禁：busy 时效再复核一次（任何等待后的边界重新验证）。
-    const busyRecheck = await refreshBusy();
-    if (busyRecheck === null) {
-      busyUnknownCount += 1;
+    // 决策后等待过异步门禁：busy 时效与锁屏再复核一次（任何等待后的边界重新验证）。
+    const busyRecheck = await observeBusy();
+    if (busyRecheck.value === null || busyRecheck.locked) {
+      if (busyRecheck.value === null) busyUnknownCount += 1;
       gateRejectedCount += 1;
       return;
     }

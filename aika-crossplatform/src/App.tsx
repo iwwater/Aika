@@ -19,7 +19,8 @@ import { nextRecognitionLanguage, type RecognitionInput } from "./domain/languag
 import { PROVIDER_PRESETS, validateProvider, type ProviderConfig } from "./domain/providers";
 import { useCompanionSession } from "./hooks/useCompanionSession";
 import { useEnvironment } from "./hooks/useEnvironment";
-import { usePetWindow } from "./hooks/usePetWindow";
+import { useCompanionControls } from "./hooks/useCompanionControls";
+import { useKnowledgeWiki } from "./hooks/useKnowledgeWiki";
 import { useDesktopPet } from "./hooks/useDesktopPet";
 import { useDevTools } from "./hooks/useDevTools";
 import { useRemoteAccess } from "./hooks/useRemoteAccess";
@@ -69,18 +70,14 @@ function App() {
   const session = useCompanionSession();
   const devTools = useDevTools();
   const environment = useEnvironment();
-  const pet = usePetWindow();
+  const controls = useCompanionControls();
   const desktopPet = useDesktopPet();
+  const wiki = useKnowledgeWiki();
   const [showDevTools, setShowDevTools] = useState(false);
   // 连接自检是 Provider 侧能力，经注册表取；App 不再直接 import providerClient。
   const probeProvider = useService(ProviderProbeToken);
   // 模型列表拉取同为 Provider 侧能力，走端口。
   const fetchModels = useService(ProviderModelsToken);
-  // 表现出口只保留一个：外部桌宠开着时自研窗口让位。
-  // 关掉自研窗口不会取消主窗对话、也不会停 TTS（FE-20-G 的既有约束）。
-  useEffect(() => {
-    pet.applyLegacyBlock(desktopPet.enabled);
-  }, [pet.applyLegacyBlock, desktopPet.enabled]);
 
   const [draftProvider, setDraftProvider] = useState<ProviderConfig>(PROVIDER_PRESETS[1]);
   const [input, setInput] = useState("");
@@ -468,6 +465,7 @@ function App() {
                 ["settings-model", "模型与数据"],
                 ["settings-response", "主动 / 被动"],
                 ["settings-awareness", "环境感知"],
+                ["settings-knowledge", "知识库"],
                 ["settings-pet", "桌宠 / 陪伴"],
                 ["settings-voice", "语音"],
                 ["settings-remote", "手机连接"],
@@ -618,57 +616,62 @@ function App() {
               </>
             )}
 
-            {pet.available && (
+            {wiki.available && (
               <>
                 <div className="settings-divider" />
-                <div id="settings-pet" className="modal-heading settings-anchor"><div><p className="eyebrow">Companion</p><h3>桌宠与陪伴模式</h3></div></div>
-                <p className="modal-intro">独立小窗口；Live2D 尚未导入时使用静态角色占位。桌宠显示、陪伴模式和感知授权分别保存，打开桌宠本身不会开启感知。</p>
-                {pet.legacyBlocked && (
-                  <div className="test-result error" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                    <X size={17} />
-                    <span style={{ flex: "1 1 260px" }}>
-                      <strong>外部桌宠（OpenPet）集成已启用</strong>，Aiki 自研桌宠窗口已让位——这是刻意的：
-                      同一句话不该被两个窗口各说一遍。关掉集成即可恢复自研桌宠。
-                    </span>
-                    <button className="toggle" onClick={() => void desktopPet.disable()} disabled={desktopPet.busy}>
-                      <PowerOff size={15} />
-                      <span>关闭集成，恢复自研桌宠</span>
-                    </button>
-                  </div>
-                )}
+                <div id="settings-knowledge" className="modal-heading settings-anchor"><div><p className="eyebrow">Knowledge</p><h3>知识库（Wiki）</h3></div></div>
+                <p className="modal-intro">
+                  你写进来的条目按角色保存（同名保存=编辑，版本递增），检索时按关系阶段与模式过滤。
+                  是否随对话发给 Provider 由下面的开关单独控制——写条目本身不会打开任何外发。
+                </p>
                 <div className="toggle-row">
-                  <button
-                    className={`toggle ${pet.open ? "on" : ""}`}
-                    onClick={() => void (pet.open ? pet.closePet() : pet.openPet())}
-                    disabled={pet.busy || pet.legacyBlocked}
-                  >
-                    <Sparkles size={15} />
-                    <span>{pet.open ? "已显示" : "显示桌宠"}</span>
+                  <button className={`toggle ${wiki.knowledgeOn ? "on" : ""}`} onClick={() => void wiki.toggle("knowledge", !wiki.knowledgeOn)}>
+                    <MessageCircleMore size={15} />
+                    <span>知识库检索 · {wiki.knowledgeOn ? "开" : "关"}</span>
+                  </button>
+                  <button className={`toggle ${wiki.memoryOn ? "on" : ""}`} onClick={() => void wiki.toggle("memory", !wiki.memoryOn)}>
+                    <MessageCircleMore size={15} />
+                    <span>长期记忆 · {wiki.memoryOn ? "开" : "关"}</span>
                   </button>
                   <span className="toggle-hint">
-                    {pet.legacyBlocked
-                      ? "已让位给外部桌宠：要恢复自研桌宠，先点上面的「关闭集成，恢复自研桌宠」。"
-                      : "拖动移动；左键点它回到主窗；右键有它的菜单。"}
+                    关闭长期记忆会同时停掉读取与写入（最近对话不受影响）；关闭知识库只是不检索，条目还在、也还能编辑。当前：{wiki.statusText || "正在读取条目…"}
                   </span>
                 </div>
-                {pet.error && (
-                  <p className="modal-intro" style={{ color: "#e5484d" }}>{pet.error}</p>
+                {wiki.entries.length > 0 && (
+                  <div className="memory-list">
+                    {wiki.entries.map((entry) => (
+                      <div key={entry.id} className="memory-item">
+                        <span>{entry.type}</span>
+                        <p><strong>{entry.sourcePath.replace(/^wiki:\/\//, "")}</strong> · v{entry.version} · {entry.chunks} 块</p>
+                        <div className="memory-actions">
+                          <button title="删除这条知识" onClick={() => void wiki.remove(entry.id)}><Trash2 size={13} /></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
+                <label className="field"><span>标题</span>
+                  <input value={wiki.draft.title} onChange={(event) => wiki.setDraft({ ...wiki.draft, title: event.target.value })} placeholder="例如：喜欢的乐队" />
+                </label>
+                <label className="field wide"><span>内容（Markdown）</span>
+                  <textarea className="profile-textarea" rows={5} value={wiki.draft.markdown}
+                    onChange={(event) => wiki.setDraft({ ...wiki.draft, markdown: event.target.value })}
+                    placeholder={"## 事实\n- 喜欢深夜写代码"} />
+                </label>
                 <div className="toggle-row">
-                  <button className="toggle" onClick={() => void pet.resetPosition()} disabled={pet.busy || !pet.open}>
-                    <RefreshCw size={15} />
-                    <span>找回桌宠</span>
+                  <button className="toggle" onClick={() => void wiki.save()} disabled={wiki.busy || !wiki.draft.title.trim() || !wiki.draft.markdown.trim()}>
+                    <Check size={15} /><span>保存条目</span>
                   </button>
-                  <span className="toggle-hint">把窗口移回屏幕内的工作区中央，并自动关闭点击穿透。</span>
+                  <span className="toggle-hint">保存走与文件导入同一条解析、切块与版本路径。</span>
                 </div>
-                <div className="toggle-row">
-                  <button className="toggle" onClick={() => void pet.disableClickThrough()} disabled={pet.busy || !pet.open}>
-                    <X size={15} />
-                    <span>关闭点击穿透</span>
-                  </button>
-                  <span className="toggle-hint">穿透开启时桌宠不再接收点击，恢复入口在这里。</span>
-                </div>
-                <div className="settings-divider" />
+                {wiki.notice && <p className="modal-intro">{wiki.notice}</p>}
+                {wiki.error && <p className="modal-intro" style={{ color: "#e5484d" }}>{wiki.error}</p>}
+              </>
+            )}
+
+            {(desktopPet.available || controls.session) && (
+              <>
+                <div id="settings-pet" className="settings-divider" />
                 <div className="modal-heading"><div><p className="eyebrow">External pet</p><h3>外部桌宠（OpenPet）</h3></div></div>
                 <p className="modal-intro">
                   接入现成的 OpenPet 运行时：Aiki 只通过本机 HTTP 让它说话、做动作、显示进度，
@@ -783,61 +786,62 @@ function App() {
                 )}
                 {desktopPet.notice && <p className="modal-intro">{desktopPet.notice}</p>}
                 {desktopPet.error && <div className="test-result error"><X size={17} /><span>{desktopPet.error}</span></div>}
-                {pet.session && pet.sessionView && (
+                {controls.session && controls.sessionView && (
                   <>
                     <div className="modal-heading"><div><p className="eyebrow">Companion session</p><h3>陪伴</h3></div></div>
                     <p className="modal-intro">
                       开启陪伴后，她会读取<strong>主显示器上当前前台窗口</strong>里可见的文字（本地识别，截图不出本机），
-                      并按你选的模式决定要不要主动搭话。点她可以随时「看屏幕聊聊」「聊两句」「暂停读屏」「结束陪伴」。
+                      并按你选的模式决定要不要主动搭话。在主窗可以随时看屏幕聊聊、暂停读屏或结束陪伴。
                       是否把读到的文字随对话发给 Provider，由上面「允许屏幕文字用于对话」单独控制——这一步不会被开启陪伴顺带打开。
                     </p>
                     <div className="toggle-row">
                       <button
-                        className={`toggle ${pet.sessionView.mode === "active" ? "on" : ""}`}
-                        onClick={() => void (pet.sessionView?.mode === "active"
-                          ? pet.session?.setMode("quiet")
-                          : pet.session?.enable("active", { consent: true }))}
+                        className={`toggle ${controls.sessionView.mode === "active" ? "on" : ""}`}
+                        onClick={() => void (controls.sessionView?.mode === "active"
+                          ? controls.session?.setMode("quiet")
+                          : controls.session?.enable("active", { consent: true }))}
                       >
                         <Sparkles size={15} />
-                        <span>主动陪伴 · {pet.sessionView.mode === "active" ? "开" : "关"}</span>
+                        <span>主动陪伴 · {controls.sessionView.mode === "active" ? "开" : "关"}</span>
                       </button>
                       <span className="toggle-hint">画面上的文字有明显变化时她可能主动说一句；仍受全局主动消息的每日上限、最小间隔与勿扰时段限制。</span>
                     </div>
                     <div className="toggle-row">
                       <button
-                        className={`toggle ${pet.sessionView.mode === "quiet" ? "on" : ""}`}
-                        onClick={() => void (pet.sessionView?.mode === "quiet"
-                          ? pet.session?.end()
-                          : pet.session?.enable("quiet", { consent: true }))}
+                        className={`toggle ${controls.sessionView.mode === "quiet" ? "on" : ""}`}
+                        onClick={() => void (controls.sessionView?.mode === "quiet"
+                          ? controls.session?.end()
+                          : controls.session?.enable("quiet", { consent: true }))}
                       >
                         <BellOff size={15} />
-                        <span>安静陪伴 · {pet.sessionView.mode === "quiet" ? "开" : "关"}</span>
+                        <span>安静陪伴 · {controls.sessionView.mode === "quiet" ? "开" : "关"}</span>
                       </button>
-                      <span className="toggle-hint">照常读屏更新本地上下文，但绝不主动说话——只有你点她或打字她才回。</span>
+                      <span className="toggle-hint">照常读屏更新本地上下文，但绝不主动说话——只有你主动提问她才回。</span>
                     </div>
                     <div className="toggle-row">
                       <button
                         className="toggle"
-                        onClick={() => void pet.session?.pause()}
-                        disabled={pet.sessionView.mode === "off"}
+                        onClick={() => void controls.session?.pause()}
+                        disabled={controls.sessionView.mode === "off"}
                       >
                         <PowerOff size={15} />
                         <span>暂停读屏</span>
                       </button>
                       <span className="toggle-hint">
                         停止采集并清空已读到的屏幕内容，桌宠保留、普通聊天照常。
-                        当前状态：{COMPANION_READ_LABELS[pet.sessionView.readState] ?? pet.sessionView.readState}
-                        {pet.sessionView.quota ? `（本分钟已读屏 ${pet.sessionView.quota.used}/${pet.sessionView.quota.limit} 次）` : ""}
+                        当前状态：{COMPANION_READ_LABELS[controls.sessionView.readState] ?? controls.sessionView.readState}
+                        {controls.sessionView.quota ? `（本分钟已读屏 ${controls.sessionView.quota.used}/${controls.sessionView.quota.limit} 次）` : ""}
                       </span>
                     </div>
-                    {pet.sessionView.notice && <p className="modal-intro">{pet.sessionView.notice}</p>}
-                    {pet.sessionView.error && (
-                      <p className="modal-intro" style={{ color: "#e5484d" }}>{pet.sessionView.error}</p>
+                    <div className="toggle-row">
+                      <button className="toggle" onClick={() => void controls.screenTalk()}>看屏幕聊聊</button>
+                      <button className="toggle" onClick={() => void controls.session?.end()}>结束陪伴</button>
+                    </div>
+                    {controls.sessionView.notice && <p className="modal-intro">{controls.sessionView.notice}</p>}
+                    {controls.sessionView.error && (
+                      <p className="modal-intro" style={{ color: "#e5484d" }}>{controls.sessionView.error}</p>
                     )}
                   </>
-                )}
-                {pet.error && (
-                  <p className="modal-intro" style={{ color: "#e5484d" }}>{pet.error}</p>
                 )}
               </>
             )}

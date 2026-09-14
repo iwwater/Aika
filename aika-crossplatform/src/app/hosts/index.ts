@@ -20,6 +20,7 @@ import { createTauriPetProcessPort } from "../../services/desktopPet/tauriPetPro
 import { createForegroundSource } from "../../services/environment/foregroundSource";
 import { createScreenSource, SCREEN_CHANGE_EVENT } from "../../services/environment/screenSource";
 import { createOcrEngine } from "../../services/environment/ocrText";
+import { createCaptureScheduler } from "../../services/environment/captureScheduler";
 import { environmentPlugin } from "../plugins/environmentPlugin";
 import { environmentHostPlugin } from "../plugins/environmentHostPlugin";
 import { desktopPetPlugin } from "./desktopPet";
@@ -130,6 +131,12 @@ export function tauriHostPlugins(options: HostOptions = {}): AikaPlugin[] {
    * OCR 引擎在两条轨之间共用一个实例（不另开 worker）。
    */
   const ocr = createOcrEngine({ langPath: TESSDATA_PATH, languages: OCR_LANGUAGES, clock });
+  /**
+   * 统一采集调度器（MVP-05-E）：在装配处**建一次**，同时注入词表轨与
+   * `environmentHostPlugin`（后者用它注册 `CaptureSchedulerToken`）。
+   * 以前两处各建一份，"词表轨与全文轨共用每分钟 10 次" 只是注释里的承诺。
+   */
+  const captureScheduler = createCaptureScheduler({ clock });
   const environmentSources = [
     createForegroundSource(environmentBridge, { hostEpoch: lifecycle.epoch() }),
     createScreenSource({
@@ -145,6 +152,7 @@ export function tauriHostPlugins(options: HostOptions = {}): AikaPlugin[] {
       ocr,
       clock,
       hostEpoch: lifecycle.epoch(),
+      scheduler: captureScheduler,
     }),
   ];
 
@@ -152,7 +160,7 @@ export function tauriHostPlugins(options: HostOptions = {}): AikaPlugin[] {
     ...baseHost(() => openDesktopStorage(secrets), secrets, notifier, createTauriFetch(), options, lifecycle),
     // 环境感知（FE-18～22/31/32）：在此之前生产装配里一个传感器都没接。
     environmentPlugin({ sources: environmentSources, clock, hostEpoch: lifecycle.epoch() }),
-    environmentHostPlugin({ invoke, hostEpoch: lifecycle.epoch(), ocr }),
+    environmentHostPlugin({ invoke, hostEpoch: lifecycle.epoch(), ocr, scheduler: captureScheduler }),
     // 外部桌宠（PET-06）。两个端口都只认固定端点与本次 spawn 的句柄；
     // 配置默认关闭，因此装了这个插件在未启用时也是零请求、零进程。
     desktopPetPlugin({

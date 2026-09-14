@@ -18,7 +18,16 @@ import type { KnowledgeIndex } from "./knowledgeIndex";
 
 const KNOWLEDGE_SECTION: ContextSection = "knowledge";
 
-export function createKnowledgeContextSource(index: KnowledgeIndex): ContextSource {
+export interface KnowledgeSourceOptions {
+  /**
+   * 知识库（RAG）检索开关（MVP-06 AC-D）。resolve false = 本源零 snippet、
+   * **零检索调用**（「禁止额外检索」必须是零查询）。开关读取失败按可用处理——
+   * 知识不是个人数据，这里与 memorySource 的 fail-closed 刻意不同。不传 = 恒开。
+   */
+  isEnabled?: () => Promise<boolean>;
+}
+
+export function createKnowledgeContextSource(index: KnowledgeIndex, options: KnowledgeSourceOptions = {}): ContextSource {
   return {
     id: "knowledge",
     section: KNOWLEDGE_SECTION,
@@ -27,6 +36,16 @@ export function createKnowledgeContextSource(index: KnowledgeIndex): ContextSour
       if (!scope?.characterId || !scope.stage || !scope.mode) {
         // 没有本轮 scope 就没有可判定的解锁/授权依据：宁可空，不可越权。
         return [];
+      }
+      if (options.isEnabled) {
+        let enabled = true;
+        try {
+          enabled = await options.isEnabled();
+        } catch {
+          // 读不到开关：知识不是个人数据，不因一次开关读取失败而静默下线。
+          enabled = true;
+        }
+        if (!enabled) return [];
       }
       const retrieval = await index.retrieve({
         text: input.query,

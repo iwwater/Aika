@@ -484,3 +484,24 @@ describe("PET-04-H 文本气泡的存活时长不等于发送超时", () => {
     expect(harness.adapter.calls.say).toEqual([long]);
   });
 });
+
+describe("pet_command 诊断（真机排障用）", () => {
+  it("每条命令都落一条诊断：类别、outcome、代码齐备，永不带正文", async () => {
+    const harness = await setup({ emotions: { happy: "anim_happy" } });
+    harness.emit({ turnId: "t1", type: "state", state: "generating" });
+    harness.emit({ turnId: "t1", type: "generated", reply: { replyText: "在的哦", mood: "happy" } });
+    harness.emit({ turnId: "t1", type: "settled", state: "completed" });
+    await drain();
+
+    const commands = harness.diagnostics.filter((d) => d.type === "command");
+    // thinking(event) + emotion + say，一条命令一条诊断。
+    expect(commands.map((d) => (d as { command?: string }).command)).toEqual([
+      "event", "emotion", "say",
+    ]);
+    for (const d of commands) {
+      expect((d as { outcome?: string }).outcome).toBe("accepted");
+      // 正文绝不进诊断：整条诊断序列化后搜不到她说的话。
+      expect(JSON.stringify(d)).not.toContain("在的哦");
+    }
+  });
+});

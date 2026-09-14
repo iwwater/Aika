@@ -109,6 +109,15 @@ export interface ScreenTextContextSourceDeps {
   /** `environment.screenTextEnabled` 读取端口。 */
   getScreenTextEnabled: () => Promise<boolean>;
   clock: Clock;
+  /**
+   * 锁屏观测（MVP-04 AC-B）：返回 true = 宿主**确认**会话已锁定。
+   *
+   * 锁屏时一个摘录都不产出：这些文字是锁屏**之前**那一眼的画面，而 TTL 最长
+   * 60 秒——不挡就会在用户离开桌子之后继续进模型。只认确认过的锁定；无法判定
+   * 时按「没锁」处理（这是一条用户已单独授权的通道，TTL 与授权开关仍然兜着它）。
+   * 不传 = 该宿主没有锁屏观测能力（浏览器/测试装配），行为与之前完全一致。
+   */
+  isLocked?: () => Promise<boolean>;
 }
 
 export function createScreenTextContextSource(deps: ScreenTextContextSourceDeps): {
@@ -123,16 +132,19 @@ export function createScreenTextContextSource(deps: ScreenTextContextSourceDeps)
       const result = deps.current(deps.clock.now());
       if (!result) return [];
       let authorized: boolean;
+      let locked = false;
       try {
         authorized = await deps.getScreenTextEnabled();
+        // 锁屏判定与授权并列为「这段文字能不能送出去」的一部分。
+        locked = deps.isLocked ? await deps.isLocked() : false;
       } catch {
         return [];
       }
-      // 等待过异步授权读取：撤销/过期可能正好发生在这中间，重新取一次当前值。
+      // 等待过异步读取：撤销/过期/锁屏可能正好发生在这中间，重新取一次当前值。
       if (input.signal?.aborted) return [];
       const fresh = deps.current(deps.clock.now());
       if (!fresh || fresh.id !== result.id) return [];
-      return buildScreenContextSnippets(fresh, { now: deps.clock.now(), authorized });
+      return buildScreenContextSnippets(fresh, { now: deps.clock.now(), authorized: authorized && !locked });
     },
   };
 }

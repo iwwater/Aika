@@ -201,6 +201,21 @@ export function presentationPlugin(options: PresentationPluginOptions = {}): Aik
           },
         },
         clock: desktopPetClock,
+        // 命令诊断进 trace（MVP-04 真机排障）：「桌宠为什么没反应」此前只能靠
+        // 目测，现在 outcome/code 落盘，Inspector 可查。正文永不进 trace。
+        ...(trace
+          ? {
+              onDiagnostic: (event: { type: string; command?: string; outcome?: string; code?: string }) => {
+                if (event.type !== "command") return;
+                trace.record("pet", {
+                  kind: "pet_command",
+                  command: event.command ?? "unknown",
+                  outcome: event.outcome ?? "unknown",
+                  code: event.code ?? null,
+                });
+              },
+            }
+          : {}),
       }), { disposer: (value) => value.dispose() });
 
     },

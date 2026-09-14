@@ -31,12 +31,17 @@ function makeEvent(overrides: Partial<EnvironmentEvent> & {
 
 function setup(options: {
   busy?: boolean | null;
+  busyReason?: string;
   gates?: { global?: boolean; environment?: boolean; context?: boolean };
   running?: boolean;
   recentWithinTtlMs?: number;
+  /** monitor 的 recent 摘要里那条规则 ID；要与被测事件一致，否则过不了 TTL 门禁。 */
+  recentRuleId?: string;
 } = {}) {
   const clock = createManualClock(0);
   const submits: Array<{ reasonKind: ProactiveReasonKind; buffer: readonly string[] }> = [];
+  let busyValue: boolean | null = options.busy ?? null;
+  let busyReason = options.busyReason ?? (options.busy === null ? "unknown" : "normal_window");
   const gates = {
     globalProactive: async () => options.gates?.global ?? true,
     environmentProactive: async () => options.gates?.environment ?? true,
@@ -51,7 +56,7 @@ function setup(options: {
     statuses: () => [{ sourceId: "screen", state: options.running === false ? "off" : "running", generation: 1, error: null }],
     recent: () => {
       const age = options.recentWithinTtlMs ?? ENVIRONMENT_SUMMARY_TTL_MS - 1;
-      return [{ sourceId: "screen", kind: "game_event", ruleId: "victory", process: null, confidence: 0.95, receivedMonotonicMs: clock.now() - age }];
+      return [{ sourceId: "screen", kind: "game_event", ruleId: options.recentRuleId ?? "victory", process: null, confidence: 0.95, receivedMonotonicMs: clock.now() - age }];
     },
     setSourceEnabled: async () => undefined,
     stopAll: async () => undefined,
@@ -59,8 +64,8 @@ function setup(options: {
     dispose: async () => undefined,
   };
   const busy = options.busy === undefined ? null : {
-    refresh: async () => ({ value: options.busy, observedMonotonicMs: clock.now(), hostEpoch: "e", reasonCode: options.busy === null ? "unknown" : "normal_window" }),
-    current: () => ({ value: options.busy, observedMonotonicMs: clock.now(), hostEpoch: "e", reasonCode: options.busy === null ? "unknown" : "normal_window" }),
+    refresh: async () => ({ value: busyValue, observedMonotonicMs: clock.now(), hostEpoch: "e", reasonCode: busyReason }),
+    current: () => ({ value: busyValue, observedMonotonicMs: clock.now(), hostEpoch: "e", reasonCode: busyReason }),
     clear: () => undefined,
   };
   const trigger = createEnvironmentTrigger({
@@ -75,7 +80,14 @@ function setup(options: {
     },
   });
   trigger.start();
-  return { trigger, clock, submits };
+  return {
+    trigger, clock, submits,
+    /** 运行中切换忙碌观测（锁屏/解锁/全屏），用来验证门禁读的是当下观测而不是旧值。 */
+    setBusy(value: boolean | null, reason = "normal_window") {
+      busyValue = value;
+      busyReason = reason;
+    },
+  };
 }
 
 describe("environmentTrigger（FE-22-G）", () => {
@@ -193,5 +205,36 @@ describe("environmentTrigger（FE-22-G）", () => {
     expect(serialized).toContain("victory");
     expect(serialized).not.toContain("INJECTED");
     expect(serialized).not.toContain("IGNORE-PREVIOUS");
+  });
+
+  it("锁屏（session_locked）→ 零 submit 且清空缓冲，解锁后不补发（MVP-04 AC-B）", async () => {
+    const h = setup({ busy: false });
+    // 1. 先攒一条弱信号：未到门槛 → remember（正常情况下留着等累计）。
+    await h.trigger.handleEvent(makeEvent({ payload: { kind: "screen_keyword", keyword: "error" }, eventId: "w1" }));
+    expect(h.submits).toHaveLength(0);
+    expect(h.trigger.snapshot().bufferCount).toBe(1);
+
+    // 2. 锁屏：连结算类候选（victory）也不发，决策原因可见。
+    h.setBusy(true, "session_locked");
+    await h.trigger.handleEvent(makeEvent({ payload: { kind: "game_event", event: "victory" }, eventId: "l1" }));
+    expect(h.submits).toHaveLength(0);
+    expect(h.trigger.snapshot().lastDecision?.reason).toBe("session-locked");
+    // 缓冲被清空：锁屏期间累计的「持续时长」不能留给解锁后当依据。
+    expect(h.trigger.snapshot().bufferCount).toBe(0);
+
+    // 3. 解锁后同样的弱信号要从头累计，不因为锁屏期间的记忆而立刻触发。
+    h.setBusy(false, "normal_window");
+    await h.trigger.handleEvent(makeEvent({ payload: { kind: "screen_keyword", keyword: "error" }, eventId: "w2" }));
+    expect(h.submits).toHaveLength(0);
+    expect(h.trigger.snapshot().bufferCount).toBe(1);
+  });
+
+  it("全屏（fullscreen）与锁屏是两回事：结算类候选照常触发（FE-22 冻结语义）", async () => {
+    // 这条是刻意的语义边界：全屏=在玩游戏，结算类事件正是陪伴的触发点；
+    // 锁屏=用户不在桌面前（上一条）。宿主把两者分开报，代码也必须分开处理。
+    const h = setup({ busy: true, busyReason: "fullscreen", recentRuleId: "pentakill" });
+    await h.trigger.handleEvent(makeEvent({ payload: { kind: "game_event", event: "pentakill" }, eventId: "p1" }));
+    expect(h.submits).toHaveLength(1);
+    expect(h.submits[0].reasonKind).toBe("game-result");
   });
 });

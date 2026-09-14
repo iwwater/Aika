@@ -2,12 +2,10 @@ mod desktop_pet_http;
 mod desktop_pet_process;
 mod foreground;
 mod gateway;
-// SPEC 声明的文件名 petWindow.rs；Rust 命名规范告警在此豁免。
-#[allow(non_snake_case)]
-mod petWindow;
 mod remote;
 mod screen;
 mod secret_store;
+mod window_access;
 
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
@@ -40,14 +38,6 @@ pub fn run() {
             foreground::environment_foreground_enable,
             foreground::environment_foreground_current,
             foreground::environment_busy_query,
-            petWindow::pet_window_show,
-            petWindow::pet_window_hide,
-            petWindow::pet_window_set_click_through,
-            petWindow::pet_window_reset_position,
-            petWindow::pet_window_broadcast,
-            petWindow::pet_window_request_snapshot,
-            petWindow::pet_window_focus_main,
-            petWindow::pet_intent_submit,
             desktop_pet_http::desktop_pet_http_request,
             desktop_pet_process::desktop_pet_process_validate,
             desktop_pet_process::desktop_pet_process_spawn,

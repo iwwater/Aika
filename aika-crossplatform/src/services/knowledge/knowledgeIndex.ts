@@ -81,10 +81,25 @@ export interface KnowledgeImportEntry {
 
 export interface KnowledgeIndex {
   importDocuments(entries: readonly KnowledgeImportEntry[]): Promise<{ updated: number; skipped: number }>;
+  /** 用户直接在 Wiki 里写的正文：与文件导入同一条解析/切块/版本路径，只是不经过文件读取。 */
+  importContent(entries: readonly KnowledgeContentEntry[]): Promise<{ updated: number; skipped: number }>;
+  /** 全部激活条目（Wiki 列表用），按更新时间倒序。 */
+  listDocuments(): Promise<readonly KnowledgeDocumentSummary[]>;
   removeDocument(id: string): Promise<void>;
   retrieve(query: KnowledgeQuery): Promise<KnowledgeRetrieval>;
   /** 诊断：当前 revision（缓存键的一部分）与 FTS 可用性。 */
   status(): { revision: number; fts: boolean };
+}
+
+/** 用户直接在 Wiki 里写的条目：跳过文件读取，其余与文件导入完全一致。 */
+export interface KnowledgeContentEntry extends KnowledgeImportEntry {
+  content: string;
+}
+
+/** Wiki 列表条目：文档元数据 + 块数与更新时间。 */
+export interface KnowledgeDocumentSummary extends KnowledgeDocument {
+  updatedAt: number;
+  chunks: number;
 }
 
 export interface KnowledgeIndexOptions {
@@ -406,6 +421,53 @@ export function createKnowledgeIndex(options: KnowledgeIndexOptions): KnowledgeI
       });
       importChain = run.catch(() => undefined);
       return run;
+    },
+
+    async importContent(entries: readonly KnowledgeContentEntry[]): Promise<{ updated: number; skipped: number }> {
+      if (entries.length > KNOWLEDGE_IMPORT_LIMITS.maxFiles) {
+        throw new Error(`单次导入条目数超上限（${KNOWLEDGE_IMPORT_LIMITS.maxFiles}）`);
+      }
+      await ensureSchema();
+      // 与文件导入同一条串行化链：Wiki 保存和文件导入不会互相踩 staging。
+      const run = importChain.then(async () => {
+        let updated = 0;
+        let skipped = 0;
+        await withTransaction(db, async () => {
+          for (const entry of entries) {
+            const outcome = await importOne(entry, entry.content);
+            if (outcome === "updated") updated += 1;
+            else skipped += 1;
+          }
+          await rebuildFts();
+        });
+        if (updated) bumpRevision();
+        return { updated, skipped };
+      });
+      importChain = run.catch(() => undefined);
+      return run;
+    },
+
+    async listDocuments(): Promise<KnowledgeDocumentSummary[]> {
+      await ensureSchema();
+      const rows = await db.select<(DocumentRow & { chunk_count: number; updated_at: number })[]>(
+        `SELECT d.*, d.updated_at AS updated_at,
+                (SELECT COUNT(*) FROM knowledge_chunks c WHERE c.document_id = d.id AND c.active = 1) AS chunk_count
+         FROM knowledge_documents d WHERE d.active = 1 ORDER BY d.updated_at DESC`,
+        [],
+      );
+      return (Array.isArray(rows) ? rows : []).map((row) => ({
+        id: row.id,
+        sourcePath: row.source_path,
+        contentHash: row.content_hash,
+        version: row.version,
+        characterId: row.character_id,
+        type: row.type as KnowledgeType,
+        tags: parseJsonArray(row.tags),
+        unlockStage: row.unlock_stage as KnowledgeStage,
+        allowedModes: parseJsonArray(row.allowed_modes) as ModeId[],
+        updatedAt: row.updated_at,
+        chunks: row.chunk_count,
+      }));
     },
 
     async removeDocument(id: string): Promise<void> {

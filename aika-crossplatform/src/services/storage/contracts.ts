@@ -105,7 +105,12 @@ export const SETTING_KEYS = {
   environmentForegroundEnabled: "environment.foregroundEnabled",
   /** 「将环境摘要用于对话」授权（FE-19）。与采集开关分离，默认 false。 */
   environmentContextEnabled: "environment.contextEnabled",
-  /** 桌宠窗口开关（FE-20）。默认 false；打开桌宠不隐式开启任何传感器。 */
+  /**
+   * **墓碑键**：旧自研桌宠窗口的开关（FE-20）。窗口在 MVP-03 已删除，生产代码
+   * 没有任何读取方。保留常量是为了让「旧开关键不等于外部桌宠授权」这条断言可写
+   * （外部桌宠用 `desktopPet`，另一个键），而不是为了继续读它——库里残留的旧值
+   * 永不生效。
+   */
   petWindowEnabled: "pet.windowEnabled",
   /** 屏幕感知开关（FE-21）。默认 false：默认关 = Rust 根本没有采集线程。 */
   environmentScreenEnabled: "environment.screenEnabled",
@@ -121,6 +126,17 @@ export const SETTING_KEYS = {
   companionConsent: "pet.companionConsent",
   /** 环境主动搭话开关（FE-22）。与全局 proactive、摘要授权分层。 */
   environmentProactiveEnabled: "environment.proactiveEnabled",
+  /**
+   * 长期记忆读写总开关（MVP-06）。默认 true（与既有行为一致）。
+   * 关闭时**读**（记忆源检索）与**写**（抽取/写回）都停；Recent 会话不受影响。
+   * 与 `memoryExtraction` 的分工：那个只管「抽取 + 写回」这一半。
+   */
+  memoryEnabled: "memory.enabled",
+  /**
+   * 知识库（Wiki）检索开关（MVP-06）。默认 true。
+   * 关闭时知识源零检索调用；Wiki 条目仍在库里、仍可查看编辑，只是不进 prompt。
+   */
+  knowledgeEnabled: "knowledge.enabled",
   /**
    * 外部桌宠（OpenPet）集成配置（PET-06）。JSON，结构见 `desktopPet.integration.v1`
    * 的 `PetConfig`。默认 `enabled=false`：**旧 `pet.enabled` 不会被自动转换成

@@ -33,6 +33,15 @@ export interface EnvironmentHostPluginOptions {
   hostEpoch: string;
   /** 共享的 OCR 引擎（与 FE-21 词表轨同一个实例，不另开 worker）。 */
   ocr: import("../../services/environment/ocrText").OcrEngine;
+  /**
+   * 统一采集调度器（MVP-05-E）。
+   *
+   * 词表轨（FE-21）在 `hosts/index.ts` 里构造，比本插件早，所以调度器必须
+   * **在宿主装配处建一次**再注入两边；不传时退回本插件自建（既有测试与
+   * 单插件装配行为不变）。此前装配处漏传，"两条轨共用一份 10 次/分钟"
+   * 只是注释里的承诺。
+   */
+  scheduler?: import("../../services/environment/captureScheduler").CaptureScheduler;
 }
 
 /** Rust `environment_capture_window` 的返回投影；形状不符按不可用处理。 */
@@ -101,7 +110,8 @@ export function environmentHostPlugin(options: EnvironmentHostPluginOptions): Ai
       context.registrar.provide(EnvironmentBusyObserverToken, () => busy);
 
       // 一个调度器，两条轨共用：FE-21 词表轨与 FE-32 按需读屏共享 10 次/分钟。
-      const scheduler = createCaptureScheduler({ clock });
+      // 宿主装配通常已经把同一个实例注入进来了（见 options.scheduler）。
+      const scheduler = options.scheduler ?? createCaptureScheduler({ clock });
       context.registrar.provide(CaptureSchedulerToken, () => scheduler);
 
       const screenContext = createScreenContextSource({
