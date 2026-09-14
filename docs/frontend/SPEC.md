@@ -25,7 +25,7 @@
 | [FE-14](specs/FE-14.md) | 远程输出协议内核：OutboundChannel 与 schema v1（草案） | AUTO_PASS（2026-09-13）：A~G 全过（白名单投影/cursor 单调/重放去重/trace 四门/慢消费者限额/conformance 包+两处突变命中）；真实传输归 FE-15/16。见[验收报告](reports/FE-14_ACCEPTANCE.md) |
 | [FE-17-pre](specs/FE-17.md) | 网关认证、暴露面与安全门禁（pre 步骤） | PARTIAL-pre（2026-09-13）：pre AUTO_PASS（凭证仓库/暴露策略/认证门负例全过，1244 全量全绿）；tauri/dev-relay NOT RUN；public BLOCKED。见[验收报告](reports/FE-17_ACCEPTANCE.md) |
 | [FE-15](specs/FE-15.md) | Tauri HTTP传输与手机页迁移 | PARTIAL（2026-09-13）：FE-15-A 过（tauriTransport 桥 + FE-14 conformance fake invoke/listen 六用例）；B/C/D/E 需真实宿主 NOT RUN。见[验收报告](reports/FE-15_ACCEPTANCE.md) |
-| [FE-16](specs/FE-16.md) | 浏览器 dev 宿主 transport 与 Node ws 中继（草案） | READY；执行当前已审阅正文 |
+| [FE-16](specs/FE-16.md) | 浏览器 dev 宿主 transport 与 Node ws 中继 | PARTIAL（2026-09-14 同步索引）：本地 loopback 与 wsTransport 已实现，真实宿主装配接线与 relay 配对 NOT RUN。见[验收报告](reports/FE-16_ACCEPTANCE.md) |
 | [FE-17](specs/FE-17.md) | 网关安全收口：分层开关、token 轮换与暴露面审计（草案） | READY；执行当前已审阅正文 |
 | [FE-18](specs/FE-18.md) | 环境契约、生命周期、撤销与摘要 TTL | PASS（2026-09-14 模块内）：A~J 全过（43 测试：schema 防御/去重频控/TTL/generation 撤销/dispose 幂等），生产 monitor+fake source；真机传感器归 FE-19/21。见[验收报告](reports/FE-18_ACCEPTANCE.md) |
 | [FE-19](specs/FE-19.md) | 前台应用、摘要授权、停止全部与可信 busy | PASS（2026-09-14 模块内）：A/E/H/I/J 全过（63 测试 + Rust 3），Rust hook 无标题采集、busy fail-closed；真机 <1s/20 次开关/锁屏 DPI **NOT RUN**。见[验收报告](reports/FE-19_ACCEPTANCE.md) |
@@ -81,9 +81,15 @@
 
 | SPEC | 交付 | 依赖与状态 |
 | --- | --- | --- |
-| [FE-31](specs/FE-31.md) | 开启陪伴统一入口、active/quiet、点击读屏、pet普通输入、暂停/结束 | 新增必需，待实现/验收；FE-18/19/20/22及FE-32端口；可fake外部端口验逻辑 |
-| [FE-32](specs/FE-32.md) | 主显示器前台可见中英文OCR、按需静止读屏、授权文字摘录上下文 | 新增必需，待实现/验收；FE-18/19/21；真实文本理解另验 |
+| [FE-31](specs/FE-31.md) | 开启陪伴统一入口、active/quiet、点击读屏、pet普通输入、暂停/结束 | PARTIAL（2026-09-14 生产逻辑轨）：A~F 全过（22+25+6 定向测试、Rust 31），并**首次把环境链路接进生产装配**；G 真机逐项演示 **NOT RUN**。见[验收报告](reports/FE-31_ACCEPTANCE.md) |
+| [FE-32](specs/FE-32.md) | 主显示器前台可见中英文OCR、按需静止读屏、授权文字摘录上下文 | PARTIAL（2026-09-14）：C/D/E 过（投影出口/窗口回退/调度限流）；F 的双语离线加载已验（chi_sim 随包登记，生产路径实测中文/混排识别）；**A（冻结集 CER，缺真实素材）与 B（真机真实 Provider）NOT RUN**。见[验收报告](reports/FE-32_ACCEPTANCE.md) |
 
-执行顺序补充：FE-32依赖基础OCR，FE-31逻辑可按端口独立做，真实会话等FE-32；FE-30完整验收在二者及渲染/口型后。COMP-01～05归FE-31，COMP-02/06另归FE-32，COMP-07归FE-30-J～N。不要为遵守数字顺序先把FE-30标为完成。
+| [FE-33](specs/FE-33.md) | 环境链路真机装配验收（不含 Live2D） | READY，2026-09-14 新增；前置 FE-18～22/31/32 已实现且装配已接通，需真机 + 用户在场 + 一份 Provider 凭据。收口 FE-19/20/21/22/31/32 的设备遗留项；**不替代 FE-30** |
+
+执行顺序补充：FE-32依赖基础OCR，FE-31逻辑可按端口独立做，真实会话等FE-32；FE-30完整验收在二者及渲染/口型后。**FE-33 插在 FE-30 之前**：它只验「新接上的生产装配在真机上是否真的通」，与角色线并行，不含 Live2D、不含 30 分钟组合负载。COMP-01～05归FE-31，COMP-02/06另归FE-32，COMP-07归FE-30-J～N。不要为遵守数字顺序先把FE-30标为完成。
 
 worker交付规则：先检查已有实现和报告，对新增AC逐项列缺口，再补代码与定向测试；不得只改文档状态。未经过真实中英文读屏、pet点击对话、安静模式、真实音频/角色验证，不得宣称用户要求已实现或goal完成。
+
+### 2026-09-14 执行后补记（本轮发现，影响所有环境线 SPEC 的结论口径）
+
+FE-18～22 此前的 PASS **全部只是「模块内」**：生产装配里 `environmentPlugin` 从未被 `kernel.use()`，两个 source 没有任何调用方，busy 观测者没有提供方，FE-19 的环境上下文源也没进 `contextSourcesPlugin`，`ScreenState` 没有 `.manage()`。真机上一个传感器都不会启动、一条摘要都不会进请求。本轮在 FE-31 的文件范围内补齐了这条装配线（详见 [FE-31 验收报告](reports/FE-31_ACCEPTANCE.md)），但**新写的装配从未在真实 Tauri 进程里跑过**。另：本轮已恢复 `npm install` 并随包登记 `chi_sim.traineddata`（tessdata_fast 4.1.0，Apache-2.0，哈希见 THIRD_PARTY_NOTICES.md）；FE-21-F 的 120 张冻结集评估恢复可复现（P=1.00/R=1.00/热 P95=85ms），中文与混排识别在生产代码路径上验过一次。**仍缺 FE-32-A 要求的真实画面素材与人工转录**。

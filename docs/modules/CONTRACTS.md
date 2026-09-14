@@ -285,6 +285,27 @@ LLM 各自的 `docs/llm/specs/LLM-01…05` 文件内写明实现级接口；[STT
 
 装配：`main.tsx` 按 Tauri 窗口 label（`app/hosts/detect.ts currentWindowLabel`）分流 pet 页；pet 窗口不建内核。主窗保留「找回桌宠/关闭穿透/关闭桌宠」入口。
 
+### v1 之后的追加（2026-09-14，FE-32 屏幕文本上下文 / FE-31 陪伴会话，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `screen-context.v1`（`ScreenContextResult`：schemaVersion/id/sourceId/sourceTrust/captureGeneration/sessionGeneration/reason/window/region/capturedMonotonicMs/expiresAtMonotonicMs/language/confidence/readStatus/excerpts/truncated/retryAtMonotonicMs） | `services/environment/screenContextProjection.ts` | 新协议。`window` **没有标题字段**；摘录 ≤20 段 / ≤2000 字符 / 单段 ≤240（与 `sanitizeRetrievedText` 的出口上限对齐）；`readStatus` 区分 empty / low_confidence / timeout / unavailable / self_obscured / unauthorized / rate_limited / superseded / cancelled——**识别不到文字不等于画面没有内容** | FE-31 陪伴会话、请求装配、FE-30 |
+| `ScreenContextSource.readOnce({reason, sessionGeneration, signal})` / `current` / `clear` / `revoke` / `quota` + `WindowCapturePort` | `services/environment/screenContextSource.ts` | 新端口。前台是 pet/主窗 → 改读「最后一个有效外部窗口」并由 Rust 重新验证；TTL 60s 自 capture 计时；撤销后迟到结果一律作废且不落地 | FE-31、`contextSourcesPlugin`、宿主装配 |
+| `CaptureScheduler`（并发 1 / pending 1 / 滚动 10 次每分钟 / manual 优先） | `services/environment/captureScheduler.ts` | 新模块。**FE-21 词表轨与 FE-32 全文读屏共用同一实例**，手动请求计入同一份总额；被顶掉/被取消不消耗额度 | `screenSource`（可选 `scheduler`）、`screenContextSource` |
+| `OcrResult.lines?` / `collectLines` / `OcrEngineOptions.languages?` | `services/environment/ocrText.ts` | **可选字段与可选选项追加**，缺省 `eng` 与 FE-21 口径一致，旧调用方零影响。`eng` 与 `chi_sim` 两份 traineddata 均随包（tessdata_fast 4.1.0，Apache-2.0，哈希登记见 `THIRD_PARTY_NOTICES.md`），生产装配声明 `eng+chi_sim`，运行时不外联。**注意 tesseract 的 `data` 同时给扁平与嵌套的 lines/words，两者指向同一批内容**——`collectLines`/`collectWords` 优先取最外层扁平数组，否则每行会被数三遍 | FE-32 投影 |
+| `createScreenTextContextSource({current, getScreenTextEnabled, clock})` | `services/environment/contextSource.ts` | 新 `ContextSource`，与 FE-19 环境摘要源**分开注册、分开授权**。`load` 即请求装配最终校验点：未授权/过期/撤销一律空数组 | `contextSourcesPlugin`、LLM contextAssembler |
+| `SETTING_KEYS.environmentScreenTextEnabled` / `.companionMode` / `.companionConsent` | `services/storage/contracts.ts` | 新键，默认 false / off / false；三层授权（采集 / 摘要 / 文字摘录）互不隐式开启 | environmentPresenter、CompanionSessionController、设置页 |
+| Rust `environment_capture_window`（`src-tauri/src/screen.rs`） | 同上 + `lib.rs` | 新命令，**只允许主窗调用**；返回体无窗口标题；pet/主窗覆盖目标客户区且无法排除 → `obscured`；纯函数 `classify_window_capture` / `rects_intersect` / `clamp_rect_to_frame` / `crop_to_png` 可单元测试 | FE-32 capture 端口 |
+| `pet.intent.v1`（requestId / petEpoch / kind∈{talk,screen_talk,pause_reading,end_session,open_main} / text≤2000） | `src/pet/petIntent.ts` | 新协议。多余字段（systemPrompt / source / provider / toolCall / path）**不出现在校验结果里**；requestId 去重 120s×256 | pet 页、`intentBridge`、CompanionSessionController |
+| Rust `pet_intent_submit` | `src-tauri/src/petWindow.rs` | 新命令，**只允许 pet 调用**（与 `pet_window_broadcast` 的方向/权限相反），8KB 上限；形状白名单不在 Rust 复制，单点在主窗 | pet 页 |
+| `pet.presentation.v1` 追加可选 `companion`（mode/readState/notice）与 `petEpoch` | `src/pet/petPresentation.ts` | **可选字段追加**，旧壳照常渲染；只投影状态，pet 端拿不到任何屏幕文字 | pet 页、FE-28/29 |
+| `CompanionPresenter.sendEnvironmentProactive(buffer)` | `presentation/companionPresenter.ts` | 接口新增方法，走**既有**共享发送预约与同一份每日额度/勿扰门禁；buffer 只放受控标识，摘录不从主动理由进模型 | `usePetWindow`、FE-30 |
+| `useOptionalService` | `app/kernelContext.tsx` | `registry.tryResolve` 的 React 包装；不新增第四个 resolve 入口 | `usePetWindow` |
+
+**装配（本轮才真正接上，并纠正此前 FE-19 节里与源码不符的那句）**：`tauriHostPlugins` 现在构造 foreground + screen 两个 source 与共享 OCR 引擎并注册 `environmentPlugin`；新增 `environmentHostPlugin` 提供 busy 观测者、统一调度器与按需读屏上下文源；`contextSourcesPlugin` 注册环境摘要源与屏幕文字摘录源；`lib.rs` 补上 `.manage(ScreenState::default())`。在此之前这些模块在生产装配里**没有任何调用方**——真机上一个传感器都不会启动。新装配尚未在真实 Tauri 进程里运行过。
+
+`CompanionSessionController` **不进注册表**：它要同时够到 pet 窗口管理器（主窗 Hook 持有）、屏幕上下文源与既有发送路径，与 `PetWindowManager` 同属「主窗 Hook 拥有的会话对象」；放进注册表就得为「宿主没有屏幕能力」造一个假实现。
+
 ### v1 之后的追加（2026-09-14，FE-19 前台传感器、摘要授权与可信 busy，向后兼容）
 
 | 追加 | 位置 | 兼容方式 | 受影响消费者 |
