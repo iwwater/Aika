@@ -1,5 +1,7 @@
 # 可持续安全执行计划
 
+> 2026-09-14 桌宠策略覆盖：如后续任务涉及桌宠，只按 [Integration RPD](frontend/RPD_DESKTOP_PET_INTEGRATION.md) 与 [PET SPEC](frontend/SPEC_DESKTOP_PET.md) 派发。停止旧自研桌宠窗口/renderer/口型路线；其他业务与历史证据保留。本次规格拆分本身不自动恢复后台执行。
+
 日期：2026-09-13。只授权实现与自动验证，不授权发布、外部发送、消费新服务、读取私人资料或解除用户后置项。新 SPEC 的 READY 仅表示可以按此范围执行。
 
 ## 状态与继续规则

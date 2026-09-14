@@ -1,5 +1,7 @@
 # 给另一位 worker 的完整提示词
 
+> 2026-09-14 桌宠路线已替换：后续桌宠任务先读 [Integration RPD](frontend/RPD_DESKTOP_PET_INTEGRATION.md) 和 [PET SPEC](frontend/SPEC_DESKTOP_PET.md)，不得继续按FE-20/27～29实现桌宠窗口、renderer或口型。此更新只纠正规格优先级，不自动启动任务或删除旧实现。
+
 请在 F:\AIVoice\Aika 开启 goal 模式，目标是：按 docs/GOAL_EXECUTION_PLAN.md 的依赖顺序，尽可能完成本轮已授权的本地实现、旧SPEC自动审查、必要修复和自动验收，将需要人工/真实设备/外部授权的部分整理为可复现验收队列。不要把整个产品发布或全人工验收设为本轮完成条件。
 
 先读 AGENTS.md、docs/PRD_V0.5.md、docs/REVIEW_V0.5_AND_BACKLOG.md、docs/GOAL_EXECUTION_PLAN.md，再读当前模块PRD/SPEC/共享契约。把执行计划中波次0～8转成持久清单 docs/GOAL_RUN_LEDGER.md，一次执行一份SPEC，完成后自主挑选下一个前置满足的节点，不要每份结束询问是否继续。

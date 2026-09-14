@@ -1,5 +1,7 @@
 # Aika 文档入口
 
+> 2026-09-14 桌宠策略更新：[Aiki Desktop Pet Integration RPD](frontend/RPD_DESKTOP_PET_INTEGRATION.md) → [PET-01～08 SPEC](frontend/SPEC_DESKTOP_PET.md)。0.5 集成 OpenPet，0.6 条件接入 NyaDeskPet；停止自研桌宠 Runtime 路线。当前完成文档，非实现验收。
+
 整个项目唯一的文档目录是仓库根 `docs/`。业务源码仍在 `aika-crossplatform/src/`；不在子工程或 src 内再建另一套 docs。目录 README 可保留最小使用说明并链接到这里。
 
 ## 当前开发

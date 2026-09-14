@@ -1,0 +1,22 @@
+# PET-01 实机探测原始响应（去敏，v0.1.6 / 127.0.0.1:17321）
+# 采集方式见 PET-01_ACCEPTANCE.md §2；curl -X POST -H 'Content-Type: application/json'
+
+## POST /api/action  {"animationId":"   "}
+{"error":"animationId is required","ok":false}
+## POST /api/say  {oops
+{"error":"invalid JSON: key must be a string at line 1 column 2","ok":false}
+## GET /api/nope
+{"error":"route not found","ok":false}
+## POST /api/say  {"text":"x","ttlMs":"abc"}
+{"error":"invalid JSON: invalid type: string \"abc\", expected u64 at line 1 column 25","ok":false}
+## POST /api/event  {"type":"not-a-real-event"}
+{"error":"invalid JSON: unknown variant `not-a-real-event`, expected one of `thinking`, `tool-running`, `reviewing`, `success`, `failure`, `attention` at line 1 column 26","ok":false}
+## POST /api/action  {"animationId":"backflip"}  (200)
+# 上游不校验 animationId：响应快照里 lastAction="backflip"（原文回显），
+# 但像素差 1605 低于待机对照 1645 → 无可分辨的可见效果（见 PET-01_ACCEPTANCE §3）。
+{"http_status":200,"snapshot.lastAction":"backflip","snapshot.bubbleText":"让我想一下……"}
+## POST /api/say  700 字 → 服务端截到 512
+{"http_status":200,"snapshot.bubbleText.length":512}
+
+## GET /api/status（去敏：本机路径已替换）
+{"activePet":{"description":"A larger elf-eared blonde Nia pet with independently generated action animations.","displayName":"Nia","id":"nia","imported":false,"sourceName":null,"sourceUrl":null,"spritesheetPath":"spritesheet.webp","spritesheetUrl":"/pets/nia/spritesheet.webp"},"apiBaseUrl":"http://127.0.0.1:17321","apiError":null,"apiListening":true,"apiRestartRequired":false,"bubbleText":null,"configuredListenAddress":"127.0.0.1","configuredPort":17321,"lastAction":null,"listenAddress":"127.0.0.1","petCatalog":[{"description":"A larger elf-eared blonde Nia pet with independently generated action animations.","displayName":"Nia","id":"nia","imported":false,"sourceName":null,"sourceUrl":null,"spritesheetPath":"spritesheet.webp","spritesheetUrl":"/pets/nia/spritesheet.webp"},{"description":"可爱又认真、会啾啾陪你写代码的菲比啾比。","displayName":"菲比啾比","id":"phoebe-jiubi","imported":true,"sourceName":null,"sourceUrl":null,"spritesheetPath":"spritesheet.webp","spritesheetUrl":"http://127.0.0.1:17321/api/pets/phoebe-jiubi/spritesheet"}],"petStorage":{"activeDir":"<redacted>","appDataDir":"<redacted>","codexDir":"<redacted>","customDir":null,"preset":"codex-custom"},"petVisible":true,"port":17321,"recentEvents":[],"settings":{"activePetId":"nia","autoUpdateChecks":true,"autonomousWalking":false,"bubbleFontFamily":"Aptos Display","bubbleFontSizePx":14,"bubbleMaxWidthPx":292,"bubbleStyle":"soft","clickAction":"waving","clickActionMode":"random","clickActionPool":["waving","jumping","waiting","running","review"],"customPetStorageDir":null,"eventBubbleTtlMs":4000,"eventBubbles":true,"eventReactions":true,"hoverPause":true,"idleAction":"random","idleActionFrequencyMs":30000,"idleSelfPlay":true,"idleThresholdMs":45000,"language":"en","petStoragePreset":"codex-custom","reducedMotion":false,"scale":1.0,"walkingSpeedPx":8.0},"startedAtMs":1789384498470}

@@ -1,4 +1,5 @@
 import { token } from "../kernel";
+import type { DesktopPetPresenter } from "./desktopPetPresenter";
 import type { CompanionPresenter } from "./companionPresenter";
 import type { VoicePresenter } from "./voicePresenter";
 import type { DevToolsPresenter } from "./devToolsPresenter";
@@ -56,6 +57,13 @@ export const OpsPresenterToken = token<OpsPresenter>("presentation.ops");
  * 「此环境不支持环境感知」，而不是入口凭空消失。
  */
 export const EnvironmentPresenterToken = token<EnvironmentPresenter>("presentation.environment");
+/**
+ * 外部桌宠展示桥接（PET-06）。
+ *
+ * **恒注册**：宿主没有桌宠能力时它自己报 `available=false`，界面据此隐藏分组，
+ * 而不是让入口凭空消失（那会被读成「这个功能不存在」）。
+ */
+export const DesktopPetPresenterToken = token<DesktopPetPresenter>("presentation.desktopPet");
 /**
  * 桌宠陪伴会话控制器（FE-31）的类型出口。
  *

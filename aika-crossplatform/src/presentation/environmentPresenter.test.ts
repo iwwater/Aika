@@ -53,6 +53,28 @@ describe("environmentPresenter（FE-19）", () => {
     expect(env.presenter.getSnapshot().sources[0]).toMatchObject({ state: "running", enabled: true });
   });
 
+  it("运行中展示不泄露正文的实时活动证据", async () => {
+    const env = await setup();
+    await env.presenter.start();
+    await env.presenter.setSourceEnabled(FOREGROUND_SOURCE_ID, true);
+    expect(env.presenter.getSnapshot().sources[0].activity).toBe("传感器已启动，等待应用切换");
+
+    env.fg.emit({
+      schemaVersion: "environment.v1",
+      sourceId: FOREGROUND_SOURCE_ID,
+      eventId: "activity-1",
+      hostEpoch: "e",
+      timestamp: 1,
+      timingPrecision: "measured",
+      confidence: 1,
+      payload: { kind: "foreground_changed", process: "Code.exe", title: "不得进入状态的标题" },
+    });
+
+    const source = env.presenter.getSnapshot().sources[0];
+    expect(source.activity).toBe("最近检测到：Code.exe");
+    expect(JSON.stringify(source)).not.toContain("不得进入状态的标题");
+  });
+
   it("开启 = 先持久化再启动；关闭 = 先撤销再持久化；写失败仍撤销（FE-19-H）", async () => {
     const env = await setup();
     await env.presenter.start();

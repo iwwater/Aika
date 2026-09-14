@@ -32,6 +32,8 @@ export interface EnvironmentSourceView {
   enabled: boolean;
   /** 仅代码，不含传感器内部正文。 */
   error: string | null;
+  /** 最近一次可公开的活动证据；不含窗口标题、截图或 OCR 原文。 */
+  activity: string | null;
 }
 
 export interface EnvironmentPresenterView {
@@ -136,13 +138,28 @@ export function createEnvironmentPresenter(deps: EnvironmentPresenterDeps): Envi
 
   function sourceViews(): readonly EnvironmentSourceView[] {
     if (!monitor) return [];
-    return monitor.statuses().map((status) => ({
-      sourceId: status.sourceId,
-      label: SOURCE_LABELS[status.sourceId] ?? status.sourceId,
-      state: status.state,
-      enabled: status.state === "running" || status.state === "starting" || status.state === "stopping",
-      error: status.error,
-    }));
+    const recent = monitor.recent();
+    return monitor.statuses().map((status) => {
+      const sourceRecent = recent.filter((entry) => entry.sourceId === status.sourceId);
+      let activity: string | null = null;
+      if (status.sourceId === FOREGROUND_SOURCE_ID && monitor.snapshot.foreground) {
+        activity = `最近检测到：${monitor.snapshot.foreground.process}`;
+      } else if (status.sourceId === SCREEN_SOURCE_ID && sourceRecent.length > 0) {
+        activity = `最近 1 分钟识别到 ${sourceRecent.length} 个屏幕信号`;
+      } else if (status.state === "running") {
+        activity = status.sourceId === SCREEN_SOURCE_ID
+          ? "正在监听画面变化，识别到信号后会在这里计数"
+          : "传感器已启动，等待应用切换";
+      }
+      return {
+        sourceId: status.sourceId,
+        label: SOURCE_LABELS[status.sourceId] ?? status.sourceId,
+        state: status.state,
+        enabled: status.state === "running" || status.state === "starting" || status.state === "stopping",
+        error: status.error,
+        activity,
+      };
+    });
   }
 
   const presenter: EnvironmentPresenter = {

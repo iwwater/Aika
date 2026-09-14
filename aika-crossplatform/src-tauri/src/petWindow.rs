@@ -30,7 +30,9 @@ pub fn assert_allowed_caller(caller: &str, allowed: &[&str]) -> Result<(), Strin
     if allowed.contains(&caller) {
         Ok(())
     } else {
-        Err(format!("window \"{caller}\" is not allowed to call this command"))
+        Err(format!(
+            "window \"{caller}\" is not allowed to call this command"
+        ))
     }
 }
 
@@ -42,44 +44,48 @@ fn pet_window(app: &AppHandle) -> Option<WebviewWindow> {
 #[tauri::command]
 pub fn pet_window_show(app: AppHandle) -> Result<(), String> {
     if let Some(window) = pet_window(&app) {
-        let _ = window.show();
-        let _ = window.set_focus();
+        window
+            .show()
+            .map_err(|error| format!("failed to show pet window: {error}"))?;
+        window
+            .set_focus()
+            .map_err(|error| format!("failed to focus pet window: {error}"))?;
         return Ok(());
     }
-    WebviewWindowBuilder::new(
-        &app,
-        PET_WINDOW_LABEL,
-        WebviewUrl::App("index.html".into()),
-    )
-    .title("Aika")
-    .transparent(true)
-    .decorations(false)
-    .always_on_top(true)
-    .skip_taskbar(true)
-    .resizable(false)
-    .shadow(false)
-    .inner_size(320.0, 420.0)
-    .build()
-    .map(|_| ())
-    .map_err(|error| format!("failed to create pet window: {error}"))
+    let window =
+        WebviewWindowBuilder::new(&app, PET_WINDOW_LABEL, WebviewUrl::App("index.html".into()))
+            .title("Aika")
+            .center()
+            .visible(true)
+            // fallback 路径优先保证肉眼可见；正式 Live2D 接入后再恢复透明窗口。
+            .transparent(false)
+            .decorations(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .resizable(true)
+            .min_inner_size(220.0, 300.0)
+            .shadow(false)
+            .inner_size(320.0, 420.0)
+            .build()
+            .map_err(|error| format!("failed to create pet window: {error}"))?;
+    window
+        .set_focus()
+        .map_err(|error| format!("failed to focus pet window: {error}"))
 }
 
-/// 销毁桌宠（不是隐藏）；不存在时幂等。
+/// 隐藏桌宠；保留预创建的 WebView，下一次显示无需重走窗口创建链路。
 #[tauri::command]
 pub fn pet_window_hide(app: AppHandle) -> Result<(), String> {
     if let Some(window) = pet_window(&app) {
         window
-            .close()
-            .map_err(|error| format!("failed to close pet window: {error}"))?;
+            .hide()
+            .map_err(|error| format!("failed to hide pet window: {error}"))?;
     }
     Ok(())
 }
 
 #[tauri::command]
-pub fn pet_window_set_click_through(
-    app: AppHandle,
-    enabled: bool,
-) -> Result<(), String> {
+pub fn pet_window_set_click_through(app: AppHandle, enabled: bool) -> Result<(), String> {
     let window = pet_window(&app).ok_or_else(|| "pet window not found".to_string())?;
     window
         .set_ignore_cursor_events(enabled)

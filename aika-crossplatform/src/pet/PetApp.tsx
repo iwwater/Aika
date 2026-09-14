@@ -110,6 +110,7 @@ export function PetController({ view }: PetControllerProps) {
   return (
     <div className="pet-root">
       <div className="pet-stage" data-tauri-drag-region>
+        <div className="pet-drag-handle" data-tauri-drag-region aria-label="拖动桌宠">⋮⋮</div>
         <div
           className="pet-hit"
           onPointerDown={(event) => {

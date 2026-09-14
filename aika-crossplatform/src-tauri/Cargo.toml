@@ -37,6 +37,9 @@ tauri-plugin-notification = "2.4.0"
 base64 = "0.23.1"
 # 手机远程终端的 HTTP 服务。选它是因为够小、同步、不用把 async 运行时拖进来。
 tiny_http = "0.12"
+# 桌宠接入的原生 HTTP 客户端（PET-03）。刻意关掉默认特性：只允许 http://loopback，
+# 因此不需要 TLS，也不引 charset/http2 这些用不上的东西。代理与重定向在代码里显式禁用。
+reqwest = { version = "0.12", default-features = false }
 windows-capture = "1"
 image = { version = "0.25", default-features = false, features = ["png"] }
 

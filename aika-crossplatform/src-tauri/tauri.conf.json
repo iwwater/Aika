@@ -12,12 +12,30 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "愛花 Aika",
         "width": 1280,
         "height": 800,
         "minWidth": 720,
         "minHeight": 600,
         "center": true
+      },
+      {
+        "label": "pet",
+        "title": "Aika Desktop Pet",
+        "url": "index.html",
+        "width": 320,
+        "height": 420,
+        "minWidth": 220,
+        "minHeight": 300,
+        "center": true,
+        "visible": false,
+        "transparent": false,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": true,
+        "shadow": true
       }
     ],
     "security": {

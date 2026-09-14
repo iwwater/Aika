@@ -15,11 +15,14 @@ import {
 import { openBrowserStorage, openDesktopStorage } from "../../services/storage";
 import type { Clock, Timers } from "../../services/time/tokens";
 import { createSystemClock, createSystemTimers } from "../../services/time/systemTime";
+import { createTauriPetHttpPort } from "../../services/desktopPet/tauriPetHttp";
+import { createTauriPetProcessPort } from "../../services/desktopPet/tauriPetProcess";
 import { createForegroundSource } from "../../services/environment/foregroundSource";
 import { createScreenSource, SCREEN_CHANGE_EVENT } from "../../services/environment/screenSource";
 import { createOcrEngine } from "../../services/environment/ocrText";
 import { environmentPlugin } from "../plugins/environmentPlugin";
 import { environmentHostPlugin } from "../plugins/environmentHostPlugin";
+import { desktopPetPlugin } from "./desktopPet";
 import { isTauriHost } from "./detect";
 import {
   fetchPlugin, hostLifecyclePlugin, notifierPlugin, outboundTransportPlugin, remotePlugin,
@@ -150,6 +153,12 @@ export function tauriHostPlugins(options: HostOptions = {}): AikaPlugin[] {
     // 环境感知（FE-18～22/31/32）：在此之前生产装配里一个传感器都没接。
     environmentPlugin({ sources: environmentSources, clock, hostEpoch: lifecycle.epoch() }),
     environmentHostPlugin({ invoke, hostEpoch: lifecycle.epoch(), ocr }),
+    // 外部桌宠（PET-06）。两个端口都只认固定端点与本次 spawn 的句柄；
+    // 配置默认关闭，因此装了这个插件在未启用时也是零请求、零进程。
+    desktopPetPlugin({
+      http: createTauriPetHttpPort(invoke),
+      process: createTauriPetProcessPort({ invoke }),
+    }),
     remotePlugin(createTauriRemoteHost()),
     // 出站传输：帧经 Rust 缓存供手机页长轮询；命令经 `outbound://command` 下行。
     // invoke/listen 在这里才 import——架构测试允许 `app/hosts/` 触碰 @tauri-apps。

@@ -10,7 +10,7 @@
   "recall": 1,
   "precisionGate": 0.95,
   "recallGate": 0.85,
-  "hotOcrP95Ms": 94,
+  "hotOcrP95Ms": 263,
   "hotOcrP95GateMs": 2000,
   "perWord": {
     "VICTORY": {
@@ -55,5 +55,5 @@
       "fn": 0
     }
   },
-  "generatedAt": "2026-09-14T01:51:50.588Z"
+  "generatedAt": "2026-09-14T09:15:07.038Z"
 }

@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   Bell, BellOff, Bot, Check, ChevronDown, KeyRound, Languages, LoaderCircle, MessageCircleMore,
   Monitor, Bug, Mic, PanelRightClose, PowerOff, RefreshCw, SendHorizontal, Settings2, Smartphone,
@@ -20,6 +20,7 @@ import { PROVIDER_PRESETS, validateProvider, type ProviderConfig } from "./domai
 import { useCompanionSession } from "./hooks/useCompanionSession";
 import { useEnvironment } from "./hooks/useEnvironment";
 import { usePetWindow } from "./hooks/usePetWindow";
+import { useDesktopPet } from "./hooks/useDesktopPet";
 import { useDevTools } from "./hooks/useDevTools";
 import { useRemoteAccess } from "./hooks/useRemoteAccess";
 import { useVoiceConversation, type VoiceTurnHandler } from "./hooks/useVoiceConversation";
@@ -69,11 +70,18 @@ function App() {
   const devTools = useDevTools();
   const environment = useEnvironment();
   const pet = usePetWindow();
+  const desktopPet = useDesktopPet();
   const [showDevTools, setShowDevTools] = useState(false);
   // 连接自检是 Provider 侧能力，经注册表取；App 不再直接 import providerClient。
   const probeProvider = useService(ProviderProbeToken);
   // 模型列表拉取同为 Provider 侧能力，走端口。
   const fetchModels = useService(ProviderModelsToken);
+  // 表现出口只保留一个：外部桌宠开着时自研窗口让位。
+  // 关掉自研窗口不会取消主窗对话、也不会停 TTS（FE-20-G 的既有约束）。
+  useEffect(() => {
+    pet.applyLegacyBlock(desktopPet.enabled);
+  }, [pet.applyLegacyBlock, desktopPet.enabled]);
+
   const [draftProvider, setDraftProvider] = useState<ProviderConfig>(PROVIDER_PRESETS[1]);
   const [input, setInput] = useState("");
   const [showSettings, setShowSettings] = useState(false);
@@ -84,6 +92,9 @@ function App() {
   const [modelsStatus, setModelsStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
   const [modelsNote, setModelsNote] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const settingsModalRef = useRef<HTMLElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const keepMessagesAtBottomRef = useRef(true);
   const [whisperStatus, setWhisperStatus] = useState<"idle" | "checking" | "ok" | "down">("idle");
   const [whisperNote, setWhisperNote] = useState("");
   const [voiceApiKeyDraft, setVoiceApiKeyDraft] = useState("");
@@ -141,6 +152,15 @@ function App() {
     send: (text) => session.send(text, "text"),
   });
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!keepMessagesAtBottomRef.current) return;
+    const frame = window.requestAnimationFrame(() => {
+      const container = messagesRef.current;
+      if (container) container.scrollTop = container.scrollHeight;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [messages]);
 
   async function handleCopyRemoteUrl() {
     if (!remote.info) return;
@@ -311,7 +331,15 @@ function App() {
             </div>
           )}
 
-          <div className="messages" aria-live="polite">
+          <div
+            ref={messagesRef}
+            className="messages"
+            aria-live="polite"
+            onScroll={(event) => {
+              const container = event.currentTarget;
+              keepMessagesAtBottomRef.current = container.scrollHeight - container.scrollTop - container.clientHeight <= 48;
+            }}
+          >
             <div className="day-divider"><span>{session.ready ? "今天" : "正在打开记忆…"}</span></div>
             {messages.map((message) => (
               <article key={message.id} className={`message-row ${message.role} ${message.error ? "error" : ""}`}>
@@ -434,8 +462,28 @@ function App() {
 
       {showSettings && (
         <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setShowSettings(false)}>
-          <section className="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-            <div className="modal-heading"><div><p className="eyebrow">Model Link</p><h2 id="settings-title">连接你的模型</h2></div><button className="icon-button" onClick={() => setShowSettings(false)}><X size={20} /></button></div>
+          <section ref={settingsModalRef} className="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+            <nav className="settings-nav" aria-label="设置分类">
+              {[
+                ["settings-model", "模型与数据"],
+                ["settings-response", "主动 / 被动"],
+                ["settings-awareness", "环境感知"],
+                ["settings-pet", "桌宠 / 陪伴"],
+                ["settings-voice", "语音"],
+                ["settings-remote", "手机连接"],
+                ["settings-developer", "开发调试"],
+              ].map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => settingsModalRef.current?.querySelector(`#${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                >
+                  {label}
+                </button>
+              ))}
+            </nav>
+            <div className="settings-content">
+            <div id="settings-model" className="modal-heading settings-anchor"><div><p className="eyebrow">Model Link</p><h2 id="settings-title">连接你的模型</h2></div><button className="icon-button" onClick={() => setShowSettings(false)}><X size={20} /></button></div>
             <p className="modal-intro">选择平台、填写 Key 并测试。请求由你的电脑直接发往模型平台，不经过额外服务器。</p>
             <label className="field-label">平台</label>
             <div className="select-wrap"><select value={draftProvider.id} onChange={(event) => choosePreset(event.target.value)}>{PROVIDER_PRESETS.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><ChevronDown size={17} /></div>
@@ -477,8 +525,8 @@ function App() {
             </div>
 
             <div className="settings-divider" />
-            <div className="modal-heading"><div><p className="eyebrow">Presence</p><h3>主动消息</h3></div></div>
-            <p className="modal-intro">她会在想起你的时候先开口。每天最多 6 条，两条之间至少隔 90 分钟，免打扰时段完全静默。</p>
+            <div id="settings-response" className="modal-heading settings-anchor"><div><p className="eyebrow">Response</p><h3>主动 / 被动响应</h3></div></div>
+            <p className="modal-intro">被动响应始终用于你主动发起的文字或语音；主动响应由下方开关控制。主动模式每天最多 6 条，两条之间至少隔 90 分钟，免打扰时段完全静默。</p>
             <div className="toggle-row">
               <button className={`toggle ${proactive.enabled ? "on" : ""}`} onClick={() => void session.setProactive({ ...proactive, enabled: !proactive.enabled })}>
                 {proactive.enabled ? <Bell size={15} /> : <BellOff size={15} />}
@@ -501,7 +549,7 @@ function App() {
             {environment.snapshot.available && (
               <>
                 <div className="settings-divider" />
-                <div className="modal-heading"><div><p className="eyebrow">Awareness</p><h3>环境感知</h3></div></div>
+                <div id="settings-awareness" className="modal-heading settings-anchor"><div><p className="eyebrow">Awareness</p><h3>环境感知</h3></div></div>
                 <p className="modal-intro">感知与「把摘要用于对话」是两层开关，互不牵连。摘要只包含应用名与持续时间，不包含窗口标题；屏幕画面不出本机。</p>
                 {environment.snapshot.sources.map((source) => (
                   <div className="toggle-row" key={source.sourceId}>
@@ -512,7 +560,9 @@ function App() {
                       <Monitor size={15} />
                       <span>{source.label} · {ENVIRONMENT_STATE_LABELS[source.state] ?? source.state}</span>
                     </button>
-                    <span className="toggle-hint">{source.error ?? ENVIRONMENT_SOURCE_HINTS[source.sourceId] ?? "本机环境传感器。"}</span>
+                    <span className="toggle-hint">
+                      {source.error ?? source.activity ?? ENVIRONMENT_SOURCE_HINTS[source.sourceId] ?? "本机环境传感器。"}
+                    </span>
                   </div>
                 ))}
                 <div className="toggle-row">
@@ -571,19 +621,39 @@ function App() {
             {pet.available && (
               <>
                 <div className="settings-divider" />
-                <div className="modal-heading"><div><p className="eyebrow">Companion</p><h3>桌宠</h3></div></div>
-                <p className="modal-intro">独立小窗口，只展示状态与最近消息，不影响这里的对话。打开桌宠不会开启任何感知。</p>
+                <div id="settings-pet" className="modal-heading settings-anchor"><div><p className="eyebrow">Companion</p><h3>桌宠与陪伴模式</h3></div></div>
+                <p className="modal-intro">独立小窗口；Live2D 尚未导入时使用静态角色占位。桌宠显示、陪伴模式和感知授权分别保存，打开桌宠本身不会开启感知。</p>
+                {pet.legacyBlocked && (
+                  <div className="test-result error" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                    <X size={17} />
+                    <span style={{ flex: "1 1 260px" }}>
+                      <strong>外部桌宠（OpenPet）集成已启用</strong>，Aiki 自研桌宠窗口已让位——这是刻意的：
+                      同一句话不该被两个窗口各说一遍。关掉集成即可恢复自研桌宠。
+                    </span>
+                    <button className="toggle" onClick={() => void desktopPet.disable()} disabled={desktopPet.busy}>
+                      <PowerOff size={15} />
+                      <span>关闭集成，恢复自研桌宠</span>
+                    </button>
+                  </div>
+                )}
                 <div className="toggle-row">
                   <button
                     className={`toggle ${pet.open ? "on" : ""}`}
                     onClick={() => void (pet.open ? pet.closePet() : pet.openPet())}
-                    disabled={pet.busy}
+                    disabled={pet.busy || pet.legacyBlocked}
                   >
                     <Sparkles size={15} />
                     <span>{pet.open ? "已显示" : "显示桌宠"}</span>
                   </button>
-                  <span className="toggle-hint">拖动移动；左键点它回到主窗；右键有它的菜单。</span>
+                  <span className="toggle-hint">
+                    {pet.legacyBlocked
+                      ? "已让位给外部桌宠：要恢复自研桌宠，先点上面的「关闭集成，恢复自研桌宠」。"
+                      : "拖动移动；左键点它回到主窗；右键有它的菜单。"}
+                  </span>
                 </div>
+                {pet.error && (
+                  <p className="modal-intro" style={{ color: "#e5484d" }}>{pet.error}</p>
+                )}
                 <div className="toggle-row">
                   <button className="toggle" onClick={() => void pet.resetPosition()} disabled={pet.busy || !pet.open}>
                     <RefreshCw size={15} />
@@ -598,6 +668,121 @@ function App() {
                   </button>
                   <span className="toggle-hint">穿透开启时桌宠不再接收点击，恢复入口在这里。</span>
                 </div>
+                <div className="settings-divider" />
+                <div className="modal-heading"><div><p className="eyebrow">External pet</p><h3>外部桌宠（OpenPet）</h3></div></div>
+                <p className="modal-intro">
+                  接入现成的 OpenPet 运行时：Aiki 只通过本机 HTTP 让它说话、做动作、显示进度，
+                  窗口、拖动、置顶与角色资源都由它自己管。0.5 只访问本机回环地址，不使用任何代理转发。
+                </p>
+                {desktopPet.available ? (
+                  <>
+                    <div className="toggle-row">
+                      <button
+                        className={`toggle ${desktopPet.enabled ? "on" : ""}`}
+                        onClick={() => void (desktopPet.enabled ? desktopPet.disable() : desktopPet.enable())}
+                        disabled={desktopPet.busy}
+                      >
+                        <Sparkles size={15} />
+                        <span>{desktopPet.enabled ? "已启用" : "启用桌宠集成"}</span>
+                      </button>
+                      <span className="toggle-hint">
+                        状态：{desktopPet.connectionLabel}{desktopPet.stale ? "（快照已过期）" : ""}。
+                        关闭时不会请求本机、也不会启动任何进程。
+                      </span>
+                    </div>
+                    <div className="form-grid">
+                      <label className="field"><span>连接地址</span>
+                        <input
+                          value={desktopPet.config.endpoint}
+                          onChange={(e) => void desktopPet.saveConfig({ endpoint: e.target.value })}
+                          placeholder="http://127.0.0.1:17321"
+                        />
+                      </label>
+                      <label className="field"><span>连接方式</span>
+                        <select
+                          value={desktopPet.config.mode}
+                          onChange={(e) => void desktopPet.saveConfig({ mode: e.target.value as "attach" | "managed" })}
+                        >
+                          <option value="attach">只连接已启动的桌宠</option>
+                          <option value="managed">由 Aiki 启动（需填运行程序）</option>
+                        </select>
+                      </label>
+                      {desktopPet.config.mode === "managed" && (
+                        <label className="field wide"><span>运行程序（安装后的 exe，不是安装器）</span>
+                          <input
+                            value={desktopPet.config.executablePath ?? ""}
+                            onChange={(e) => void desktopPet.saveConfig({ executablePath: e.target.value || null })}
+                            placeholder="C:/Program Files/OpenPet/OpenPet.exe"
+                          />
+                        </label>
+                      )}
+                      <label className="field"><span>随 Aiki 启动</span>
+                        <select
+                          value={String(desktopPet.config.startWithAiki)}
+                          onChange={(e) => void desktopPet.saveConfig({ startWithAiki: e.target.value === "true" })}
+                        >
+                          <option value="false">否</option>
+                          <option value="true">是</option>
+                        </select>
+                      </label>
+                      <label className="field"><span>退出 Aiki 时</span>
+                        <select
+                          value={String(desktopPet.config.stopOwnedOnExit)}
+                          onChange={(e) => void desktopPet.saveConfig({ stopOwnedOnExit: e.target.value === "true" })}
+                        >
+                          <option value="false">保留桌宠（默认）</option>
+                          <option value="true">终止由 Aiki 启动的桌宠</option>
+                        </select>
+                      </label>
+                      <label className="field"><span>自动重启（高级，默认关）</span>
+                        <select
+                          value={String(desktopPet.config.autoRestart)}
+                          onChange={(e) => void desktopPet.saveConfig({ autoRestart: e.target.value === "true" })}
+                        >
+                          <option value="false">关</option>
+                          <option value="true">仅在确定崩溃时重启（5 分钟最多 2 次）</option>
+                        </select>
+                      </label>
+                    </div>
+                    <div className="toggle-row">
+                      <button className="toggle" onClick={() => void desktopPet.testConnection()} disabled={desktopPet.busy || !desktopPet.enabled}>
+                        <RefreshCw size={15} /><span>测试连接</span>
+                      </button>
+                      <button className="toggle" onClick={() => void desktopPet.demo("你好呀，我在这里。")} disabled={desktopPet.busy || !desktopPet.enabled}>
+                        <Sparkles size={15} /><span>发送演示</span>
+                      </button>
+                      <span className="toggle-hint">测试连接会真的探测一次；未启用时不发请求。</span>
+                    </div>
+                    {desktopPet.actions.length > 0 && (
+                      <p className="modal-intro">当前角色已验证的动作：{desktopPet.actions.join("、")}</p>
+                    )}
+                    <label className="field wide"><span>角色 profile（JSON；留空＝只发文字与事件，不做动作）</span>
+                      <textarea
+                        className="profile-textarea"
+                        value={desktopPet.profileText}
+                        onChange={(e) => desktopPet.setProfileText(e.target.value)}
+                        rows={6}
+                        placeholder='{"schemaVersion":1,"provider":"openpet","release":"v0.1.6","petId":"nia","source":"manual","actions":{"wave":"waving"},"emotions":{"happy":"jumping"},"events":{}}'
+                      />
+                    </label>
+                    <div className="toggle-row">
+                      <button className="toggle" onClick={() => void desktopPet.saveProfile()} disabled={desktopPet.busy}>
+                        <Check size={15} /><span>保存 profile</span>
+                      </button>
+                      <span className="toggle-hint">
+                        {desktopPet.profileError ?? "profile 绑定上游版本与角色；对不上时动作能力会降级，而不是拿旧映射乱发。"}
+                      </span>
+                    </div>
+                    <p className="modal-intro">
+                      <strong>当前桌宠不支持点击回传</strong>：陪伴会话、看屏幕聊聊、暂停/结束这些控制仍然只在主窗里，
+                      这里如实标注差距，不假装已经双向。
+                    </p>
+                  </>
+                ) : (
+                  <p className="modal-intro">浏览器开发模式下没有外部桌宠集成，要在桌面应用里用。</p>
+                )}
+                {desktopPet.notice && <p className="modal-intro">{desktopPet.notice}</p>}
+                {desktopPet.error && <div className="test-result error"><X size={17} /><span>{desktopPet.error}</span></div>}
                 {pet.session && pet.sessionView && (
                   <>
                     <div className="modal-heading"><div><p className="eyebrow">Companion session</p><h3>陪伴</h3></div></div>
@@ -658,7 +843,7 @@ function App() {
             )}
 
             <div className="settings-divider" />
-            <div className="modal-heading"><div><p className="eyebrow">Listening</p><h3>语音识别</h3></div></div>
+            <div id="settings-voice" className="modal-heading settings-anchor"><div><p className="eyebrow">Listening</p><h3>语音识别</h3></div></div>
             <p className="modal-intro">本地识别不需要你在说话前选语言，日语、中文、英语都自动认。它要一个本地 whisper.cpp 服务；没开的时候退回系统语音识别，那条链路一次只能认一种语言。</p>
             <div className="form-grid">
               <label className="field"><span>识别链路</span>
@@ -758,7 +943,7 @@ function App() {
             )}
 
             <div className="settings-divider" />
-            <div className="modal-heading"><div><p className="eyebrow">Phone</p><h3>手机也能用</h3></div></div>
+            <div id="settings-remote" className="modal-heading settings-anchor"><div><p className="eyebrow">Phone</p><h3>手机也能用</h3></div></div>
             <p className="modal-intro">手机上打开一个网页就能接着聊。它不是同步——记忆仍然只有这台电脑上的一份，手机只是一块远程屏幕。所以<strong>电脑不开机手机就用不了</strong>，主动消息也推不到手机，只有手机开着的时候才收得到。</p>
             {!remote.available ? (
               <p className="modal-intro">浏览器开发模式下没有这个功能，要在桌面应用里用。</p>
@@ -809,7 +994,7 @@ function App() {
               </>
             )}
             <div className="settings-divider" />
-            <div className="modal-heading"><div><p className="eyebrow">Developer</p><h3>开发者模式</h3></div></div>
+            <div id="settings-developer" className="modal-heading settings-anchor"><div><p className="eyebrow">Developer</p><h3>开发者模式</h3></div></div>
             <p className="modal-intro">打开之后标题栏会多一个入口，进去能看到每一轮对话在内部都发生了什么——组装了什么上下文、请求发给了谁、首 token 多久到、哪一步失败了。只写本机，不发往任何地方。</p>
             <div className="toggle-row">
               <button
@@ -826,6 +1011,7 @@ function App() {
             </div>
 
             <div className="modal-actions"><button className="secondary-button" onClick={handleTest} disabled={status.kind === "testing"}>测试连接</button><button className="primary-button" onClick={handleSave}>保存并使用</button></div>
+            </div>
           </section>
         </div>
       )}

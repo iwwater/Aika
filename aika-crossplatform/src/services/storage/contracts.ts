@@ -122,6 +122,19 @@ export const SETTING_KEYS = {
   /** 环境主动搭话开关（FE-22）。与全局 proactive、摘要授权分层。 */
   environmentProactiveEnabled: "environment.proactiveEnabled",
   /**
+   * 外部桌宠（OpenPet）集成配置（PET-06）。JSON，结构见 `desktopPet.integration.v1`
+   * 的 `PetConfig`。默认 `enabled=false`：**旧 `pet.enabled` 不会被自动转换成
+   * 托管启动授权**——升级后是否需要 Aiki 去启动别人的程序，必须由用户明确说一次。
+   */
+  desktopPet: "pet.desktopIntegration.v1",
+  /**
+   * 外部桌宠的兼容 profile（PET-06）。JSON，结构 `PetProfileV1`。
+   *
+   * 与配置分开存：profile 是「上游某个版本某个角色的已验证映射」，换角色/换版本
+   * 时它整体失效，而配置（地址、启动方式）仍然有效。
+   */
+  desktopPetProfile: "pet.desktopProfile.v1",
+  /**
    * 「屏幕文字用于对话」授权（FE-32）。默认 false，且**独立于**摘要授权：
    * 它放行的是可见文字摘录本身，范围只限 FE-32 的按需读屏上下文源。
    */

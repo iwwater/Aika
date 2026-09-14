@@ -1,5 +1,7 @@
 # 前端交互与展示 · 模块 PRD
 
+> 2026-09-14 桌宠专项裁决：以 [Aiki Desktop Pet Integration RPD](RPD_DESKTOP_PET_INTEGRATION.md) 为当前需求，按 [PET SPEC](SPEC_DESKTOP_PET.md) 接入 OpenPet/NyaDeskPet。本文涉及自研桌宠窗口/渲染器的条目仅保留历史背景；主应用前端、环境感知与对话功能仍按各自规范执行。
+
 产品依据：[总 PRD](../PRD_V0.4.md)。本文件是模块边界，执行任务见 [SPEC 索引](SPEC.md)。
 
 ## 目标

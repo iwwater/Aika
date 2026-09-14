@@ -1,5 +1,7 @@
 # 模块开发与 SPEC 总入口
 
+> 2026-09-14 桌宠新路线属于前端模块：[集成 RPD](../frontend/RPD_DESKTOP_PET_INTEGRATION.md)、[PET SPEC 索引](../frontend/SPEC_DESKTOP_PET.md)。与旧自研窗口/Live2D 任务冲突时以新路线为准；其余模块与既有证据不变。
+
 2026-09-10 更新：采用 LLM、STT、TTS、前端四模块开发，替代旧 S1→S8 的串行阶段门禁。这里只拆分文档、责任和验收，不在整理时搬动业务源码或重写实现。
 
 | 模块 | 负责什么 | 小阶段 | 当前状态 |

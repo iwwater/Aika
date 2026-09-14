@@ -18,6 +18,8 @@ export function AvatarPlaceholder() {
   return (
     <svg
       className="avatar-art"
+      width="200"
+      height="260"
       viewBox="0 0 200 260"
       role="img"
       aria-label="愛花的占位立绘，正式 Live2D 模型尚未导入"

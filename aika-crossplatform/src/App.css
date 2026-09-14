@@ -64,7 +64,7 @@ button { border: 0; cursor: pointer; }
 .scene-note strong { font-size: 11px; }
 .scene-note span { margin-top: 2px; color: var(--dim); font-size: 10px; }
 
-.chat-panel { min-width: 0; display: flex; flex-direction: column; background: linear-gradient(180deg, rgba(7,11,21,.6), rgba(5,7,14,.9)); }
+.chat-panel { min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; background: linear-gradient(180deg, rgba(7,11,21,.6), rgba(5,7,14,.9)); }
 .chat-heading { height: 88px; flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; border-bottom: 1px solid var(--line-soft); }
 .eyebrow { margin: 0 0 5px; color: var(--cyan); font-family: var(--display); font-size: 9px; font-weight: 700; letter-spacing: .3em; text-transform: uppercase; }
 .chat-heading h1, .modal-heading h2, .modal-heading h3 { margin: 0; font-family: var(--heading); font-size: 24px; font-weight: 700; line-height: 1.2; letter-spacing: .03em; color: #e6f4ff; }
@@ -186,8 +186,14 @@ mark.speaking { color: var(--cyan); background: rgba(55,230,255,.14); border-rad
 .voice-language span { display: block; margin-top: 2px; color: var(--dim); font-size: 9px; }
 
 .modal-backdrop { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(3,5,11,.72); backdrop-filter: blur(8px); animation: fade-in .18s ease-out; }
-.settings-modal { position: relative; width: min(580px,95vw); max-height: 92vh; overflow: auto; padding: 26px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(165deg, rgba(16,25,43,.98), rgba(9,13,25,.98)); box-shadow: 0 40px 100px rgba(0,0,0,.7), 0 0 60px rgba(55,230,255,.08); animation: rise .2s ease-out; }
+.settings-modal { position: relative; width: min(860px,95vw); height: min(720px,92vh); overflow: hidden; display: grid; grid-template-columns: 168px minmax(0,1fr); padding: 0; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(165deg, rgba(16,25,43,.98), rgba(9,13,25,.98)); box-shadow: 0 40px 100px rgba(0,0,0,.7), 0 0 60px rgba(55,230,255,.08); animation: rise .2s ease-out; }
 .settings-modal::before { content: ""; position: absolute; left: 26px; right: 26px; top: 0; height: 1px; background: linear-gradient(90deg, transparent, var(--cyan), var(--violet), transparent); }
+.settings-nav { min-height: 0; display: flex; flex-direction: column; gap: 5px; padding: 24px 14px; border-right: 1px solid var(--line); background: rgba(5,10,20,.52); }
+.settings-nav::before { content: "SETTINGS"; margin: 0 8px 12px; color: var(--cyan); font-family: var(--display); font-size: 9px; font-weight: 700; letter-spacing: .24em; }
+.settings-nav button { padding: 9px 10px; border-radius: 8px; color: var(--muted); background: transparent; font-size: 10px; text-align: left; transition: .18s; }
+.settings-nav button:hover, .settings-nav button:focus-visible { color: var(--cyan); background: rgba(55,230,255,.08); outline: none; }
+.settings-content { min-width: 0; min-height: 0; overflow-y: auto; padding: 26px; scrollbar-width: thin; scrollbar-color: rgba(55,230,255,.25) transparent; }
+.settings-anchor { scroll-margin-top: 18px; }
 .modal-heading { display: flex; align-items: flex-start; justify-content: space-between; }
 .modal-heading h2 { font-size: 25px; }
 .modal-intro { margin: 11px 0 20px; color: var(--muted); font-size: 11px; line-height: 1.7; }
@@ -228,7 +234,7 @@ mark.speaking { color: var(--cyan); background: rgba(55,230,255,.14); border-rad
 
 @media(prefers-reduced-motion: reduce) { .avatar-halo, .voice-wave, .typing i { animation: none; } }
 @media(max-width:1000px) { .workspace { grid-template-columns: 260px minmax(390px,1fr); }.right-sidebar { display: none; }.sidebar-toggle { display: none; }.avatar-portrait { width: 165px; }.avatar-halo { width: 220px; } }
-@media(max-width:720px) { .app-shell { min-height: 500px; }.workspace { grid-template-columns: 1fr; }.companion-panel { display: none; }.titlebar { height: 52px; }.workspace { height: calc(100% - 52px); }.chat-heading { height: 72px; padding: 0 17px; }.chat-heading h1 { font-size: 19px; }.translation-toggle { font-size: 0; }.translation-toggle span { font-size: 9px; }.messages { padding: 4px 16px; }.composer { padding: 10px 14px 14px; }.shortcut { display: none; }.message-wrap { max-width: 87%; }.form-grid { grid-template-columns: 1fr; }.field.wide { grid-column: auto; }.settings-modal { padding: 21px; } }
+@media(max-width:720px) { .app-shell { min-height: 500px; }.workspace { grid-template-columns: 1fr; }.companion-panel { display: none; }.titlebar { height: 52px; }.workspace { height: calc(100% - 52px); }.chat-heading { height: 72px; padding: 0 17px; }.chat-heading h1 { font-size: 19px; }.translation-toggle { font-size: 0; }.translation-toggle span { font-size: 9px; }.messages { padding: 4px 16px; }.composer { padding: 10px 14px 14px; }.shortcut { display: none; }.message-wrap { max-width: 87%; }.form-grid { grid-template-columns: 1fr; }.field.wide { grid-column: auto; }.settings-modal { grid-template-columns: 1fr; }.settings-nav { overflow-x: auto; flex-direction: row; padding: 10px; border-right: 0; border-bottom: 1px solid var(--line); }.settings-nav::before { display: none; }.settings-nav button { flex: 0 0 auto; }.settings-content { padding: 21px; } }
 
 /* --- M1 记忆页与 M2 主动消息开关 --- */
 .meta-tag { margin-left: 6px; padding: 1px 5px; border: 1px solid var(--line); border-radius: 4px; color: var(--cyan); font-size: 8px; letter-spacing: .08em; }
@@ -517,3 +523,6 @@ mark.speaking { color: var(--cyan); background: rgba(55,230,255,.14); border-rad
 .ops-price-form { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .ops-price-form input { width: 130px; font-size: 12px; }
 .ops-more { align-self: center; font-size: 12px; }
+
+/* 外部桌宠 profile 编辑（PET-06）：等宽、可换行，长度不撑破设置面板。 */
+.profile-textarea { width: 100%; min-height: 96px; resize: vertical; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px; line-height: 1.5; padding: 8px 10px; color: var(--ink); background: rgba(6,10,20,.72); border: 1px solid var(--line); border-radius: 8px; }

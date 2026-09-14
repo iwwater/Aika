@@ -17,6 +17,8 @@ build/
 **/build/
 target/
 aika-crossplatform/src-tauri/target/
+# 带后缀的 cargo target 目录：FE-33 真机装配用过 target-fe33 / target-fe33b，各 2.7 GB
+aika-crossplatform/src-tauri/target-*/
 
 # --- Android 原型（只读归档）---
 .gradle/
@@ -40,6 +42,7 @@ aika-crossplatform/tools/voice-workshop/export/
 
 # --- 工具与编辑器 ---
 aika-crossplatform/.playwright-cli/
+.workbuddy/
 .idea/
 .vscode/*
 !.vscode/extensions.json
@@ -57,6 +60,12 @@ npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
 *.local
+# 本地命令输出（构建/测试临时重定向）
+*.out
+
+# --- 根目录排查用零散文本 ---
+/_tb*.txt
+/_z.txt
 
 # Playwright MCP 会话产物
 .playwright-mcp/

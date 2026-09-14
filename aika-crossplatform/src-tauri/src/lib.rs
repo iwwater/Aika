@@ -1,3 +1,5 @@
+mod desktop_pet_http;
+mod desktop_pet_process;
 mod foreground;
 mod gateway;
 // SPEC 声明的文件名 petWindow.rs；Rust 命名规范告警在此豁免。
@@ -27,6 +29,8 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
         .manage(remote::RemoteState::default())
+        // 桌宠 Sidecar 的进程句柄表（PET-05）：只存在于内存，不持久化 PID。
+        .manage(desktop_pet_process::DesktopPetProcessState::default())
         .manage(foreground::ForegroundState::default())
         // 缺 manage 时 `tauri::State<ScreenState>` 在真实进程里取不到（FE-21 只跑了
         // 逻辑轨，这条装配断点没被覆盖）。FE-32 的窗口抓取同样依赖它。
@@ -44,6 +48,12 @@ pub fn run() {
             petWindow::pet_window_request_snapshot,
             petWindow::pet_window_focus_main,
             petWindow::pet_intent_submit,
+            desktop_pet_http::desktop_pet_http_request,
+            desktop_pet_process::desktop_pet_process_validate,
+            desktop_pet_process::desktop_pet_process_spawn,
+            desktop_pet_process::desktop_pet_process_alive,
+            desktop_pet_process::desktop_pet_process_exit_status,
+            desktop_pet_process::desktop_pet_process_stop,
             screen::environment_screen_supported,
             screen::environment_screen_enable,
             screen::environment_capture_region,
@@ -64,12 +74,15 @@ pub fn run() {
         ])
         .setup(|app| {
             let open = MenuItem::with_id(app, "open", "显示愛花", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", "完全退出 Aika", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open, &quit])?;
 
             let mut tray = TrayIconBuilder::with_id("aika-tray")
                 .tooltip("愛花 Aika")
                 .menu(&menu)
+                // Windows 隐藏图标区的右键菜单在部分壳层/触控板组合下不会稳定弹出。
+                // 同时允许左键弹出，确保用户始终有可发现的退出入口。
+                .show_menu_on_left_click(true)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "open" => show_main_window(app),
                     "quit" => app.exit(0),

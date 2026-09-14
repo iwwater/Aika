@@ -358,3 +358,33 @@ RT-01～04负责身份/会话/可信来源/Permission；GW-01/04负责Channel与
 - AGT-01/05：AgentSession与AgentRun分离、TaskCommand用户入口；远程命令是受控schema扩展，不经ReplyEnvelope.actions触发。
 
 以上均为已审阅设计，生产接口尚未实现，不可仅凭本登记解除集成门禁。
+
+### v1 之后的追加（2026-09-14，PET-02 桌宠接入契约，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `desktopPet.integration.v1`：`PetEvent` / `Capability` / `PetResult` / `PetContext` / `PetStatus` / `DesktopPetAdapter` / `DesktopPetService` / `PetConfig` / `normalizeLoopbackEndpoint` / `normalizePetConfig` / `projectPetText` / `deriveCapabilities` / `validatePetProfile` | `services/desktopPet/contracts.ts`、`profile.ts`、`desktopPetService.ts` | **全新可选能力**，不改任何既有类型与字段。`DesktopPetServiceToken`（`desktopPet.service`）只在桌面宿主且启用桌宠时注册；消费方在 `optional` 里声明并 `tryResolve`，拿到 null 就隐藏入口。endpoint 只允许本机 http（`127.0.0.1` / `::1`，`localhost` 归一化为 `127.0.0.1`），非法地址显式抛错 | 桌面宿主装配（PET-06 设置页）、展示桥接（PET-04 presenter）、诊断 |
+
+语义边界：`accepted` 只表示上游受理请求，**不等于已播放**；断线快照必须带 `stale` 且能力回落为 `unknown`，不得当当前可用；`emotion` 是 Aiki 语义能力，OpenPet 没有 `/api/emotion`，0.5 由 profile 的「语义情绪→已验证 animationId」映射表达，映射缺失只保留文本。
+
+profile 键空间：`SEMANTIC_NAME` 允许**下划线与连字符**，因为 Aiki 自己的 `MOODS` 里就有 `gentle_smile`。早期不允许下划线时，profile 里出现这个键会让**整份** profile 校验失败（能力全 `unknown`、一条命令都发不出），而且完全静默——只有真机核对才暴露。仍然拒绝斜杠、点、冒号、空白与大写。
+
+### v1 之后的追加（2026-09-14，PET-04 气泡存活时长，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `PetCallOptions.ttlMs` / `PetContext.ttlMs` | `services/desktopPet/contracts.ts`、`desktopPetService.ts`、`openPetAdapter.ts` | **可选新增**，不传即退回旧行为（等于 `deadlineMs` 的收口值）。语义拆分：`expiresAt` 只说「这条命令还值不值得发」（上限 `PET_DEFAULT_DEADLINE_MS = 4s`），`ttlMs` 说「气泡该显示多久」（收口在 500–10000ms）。早期两者共用一个数，一整句话的气泡只活 4 秒 | `presentation/desktopPetPresenter.ts`（按文本长度给值）；OpenPet adapter（`remainingTtl` 优先用它） |
+
+### v1 之后的追加（2026-09-14，PET-06 生产装配与设置，向后兼容）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `DesktopPetPresenterToken`（`presentation.desktopPet`） | `presentation/tokens.ts` | 新注册，**恒注册**：宿主没有桌宠能力时自身报 `available=false`，界面据此隐藏分组而不是让入口消失 | `presentationPlugin`（提供）、`useDesktopPet` |
+| `desktopPetPlugin({ http, process })`（`host.desktopPet`） | `app/hosts/desktopPet.ts` | 新宿主插件，**只有 Tauri 宿主装**：装了才有 `DesktopPetServiceToken`；浏览器宿主不注册，消费方 `tryResolve` 拿 null | `app/hosts/index.ts`、设置页 |
+| `DesktopPetServiceDeps.onProfileChange?` / `OpenPetAdapterDeps.endpoint` 接受 getter | `services/desktopPet/desktopPetService.ts`、`openPetAdapter.ts` | **可选**增量。不传 `onProfileChange` 行为不变；`endpoint` 传字符串时与原来完全一致（仍在构造期校验 loopback） | 装配层改端口/换 profile 不需要重建对象 |
+| `DesktopPetServiceToken` 在 `presentationPlugin.optional` / `ClockToken` 加入其 optional | `app/plugins/presentationPlugin.ts` | 能力缺失即降级：没有桌宠服务时 Presenter 仍可解析、报 `available=false` | 展示层、诊断面板 |
+| `desktop_pet_process_spawn/_alive/_exit_status/_stop/_validate` | `src-tauri/src/lib.rs`、`desktop_pet_process.rs` | 新命令；句柄只存在于 Rust 内存表，无「按名字停止」入口 | `createTauriPetProcessPort` |
+| `SETTING_KEYS.desktopPet`（`pet.desktopIntegration.v1`）/ `.desktopPetProfile`（`pet.desktopProfile.v1`） | `services/storage/contracts.ts` | 新增键，默认关闭 / 无 profile。**旧 `pet.windowEnabled` 不会被自动转换成托管启动授权**；读到坏值回落默认且不写回 | `useDesktopPet`、`usePetWindow`（让位判断） |
+| 表现出口互斥：集成启用时自研桌宠窗口让位 | `hooks/usePetWindow.ts`、`hooks/useDesktopPet.ts`、`App.tsx` | 行为增量。关闭集成即恢复自研窗口；关窗不取消主窗对话、不停 TTS（FE-20-G 不变） | FE-20/FE-31 设置区、PET-07 |
+
+语义边界：**关着的时候零网络、零进程**——`enabled=false` 时装配完成但不 enable、不请求 localhost、不 spawn；`testConnection()` 也只在启用后才真的探测。桌宠离线、超时或字段变化只影响桌宠表现，不阻塞 Provider/Runtime/存储；`Tool/审阅` 没有真实公开事件，只有受控显式入口，不按文本猜测。

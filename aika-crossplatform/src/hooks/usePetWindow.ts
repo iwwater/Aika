@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useService, useOptionalService } from "../app/kernelContext";
 import { isTauriHost } from "../app/hosts/detect";
 import { HostLifecycleToken } from "../services/runtime/tokens";
@@ -10,6 +10,7 @@ import { VoicePresenterToken } from "../presentation/tokens";
 import { createPetWindowManager, type PetWindowManager } from "../pet/manager";
 import { aggregatePresentation } from "../pet/relay";
 import { createPetIntentBridge } from "../pet/intentBridge";
+import { createDesktopPetSettings } from "../services/desktopPet/settings";
 import { createSystemClock } from "../services/time/systemTime";
 import {
   EnvironmentMonitorToken, ScreenContextSourceToken,
@@ -43,6 +44,14 @@ export interface PetWindowState {
    */
   session: CompanionSessionController | null;
   sessionView: ReturnType<CompanionSessionController["getSnapshot"]> | null;
+  /**
+   * 外部桌宠集成已启用，自研窗口让位（PET-06）。
+   *
+   * 表现出口只能有一个：两个都开会让同一句话被两个窗口各说一遍。
+   */
+  legacyBlocked: boolean;
+  /** 由主窗在外部桌宠开关变化时调用；置真时顺带关掉自研窗口。 */
+  applyLegacyBlock(blocked: boolean): void;
 }
 
 export function usePetWindow(): PetWindowState {
@@ -57,7 +66,9 @@ export function usePetWindow(): PetWindowState {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [legacyBlocked, setLegacyBlocked] = useState(false);
   const startedRef = useRef(false);
+  const desktopPetSettings = useMemo(() => createDesktopPetSettings(settings), [settings]);
 
   const manager = useMemo<PetWindowManager | null>(() => {
     if (!isTauriHost()) return null;
@@ -155,10 +166,21 @@ export function usePetWindow(): PetWindowState {
       // 启动恢复：读取失败按关闭处理，不自动打开桌宠。
       let enabled = false;
       try {
-        enabled = await settings.getBoolean(SETTING_KEYS.petWindowEnabled, false);
+        // 首次启动（或旧库损坏后新建设置库）默认展示一次静态桌宠，确保入口可见。
+        // 用户主动关闭会持久化 false，后续启动尊重该选择。
+        enabled = await settings.getBoolean(SETTING_KEYS.petWindowEnabled, true);
       } catch {
         enabled = false;
       }
+      // 外部桌宠集成开着就让位：两个表现出口同时开会让同一句话被说两遍。
+      let desktopPetEnabled = false;
+      try {
+        desktopPetEnabled = await desktopPetSettings.isEnabled();
+      } catch {
+        desktopPetEnabled = false;
+      }
+      setLegacyBlocked(desktopPetEnabled);
+      if (desktopPetEnabled) return;
       if (enabled) {
         try {
           await manager.open();
@@ -168,7 +190,16 @@ export function usePetWindow(): PetWindowState {
         }
       }
     })();
-  }, [manager, settings]);
+  }, [manager, settings, desktopPetSettings]);
+
+  const applyLegacyBlock = useCallback((blocked: boolean) => {
+    setLegacyBlocked(blocked);
+    const mgr = managerRef.current;
+    if (blocked && mgr?.isOpen()) {
+      // 切到外部桌宠时立刻收起自研窗口；关窗不取消主窗对话、也不停 TTS。
+      void mgr.close().then(() => setOpen(false)).catch(() => undefined);
+    }
+  }, []);
 
   // pet → 主窗的受控意图：Rust 校验窗口 label，这里再过形状白名单与会话裁决。
   useEffect(() => {
@@ -208,11 +239,19 @@ export function usePetWindow(): PetWindowState {
     open,
     busy,
     error,
-    openPet: () => run(async (mgr) => {
-      await mgr.open();
-      setOpen(true);
-      await settings.setBoolean(SETTING_KEYS.petWindowEnabled, true);
-    }),
+    legacyBlocked,
+    applyLegacyBlock,
+    openPet: () => {
+      if (legacyBlocked) {
+        setError("外部桌宠集成已启用：先关闭它，才能显示 Aiki 自研的桌宠窗口。");
+        return Promise.resolve();
+      }
+      return run(async (mgr) => {
+        await mgr.open();
+        setOpen(true);
+        await settings.setBoolean(SETTING_KEYS.petWindowEnabled, true);
+      });
+    },
     closePet: () => run(async (mgr) => {
       await mgr.close();
       setOpen(false);

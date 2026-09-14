@@ -18,6 +18,13 @@ import { createStoragePresenter } from "../../presentation/storagePresenter";
 import { createInspectorPresenter } from "../../presentation/inspectorPresenter";
 import { createOpsPresenter } from "../../presentation/opsPresenter";
 import { createEnvironmentPresenter } from "../../presentation/environmentPresenter";
+import {
+  createDesktopPetPresenter,
+  type DesktopPetRuntimeEvent,
+} from "../../presentation/desktopPetPresenter";
+import { DesktopPetServiceToken } from "../../services/desktopPet/contracts";
+import { ClockToken } from "../../services/time/tokens";
+import { createSystemClock } from "../../services/time/systemTime";
 import { UsageLedgerStoreToken, UsageLedgerToken } from "../../services/usage/tokens";
 import {
   EnvironmentMonitorToken, ProactivePolicyToken,
@@ -27,7 +34,7 @@ import { SettingsToken } from "../../services/storage/tokens";
 import {
   CompanionPresenterToken, DevToolsPresenterToken, MemoryPresenterToken,
   StoragePresenterToken, VoicePresenterToken, InspectorPresenterToken, OpsPresenterToken,
-  EnvironmentPresenterToken,
+  EnvironmentPresenterToken, DesktopPetPresenterToken,
 } from "../../presentation/tokens";
 
 /**
@@ -67,11 +74,12 @@ export function presentationPlugin(options: PresentationPluginOptions = {}): Aik
       TraceRecorderToken, TraceSinkToken, TraceSettingsToken,
       UsageLedgerToken, UsageLedgerStoreToken,
       EnvironmentMonitorToken, ProactivePolicyToken, EnvironmentBusyObserverToken, SettingsToken,
+      DesktopPetServiceToken, ClockToken,
     ],
     provides: [
       CompanionPresenterToken, VoicePresenterToken, DevToolsPresenterToken,
       MemoryPresenterToken, StoragePresenterToken, InspectorPresenterToken, OpsPresenterToken,
-      EnvironmentPresenterToken,
+      EnvironmentPresenterToken, DesktopPetPresenterToken,
     ],
     activate(context) {
       const storage = context.registrar.tryResolve(StorageToken);
@@ -177,6 +185,22 @@ export function presentationPlugin(options: PresentationPluginOptions = {}): Aik
       context.registrar.provide(EnvironmentPresenterToken, () => createEnvironmentPresenter({
         monitor: environmentMonitor,
         ...(environmentSettings ? { settings: environmentSettings } : {}),
+      }), { disposer: (value) => value.dispose() });
+
+      // 外部桌宠桥接（PET-06）：宿主没有桌宠能力时 service 为 null，
+      // 桥接照常存在并报 available=false。
+      const desktopPet = context.registrar.tryResolve(DesktopPetServiceToken);
+      const desktopPetClock = context.registrar.tryResolve(ClockToken) ?? createSystemClock();
+      context.registrar.provide(DesktopPetPresenterToken, () => createDesktopPetPresenter({
+        service: desktopPet,
+        // Runtime 惰性取：没人 start 桥接时不会顺带实例化编排（CORE-01）。
+        runtime: {
+          subscribe(listener: (event: DesktopPetRuntimeEvent) => void) {
+            const services = options.resolveRuntime?.();
+            return services ? services.runtime.subscribe(listener) : () => {};
+          },
+        },
+        clock: desktopPetClock,
       }), { disposer: (value) => value.dispose() });
 
     },
