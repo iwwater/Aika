@@ -6,12 +6,12 @@
 
 | AC | 结论 | 证据等级 |
 | --- | --- | --- |
-| A | **PASS**（依赖/来源/映射）／**NOT RUN**（真机 Windows 目视） | 源码 + 真实资产 device 采样 |
+| A | **PASS** | 源码 + 真实资产 device 采样 + **真机 Windows 渲染** |
 | B | **PASS** | 单元测试 + E2E |
-| C | **PASS** | 单元测试 + E2E（两套真实模型换装） |
-| D | **PASS** | 单元测试 + E2E |
-| E | **PASS** | 单元测试 |
-| F | **PASS**（fixture 与 browser device）／**NOT RUN**（Windows Tauri device） | 单元测试 + browser E2E |
+| C | **PASS** | 单元测试 + E2E（两套真实模型换装）+ **真机菜单换装** |
+| D | **PASS** | 单元测试 + E2E + **真机 sprite↔Live2D 双向切换** |
+| E | **PASS** | 单元测试 + **真机降级现场** |
+| F | **PASS**（fixture + browser device + 真机 device） | 单元测试 + browser E2E + Tauri WebDriver |
 
 本轮冻结的换装方式是**整模型切换**：一套外观 = 一个 Cubism 模型。未采用同模型部件换装，因此没有部件/参数契约需要登记。渲染出口切换（sprite↔Live2D）与换装是两件事，报告中分别标注，不互相冒充。
 
@@ -54,7 +54,15 @@
 
 **如实声明边界**：本表只保证「所声明的 group/index/表情在对应 manifest 里确实存在」。存在性由 `resolveLive2dAction` 用 manifest 判定（单测覆盖）；「每段 motion 的表演是否贴合语义」是人工挑选，不是被验证过的结论。Mao 的 `failed` 故意走表情路径，用来证明表情与 motion 受同一套校验、也同样会确定降级。
 
-真机目视状态：**NOT RUN**。本轮没有可用的驱动链路——`cargo tauri-driver` 未安装，`src-tauri/target/` 无热构建，跑一次真实窗口需要先装驱动并做全量 Rust 构建。可复现命令见第 8 节。已完成的 device 级证据是浏览器模式（Chromium）+ **真实模型资产**下的渲染采样：`node probe/live2d/debug-pet-live2d.mjs` 直接 `readPixels` 默认帧缓冲，输出两套外观的 alpha 分布，并用 `glCorner/glCenter` 断言「画布背景透明、角色居中绘制」。
+**真机（Windows Tauri 窗口）已验证**：`tauri-driver 2.0.6` + 与 WebView2 运行时同版本的 `msedgedriver 153.0.4234.32`，用 WebDriver 驱动**真实进程**（`src-tauri/target/debug/petshell.exe`，webview2 153.0.4234.32 / windows）。真机证据链（`e2e-tauri/specs/pet-window.e2e.mjs`）：
+
+- 真实设置改动走 `invoke('update_settings')` → Rust 归一化 + 落盘 + 广播 `pet-settings`，渲染出口真的切换（`activeRenderer` 逐轮核对）；
+- 真实 WebView2 里的 Live2D 画布用 `readPixels` 读**默认帧缓冲**（渲染器为此开了 `preserveDrawingBuffer`）：不透明像素 > 1000、颜色数 > 50、透明像素多于不透明（桌宠窗口不铺不透明底）；
+- 换装点的是用户能点到的那个右键菜单项（`Mao`），而非直接改内部状态；
+- 真机截图 `device-live2d-hiyori.png` / `device-live2d-mao.png`（Hiyori 与 Mao 均清晰渲染、背景透明）；
+- 结束后把设置还原，`%APPDATA%\dev.aiki.petshell\data\settings.toml` 落盘为 `renderer = "sprite"`、`live2dAppearance = "hiyori"`——持久化路径在同一轮里被真实走过。
+
+真机还暴露了**三个浏览器预览不可能暴露的缺陷**（见第 7 节第 8–10 条）：CSP 拦 eval、CSP 拦 worker、以及一个只在「从 Live2D 切回去」时才出现的 DOM 泄漏。
 
 ## 3. AC-B：唯一出口、确定降级、不假装播放 — PASS
 
@@ -93,7 +101,7 @@
 
 ## 7. 测试发现的真实缺陷（已修）
 
-本节是本 SPEC 最有价值的部分。以下七条都不是「测试写错」，而是缺陷——多数只有把真实模型跑起来、把像素读出来才会暴露。
+本节是本 SPEC 最有价值的部分。以下十条都不是「测试写错」，而是缺陷——1–7 条来自浏览器模式跑真实模型，8–10 条**只有真机才会暴露**。
 
 1. **缩放反馈回路。** `refit` 用 `model.width` 算缩放，而 `Container.width` 已经把当前 scale 算进去了——上一轮的缩放喂进下一轮，模型被逐步放大到铺满整块画布。症状是整帧不透明（`glCorner` 采样到奶油色）。修复：量测前先 `scale.set(1)` 归一，再用可绘制范围算贴合（内部画布含留白，按它缩放会明显偏小）。
 2. **换装注册竞态。** 切换判据用的是「我上次设过什么」的本地 ref。设置是异步到的（先渲染 fallback，再拿运行期快照），快照先到时这个 ref 会把切换锁死：设置里写着 live2d，活跃的却一直是 sprite。修复：以**宿主真实的活跃 renderer** 为准，并加「同一目标只尝试一次」的重试防护。
@@ -102,6 +110,12 @@
 5. **上下文菜单末尾条目点不到。** 定位用一个写死的 `CONTEXT_MENU_HEIGHT` 估算，条目变多（本次新增外观项）后末尾落到视口外：元素存在、可见，但不可点。修复：改为按**实测**尺寸收敛定位，并给菜单加上限高与滚动。
 6. **换装后一帧都画不出来（引擎共享贴图）。** 逐个 `model.destroy()` 或只 `texture.destroy()` 都会破坏后续渲染；实测每次换装后新模型 `textures[*].destroyed` 为 `true`。修复：改为整体重建舞台（见 AC-D）。这一条把「释放旧纹理」与「换装后仍要渲染」的冲突摆到了台面上——只满足前者的实现是坏的。
 7. **旧舞台销毁抛 `reading 'next'`。** 舞台销毁会改动 ticker 的监听链表，而换装发生在渲染回调链上；同拍内改链表会抛错，并且这个错误会把一次**成功**的换装记成失败。修复：释放延后一拍执行，并把它移出提交判定范围，单独记账。
+
+以下三条来自真机（Windows Tauri + WebDriver），浏览器预览因为没有 CSP、也从不反向切换，全部漏过：
+
+8. **CSP 拦下 Pixi 的 eval 路径，Live2D 在真机上根本起不来。** 症状是用户看到的「Falling back to default renderer」：`script-src` 没有 `'unsafe-eval'`，Pixi 的 `_unsafeEvalCheck` 抛「Current environment does not allow unsafe-eval」→ prepare 失败 → 宿主按设计降级回 sprite（`failedPreparations:1`，计数与提示都对）。浏览器预览没有 CSP，把它掩盖了。修复：`import('pixi.js/unsafe-eval')`——官方的免 eval 代码路径，**不放宽 CSP**；走动态导入，避免把 pixi 拖进 sprite 路径的包。附带：pixi 8.20.1 的 `exports` 没给 `./unsafe-eval` 挂 `types` 条件（上游打包疏漏，`init.d.ts` 其实存在），补了一条 ambient 声明。
+9. **CSP 拦下 Pixi 的贴图解码 worker。** eval 修完后撞到下一层：`worker-src` 未设置时回退到 `script-src`，Pixi 从 blob URL 建的解码 worker（`loadImageBitmap` 等，Live2D 贴图加载走这条路）被拒，加载必然失败。修复：CSP 增加 `worker-src 'self' blob:`；顺手删掉两条被解析器**忽略**的无效源 `http://[::1]:*`（控制台 SEVERE 噪音的来源，删掉无行为变化）。
+10. **`dispose()` 中途抛错会跳过 DOM 清理，宿主还把切换记成成功。** 真机用例的**反向切换**（Live2D → sprite，第 6 步）暴露：`.pet-live2d` 在切回 sprite 后仍在文档里（DOM 探针显示容器里同时有 sprite 与 Live2D 两对节点）。原因是 `app.destroy()` 排在 `hitTarget.remove()` 之前，destroy 一抛，后面的清理全部跳过；而 `switchTo` 在提交成功后会把 `lastError` 清空，于是宿主眼里这是一次干净的切换。浏览器 e2e 抓不到它，因为那条用例**从不从 Live2D 切回去**。修复：destroy 包 try/catch（计入 `stageReleaseFailures`），DOM 清理无条件执行；真机用例从此把「切回去之后不留残骸」作为固定一步。
 
 另外一处不是缺陷但值得登记：E2E 读像素**必须**用 `readPixels` 而不是 `drawImage` 到 2D 画布。在带 CSS filter 的合成上下文里后者会回来不透明结果（整帧 alpha=255），把「模型画好了、背景也透明」误判成「整块不透明」。
 
@@ -113,17 +127,23 @@ pnpm exec vitest run                            2 files / 28 passed / 0 failed
 cargo test --manifest-path src-tauri/Cargo.toml 13 passed / 0 failed
 pnpm e2e（Playwright/Chromium）                  4 passed（含新增 live2d 用例）
 node probe/live2d/debug-pet-live2d.mjs          两套外观 alpha 采样：背景透明、角色居中绘制
+pnpm e2e:tauri（Windows Tauri + WebDriver）      2 passed（含新增真机 live2d 用例）
 ```
 
 新增单测 9 条（`src/plugins/renderers/live2d/manifest.test.ts`）：manifest 解析（含坏输入返回 null）、未知 group、index 越界/负数/非整数、表情名不存在、缺 manifest、两套外观的声明映射在其 manifest 上**全部可播**、目录不声明运行期动作/姿态之外的 id。最后两条是防漂移的闸门：目录写错一个 index，测试立刻失败。
 
 新增 E2E 用例在真实资产下断言：`.pet-live2d` 可见且 canvas 有真实像素（`readPixels` 采样，含透明背景占多数的断言）、`capabilities().costumes === true`、可播清单恰为 7 项（来自 manifest）、菜单出现且恰为 6 项、切到 Mao 后 `diagnostics.appearance === 'mao'`、`switched ≥ 1` 且 `failedSwitches === 0`、Mao 的表情清单为 8 项、换装后像素指纹与 Hiyori 不同、`.pet-live2d` 与 `.pet-sprite` 各只在场一个。
 
-真机（Windows Tauri 窗口）验证**未执行**，命令如下，需要先补驱动与构建：
+真机用例（`e2e-tauri/specs/pet-window.e2e.mjs`）在真实进程上走完整链：强制 sprite → 真实 IPC 切到 live2d → 帧缓冲采样 → 右键菜单换到 Mao → 再采样并比对像素指纹 → 单一输出计数 → **切回 sprite 并断言 Live2D 舞台被释放**。等待一律读宿主状态（`__petSlots`）而不是查 DOM 元素，并且「宿主降级」被视为**确定性失败**立即带出 `lastError`，不等到超时——第 8 条缺陷就是这样在 90 秒内拿到根因的，而不是一句「跑太久」。
+
+真机环境准备（一次性）：
 
 ```powershell
-cargo install tauri-driver --locked   # 当前环境未安装
-pnpm e2e:tauri                        # e2e-tauri/specs/pet-window.e2e.mjs
+cargo install tauri-driver --locked        # 2.0.6
+# msedgedriver 必须与 WebView2 运行时同版本（本机 153.0.4234.32）
+$env:TAURI_NATIVE_DRIVER = '<msedgedriver.exe 路径>'
+pnpm tauri build --debug --no-bundle       # 产物 src-tauri/target/debug/petshell.exe
+pnpm e2e:tauri
 ```
 
 ## 9. 共享接口影响
@@ -138,8 +158,7 @@ pnpm e2e:tauri                        # e2e-tauri/specs/pet-window.e2e.mjs
 
 | 项 | 状态 |
 | --- | --- |
-| 真机 Windows 窗口下的模型目视与动作/换装确认 | **NOT RUN**（缺 `tauri-driver` 与热构建，见第 8 节） |
-| 每段 motion / 表情的表演是否贴合语义 | 人工挑选，未验证；本报告只声明存在性已校验 |
+| 每段 motion / 表情的表演是否贴合语义 | 人工挑选，未验证；本报告只声明存在性已校验，真机截图仅供人眼复核 |
 | Aiki 下发换装命令 | 不在默认范围 |
 | 口型、物理参数细调 | 不在本次范围 |
 | 性能（帧率、CPU、首帧耗时） | 归 MVP-13；本次只保证「加载中有状态，不承诺零耗时」 |
