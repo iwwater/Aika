@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "OpenPet",
-  "version": "0.1.6",
-  "identifier": "dev.xter.openpet",
+  "productName": "PetShell",
+  "version": "0.6.0",
+  "identifier": "dev.aiki.petshell",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "beforeBuildCommand": "pnpm build",
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "settings",
-        "title": "OpenPet Settings",
+        "title": "PetShell Settings",
         "url": "/?window=settings",
         "width": 780,
         "height": 760,
@@ -26,7 +26,7 @@
       },
       {
         "label": "pet",
-        "title": "OpenPet",
+        "title": "PetShell",
         "url": "/?window=pet",
         "width": 320,
         "height": 320,
@@ -36,7 +36,7 @@
         "alwaysOnTop": true,
         "skipTaskbar": true,
         "shadow": false,
-        "visible": true
+        "visible": false
       }
     ],
     "security": {
@@ -46,18 +46,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "createUpdaterArtifacts": true,
-    "icon": ["icons/icon.png", "icons/icon.ico"],
-    "resources": {
-      "../skills/": "skills/"
-    }
-  },
-  "plugins": {
-    "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdCQkM0MjkxRkM0RTIyQTcKUldTbklrNzhrVUs4ZTk1YkQxMll3OEJ3bk54RHVnYStNZnBZTUVac2E5QUlSMnNKTG9aSDQrM1AK",
-      "endpoints": [
-        "https://github.com/X-T-E-R/OpenPet/releases/latest/download/latest.json"
-      ]
-    }
+    "createUpdaterArtifacts": false,
+    "icon": ["icons/icon.png", "icons/icon.ico"]
   }
 }

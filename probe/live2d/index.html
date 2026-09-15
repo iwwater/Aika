@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="data:," />
+    <title>Live2D feasibility probe (MVP-07 AC-C)</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #101418;
+        color: #e6edf3;
+        font: 12px/1.5 Consolas, "Courier New", monospace;
+      }
+      #stage {
+        width: 400px;
+        height: 440px;
+        background: #1b2027;
+      }
+      #log {
+        white-space: pre;
+        padding: 8px;
+        max-height: 260px;
+        overflow: auto;
+      }
+    </style>
+    <!-- Cubism Core is a redistributable file per Core/RedistributableFiles.txt. -->
+    <script src="./assets/core/live2dcubismcore.min.js"></script>
+  </head>
+  <body>
+    <div id="stage"></div>
+    <div id="log">probing…</div>
+    <script type="module" src="./probe.ts"></script>
+  </body>
+</html>

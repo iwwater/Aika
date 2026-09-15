@@ -15,3 +15,12 @@ openpet-settings-ui*.png
 .env.*
 __pycache__/
 *.pyc
+
+# MVP-07 AC-C probe assets: Live2D Cubism Core and the Hiyori sample model are
+# fetched locally, not vendored. See probe/live2d/README notes in the SPEC report.
+probe/live2d/assets/
+probe/live2d/probe-screenshot.png
+
+# MVP-11 runtime assets: Cubism Core plus the official sample models are licensed
+# material fetched by `node scripts/fetch-live2d-assets.mjs`. They are never vendored.
+public/live2d/

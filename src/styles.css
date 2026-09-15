@@ -399,26 +399,6 @@ textarea {
   resize: vertical;
 }
 
-.import-card {
-  display: grid;
-  gap: 0.65rem;
-  margin: 0 0 1rem;
-  border: 1px dashed rgba(36, 90, 70, 0.25);
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.38);
-  padding: 0.9rem;
-}
-
-.import-card .field-stack,
-.import-card .helper-text {
-  margin-bottom: 0;
-}
-
-.import-card button {
-  width: fit-content;
-}
-
-.source-links,
 .action-pool {
   display: flex;
   flex-wrap: wrap;
@@ -427,13 +407,6 @@ textarea {
   margin: 0 0 1rem;
 }
 
-.source-links span {
-  color: var(--muted);
-  font-size: 0.82rem;
-  font-weight: 900;
-}
-
-.source-links a,
 .check-pill,
 .support-links a {
   border: 1px solid rgba(36, 90, 70, 0.16);
@@ -978,167 +951,6 @@ summary {
   justify-content: flex-end;
 }
 
-.update-strip {
-  display: grid;
-  gap: 0.5rem;
-  margin-top: 0.8rem;
-  border: 1px solid rgba(36, 90, 70, 0.13);
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.34);
-  color: var(--brand-dark);
-  padding: 0.72rem 0.78rem;
-}
-
-.update-strip-main {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.7rem;
-  align-items: center;
-}
-
-.update-strip-copy {
-  min-width: 0;
-}
-
-.update-strip-copy .eyebrow {
-  margin-bottom: 0.22rem;
-  font-size: 0.68rem;
-}
-
-.update-strip-copy h3 {
-  display: inline;
-  margin-right: 0.45rem;
-}
-
-.update-strip-copy span {
-  color: var(--muted);
-  font-size: 0.86rem;
-  font-weight: 800;
-  line-height: 1.35;
-}
-
-.update-strip-controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.42rem;
-  align-items: center;
-  justify-content: flex-end;
-}
-
-.update-strip-controls button,
-.update-strip-controls a {
-  border-radius: 999px;
-  padding: 0.46rem 0.66rem;
-  font-size: 0.84rem;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.update-strip-controls a {
-  border: 1px solid rgba(36, 90, 70, 0.16);
-  background: rgba(255, 255, 255, 0.58);
-  color: var(--brand-dark);
-  font-weight: 900;
-  text-decoration-thickness: 0.08em;
-  text-underline-offset: 0.18em;
-}
-
-.compact-switch {
-  display: inline-flex;
-  gap: 0.35rem;
-  align-items: center;
-  border: 1px solid rgba(36, 90, 70, 0.14);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.52);
-  padding: 0.34rem 0.54rem;
-  color: var(--brand-dark);
-  font-size: 0.84rem;
-  font-weight: 900;
-  white-space: nowrap;
-}
-
-.compact-switch input {
-  width: 1rem;
-  height: 1rem;
-  accent-color: var(--brand);
-}
-
-.update-result-line {
-  display: grid;
-  gap: 0.22rem;
-  border-top: 1px solid rgba(36, 90, 70, 0.1);
-  padding-top: 0.5rem;
-}
-
-.update-result-line.available {
-  color: #8d4c12;
-}
-
-.update-result-line.available .update-result-summary strong {
-  color: #8d4c12;
-}
-
-.update-result-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem 0.55rem;
-  align-items: baseline;
-  color: var(--brand-dark);
-  font-size: 0.88rem;
-}
-
-.update-result-summary span,
-.update-result-meta,
-.update-empty,
-.update-notes,
-.update-progress small {
-  color: var(--muted);
-  font-size: 0.78rem;
-  font-weight: 800;
-}
-
-.update-empty {
-  margin: 0;
-}
-
-.update-result-detail {
-  display: grid;
-  gap: 0.25rem;
-}
-
-.update-progress {
-  display: grid;
-  gap: 0.24rem;
-}
-
-.update-progress-track {
-  overflow: hidden;
-  max-width: 14rem;
-  border-radius: 999px;
-  background: rgba(36, 90, 70, 0.14);
-  height: 0.34rem;
-}
-
-.update-progress-track span {
-  display: block;
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--brand), var(--accent));
-  height: 100%;
-  min-width: 0.3rem;
-  transition: width 180ms ease;
-}
-
-.update-notes summary {
-  width: fit-content;
-  cursor: pointer;
-}
-
-.update-notes small {
-  display: block;
-  margin-top: 0.18rem;
-  line-height: 1.35;
-}
-
 pre {
   overflow-x: auto;
   margin: 0;
@@ -1183,6 +995,47 @@ body:has(.pet-window) {
 
 .pet-window.dragging {
   cursor: grabbing;
+}
+
+/* Per-host wrapper: layout-transparent so the renderer's output sits directly in
+   .pet-surface, while still isolating one host's DOM from another's. */
+.pet-renderer-container {
+  display: contents;
+}
+
+/* Renderer slot container: the active renderer owns everything inside it. */
+.pet-surface {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.pet-slot-notice {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  z-index: 3;
+  transform: translateX(-50%);
+  border: 1px solid rgba(141, 76, 18, 0.35);
+  border-radius: 999px;
+  background: rgba(255, 246, 232, 0.96);
+  color: #8d4c12;
+  padding: 0.28rem 0.62rem;
+  font-size: 0.72rem;
+  font-weight: 900;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.pet-slot-notice.degraded {
+  border-color: rgba(36, 90, 70, 0.3);
+  background: rgba(240, 250, 245, 0.96);
+  color: var(--brand-dark);
 }
 
 .pet-hit-target {
@@ -1267,12 +1120,48 @@ body:has(.pet-window) {
   transform: translateY(-3px) scale(1.03);
 }
 
+/* Live2D renderer box. Transparent: the pet window must not get an opaque backdrop. */
+.pet-live2d {
+  display: block;
+  flex: 0 0 auto;
+  overflow: hidden;
+  background: transparent;
+  filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.2));
+  transition: filter 160ms ease, transform 160ms ease;
+}
+
+.pet-live2d-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+}
+
+/*
+ * `display` from the rules above beats the UA's `[hidden] { display: none }`, which
+ * silently disabled the "no visible output before activate()" guarantee: a prepared
+ * but not-yet-activated renderer stayed on screen. Restore it explicitly.
+ */
+.pet-sprite[hidden],
+.pet-live2d[hidden] {
+  display: none;
+}
+
+.pet-hit-target:hover .pet-live2d,
+.pet-window.dragging .pet-live2d {
+  filter: drop-shadow(0 16px 22px rgba(59, 130, 246, 0.28)) saturate(1.08);
+  transform: translateY(-3px) scale(1.03);
+}
+
 .pet-context-menu {
   position: fixed;
   z-index: 10;
   display: grid;
   box-sizing: border-box;
   width: 188px;
+  /* 条目数是动态的（Live2D 外观项会被追加），所以要有上限而不是靠调用方估算。 */
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
   gap: 0.35rem;
   border: 1px solid rgba(23, 33, 28, 0.16);
   border-radius: 22px;
@@ -1325,14 +1214,6 @@ body:has(.pet-window) {
   }
 
   .support-links {
-    justify-content: flex-start;
-  }
-
-  .update-strip-main {
-    grid-template-columns: 1fr;
-  }
-
-  .update-strip-controls {
     justify-content: flex-start;
   }
 

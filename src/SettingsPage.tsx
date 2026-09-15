@@ -1,9 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
-import { relaunch } from '@tauri-apps/plugin-process';
-import { check, type DownloadEvent, type Update } from '@tauri-apps/plugin-updater';
-import { useEffect, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useState, type MouseEvent } from 'react';
 import {
   PET_ACTION_ANIMATION_IDS,
   type PetActionAnimationId,
@@ -20,18 +18,17 @@ import {
 import {
   FALLBACK_SNAPSHOT,
   type BubbleStyle,
-  type BundledSkill,
   type ClickActionMode,
-  type InstallBundledSkillsPayload,
   type IdleActionId,
   type PetLanguage,
   type PetStoragePreset,
   type RuntimeApiConfig,
   type PetSettings,
   type RuntimeSnapshot,
-  type SkillInstallResult,
-  type UpdateCheckResult,
+  PET_RENDERER_IDS,
+  isPetRendererId,
 } from './pet/settings';
+import { live2dAppearanceOptions } from './plugins/renderers/live2d/catalog';
 
 const SCALE_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 const BUBBLE_TTL_OPTIONS = [2500, 4000, 7000, 10000] as const;
@@ -47,38 +44,15 @@ const BUBBLE_STYLE_OPTIONS = ['soft', 'comic', 'glass', 'terminal'] as const sat
 const BUBBLE_FONT_SIZE_OPTIONS = [12, 14, 16, 18, 22] as const;
 const BUBBLE_WIDTH_OPTIONS = [220, 292, 360, 440] as const;
 const PET_STORAGE_PRESETS = ['codex-custom', 'app-data', 'custom'] as const satisfies readonly PetStoragePreset[];
-const SKILL_TARGETS = [
-  { id: 'codex', label: 'Codex' },
-  { id: 'cursor', label: 'Cursor' },
-  { id: 'openclaw', label: 'OpenClaw' },
-  { id: 'hermes', label: 'Hermes' },
-  { id: 'opencode', label: 'OpenCode' },
-  { id: 'claude', label: 'Claude Code' },
-] as const;
-const PET_IMPORT_SOURCE_LINKS = [
-  { label: 'Petdex', href: 'https://petdex.crafter.run/' },
-  { label: 'Codex Pets', href: 'https://codex-pets.net/' },
-  { label: 'SpriteYard', href: 'https://spriteyard.com/' },
-  { label: 'Codex Pet Shop', href: 'https://www.codexpetshop.com/' },
-] as const;
+/** Attribution only. The upstream project is credited, never presented as this product. */
 const PROJECT_LINKS = [
-  { key: 'projectAddress', href: 'https://github.com/X-T-E-R/OpenPet' },
-  { key: 'milkTea', href: 'https://afdian.com/a/xter123' },
+  { key: 'upstreamProject', href: 'https://github.com/X-T-E-R/OpenPet' },
 ] as const;
-const GITHUB_RELEASES_URL = 'https://github.com/X-T-E-R/OpenPet/releases';
 const IDLE_ACTION_OPTIONS = [
   'random',
   'active-action',
   ...PET_ACTION_ANIMATION_IDS,
 ] as const satisfies readonly IdleActionId[];
-
-type UpdateSource = 'tauri' | 'github';
-type UpdateInstallPhase = 'idle' | 'downloading' | 'installed';
-
-type UpdateDownloadProgress = {
-  downloadedBytes: number;
-  contentLength: number | null;
-};
 
 const TRANSLATIONS = {
   en: {
@@ -126,18 +100,8 @@ const TRANSLATIONS = {
       ready: 'Ready.',
       previewOnly: 'Browser preview only. Open the Tauri desktop app to control the pet.',
       statusRefreshed: 'Status refreshed.',
-      checkingUpdates: 'Checking updates...',
-      updateAvailable: 'Update available:',
-      noUpdate: 'OpenPet is up to date.',
-      signedUpdaterUnavailable:
-        'Signed metadata unavailable; using GitHub fallback.',
-      nativeUpdateReady: 'Signed update ready:',
-      installingUpdate: 'Installing update...',
-      updateInstalled: 'Update installed. Restart OpenPet to finish.',
-      noSignedUpdate: 'No signed update is ready to install.',
-      restarting: 'Restarting OpenPet...',
-      autoUpdatesOn: 'Automatic update checks enabled.',
-      autoUpdatesOff: 'Automatic update checks disabled.',
+      rendererUpdated: 'Renderer updated.',
+      appearanceUpdated: 'Appearance updated.',
       settingsUpdated: 'Settings updated.',
       languageUpdated: 'Language updated.',
       eventAnimationsOn: 'Event animations enabled.',
@@ -145,24 +109,17 @@ const TRANSLATIONS = {
       eventBubblesOn: 'Event bubbles enabled.',
       eventBubblesOff: 'Event bubbles disabled.',
       bubbleSent: 'Bubble sent.',
-      importUrlFirst: 'Paste a supported pet page URL first.',
-      importing: 'Importing pet from website...',
-      importedPrefix: 'Imported',
       fixedMode: 'Click action mode set to fixed.',
       randomMode: 'Click action mode set to random.',
       poolEmpty: 'Random pool is empty. Clicks will fall back to the fixed action.',
       apiConfigSaved: 'API endpoint saved.',
-      apiConfigRestart: 'API endpoint saved. Restart OpenPet to apply it.',
+      apiConfigRestart: 'API endpoint saved. Restart PetShell to apply it.',
       apiConfigInvalid: 'Enter a valid listen address and port.',
       petStorageUpdated: 'Pet storage location updated.',
       customStorageRequired: 'Enter a custom storage path before selecting the custom preset.',
       folderOpened: 'Folder opened.',
       folderSelected: 'Folder selected.',
       linkOpened: 'Opened external link.',
-      installSelectFirst: 'Select at least one bundled skill and one target.',
-      installingSkills: 'Installing selected skills...',
-      skillsInstalled: 'Skill install finished.',
-      skillsLoaded: 'Bundled skills loaded.',
       petShown: 'Pet is visible.',
       petHidden: 'Pet is hidden.',
     },
@@ -171,12 +128,12 @@ const TRANSLATIONS = {
       import: 'Import',
       pet: 'Pet',
       bubble: 'Bubble',
-      apiAgent: 'API / Agent',
+      apiAgent: 'API / Host',
     },
-    heroEyebrow: 'OpenPet',
-    heroTitle: 'Settings, imports, and tiny companion behavior.',
+    heroEyebrow: 'PetShell',
+    heroTitle: 'Settings, pets, and tiny companion behavior.',
     heroLede:
-      'A single control room for language, pet behavior, compatible imports, local API debugging, and project links.',
+      'A single control room for language, pet behavior, local pet packages, the loopback API, and attribution.',
     showPet: 'Show Pet',
     hidePet: 'Hide Pet',
     refresh: 'Refresh Status',
@@ -200,13 +157,20 @@ const TRANSLATIONS = {
     size: 'Size',
     reducedMotion: 'Reduced motion',
     reducedMotionHint: 'Minimize movement while keeping manual gestures available.',
+    appearanceTitle: 'Appearance',
+    rendererLabel: 'Renderer',
+    rendererSprite: 'Sprite sheet',
+    rendererLive2d: 'Live2D',
+    appearanceLabel: 'Live2D appearance',
+    appearanceHint:
+      'Live2D loads its runtime and model only when it is selected; the sprite sheet stays as the fallback. Switching an appearance loads it first and keeps the current look if that fails.',
     bubbleAppearance: 'Bubble appearance',
     bubbleStyle: 'Bubble style',
     bubbleFont: 'Bubble font',
     bubbleFontSize: 'Font size',
     bubbleMaxWidth: 'Max width',
     bubblePreview: 'Bubble preview',
-    bubblePreviewText: 'OpenPet can say what the agent is doing in this style.',
+    bubblePreviewText: 'PetShell can say what the agent is doing in this style.',
     bubbleStyleLabels: {
       soft: 'Soft',
       comic: 'Comic',
@@ -221,14 +185,14 @@ const TRANSLATIONS = {
     petStorageIntro: 'Imports are written to the selected safe pet folder and then served locally.',
     petStoragePresets: {
       'codex-custom': '.codex pets',
-      'app-data': 'OpenPet app data',
+      'app-data': 'PetShell app data',
       custom: 'Custom folder',
     },
     activeStorage: 'Active storage',
     appDataStorage: 'App-data pets',
     codexStorage: '.codex pets',
     customStoragePath: 'Custom storage path',
-    customStoragePlaceholder: 'C:\\Users\\you\\Pets\\OpenPet',
+    customStoragePlaceholder: 'C:\\Users\\you\\Pets\\PetShell',
     chooseCustomStorage: 'Choose folder',
     applyStorage: 'Apply storage',
     openActiveStorage: 'Open active folder',
@@ -257,48 +221,24 @@ const TRANSLATIONS = {
     after: 'After',
     repeatEvery: 'Repeat every',
     idleAction: 'Idle action',
-    importEyebrow: 'Import pets',
-    importTitle: 'Bring in compatible gallery pets',
-    importIntro:
-      'Paste a supported detail page URL. The runtime downloads public metadata and the WebP spritesheet into local storage.',
-    supportedSites: 'Supported sites',
-    importFromWebsite: 'Import from website',
-    importPlaceholder: 'https://petdex.crafter.run/pets/boba',
-    importHelp:
-      'Supports Petdex and Codex Pets URLs, plus compatible pages that expose a Codex-style spritesheet.webp.',
-    importPet: 'Import pet',
-    importProgress: 'Import in progress',
-    importDisclaimer:
-      'Import only pets you have rights to use. Imported artwork remains owned by its creators or rights holders.',
-    apiEyebrow: 'API / Agent',
-    apiTitle: 'Endpoint and agent integrations',
-    agentEyebrow: 'Agent setup',
-    agentTitle: 'Install MCP and CLI skills',
-    debugEyebrow: 'Agent events / API debug',
-    debugTitle: 'Connect agents through MCP, HTTP API, or CLI',
+    importEyebrow: 'Local pets',
+    importTitle: 'Choose where local pet packages live',
+    apiEyebrow: 'API / Host',
+    apiTitle: 'Endpoint and host integration',
     agentModes: 'Control modes',
-    mcpMode: 'MCP',
-    mcpModeBody: 'Use the bundled stdio MCP bridge from MCP-capable clients.',
     httpMode: 'HTTP API',
     httpModeBody:
-      'Call local runtime routes directly for custom integrations.',
-    cliMode: 'CLI',
-    cliModeBody: 'Use the Python CLI skill from agents and scripts that can run local commands.',
-    skillInstaller: 'Bundled skill installer',
-    skillInstallerBody: 'Copy selected OpenPet skill folders to known user-level agent destinations.',
-    controlSkillAlternatives:
-      'CLI and MCP are alternative control integrations. Most users install one control skill, not both.',
-    assetSkillPurpose: 'The asset skill is for creating, packaging, and validating OpenPet pets.',
-    directApiGuide:
-      'Direct HTTP API users can build other integrations; read README/API guidance for more routes and examples.',
-    readApiGuide: 'Read API guide',
-    bundledSkills: 'Bundled skills',
-    installTargets: 'Targets',
-    overwriteSkills: 'Overwrite existing skill folders',
-    installSkills: 'Install selected skills',
-    installResults: 'Install results',
-    noBundledSkills: 'No bundled skills found yet.',
-    cursorTargetNote: 'Cursor uses project rules/instructions, so the installer reports guidance instead of copying scripts.',
+      'The loopback endpoint the Aiki host uses for status, actions, bubbles and events.',
+    runtimeStatus: 'Runtime status',
+    productLabel: 'Product',
+    instanceLabel: 'Instance',
+    instanceOwner: 'Owner (single instance)',
+    instanceAttach: 'Attached instance',
+    instanceDisabled: 'Single instance disabled',
+    protocolExitLabel: 'Protocol exit',
+    protocolExitReady: 'Available to the owner',
+    protocolExitDisabled: 'Disabled (no exit token at launch)',
+    attributionLabel: 'Based on',
     eventPreview: 'Event preview',
     optionalBubble: 'Optional event bubble text',
     eventAnimations: 'Event animations',
@@ -317,42 +257,22 @@ const TRANSLATIONS = {
     localOnly:
       'The HTTP API listens on the configured local endpoint. Use 0.0.0.0 only when another trusted device needs access.',
     sharedEndpointNote:
-      'All control modes use the configured OpenPet local HTTP endpoint and port:',
+      'The host uses the configured PetShell loopback endpoint and port:',
     apiEndpoint: 'HTTP API endpoint',
     activeEndpoint: 'Active endpoint',
     desiredEndpoint: 'Configured after restart',
     apiHostHelp:
       'Allowed values are loopback or unspecified IPs such as 127.0.0.1 and 0.0.0.0.',
-    apiPortHelp: 'Changing the endpoint is saved for the next OpenPet launch.',
+    apiPortHelp: 'Changing the endpoint is saved for the next PetShell launch.',
     saveApiEndpoint: 'Save endpoint',
-    restartRequired: 'Restart OpenPet to apply this endpoint.',
+    restartRequired: 'Restart PetShell to apply this endpoint.',
     aboutEyebrow: 'About / support',
     aboutTitle: 'Project links',
     aboutBody:
-      'OpenPet is a local desktop pet runtime for Codex-compatible companions, website imports, and agent-friendly HTTP events.',
-    projectAddress: 'GitHub project',
-    milkTea: 'Buy me milk tea',
-    updatesEyebrow: 'Updates',
-    updatesTitle: 'Desktop updates',
-    updatesBody: 'Signed updater first; GitHub fallback if metadata is missing.',
-    autoUpdateChecks: 'Auto-check',
-    autoUpdateChecksHint: 'Check on Settings open.',
-    checkForUpdates: 'Check',
-    openReleasePage: 'GitHub Releases',
-    downloadAndInstallUpdate: 'Install',
-    restartOpenPet: 'Restart',
-    currentVersion: 'Current',
-    latestVersion: 'Latest',
-    updateSource: 'Source',
-    signedUpdaterSource: 'Signed updater',
-    githubFallbackSource: 'GitHub fallback',
-    releaseNotes: 'Release notes',
-    publishedAt: 'Published',
-    downloadProgress: 'Progress',
-    updateAvailableTitle: 'Update ready',
-    updateUnavailableTitle: 'Up to date',
-    neverChecked: 'Not checked',
-    lastChecked: 'Checked',
+      'PetShell is a local desktop pet sidecar for the Aiki companion runtime. It shows sprites, bubbles and companion events over a loopback HTTP API.',
+    licensingNote:
+      'PetShell is a fork of OpenPet and is distributed under GPL-3.0-or-later. Upstream copyright, the LICENSE file and this attribution are kept.',
+    upstreamProject: 'Upstream project (OpenPet)',
     trayTip: 'Tray tip',
     trayTipBody: 'Use the app tray/menu controls for Open Settings, Show Pet, Hide Pet, and Quit.',
   },
@@ -401,17 +321,8 @@ const TRANSLATIONS = {
       ready: '就绪。',
       previewOnly: '浏览器预览模式。请打开 Tauri 桌面应用来控制宠物。',
       statusRefreshed: '状态已刷新。',
-      checkingUpdates: '检查更新中...',
-      updateAvailable: '发现更新：',
-      noUpdate: 'OpenPet 已是最新版本。',
-      signedUpdaterUnavailable: '签名元数据不可用，已回退 GitHub。',
-      nativeUpdateReady: '签名更新可安装：',
-      installingUpdate: '正在安装更新...',
-      updateInstalled: '更新已安装。请重启 OpenPet 完成更新。',
-      noSignedUpdate: '当前没有可安装的签名更新。',
-      restarting: '正在重启 OpenPet...',
-      autoUpdatesOn: '自动检查更新已开启。',
-      autoUpdatesOff: '自动检查更新已关闭。',
+      rendererUpdated: '表现出口已更新。',
+      appearanceUpdated: '外观已更新。',
       settingsUpdated: '设置已更新。',
       languageUpdated: '语言已更新。',
       eventAnimationsOn: '事件动画已开启。',
@@ -419,24 +330,17 @@ const TRANSLATIONS = {
       eventBubblesOn: '事件气泡已开启。',
       eventBubblesOff: '事件气泡已关闭。',
       bubbleSent: '气泡已发送。',
-      importUrlFirst: '请先粘贴支持的宠物页面 URL。',
-      importing: '正在从网站导入宠物...',
-      importedPrefix: '已导入',
       fixedMode: '点击模式已设为固定。',
       randomMode: '点击模式已设为随机。',
       poolEmpty: '随机池为空。点击时会回退到固定动作。',
       apiConfigSaved: 'API 端点已保存。',
-      apiConfigRestart: 'API 端点已保存，重启 OpenPet 后生效。',
+      apiConfigRestart: 'API 端点已保存，重启 PetShell 后生效。',
       apiConfigInvalid: '请输入有效的监听地址和端口。',
       petStorageUpdated: '宠物存储位置已更新。',
       customStorageRequired: '请先输入自定义存储路径，再选择自定义预设。',
       folderOpened: '文件夹已打开。',
       folderSelected: '已选择文件夹。',
       linkOpened: '已打开外部链接。',
-      installSelectFirst: '请至少选择一个内置 skill 和一个目标。',
-      installingSkills: '正在安装所选 skills...',
-      skillsInstalled: 'Skill 安装已完成。',
-      skillsLoaded: '内置 skills 已加载。',
       petShown: '宠物已显示。',
       petHidden: '宠物已隐藏。',
     },
@@ -445,11 +349,11 @@ const TRANSLATIONS = {
       import: '导入',
       pet: '宠物',
       bubble: '气泡',
-      apiAgent: 'API / Agent',
+      apiAgent: 'API / 宿主',
     },
-    heroEyebrow: 'OpenPet',
-    heroTitle: '设置、导入和桌宠行为都在这里。',
-    heroLede: '单栏控制台，集中处理语言、宠物、兼容导入、本地 API 调试和项目链接。',
+    heroEyebrow: 'PetShell',
+    heroTitle: '设置、宠物和桌宠行为都在这里。',
+    heroLede: '单栏控制台，集中处理语言、宠物、本地宠物包、回环 API 与来源说明。',
     showPet: '显示宠物',
     hidePet: '隐藏宠物',
     refresh: '刷新状态',
@@ -473,13 +377,20 @@ const TRANSLATIONS = {
     size: '尺寸',
     reducedMotion: '减少动态效果',
     reducedMotionHint: '降低移动幅度，同时保留手动动作。',
+    appearanceTitle: '外观',
+    rendererLabel: '表现出口',
+    rendererSprite: '精灵图',
+    rendererLive2d: 'Live2D',
+    appearanceLabel: 'Live2D 外观',
+    appearanceHint:
+      'Live2D 只在被选中时才加载运行时与模型；精灵图始终作为回退保留。切换外观会先加载成功再替换，失败则保留当前外观。',
     bubbleAppearance: '气泡外观',
     bubbleStyle: '气泡样式',
     bubbleFont: '气泡字体',
     bubbleFontSize: '字号',
     bubbleMaxWidth: '最大宽度',
     bubblePreview: '气泡预览',
-    bubblePreviewText: 'OpenPet 可以用这个样式展示 agent 正在做什么。',
+    bubblePreviewText: 'PetShell 可以用这个样式展示 agent 正在做什么。',
     bubbleStyleLabels: {
       soft: '柔和',
       comic: '漫画',
@@ -494,14 +405,14 @@ const TRANSLATIONS = {
     petStorageIntro: '导入会写入所选安全宠物目录，再由本地运行时加载。',
     petStoragePresets: {
       'codex-custom': '.codex 宠物',
-      'app-data': 'OpenPet 应用数据',
+      'app-data': 'PetShell 应用数据',
       custom: '自定义文件夹',
     },
     activeStorage: '当前存储',
     appDataStorage: 'App-data 宠物',
     codexStorage: '.codex 宠物',
     customStoragePath: '自定义存储路径',
-    customStoragePlaceholder: 'C:\\Users\\you\\Pets\\OpenPet',
+    customStoragePlaceholder: 'C:\\Users\\you\\Pets\\PetShell',
     chooseCustomStorage: '选择文件夹',
     applyStorage: '应用存储位置',
     openActiveStorage: '打开当前文件夹',
@@ -530,42 +441,23 @@ const TRANSLATIONS = {
     after: '等待',
     repeatEvery: '每隔',
     idleAction: '待机动作',
-    importEyebrow: '导入宠物',
-    importTitle: '从兼容图库导入桌宠',
-    importIntro: '粘贴支持的详情页 URL。运行时会把公开元数据和 WebP 精灵图下载到本地存储。',
-    supportedSites: '支持站点',
-    importFromWebsite: '从网站导入',
-    importPlaceholder: 'https://petdex.crafter.run/pets/boba',
-    importHelp: '支持 Petdex、Codex Pets，以及暴露 Codex 风格 spritesheet.webp 的兼容页面。',
-    importPet: '导入宠物',
-    importProgress: '正在导入',
-    importDisclaimer: '请只导入你有权使用的宠物。导入素材仍归原作者或权利方所有。',
-    apiEyebrow: 'API / Agent',
-    apiTitle: '端点与 Agent 接入',
-    agentEyebrow: 'Agent 设置',
-    agentTitle: '安装 MCP 和 CLI skills',
-    debugEyebrow: 'Agent 事件 / API 调试',
-    debugTitle: '通过 MCP、HTTP API 或 CLI 接入 Agent',
-    agentModes: '控制模式',
-    mcpMode: 'MCP',
-    mcpModeBody: '支持 MCP 的客户端可使用内置 stdio MCP bridge。',
+    importEyebrow: '本地宠物',
+    importTitle: '设置本地宠物包的存放位置',
+    apiEyebrow: 'API / 宿主',
+    apiTitle: '端点与宿主接入',
+    agentModes: '控制方式',
     httpMode: 'HTTP API',
-    httpModeBody: '直接调用本地 runtime 路由来做自定义集成。',
-    cliMode: 'CLI',
-    cliModeBody: '能运行本地命令的 agent 和脚本可使用 Python CLI skill。',
-    skillInstaller: '内置 Skill 安装器',
-    skillInstallerBody: '把选中的 OpenPet skill 文件夹复制到已知的用户级 agent 目录。',
-    controlSkillAlternatives: 'CLI 和 MCP 是二选一的控制接入方式。多数用户只需要安装其中一个控制 skill。',
-    assetSkillPurpose: 'Asset skill 用于创建、打包和校验 OpenPet 宠物。',
-    directApiGuide: '直接 HTTP API 可以实现更多自定义集成；更多路由和示例请阅读 README/API 指引。',
-    readApiGuide: '阅读 API 指引',
-    bundledSkills: '内置 Skills',
-    installTargets: '安装目标',
-    overwriteSkills: '覆盖已存在的 skill 文件夹',
-    installSkills: '安装所选 skills',
-    installResults: '安装结果',
-    noBundledSkills: '尚未找到内置 skills。',
-    cursorTargetNote: 'Cursor 使用项目规则 / 指令，安装器会返回指引而不是复制脚本。',
+    httpModeBody: 'Aiki 宿主通过这个回环端点读写状态、动作、气泡与事件。',
+    runtimeStatus: '运行时状态',
+    productLabel: '产品',
+    instanceLabel: '实例',
+    instanceOwner: '所有者（单实例）',
+    instanceAttach: '附着实例',
+    instanceDisabled: '单实例未启用',
+    protocolExitLabel: '协议退出',
+    protocolExitReady: '所有者可用',
+    protocolExitDisabled: '未启用（启动时未提供退出令牌）',
+    attributionLabel: '基于',
     eventPreview: '事件预览',
     optionalBubble: '可选事件气泡文本',
     eventAnimations: '事件动画',
@@ -582,40 +474,21 @@ const TRANSLATIONS = {
     noRecentEvents: '还没有 companion events。可以从预览区或 API 发送一个。',
     defaultBubble: '默认气泡',
     localOnly: 'HTTP API 会监听已配置的本地端点。只有受信任设备需要访问时才使用 0.0.0.0。',
-    sharedEndpointNote: '所有控制方式都使用同一个已配置的 OpenPet 本地 HTTP 端点和端口：',
+    sharedEndpointNote: '宿主使用同一个已配置的 PetShell 回环端点和端口：',
     apiEndpoint: 'HTTP API 端点',
     activeEndpoint: '当前端点',
     desiredEndpoint: '重启后配置',
     apiHostHelp: '允许使用回环或未指定 IP，例如 127.0.0.1 和 0.0.0.0。',
-    apiPortHelp: '修改端点会保存到下一次 OpenPet 启动时生效。',
+    apiPortHelp: '修改端点会保存到下一次 PetShell 启动时生效。',
     saveApiEndpoint: '保存端点',
-    restartRequired: '重启 OpenPet 后应用这个端点。',
+    restartRequired: '重启 PetShell 后应用这个端点。',
     aboutEyebrow: '关于 / 支持',
     aboutTitle: '项目链接',
-    aboutBody: 'OpenPet 是一个本地桌宠运行时，支持 Codex 兼容宠物、网站导入和 Agent 友好的 HTTP 事件。',
-    projectAddress: 'GitHub 项目',
-    milkTea: '请作者喝奶茶',
-    updatesEyebrow: '更新',
-    updatesTitle: '桌面更新',
-    updatesBody: '优先签名更新；元数据缺失时回退 GitHub。',
-    autoUpdateChecks: '自动检查',
-    autoUpdateChecksHint: '打开设置时检查。',
-    checkForUpdates: '检查更新',
-    openReleasePage: 'GitHub 发布页',
-    downloadAndInstallUpdate: '安装',
-    restartOpenPet: '重启',
-    currentVersion: '当前',
-    latestVersion: '最新',
-    updateSource: '来源',
-    signedUpdaterSource: '签名更新器',
-    githubFallbackSource: 'GitHub fallback',
-    releaseNotes: '更新说明',
-    publishedAt: '发布',
-    downloadProgress: '进度',
-    updateAvailableTitle: '可更新',
-    updateUnavailableTitle: '已是最新',
-    neverChecked: '未检查',
-    lastChecked: '检查',
+    aboutBody:
+      'PetShell 是 Aiki 陪伴运行时的本地桌宠 sidecar，通过回环 HTTP API 展示精灵图、气泡与 companion events。',
+    licensingNote:
+      'PetShell 是 OpenPet 的分支，按 GPL-3.0-or-later 分发。上游版权、LICENSE 文件与本来源说明均予保留。',
+    upstreamProject: '上游项目（OpenPet）',
     trayTip: '托盘提示',
     trayTipBody: '通过应用托盘 / 菜单可打开设置、显示宠物、隐藏宠物和退出。',
   },
@@ -692,48 +565,14 @@ function errorToMessage(error: unknown, previewOnlyMessage: string) {
   return message;
 }
 
-function formatBytes(bytes: number) {
-  if (bytes <= 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB'] as const;
-  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  const value = bytes / 1024 ** exponent;
-  return `${value.toFixed(value >= 10 || exponent === 0 ? 0 : 1)} ${units[exponent]}`;
-}
-
-function formatDownloadProgress(progress: UpdateDownloadProgress) {
-  if (!progress.contentLength) return formatBytes(progress.downloadedBytes);
-  const percent = Math.min(
-    100,
-    Math.round((progress.downloadedBytes / progress.contentLength) * 100),
-  );
-  return `${percent}% (${formatBytes(progress.downloadedBytes)} / ${formatBytes(
-    progress.contentLength,
-  )})`;
-}
-
 export function SettingsPage() {
   const [activeTab, setActiveTab] = useState<(typeof SETTINGS_TABS)[number]>('general');
   const [snapshot, setSnapshot] = useState<RuntimeSnapshot>(FALLBACK_SNAPSHOT);
-  const [message, setMessage] = useState('Hello from OpenPet.');
+  const [message, setMessage] = useState('Hello from PetShell.');
   const [eventMessage, setEventMessage] = useState('');
-  const [websiteImportUrl, setWebsiteImportUrl] = useState('');
   const [previewEvent, setPreviewEvent] = useState<CompanionEventType>('thinking');
   const [feedback, setFeedback] = useState<string>(TRANSLATIONS.en.feedback.ready);
   const [busyAction, setBusyAction] = useState<string | null>(null);
-  const [runtimeReady, setRuntimeReady] = useState(false);
-  const [updateCheckResult, setUpdateCheckResult] = useState<UpdateCheckResult | null>(null);
-  const [updateSource, setUpdateSource] = useState<UpdateSource | null>(null);
-  const [pendingTauriUpdate, setPendingTauriUpdate] = useState<Update | null>(null);
-  const [updateNotes, setUpdateNotes] = useState<string | null>(null);
-  const [updateInstallPhase, setUpdateInstallPhase] = useState<UpdateInstallPhase>('idle');
-  const [updateDownloadProgress, setUpdateDownloadProgress] =
-    useState<UpdateDownloadProgress | null>(null);
-  const [lastUpdateCheckAt, setLastUpdateCheckAt] = useState<string | null>(null);
-  const [bundledSkills, setBundledSkills] = useState<BundledSkill[]>([]);
-  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
-  const [selectedSkillTargetIds, setSelectedSkillTargetIds] = useState<string[]>(['codex']);
-  const [skillInstallResults, setSkillInstallResults] = useState<SkillInstallResult[]>([]);
-  const [overwriteSkills, setOverwriteSkills] = useState(false);
   const [petStoragePresetDraft, setPetStoragePresetDraft] = useState<PetStoragePreset>(
     FALLBACK_SNAPSHOT.settings.petStoragePreset,
   );
@@ -744,8 +583,6 @@ export function SettingsPage() {
   const [customPetStorageInput, setCustomPetStorageInput] = useState(
     FALLBACK_SNAPSHOT.settings.customPetStorageDir ?? '',
   );
-  const autoUpdateCheckStartedRef = useRef(false);
-
   const tauriAvailable = hasTauriRuntime();
   const settings = snapshot.settings;
   const language = isLanguage(settings.language) ? settings.language : 'en';
@@ -764,32 +601,16 @@ export function SettingsPage() {
   const selectedPool = settings.clickActionPool.filter(isAction);
   const poolIsEmpty = settings.clickActionMode === 'random' && selectedPool.length === 0;
   const usingCustomPetStorage = petStoragePresetDraft === 'custom';
-  const updateProgressText = updateDownloadProgress
-    ? formatDownloadProgress(updateDownloadProgress)
-    : null;
-  const updateProgressPercent = updateDownloadProgress?.contentLength
-    ? Math.min(
-        100,
-        Math.round(
-          (updateDownloadProgress.downloadedBytes / updateDownloadProgress.contentLength) * 100,
-        ),
-      )
-    : null;
-  const latestUpdateLabel =
-    updateCheckResult?.latestVersion ?? updateCheckResult?.releaseName ?? 'GitHub Release';
-  const updateSourceLabel = updateSource
-    ? updateSource === 'tauri'
-      ? t.signedUpdaterSource
-      : t.githubFallbackSource
-    : null;
-  const updatePublishedAt = updateCheckResult?.publishedAt
-    ? new Date(updateCheckResult.publishedAt).toLocaleString()
-    : null;
-  const updateMetaItems = [
-    updateSourceLabel ? `${t.updateSource}: ${updateSourceLabel}` : null,
-    updatePublishedAt ? `${t.publishedAt}: ${updatePublishedAt}` : null,
-    lastUpdateCheckAt ? `${t.lastChecked}: ${lastUpdateCheckAt}` : null,
-  ].filter(Boolean);
+  const product = snapshot.product ?? FALLBACK_SNAPSHOT.product;
+  const capabilities = snapshot.capabilities ?? FALLBACK_SNAPSHOT.capabilities;
+  const instanceLabel = capabilities.singleInstance
+    ? capabilities.instanceOwner
+      ? t.instanceOwner
+      : t.instanceAttach
+    : t.instanceDisabled;
+  const protocolExitLabel = capabilities.shutdown.available
+    ? `${capabilities.shutdown.endpoint} (v${capabilities.shutdown.version}, ${capabilities.shutdown.auth})`
+    : t.protocolExitDisabled;
 
   const actionLabel = (action: PetActionAnimationId) => t.actionLabels[action];
   const eventLabel = (eventType: CompanionEventType) => t.eventLabels[eventType];
@@ -800,7 +621,6 @@ export function SettingsPage() {
 
   useEffect(() => {
     if (!tauriAvailable) {
-      setRuntimeReady(false);
       setFeedback(t.feedback.previewOnly);
       return;
     }
@@ -810,18 +630,15 @@ export function SettingsPage() {
       .then((next) => {
         if (!cancelled) {
           setSnapshot(next);
-          setRuntimeReady(true);
         }
       })
       .catch((error) => {
-        setRuntimeReady(false);
         setFeedback(errorToMessage(error, t.feedback.previewOnly));
       });
 
     let unlisten: (() => void) | null = null;
     void listen<RuntimeSnapshot>('runtime-status', (event) => {
       setSnapshot(event.payload);
-      setRuntimeReady(true);
     }).then((next) => {
       unlisten = next;
     });
@@ -845,25 +662,6 @@ export function SettingsPage() {
     setPetStoragePresetDraft(settings.petStoragePreset);
   }, [settings.petStoragePreset]);
 
-  useEffect(() => {
-    if (!tauriAvailable) return;
-    let cancelled = false;
-    void invoke<BundledSkill[]>('list_bundled_skills')
-      .then((skills) => {
-        if (cancelled) return;
-        setBundledSkills(skills);
-        setSelectedSkillIds((current) => {
-          if (current.length > 0) return current;
-          const preferredIds = ['openpet-cli', 'openpet-asset'];
-          return preferredIds.filter((id) => skills.some((skill) => skill.id === id));
-        });
-      })
-      .catch((error) => setFeedback(errorToMessage(error, t.feedback.previewOnly)));
-    return () => {
-      cancelled = true;
-    };
-  }, [tauriAvailable, t.feedback.previewOnly]);
-
   const runCommand = async (action: string, task: () => Promise<void>) => {
     if (!tauriAvailable) {
       setFeedback(t.feedback.previewOnly);
@@ -871,7 +669,6 @@ export function SettingsPage() {
     }
 
     setBusyAction(action);
-    if (action === 'website-import') setFeedback(t.feedback.importing);
     try {
       await task();
     } catch (error) {
@@ -880,127 +677,6 @@ export function SettingsPage() {
       setBusyAction(null);
     }
   };
-
-  const resetUpdateInstallState = () => {
-    setPendingTauriUpdate(null);
-    setUpdateNotes(null);
-    setUpdateInstallPhase('idle');
-    setUpdateDownloadProgress(null);
-  };
-
-  const describeUpdateResult = (result: UpdateCheckResult, source: UpdateSource) => {
-    if (result.updateAvailable) {
-      if (source === 'tauri') {
-        return `${t.feedback.nativeUpdateReady} ${
-          result.latestVersion ?? result.releaseName ?? ''
-        }`.trim();
-      }
-      return `${t.feedback.updateAvailable} ${result.latestVersion ?? result.releaseName ?? ''}`.trim();
-    }
-    return `${t.feedback.noUpdate} (${result.currentVersion})`;
-  };
-
-  const checkGithubReleaseFallback = async (prefix?: string) => {
-    const result = await invoke<UpdateCheckResult>('check_for_update');
-    setUpdateCheckResult(result);
-    setUpdateSource('github');
-    setPendingTauriUpdate(null);
-    setUpdateNotes(null);
-    setLastUpdateCheckAt(new Date().toLocaleString());
-    setFeedback(`${prefix ? `${prefix} ` : ''}${describeUpdateResult(result, 'github')}`.trim());
-  };
-
-  const checkForUpdates = async () => {
-    await runCommand('update-check', async () => {
-      setFeedback(t.feedback.checkingUpdates);
-      resetUpdateInstallState();
-
-      try {
-        const update = await check();
-        if (!update) {
-          await checkGithubReleaseFallback();
-          return;
-        }
-
-        const result: UpdateCheckResult = {
-          currentVersion: update.currentVersion,
-          latestVersion: update.version,
-          releaseName: null,
-          releaseUrl: GITHUB_RELEASES_URL,
-          publishedAt: update.date ?? null,
-          updateAvailable: true,
-        };
-        setPendingTauriUpdate(update);
-        setUpdateNotes(update.body ?? null);
-        setUpdateSource('tauri');
-        setUpdateCheckResult(result);
-        setLastUpdateCheckAt(new Date().toLocaleString());
-        setFeedback(describeUpdateResult(result, 'tauri'));
-      } catch (updaterError) {
-        try {
-          await checkGithubReleaseFallback(t.feedback.signedUpdaterUnavailable);
-        } catch (fallbackError) {
-          throw new Error(
-            `${t.feedback.signedUpdaterUnavailable} ${unknownToMessage(
-              updaterError,
-            )}; GitHub fallback failed: ${unknownToMessage(fallbackError)}`,
-          );
-        }
-      }
-    });
-  };
-
-  const installPendingUpdate = async () => {
-    if (!pendingTauriUpdate) {
-      setFeedback(t.feedback.noSignedUpdate);
-      return;
-    }
-
-    await runCommand('update-install', async () => {
-      setFeedback(t.feedback.installingUpdate);
-      setUpdateInstallPhase('downloading');
-      setUpdateDownloadProgress({ downloadedBytes: 0, contentLength: null });
-      let downloadedBytes = 0;
-      let contentLength: number | null = null;
-      await pendingTauriUpdate.downloadAndInstall((event: DownloadEvent) => {
-        if (event.event === 'Started') {
-          downloadedBytes = 0;
-          contentLength = event.data.contentLength ?? null;
-          setUpdateDownloadProgress({ downloadedBytes, contentLength });
-          return;
-        }
-        if (event.event === 'Progress') {
-          downloadedBytes += event.data.chunkLength;
-          setUpdateDownloadProgress({ downloadedBytes, contentLength });
-          return;
-        }
-        setUpdateDownloadProgress({ downloadedBytes, contentLength });
-      });
-      setUpdateInstallPhase('installed');
-      setFeedback(t.feedback.updateInstalled);
-    });
-  };
-
-  const restartOpenPet = async () => {
-    await runCommand('update-restart', async () => {
-      setFeedback(t.feedback.restarting);
-      await relaunch();
-    });
-  };
-
-  useEffect(() => {
-    if (
-      !tauriAvailable ||
-      !runtimeReady ||
-      !settings.autoUpdateChecks ||
-      autoUpdateCheckStartedRef.current
-    ) {
-      return;
-    }
-
-    autoUpdateCheckStartedRef.current = true;
-    void checkForUpdates();
-  }, [runtimeReady, settings.autoUpdateChecks, tauriAvailable]);
 
   const refreshStatus = async () => {
     await runCommand('refresh', async () => {
@@ -1066,21 +742,6 @@ export function SettingsPage() {
       });
       setSnapshot(next);
       setFeedback(t.feedback.bubbleSent);
-    });
-  };
-
-  const importPetFromWebsite = async () => {
-    const url = websiteImportUrl.trim();
-    if (!url) {
-      setFeedback(t.feedback.importUrlFirst);
-      return;
-    }
-
-    await runCommand('website-import', async () => {
-      const next = await invoke<RuntimeSnapshot>('import_pet_from_website', { url });
-      setSnapshot(next);
-      setWebsiteImportUrl('');
-      setFeedback(`${t.feedback.importedPrefix} ${next.activePet.displayName}.`);
     });
   };
 
@@ -1173,42 +834,6 @@ export function SettingsPage() {
     await runCommand('open-external', async () => {
       await invoke<void>('open_external_url', { url });
       setFeedback(t.feedback.linkOpened);
-    });
-  };
-
-  const openReleasePage = async (event: MouseEvent<HTMLAnchorElement>) => {
-    const url = updateCheckResult?.releaseUrl || GITHUB_RELEASES_URL;
-    await openExternalLink(event, url);
-  };
-
-  const toggleSkillSelection = (skillId: string, checked: boolean) => {
-    setSelectedSkillIds((current) =>
-      checked ? [...new Set([...current, skillId])] : current.filter((id) => id !== skillId),
-    );
-  };
-
-  const toggleSkillTarget = (targetId: string, checked: boolean) => {
-    setSelectedSkillTargetIds((current) =>
-      checked ? [...new Set([...current, targetId])] : current.filter((id) => id !== targetId),
-    );
-  };
-
-  const installBundledSkills = async () => {
-    if (selectedSkillIds.length === 0 || selectedSkillTargetIds.length === 0) {
-      setFeedback(t.feedback.installSelectFirst);
-      return;
-    }
-
-    const payload: InstallBundledSkillsPayload = {
-      skillIds: selectedSkillIds,
-      targetIds: selectedSkillTargetIds,
-      force: overwriteSkills,
-    };
-    await runCommand('skill-install', async () => {
-      setFeedback(t.feedback.installingSkills);
-      const results = await invoke<SkillInstallResult[]>('install_bundled_skills', { payload });
-      setSkillInstallResults(results);
-      setFeedback(t.feedback.skillsInstalled);
     });
   };
 
@@ -1355,6 +980,7 @@ export function SettingsPage() {
             <h3>{t.aboutTitle}</h3>
           </div>
           <p className="helper-text">{t.aboutBody}</p>
+          <p className="helper-text">{t.licensingNote}</p>
           <nav className="support-links" aria-label={t.aboutTitle}>
             {PROJECT_LINKS.map((link) => (
               <a
@@ -1368,119 +994,6 @@ export function SettingsPage() {
               </a>
             ))}
           </nav>
-          <div className="update-strip">
-            <div className="update-strip-main">
-              <div className="update-strip-copy">
-                <p className="eyebrow">{t.updatesEyebrow}</p>
-                <h3>{t.updatesTitle}</h3>
-                <span>{t.updatesBody}</span>
-              </div>
-              <div className="update-strip-controls">
-                <label className="compact-switch">
-                  <input
-                    type="checkbox"
-                    checked={settings.autoUpdateChecks}
-                    onChange={(event) => {
-                      const enabled = event.target.checked;
-                      void updateSettings(
-                        { ...settings, autoUpdateChecks: enabled },
-                        enabled ? t.feedback.autoUpdatesOn : t.feedback.autoUpdatesOff,
-                      );
-                    }}
-                    disabled={!tauriAvailable || busyAction === 'settings'}
-                  />
-                  <span>{t.autoUpdateChecks}</span>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => void checkForUpdates()}
-                  disabled={!tauriAvailable || busyAction === 'update-check'}
-                >
-                  {busyAction === 'update-check' ? t.feedback.checkingUpdates : t.checkForUpdates}
-                </button>
-                {pendingTauriUpdate && updateInstallPhase !== 'installed' && (
-                  <button
-                    type="button"
-                    onClick={() => void installPendingUpdate()}
-                    disabled={
-                      !tauriAvailable ||
-                      busyAction === 'update-check' ||
-                      busyAction === 'update-install'
-                    }
-                  >
-                    {busyAction === 'update-install'
-                      ? t.feedback.installingUpdate
-                      : t.downloadAndInstallUpdate}
-                  </button>
-                )}
-                {updateInstallPhase === 'installed' && (
-                  <button
-                    type="button"
-                    onClick={() => void restartOpenPet()}
-                    disabled={!tauriAvailable || busyAction === 'update-restart'}
-                  >
-                    {busyAction === 'update-restart' ? t.feedback.restarting : t.restartOpenPet}
-                  </button>
-                )}
-                {updateCheckResult?.updateAvailable && (
-                  <a
-                    href={updateCheckResult.releaseUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={(event) => void openReleasePage(event)}
-                  >
-                    {t.openReleasePage}
-                  </a>
-                )}
-              </div>
-            </div>
-            {updateCheckResult ? (
-              <div
-                className={`update-result-line ${
-                  updateCheckResult.updateAvailable ? 'available' : 'current'
-                }`}
-              >
-                <div className="update-result-summary">
-                  <strong>
-                    {updateCheckResult.updateAvailable
-                      ? t.updateAvailableTitle
-                      : t.updateUnavailableTitle}
-                  </strong>
-                  <span>
-                    {t.currentVersion}: {updateCheckResult.currentVersion} - {t.latestVersion}:{' '}
-                    {latestUpdateLabel}
-                  </span>
-                </div>
-                {updateMetaItems.length > 0 && (
-                  <small className="update-result-meta">{updateMetaItems.join(' · ')}</small>
-                )}
-                {(updateProgressText || updateNotes) && (
-                  <div className="update-result-detail">
-                    {updateProgressText && (
-                      <div className="update-progress" aria-live="polite">
-                        <small>
-                          {t.downloadProgress}: {updateProgressText}
-                        </small>
-                        {updateProgressPercent !== null && (
-                          <div className="update-progress-track">
-                            <span style={{ width: `${updateProgressPercent}%` }} />
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {updateNotes && (
-                      <details className="update-notes">
-                        <summary>{t.releaseNotes}</summary>
-                        <small>{updateNotes}</small>
-                      </details>
-                    )}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="update-empty">{t.neverChecked}</p>
-            )}
-          </div>
           <div className="tray-note">
             <strong>{t.trayTip}</strong>
             <span>{t.trayTipBody}</span>
@@ -1493,57 +1006,6 @@ export function SettingsPage() {
           <div className="section-heading">
             <p className="eyebrow">{t.importEyebrow}</p>
             <h2>{t.importTitle}</h2>
-          </div>
-
-          <div className="sub-panel import-inline">
-            <div className="section-heading compact-heading">
-              <p className="eyebrow">{t.importEyebrow}</p>
-              <h3>{t.importTitle}</h3>
-            </div>
-            <p className="helper-text">{t.importIntro}</p>
-            <div className="source-links" aria-label={t.supportedSites}>
-              <span>{t.supportedSites}</span>
-              {PET_IMPORT_SOURCE_LINKS.map((source) => (
-                <a
-                  key={source.href}
-                  href={source.href}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={(event) => void openExternalLink(event, source.href)}
-                >
-                  {source.label}
-                </a>
-              ))}
-            </div>
-
-            <form
-              className="import-card"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void importPetFromWebsite();
-              }}
-            >
-              <label className="field-stack">
-                {t.importFromWebsite}
-                <input
-                  type="url"
-                  value={websiteImportUrl}
-                  onChange={(event) => setWebsiteImportUrl(event.target.value)}
-                  placeholder={t.importPlaceholder}
-                  disabled={!tauriAvailable || busyAction === 'website-import'}
-                />
-              </label>
-              <p className="helper-text">{t.importHelp}</p>
-              {busyAction === 'website-import' && (
-                <div className="import-progress" role="progressbar" aria-label={t.importProgress}>
-                  <span />
-                </div>
-              )}
-              <button type="submit" disabled={!tauriAvailable || busyAction === 'website-import'}>
-                {busyAction === 'website-import' ? t.feedback.importing : t.importPet}
-              </button>
-            </form>
-            <p className="helper-text">{t.importDisclaimer}</p>
           </div>
 
           <div className="sub-panel storage-panel">
@@ -1693,6 +1155,54 @@ export function SettingsPage() {
               </small>
             )}
           </div>
+
+          <div className="subsection-divider" />
+
+          <div className="section-heading compact-heading">
+            <h3>{t.appearanceTitle}</h3>
+          </div>
+          <div className="control-columns two">
+            <label className="field-stack">
+              {t.rendererLabel}
+              <select
+                value={settings.renderer}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  if (!isPetRendererId(value)) return;
+                  void updateSettings({ ...settings, renderer: value }, t.feedback.rendererUpdated);
+                }}
+                disabled={!tauriAvailable || busyAction === 'settings'}
+              >
+                {PET_RENDERER_IDS.map((id) => (
+                  <option key={id} value={id}>
+                    {id === 'live2d' ? t.rendererLive2d : t.rendererSprite}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field-stack">
+              {t.appearanceLabel}
+              <select
+                value={settings.live2dAppearance}
+                onChange={(event) => {
+                  void updateSettings(
+                    { ...settings, live2dAppearance: event.target.value },
+                    t.feedback.appearanceUpdated,
+                  );
+                }}
+                disabled={
+                  !tauriAvailable || busyAction === 'settings' || settings.renderer !== 'live2d'
+                }
+              >
+                {live2dAppearanceOptions().map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <p className="helper-text">{t.appearanceHint}</p>
 
           <div className="subsection-divider" />
 
@@ -2162,23 +1672,35 @@ export function SettingsPage() {
             <h2>{t.apiTitle}</h2>
           </div>
 
-          <div className="mode-grid" aria-label={t.agentModes}>
+          <div className="mode-grid one" aria-label={t.agentModes}>
             <div className="mode-card">
               <strong>{t.httpMode}</strong>
               <span>{t.httpModeBody}</span>
-            </div>
-            <div className="mode-card">
-              <strong>{t.mcpMode}</strong>
-              <span>{t.mcpModeBody}</span>
-            </div>
-            <div className="mode-card">
-              <strong>{t.cliMode}</strong>
-              <span>{t.cliModeBody}</span>
             </div>
           </div>
           <p className="helper-text endpoint-shared-note">
             {t.sharedEndpointNote} <code>{configuredApiBaseUrl}</code>
           </p>
+
+          <div className="subsection-divider" />
+
+          <div className="section-heading compact-heading">
+            <h3>{t.runtimeStatus}</h3>
+          </div>
+          <div className="storage-readout">
+            <span>
+              {t.productLabel}: <code>{product.name} {product.version}</code>
+            </span>
+            <span>
+              {t.instanceLabel}: <code>{instanceLabel}</code>
+            </span>
+            <span>
+              {t.protocolExitLabel}: <code>{protocolExitLabel}</code>
+            </span>
+            <span>
+              {t.attributionLabel}: <code>{product.upstream}</code>
+            </span>
+          </div>
 
           <div className="subsection-divider" />
 
@@ -2232,106 +1754,6 @@ export function SettingsPage() {
           <p className="helper-text">
             {t.localOnly} <code>{apiBaseUrl}</code>
           </p>
-          <p className="helper-text">
-            {t.directApiGuide}{' '}
-            <a
-              href="https://github.com/X-T-E-R/OpenPet#direct-http-api"
-              target="_blank"
-              rel="noreferrer"
-              onClick={(event) =>
-                void openExternalLink(event, 'https://github.com/X-T-E-R/OpenPet#direct-http-api')
-              }
-            >
-              {t.readApiGuide}
-            </a>
-          </p>
-
-          <div className="subsection-divider" />
-
-          <div className="section-heading compact-heading">
-            <h3>{t.skillInstaller}</h3>
-          </div>
-          <p className="helper-text">{t.skillInstallerBody}</p>
-          <p className="helper-text">{t.controlSkillAlternatives}</p>
-          <p className="helper-text">{t.assetSkillPurpose}</p>
-          <div className="installer-grid">
-            <div>
-              <span className="control-label">{t.bundledSkills}</span>
-              <div className="action-pool">
-                {bundledSkills.length === 0 ? (
-                  <p className="helper-text">{t.noBundledSkills}</p>
-                ) : (
-                  bundledSkills.map((skill) => (
-                    <label className="check-pill tall-pill" key={skill.id}>
-                      <input
-                        type="checkbox"
-                        checked={selectedSkillIds.includes(skill.id)}
-                        onChange={(event) => toggleSkillSelection(skill.id, event.target.checked)}
-                        disabled={!tauriAvailable || busyAction === 'skill-install'}
-                      />
-                      <span>
-                        <strong>{skill.displayName}</strong>
-                        <small>{skill.description}</small>
-                      </span>
-                    </label>
-                  ))
-                )}
-              </div>
-            </div>
-            <div>
-              <span className="control-label">{t.installTargets}</span>
-              <div className="action-pool">
-                {SKILL_TARGETS.map((target) => (
-                  <label className="check-pill" key={target.id}>
-                    <input
-                      type="checkbox"
-                      checked={selectedSkillTargetIds.includes(target.id)}
-                      onChange={(event) => toggleSkillTarget(target.id, event.target.checked)}
-                      disabled={!tauriAvailable || busyAction === 'skill-install'}
-                    />
-                    <span>{target.label}</span>
-                  </label>
-                ))}
-              </div>
-              <p className="helper-text">{t.cursorTargetNote}</p>
-            </div>
-          </div>
-          <label className="toggle-card compact-toggle">
-            <input
-              type="checkbox"
-              checked={overwriteSkills}
-              onChange={(event) => setOverwriteSkills(event.target.checked)}
-              disabled={!tauriAvailable || busyAction === 'skill-install'}
-            />
-            <span>
-              <strong>{t.overwriteSkills}</strong>
-            </span>
-          </label>
-          <button
-            className="compact-action"
-            type="button"
-            onClick={() => void installBundledSkills()}
-            disabled={!tauriAvailable || busyAction === 'skill-install'}
-          >
-            {busyAction === 'skill-install' ? t.feedback.installingSkills : t.installSkills}
-          </button>
-          {skillInstallResults.length > 0 && (
-            <div className="install-results">
-              <strong>{t.installResults}</strong>
-              <ol>
-                {skillInstallResults.map((result, index) => (
-                  <li key={`${result.skillId}:${result.targetId}:${index}`}>
-                    <span className={`result-status ${result.status}`}>{result.status}</span>
-                    <span>
-                      {result.skillId} → {result.targetLabel}
-                    </span>
-                    {result.targetPath && <code>{result.targetPath}</code>}
-                    <small>{result.message}</small>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          )}
         </article>
         )}
       </section>

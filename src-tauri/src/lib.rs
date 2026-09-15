@@ -3,15 +3,14 @@ mod http_api;
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
-    net::{IpAddr, ToSocketAddrs},
+    net::IpAddr,
     path::{Component, Path, PathBuf},
     process::Command,
     sync::{Arc, Mutex},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH},
 };
 use tauri::{
     menu::{Menu, MenuItem},
-    path::BaseDirectory,
     tray::TrayIconBuilder,
     AppHandle, Emitter, Manager, WindowEvent,
 };
@@ -28,14 +27,19 @@ const LEGACY_RUNTIME_CONFIG_FILE: &str = "runtime-config.json";
 const SETTINGS_CONFIG_FILE: &str = "data/settings.toml";
 const RECENT_EVENT_LIMIT: usize = 12;
 const DEFAULT_PET_ID: &str = "nia";
-const MAX_HTML_BYTES: usize = 2 * 1024 * 1024;
-const MAX_JSON_BYTES: usize = 1024 * 1024;
 const MAX_SPRITESHEET_BYTES: usize = 12 * 1024 * 1024;
-const BUNDLED_SKILL_IDS: &[&str] = &["openpet-cli", "openpet-mcp", "openpet-asset"];
-const GITHUB_RELEASES_URL: &str = "https://github.com/X-T-E-R/OpenPet/releases";
-const GITHUB_LATEST_RELEASE_API: &str =
-    "https://api.github.com/repos/X-T-E-R/OpenPet/releases/latest";
-const UPDATE_CHECK_TIMEOUT_SECS: u64 = 10;
+const PRODUCT_NAME: &str = "PetShell";
+const PRODUCT_VERSION: &str = env!("CARGO_PKG_VERSION");
+const UPSTREAM_PROJECT: &str = "OpenPet v0.1.6 (GPL-3.0-or-later)";
+const TRAY_ID: &str = "petshell";
+const SHUTDOWN_ENDPOINT: &str = "/api/shutdown";
+const SHUTDOWN_CONTRACT_VERSION: u32 = 1;
+const SHUTDOWN_AUTH_SCHEME: &str = "bearer-token";
+/// Environment variable carrying the owner's exit token. Set by whoever spawned this
+/// process; an attach client that only reaches the loopback port never sees it.
+const EXIT_TOKEN_ENV: &str = "PET_SHELL_EXIT_TOKEN";
+/// Short tokens are rejected as misconfiguration rather than silently accepted.
+const MIN_EXIT_TOKEN_LEN: usize = 16;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -316,6 +320,9 @@ fn normalize_pet_settings(mut settings: PetSettings) -> PetSettings {
     if settings.bubble_font_family.is_empty() {
         settings.bubble_font_family = PetSettings::default().bubble_font_family;
     }
+    // 只保证它是安全字符串；「这个外观是否存在」由 renderer 依据自己的目录判定，
+    // 免得同一份清单在两端各写一遍、迟早漂移。
+    settings.live2d_appearance = sanitize_pet_id(&settings.live2d_appearance);
     settings.custom_pet_storage_dir = settings.custom_pet_storage_dir.and_then(|value| {
         let trimmed = value.trim().chars().take(512).collect::<String>();
         (!trimmed.is_empty()).then_some(trimmed)
@@ -323,8 +330,18 @@ fn normalize_pet_settings(mut settings: PetSettings) -> PetSettings {
     settings
 }
 
-fn default_auto_update_checks() -> bool {
-    true
+/// 表现出口。任一时刻只有一个 renderer 在输出（MVP-10 的槽位约束）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PetRendererId {
+    Sprite,
+    Live2d,
+}
+
+impl Default for PetRendererId {
+    fn default() -> Self {
+        Self::Sprite
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -334,9 +351,10 @@ pub struct PetSettings {
     pub language: PetLanguage,
     pub scale: f64,
     pub reduced_motion: bool,
-    #[serde(default = "default_auto_update_checks")]
-    pub auto_update_checks: bool,
     pub autonomous_walking: bool,
+    /// 首版换装是整模型切换，所以这一项就是「当前外观」。合法性由 renderer 判定。
+    pub live2d_appearance: String,
+    pub renderer: PetRendererId,
     pub hover_pause: bool,
     pub active_pet_id: String,
     pub click_action_mode: ClickActionMode,
@@ -364,8 +382,9 @@ impl Default for PetSettings {
             language: PetLanguage::default(),
             scale: 1.0,
             reduced_motion: false,
-            auto_update_checks: true,
             autonomous_walking: false,
+            live2d_appearance: "hiyori".to_string(),
+            renderer: PetRendererId::default(),
             hover_pause: true,
             active_pet_id: DEFAULT_PET_ID.to_string(),
             click_action_mode: ClickActionMode::Random,
@@ -431,14 +450,6 @@ pub struct LocalImportPayload {
     pub force: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WebsiteImportPayload {
-    pub url: String,
-    #[serde(default)]
-    pub force: bool,
-}
-
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecentCompanionEvent {
@@ -459,6 +470,36 @@ pub struct PetStorageSnapshot {
     pub codex_dir: String,
 }
 
+/// Real identity of this program. Never claims to be the upstream project.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProductInfo {
+    pub name: String,
+    pub version: String,
+    /// Attribution only. Aiki must not use this for version matching.
+    pub upstream: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShutdownCapability {
+    pub endpoint: String,
+    pub version: u32,
+    pub auth: String,
+    /// False when no exit token was provided at launch, so the endpoint refuses everyone.
+    pub available: bool,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IdentityCapabilities {
+    pub single_instance: bool,
+    /// True for the process that owns the instance lock.
+    pub instance_owner: bool,
+    pub shutdown: ShutdownCapability,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeSnapshot {
@@ -471,6 +512,8 @@ pub struct RuntimeSnapshot {
     pub api_error: Option<String>,
     pub api_restart_required: bool,
     pub pet_visible: bool,
+    pub product: ProductInfo,
+    pub capabilities: IdentityCapabilities,
     pub settings: PetSettings,
     pub pet_storage: PetStorageSnapshot,
     pub active_pet: PetCatalogItem,
@@ -481,60 +524,12 @@ pub struct RuntimeSnapshot {
     pub started_at_ms: u128,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BundledSkill {
-    pub id: String,
-    pub display_name: String,
-    pub description: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct InstallBundledSkillsPayload {
-    pub skill_ids: Vec<String>,
-    pub target_ids: Vec<String>,
-    #[serde(default)]
-    pub force: bool,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SkillInstallResult {
-    pub skill_id: String,
-    pub target_id: String,
-    pub target_label: String,
-    pub target_path: Option<String>,
-    pub status: String,
-    pub message: String,
-}
-
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PetStorageFolderKind {
     Active,
     AppData,
     CodexCustom,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
-struct GithubRelease {
-    tag_name: String,
-    html_url: String,
-    name: Option<String>,
-    published_at: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateCheckResult {
-    pub current_version: String,
-    pub latest_version: Option<String>,
-    pub release_name: Option<String>,
-    pub release_url: String,
-    pub published_at: Option<String>,
-    pub update_available: bool,
 }
 
 #[derive(Debug)]
@@ -555,6 +550,10 @@ struct RuntimeState {
     bubble_expires_at_ms: Option<u128>,
     recent_events: Vec<RecentCompanionEvent>,
     started_at_ms: u128,
+    instance_owner: bool,
+    exit_token: Option<String>,
+    exit_token_reason: Option<String>,
+    shutdown_requested: bool,
 }
 
 #[derive(Clone)]
@@ -581,6 +580,54 @@ fn pet_storage_snapshot_from_state(state: &RuntimeState) -> PetStorageSnapshot {
     }
 }
 
+/// Outcome of a protocol-exit request. Each variant maps to one HTTP status so the
+/// caller can tell "not allowed" from "wrong credential" from "already going down".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ShutdownDecision {
+    Accepted,
+    AlreadyInProgress,
+    TokenRequired,
+    TokenInvalid,
+    NotAvailable(String),
+}
+
+fn shutdown_capability_from_state(state: &RuntimeState) -> ShutdownCapability {
+    let available = state.exit_token.is_some();
+    ShutdownCapability {
+        endpoint: SHUTDOWN_ENDPOINT.to_string(),
+        version: SHUTDOWN_CONTRACT_VERSION,
+        auth: SHUTDOWN_AUTH_SCHEME.to_string(),
+        available,
+        reason: if available {
+            None
+        } else {
+            state
+                .exit_token_reason
+                .clone()
+                .or_else(|| Some("protocol exit is not enabled".to_string()))
+        },
+    }
+}
+
+/// Length-independent comparison so the token cannot be guessed byte by byte.
+fn constant_time_eq(expected: &[u8], presented: &[u8]) -> bool {
+    if expected.len() != presented.len() {
+        return false;
+    }
+    let mut diff = 0_u8;
+    for (left, right) in expected.iter().zip(presented.iter()) {
+        diff |= left ^ right;
+    }
+    diff == 0
+}
+
+fn exit_token_from_env() -> Option<String> {
+    std::env::var(EXIT_TOKEN_ENV)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
 impl AppState {
     fn new(api_config: RuntimeApiConfig) -> Self {
         Self {
@@ -601,8 +648,58 @@ impl AppState {
                 bubble_expires_at_ms: None,
                 recent_events: Vec::new(),
                 started_at_ms: now_ms(),
+                instance_owner: true,
+                exit_token: None,
+                exit_token_reason: Some("exit token not configured".to_string()),
+                shutdown_requested: false,
             })),
         }
+    }
+
+    /// Records who this process is. `exit_token` being absent is not an error: it means
+    /// the protocol exit path stays closed to every caller.
+    pub fn configure_identity(&self, instance_owner: bool, exit_token: Option<String>) {
+        let reason = match exit_token.as_deref() {
+            None => Some(format!("{EXIT_TOKEN_ENV} was not provided at launch")),
+            Some(token) if token.len() < MIN_EXIT_TOKEN_LEN => Some(format!(
+                "{EXIT_TOKEN_ENV} is shorter than {MIN_EXIT_TOKEN_LEN} characters"
+            )),
+            Some(_) => None,
+        };
+        let mut state = self.inner.lock().expect("runtime state poisoned");
+        state.instance_owner = instance_owner;
+        state.exit_token = if reason.is_some() { None } else { exit_token };
+        state.exit_token_reason = reason;
+    }
+
+    pub fn shutdown_capability(&self) -> ShutdownCapability {
+        let state = self.inner.lock().expect("runtime state poisoned");
+        shutdown_capability_from_state(&state)
+    }
+
+    /// Authorises a protocol exit. The token is compared in constant time and is never
+    /// echoed back, logged or included in an error message.
+    pub(crate) fn begin_shutdown(&self, presented_token: Option<&str>) -> ShutdownDecision {
+        let mut state = self.inner.lock().expect("runtime state poisoned");
+        let Some(expected) = state.exit_token.clone() else {
+            return ShutdownDecision::NotAvailable(
+                state
+                    .exit_token_reason
+                    .clone()
+                    .unwrap_or_else(|| "protocol exit is not enabled on this instance".to_string()),
+            );
+        };
+        let Some(presented) = presented_token else {
+            return ShutdownDecision::TokenRequired;
+        };
+        if !constant_time_eq(expected.as_bytes(), presented.as_bytes()) {
+            return ShutdownDecision::TokenInvalid;
+        }
+        if state.shutdown_requested {
+            return ShutdownDecision::AlreadyInProgress;
+        }
+        state.shutdown_requested = true;
+        ShutdownDecision::Accepted
     }
 
     pub fn port(&self) -> u16 {
@@ -654,6 +751,16 @@ impl AppState {
             api_error: state.api_error.clone(),
             api_restart_required: state.configured_api_config != active_api_config,
             pet_visible: state.pet_visible,
+            product: ProductInfo {
+                name: PRODUCT_NAME.to_string(),
+                version: PRODUCT_VERSION.to_string(),
+                upstream: UPSTREAM_PROJECT.to_string(),
+            },
+            capabilities: IdentityCapabilities {
+                single_instance: true,
+                instance_owner: state.instance_owner,
+                shutdown: shutdown_capability_from_state(&state),
+            },
             settings: state.settings.clone(),
             pet_storage,
             active_pet,
@@ -935,16 +1042,6 @@ impl AppState {
 }
 
 #[derive(Debug)]
-struct ResolvedPetSource {
-    id: String,
-    display_name: String,
-    description: String,
-    spritesheet_url: url::Url,
-    source_name: String,
-    source_url: String,
-}
-
-#[derive(Debug)]
 struct ResolvedLocalPetSource {
     id: String,
     display_name: String,
@@ -970,39 +1067,6 @@ struct LocalPetManifest {
     source_name: Option<String>,
     #[serde(default)]
     source_url: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PetdexManifest {
-    pets: Vec<PetdexPet>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PetdexPet {
-    slug: String,
-    display_name: String,
-    #[serde(default)]
-    description: Option<String>,
-    #[serde(default)]
-    page_url: Option<String>,
-    spritesheet_url: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CodexPetsDetail {
-    pet: CodexPetsPet,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CodexPetsPet {
-    id: String,
-    display_name: String,
-    description: String,
-    spritesheet_url: String,
 }
 
 fn is_valid_pet_id(value: &str) -> bool {
@@ -1048,440 +1112,6 @@ fn option_trimmed(value: &Option<String>) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
-}
-
-fn parse_safe_import_url(raw_url: &str) -> Result<url::Url, String> {
-    let trimmed = raw_url.trim();
-    if trimmed.is_empty() {
-        return Err("Enter a pet page URL first.".to_string());
-    }
-
-    let url = url::Url::parse(trimmed).map_err(|_| "Enter a valid absolute URL.".to_string())?;
-    if url.scheme() != "https" {
-        return Err("Only HTTPS pet pages are supported for website import.".to_string());
-    }
-
-    let host = url
-        .host_str()
-        .ok_or_else(|| "URL must include a host.".to_string())?;
-    if is_blocked_host(host) {
-        return Err("Local, private, and special network hosts are not allowed.".to_string());
-    }
-
-    Ok(url)
-}
-
-fn is_blocked_host(host: &str) -> bool {
-    let normalized = host.trim_matches(['[', ']']).to_ascii_lowercase();
-    if normalized == "localhost" || normalized.ends_with(".localhost") {
-        return true;
-    }
-    if let Ok(ip) = normalized.parse::<IpAddr>() {
-        return is_blocked_ip(ip);
-    }
-    match (normalized.as_str(), 443).to_socket_addrs() {
-        Ok(addrs) => addrs.map(|addr| addr.ip()).any(is_blocked_ip),
-        Err(_) => false,
-    }
-}
-
-fn is_blocked_ip(ip: IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(ip) => {
-            ip.is_private()
-                || ip.is_loopback()
-                || ip.is_link_local()
-                || ip.is_multicast()
-                || ip.is_unspecified()
-        }
-        IpAddr::V6(ip) => {
-            ip.is_loopback()
-                || ip.is_multicast()
-                || ip.is_unspecified()
-                || ip.is_unique_local()
-                || ip.is_unicast_link_local()
-        }
-    }
-}
-
-async fn fetch_json<T>(
-    client: &reqwest::Client,
-    url: url::Url,
-    max_bytes: usize,
-) -> Result<T, String>
-where
-    T: for<'de> Deserialize<'de>,
-{
-    let bytes = fetch_bytes(client, url, max_bytes).await?;
-    serde_json::from_slice::<T>(&bytes).map_err(|error| format!("invalid JSON response: {error}"))
-}
-
-async fn fetch_text(
-    client: &reqwest::Client,
-    url: url::Url,
-    max_bytes: usize,
-) -> Result<String, String> {
-    let bytes = fetch_bytes(client, url, max_bytes).await?;
-    String::from_utf8(bytes).map_err(|_| "response was not valid UTF-8 text".to_string())
-}
-
-async fn fetch_bytes(
-    client: &reqwest::Client,
-    url: url::Url,
-    max_bytes: usize,
-) -> Result<Vec<u8>, String> {
-    let response = client
-        .get(url.clone())
-        .send()
-        .await
-        .map_err(|error| format!("failed to fetch {url}: {error}"))?;
-    let final_url = response.url();
-    if final_url.scheme() != "https"
-        || final_url
-            .host_str()
-            .is_none_or(|host| is_blocked_host(host))
-    {
-        return Err("remote URL redirected to an unsafe location".to_string());
-    }
-    if !response.status().is_success() {
-        return Err(format!("failed to fetch {url}: HTTP {}", response.status()));
-    }
-    if response
-        .content_length()
-        .is_some_and(|length| length > max_bytes as u64)
-    {
-        return Err(format!(
-            "remote file is larger than {} MB",
-            max_bytes / 1024 / 1024
-        ));
-    }
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|error| format!("failed to read {url}: {error}"))?;
-    if bytes.len() > max_bytes {
-        return Err(format!(
-            "remote file is larger than {} MB",
-            max_bytes / 1024 / 1024
-        ));
-    }
-    Ok(bytes.to_vec())
-}
-
-async fn resolve_pet_source(
-    client: &reqwest::Client,
-    url: &url::Url,
-) -> Result<ResolvedPetSource, String> {
-    match url.host_str().unwrap_or_default() {
-        "petdex.crafter.run" => resolve_petdex_source(client, url).await,
-        "codex-pets.net" | "www.codex-pets.net" => resolve_codex_pets_source(client, url).await,
-        _ => resolve_generic_pet_page(client, url).await,
-    }
-}
-
-async fn resolve_petdex_source(
-    client: &reqwest::Client,
-    source_url: &url::Url,
-) -> Result<ResolvedPetSource, String> {
-    let slug = path_segment_after(source_url, "pets")
-        .ok_or_else(|| "Open a Petdex pet detail page, for example /pets/boba.".to_string())?;
-    let manifest = fetch_json::<PetdexManifest>(
-        client,
-        url::Url::parse("https://petdex.crafter.run/api/manifest").expect("static URL is valid"),
-        MAX_JSON_BYTES,
-    )
-    .await?;
-    let pet = manifest
-        .pets
-        .into_iter()
-        .find(|pet| pet.slug == slug)
-        .ok_or_else(|| format!("Petdex pet '{slug}' was not found in the public manifest."))?;
-    let spritesheet_url = parse_safe_import_url(&pet.spritesheet_url)?;
-    let description = match option_trimmed(&pet.description) {
-        Some(description) => description,
-        None => fetch_page_description(client, source_url)
-            .await
-            .unwrap_or_else(|| "Imported from Petdex.".to_string()),
-    };
-    let source_url =
-        option_trimmed(&pet.page_url).unwrap_or_else(|| source_url.as_str().to_string());
-
-    Ok(ResolvedPetSource {
-        id: sanitize_pet_id(&pet.slug),
-        display_name: truncate_chars(&pet.display_name, 96),
-        description: truncate_chars(&description, 280),
-        spritesheet_url,
-        source_name: "Petdex".to_string(),
-        source_url,
-    })
-}
-
-async fn resolve_codex_pets_source(
-    client: &reqwest::Client,
-    source_url: &url::Url,
-) -> Result<ResolvedPetSource, String> {
-    let id = extract_codex_pets_id(source_url).ok_or_else(|| {
-        "Open a Codex Pets share/detail URL, for example /share/<pet-id> or #/pets/<pet-id>."
-            .to_string()
-    })?;
-    let detail_url = url::Url::parse(&format!(
-        "https://ihzwckyzfcuktrljwpha.supabase.co/functions/v1/petshare/api/pets/{}",
-        id
-    ))
-    .expect("static URL is valid");
-    let detail = fetch_json::<CodexPetsDetail>(client, detail_url, MAX_JSON_BYTES).await?;
-    let spritesheet_url = parse_safe_import_url(&detail.pet.spritesheet_url)?;
-
-    Ok(ResolvedPetSource {
-        id: sanitize_pet_id(&detail.pet.id),
-        display_name: truncate_chars(&detail.pet.display_name, 96),
-        description: truncate_chars(&detail.pet.description, 280),
-        spritesheet_url,
-        source_name: "Codex Pets".to_string(),
-        source_url: format!("https://codex-pets.net/share/{}", detail.pet.id),
-    })
-}
-
-async fn fetch_page_description(client: &reqwest::Client, source_url: &url::Url) -> Option<String> {
-    let html = fetch_text(client, source_url.clone(), MAX_HTML_BYTES)
-        .await
-        .ok()?;
-    extract_page_description(&html)
-}
-
-async fn resolve_generic_pet_page(
-    client: &reqwest::Client,
-    source_url: &url::Url,
-) -> Result<ResolvedPetSource, String> {
-    let html = fetch_text(client, source_url.clone(), MAX_HTML_BYTES).await?;
-    let display_name = extract_page_display_name(&html)
-        .map(|value| clean_title(&value))
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "Imported Pet".to_string());
-    let description = extract_page_description(&html)
-        .unwrap_or_else(|| "Imported Codex-compatible pet.".to_string());
-    let spritesheet_url = extract_page_spritesheet_url(&html, source_url).ok_or_else(|| {
-        "Could not find a Codex-compatible spritesheet.webp on this page.".to_string()
-    })?;
-    let id_hint = source_url
-        .path_segments()
-        .and_then(|segments| segments.filter(|segment| !segment.is_empty()).last())
-        .unwrap_or(display_name.as_str());
-
-    Ok(ResolvedPetSource {
-        id: sanitize_pet_id(id_hint),
-        display_name: truncate_chars(&display_name, 96),
-        description: truncate_chars(&description, 280),
-        spritesheet_url,
-        source_name: source_url
-            .host_str()
-            .unwrap_or("Website")
-            .trim_start_matches("www.")
-            .to_string(),
-        source_url: source_url.as_str().to_string(),
-    })
-}
-
-fn extract_page_display_name(html: &str) -> Option<String> {
-    let json_ld = extract_json_ld_values(html);
-    json_ld
-        .iter()
-        .find_map(|value| find_json_string(value, "name"))
-        .or_else(|| extract_meta_content(html, "og:title"))
-        .or_else(|| extract_title(html))
-}
-
-fn extract_page_description(html: &str) -> Option<String> {
-    let json_ld = extract_json_ld_values(html);
-    json_ld
-        .iter()
-        .find_map(|value| find_json_string(value, "description"))
-        .or_else(|| extract_meta_content(html, "description"))
-}
-
-fn extract_page_spritesheet_url(html: &str, base_url: &url::Url) -> Option<url::Url> {
-    let json_ld = extract_json_ld_values(html);
-    json_ld
-        .iter()
-        .filter_map(find_json_webp)
-        .find(|candidate| is_likely_spritesheet(candidate))
-        .and_then(|candidate| base_url.join(&candidate).ok())
-        .or_else(|| extract_webp_url(html, base_url))
-}
-
-fn path_segment_after(url: &url::Url, prefix: &str) -> Option<String> {
-    let mut segments = url.path_segments()?;
-    while let Some(segment) = segments.next() {
-        if segment == prefix {
-            return segments.next().map(ToString::to_string);
-        }
-    }
-    None
-}
-
-fn extract_codex_pets_id(url: &url::Url) -> Option<String> {
-    if let Some(id) = path_segment_after(url, "share") {
-        return Some(id);
-    }
-    let fragment = url.fragment()?.trim_start_matches('/');
-    let id = fragment.strip_prefix("pets/")?;
-    Some(id.split('?').next().unwrap_or(id).to_string())
-}
-
-fn extract_json_ld_values(html: &str) -> Vec<serde_json::Value> {
-    let mut values = Vec::new();
-    let mut offset = 0;
-    let lower = html.to_ascii_lowercase();
-    while let Some(script_start) = lower[offset..].find("<script") {
-        let script_start = offset + script_start;
-        let Some(open_end) = lower[script_start..].find('>') else {
-            break;
-        };
-        let open_end = script_start + open_end;
-        let open_tag = &lower[script_start..=open_end];
-        let Some(close_start) = lower[open_end + 1..].find("</script>") else {
-            break;
-        };
-        let close_start = open_end + 1 + close_start;
-        if open_tag.contains("application/ld+json") {
-            let raw = html[open_end + 1..close_start].trim();
-            if let Ok(value) = serde_json::from_str::<serde_json::Value>(raw) {
-                values.push(value);
-            }
-        }
-        offset = close_start + "</script>".len();
-    }
-    values
-}
-
-fn find_json_string(value: &serde_json::Value, key: &str) -> Option<String> {
-    match value {
-        serde_json::Value::Object(map) => {
-            if let Some(serde_json::Value::String(value)) = map.get(key) {
-                return Some(value.clone());
-            }
-            map.values().find_map(|value| find_json_string(value, key))
-        }
-        serde_json::Value::Array(values) => {
-            values.iter().find_map(|value| find_json_string(value, key))
-        }
-        _ => None,
-    }
-}
-
-fn find_json_webp(value: &serde_json::Value) -> Option<String> {
-    match value {
-        serde_json::Value::String(value) => {
-            if value.to_ascii_lowercase().contains(".webp") {
-                Some(value.clone())
-            } else {
-                None
-            }
-        }
-        serde_json::Value::Object(map) => map.values().find_map(find_json_webp),
-        serde_json::Value::Array(values) => values.iter().find_map(find_json_webp),
-        _ => None,
-    }
-}
-
-fn extract_meta_content(html: &str, name_or_property: &str) -> Option<String> {
-    let lower = html.to_ascii_lowercase();
-    let needle = name_or_property.to_ascii_lowercase();
-    let mut offset = 0;
-    while let Some(meta_start) = lower[offset..].find("<meta") {
-        let meta_start = offset + meta_start;
-        let Some(meta_end) = lower[meta_start..].find('>') else {
-            break;
-        };
-        let meta_end = meta_start + meta_end;
-        let tag = &html[meta_start..=meta_end];
-        let lower_tag = &lower[meta_start..=meta_end];
-        if lower_tag.contains(&format!("name=\"{needle}\""))
-            || lower_tag.contains(&format!("property=\"{needle}\""))
-        {
-            if let Some(content) = extract_attr(tag, "content") {
-                return Some(html_decode_minimal(&content));
-            }
-        }
-        offset = meta_end + 1;
-    }
-    None
-}
-
-fn extract_attr(tag: &str, attr: &str) -> Option<String> {
-    let lower = tag.to_ascii_lowercase();
-    let needle = format!("{attr}=");
-    let start = lower.find(&needle)? + needle.len();
-    let quote = tag[start..].chars().next()?;
-    if quote != '"' && quote != '\'' {
-        return None;
-    }
-    let value_start = start + quote.len_utf8();
-    let value_end = tag[value_start..].find(quote)? + value_start;
-    Some(tag[value_start..value_end].to_string())
-}
-
-fn extract_title(html: &str) -> Option<String> {
-    let lower = html.to_ascii_lowercase();
-    let start = lower.find("<title>")? + "<title>".len();
-    let end = lower[start..].find("</title>")? + start;
-    Some(html_decode_minimal(&html[start..end]))
-}
-
-fn clean_title(value: &str) -> String {
-    value
-        .split(" - ")
-        .next()
-        .unwrap_or(value)
-        .split(" | ")
-        .next()
-        .unwrap_or(value)
-        .trim()
-        .to_string()
-}
-
-fn html_decode_minimal(value: &str) -> String {
-    value
-        .replace("&amp;", "&")
-        .replace("&quot;", "\"")
-        .replace("&#x27;", "'")
-        .replace("&#39;", "'")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-}
-
-fn extract_webp_url(html: &str, base_url: &url::Url) -> Option<url::Url> {
-    let mut candidates = html
-        .split(|character: char| {
-            character.is_whitespace()
-                || matches!(character, '"' | '\'' | '(' | ')' | '<' | '>' | ';' | ',')
-        })
-        .filter(|part| part.to_ascii_lowercase().contains(".webp"))
-        .filter(|part| is_likely_spritesheet(part))
-        .filter_map(|part| base_url.join(part.trim()).ok())
-        .collect::<Vec<_>>();
-    candidates.sort_by_key(|url| {
-        let value = url.as_str().to_ascii_lowercase();
-        if value.contains("spritesheet.webp") {
-            0
-        } else if value.contains("/sprites/") {
-            1
-        } else {
-            2
-        }
-    });
-    candidates.into_iter().next()
-}
-
-fn is_likely_spritesheet(value: &str) -> bool {
-    let lower = value.to_ascii_lowercase();
-    lower.contains(".webp")
-        && !lower.contains("preview")
-        && !lower.contains("share")
-        && !lower.contains("social")
-        && !lower.contains("icon")
-        && !lower.contains("logo")
-        && !lower.contains("screenshot")
 }
 
 fn validate_webp(bytes: &[u8]) -> Result<(), String> {
@@ -1646,59 +1276,6 @@ fn reserve_import_id(state: &AppState, requested_id: &str) -> String {
     }
 }
 
-async fn install_resolved_pet(
-    app: &AppHandle,
-    state: &AppState,
-    client: &reqwest::Client,
-    resolved: ResolvedPetSource,
-    force: bool,
-) -> Result<RuntimeSnapshot, String> {
-    let spritesheet_bytes = fetch_bytes(
-        client,
-        resolved.spritesheet_url.clone(),
-        MAX_SPRITESHEET_BYTES,
-    )
-    .await?;
-    validate_webp(&spritesheet_bytes)?;
-
-    let id = reserve_import_id(state, &sanitize_pet_id(&resolved.id));
-    let pets_dir = state
-        .imported_pets_dir()
-        .ok_or_else(|| "imported pet storage is not configured".to_string())?;
-    let pet_dir = pets_dir.join(&id);
-    if pet_dir.exists() && !force {
-        return Err(format!(
-            "imported pet '{id}' already exists; pass force to overwrite pet.json and spritesheet.webp"
-        ));
-    }
-    fs::create_dir_all(&pet_dir)
-        .map_err(|error| format!("failed to create imported pet directory: {error}"))?;
-    fs::write(pet_dir.join("spritesheet.webp"), &spritesheet_bytes)
-        .map_err(|error| format!("failed to write spritesheet.webp: {error}"))?;
-
-    let manifest = PetManifest {
-        id: id.clone(),
-        display_name: truncate_chars(&resolved.display_name, 96),
-        description: truncate_chars(&resolved.description, 280),
-        spritesheet_path: "spritesheet.webp".to_string(),
-        source_name: Some(resolved.source_name),
-        source_url: Some(resolved.source_url),
-        imported: true,
-    };
-    let manifest_json = serde_json::to_string_pretty(&manifest)
-        .map_err(|error| format!("failed to serialize pet.json: {error}"))?;
-    fs::write(pet_dir.join("pet.json"), manifest_json)
-        .map_err(|error| format!("failed to write pet.json: {error}"))?;
-
-    state.refresh_imported_pets()?;
-    let mut settings = state.settings();
-    settings.active_pet_id = id;
-    let settings = state.update_settings(settings)?;
-    let _ = app.emit_to("pet", EVENT_PET_SETTINGS, settings);
-    emit_status(app, state);
-    Ok(state.snapshot())
-}
-
 pub(crate) fn import_local_pet(
     app: &AppHandle,
     state: &AppState,
@@ -1742,41 +1319,6 @@ pub(crate) fn import_local_pet(
     let _ = app.emit_to("pet", EVENT_PET_SETTINGS, settings);
     emit_status(app, state);
     Ok(state.snapshot())
-}
-
-pub(crate) async fn import_website_pet(
-    app: &AppHandle,
-    state: &AppState,
-    payload: WebsiteImportPayload,
-) -> Result<RuntimeSnapshot, String> {
-    let url = parse_safe_import_url(&payload.url)?;
-    let client = website_import_client()?;
-    let resolved = resolve_pet_source(&client, &url).await?;
-    install_resolved_pet(app, state, &client, resolved, payload.force).await
-}
-
-fn website_import_client() -> Result<reqwest::Client, String> {
-    let mut builder = reqwest::Client::builder()
-        .user_agent("OpenPet/0.1 website-import")
-        .connect_timeout(Duration::from_secs(10))
-        .timeout(Duration::from_secs(25));
-
-    let certificates = native_tls_root_certificates();
-    if !certificates.is_empty() {
-        builder = builder.tls_certs_only(certificates);
-    }
-
-    builder
-        .build()
-        .map_err(|error| format!("failed to create HTTP client: {error}"))
-}
-
-fn native_tls_root_certificates() -> Vec<reqwest::Certificate> {
-    rustls_native_certs::load_native_certs()
-        .certs
-        .into_iter()
-        .filter_map(|cert| reqwest::Certificate::from_der(cert.as_ref()).ok())
-        .collect()
 }
 
 fn now_ms() -> u128 {
@@ -1902,295 +1444,6 @@ fn env_runtime_api_config(mut config: RuntimeApiConfig) -> RuntimeApiConfig {
     }
 
     config
-}
-
-fn bundled_skill_metadata(id: &str) -> Option<BundledSkill> {
-    let (display_name, description) = match id {
-        "openpet-cli" => (
-            "OpenPet CLI skill",
-            "Control OpenPet through the bundled Python CLI for local command-capable agents.",
-        ),
-        "openpet-mcp" => (
-            "OpenPet MCP skill",
-            "Configure MCP clients to use the bundled OpenPet stdio bridge.",
-        ),
-        "openpet-asset" => (
-            "OpenPet asset skill",
-            "Create, validate, and package Codex-compatible pet spritesheets.",
-        ),
-        _ => return None,
-    };
-
-    Some(BundledSkill {
-        id: id.to_string(),
-        display_name: display_name.to_string(),
-        description: description.to_string(),
-    })
-}
-
-fn bundled_skills_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let resource_skills = app
-        .path()
-        .resolve("skills", BaseDirectory::Resource)
-        .map_err(|error| format!("failed to resolve bundled skills resource: {error}"))?;
-    if resource_skills.is_dir() {
-        return Ok(resource_skills);
-    }
-
-    let repo_skills = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("skills");
-    if cfg!(debug_assertions) && repo_skills.is_dir() {
-        return Ok(repo_skills);
-    }
-
-    Err(format!(
-        "bundled skills directory not found: {}",
-        resource_skills.display()
-    ))
-}
-
-fn skill_source_dir(app: &AppHandle, skill_id: &str) -> Result<PathBuf, String> {
-    if !BUNDLED_SKILL_IDS.contains(&skill_id) {
-        return Err(format!("unknown bundled skill '{skill_id}'"));
-    }
-    let path = bundled_skills_dir(app)?.join(skill_id);
-    if path.join("SKILL.md").is_file() {
-        Ok(path)
-    } else {
-        Err(format!("bundled skill '{skill_id}' is missing SKILL.md"))
-    }
-}
-
-#[derive(Debug)]
-struct SkillTarget {
-    id: &'static str,
-    label: &'static str,
-    root: Option<PathBuf>,
-    unsupported_message: Option<&'static str>,
-}
-
-fn skill_target(target_id: &str) -> SkillTarget {
-    let home = user_home_dir().ok();
-    match target_id {
-        "codex" => SkillTarget {
-            id: "codex",
-            label: "Codex",
-            root: home.map(|path| path.join(".codex").join("skills")),
-            unsupported_message: None,
-        },
-        "cursor" => SkillTarget {
-            id: "cursor",
-            label: "Cursor",
-            root: None,
-            unsupported_message: Some(
-                "Cursor uses rules/instructions rather than SKILL.md folders; add the OpenPet note to .cursor/rules or AGENTS.md manually.",
-            ),
-        },
-        "openclaw" => SkillTarget {
-            id: "openclaw",
-            label: "OpenClaw",
-            root: home.map(|path| path.join(".openclaw").join("skills")),
-            unsupported_message: None,
-        },
-        "hermes" => SkillTarget {
-            id: "hermes",
-            label: "Hermes",
-            root: home.map(|path| path.join(".hermes").join("skills").join("openpet")),
-            unsupported_message: None,
-        },
-        "opencode" => SkillTarget {
-            id: "opencode",
-            label: "OpenCode",
-            root: home.map(|path| path.join(".config").join("opencode").join("skills")),
-            unsupported_message: None,
-        },
-        "claude" => SkillTarget {
-            id: "claude",
-            label: "Claude Code",
-            root: home.map(|path| path.join(".claude").join("skills")),
-            unsupported_message: None,
-        },
-        _ => SkillTarget {
-            id: "unknown",
-            label: "Unknown",
-            root: None,
-            unsupported_message: Some("Unknown target; no files were written."),
-        },
-    }
-}
-
-fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), String> {
-    fs::create_dir_all(target)
-        .map_err(|error| format!("failed to create {}: {error}", target.display()))?;
-    for entry in fs::read_dir(source)
-        .map_err(|error| format!("failed to read {}: {error}", source.display()))?
-    {
-        let entry = entry.map_err(|error| format!("failed to read skill entry: {error}"))?;
-        let file_name = entry.file_name();
-        let file_name_lossy = file_name.to_string_lossy();
-        if file_name_lossy == "__pycache__" || file_name_lossy.ends_with(".pyc") {
-            continue;
-        }
-        let source_path = entry.path();
-        let target_path = target.join(&file_name);
-        if source_path.is_dir() {
-            copy_dir_recursive(&source_path, &target_path)?;
-        } else if source_path.is_file() {
-            fs::copy(&source_path, &target_path).map_err(|error| {
-                format!(
-                    "failed to copy {} to {}: {error}",
-                    source_path.display(),
-                    target_path.display()
-                )
-            })?;
-        }
-    }
-    Ok(())
-}
-
-fn install_one_skill(
-    app: &AppHandle,
-    skill_id: &str,
-    target_id: &str,
-    force: bool,
-) -> SkillInstallResult {
-    let target = skill_target(target_id);
-    let Some(root) = target.root.clone() else {
-        return SkillInstallResult {
-            skill_id: skill_id.to_string(),
-            target_id: target.id.to_string(),
-            target_label: target.label.to_string(),
-            target_path: None,
-            status: "skipped".to_string(),
-            message: target
-                .unsupported_message
-                .unwrap_or("target has no supported automatic skill-folder destination")
-                .to_string(),
-        };
-    };
-
-    let result = (|| -> Result<PathBuf, String> {
-        let source = skill_source_dir(app, skill_id)?;
-        fs::create_dir_all(&root)
-            .map_err(|error| format!("failed to create target root: {error}"))?;
-        let target_dir = root.join(skill_id);
-        if target_dir.exists() && !force {
-            return Err(format!(
-                "{} already exists; enable overwrite to replace files inside this skill folder",
-                target_dir.display()
-            ));
-        }
-        copy_dir_recursive(&source, &target_dir)?;
-        Ok(target_dir)
-    })();
-
-    match result {
-        Ok(path) => SkillInstallResult {
-            skill_id: skill_id.to_string(),
-            target_id: target.id.to_string(),
-            target_label: target.label.to_string(),
-            target_path: Some(path_to_display(&path)),
-            status: "installed".to_string(),
-            message: "Installed. Start a new agent session if the skill is not detected."
-                .to_string(),
-        },
-        Err(error) => SkillInstallResult {
-            skill_id: skill_id.to_string(),
-            target_id: target.id.to_string(),
-            target_label: target.label.to_string(),
-            target_path: Some(path_to_display(&root.join(skill_id))),
-            status: "failed".to_string(),
-            message: error,
-        },
-    }
-}
-
-fn normalize_release_version(raw_version: &str) -> Option<String> {
-    let trimmed = raw_version.trim();
-    let start = trimmed
-        .char_indices()
-        .find_map(|(index, ch)| ch.is_ascii_digit().then_some(index))?;
-    let version = &trimmed[start..];
-    let core = version
-        .split(['+', '-'])
-        .next()
-        .unwrap_or(version)
-        .trim()
-        .trim_matches('.');
-    (!core.is_empty()).then(|| core.to_string())
-}
-
-fn parse_version_parts(version: &str) -> Vec<u64> {
-    normalize_release_version(version)
-        .unwrap_or_else(|| version.trim().to_string())
-        .split('.')
-        .map(|part| {
-            part.chars()
-                .take_while(|ch| ch.is_ascii_digit())
-                .collect::<String>()
-                .parse::<u64>()
-                .unwrap_or(0)
-        })
-        .collect()
-}
-
-fn is_newer_release(latest_version: &str, current_version: &str) -> bool {
-    let latest_parts = parse_version_parts(latest_version);
-    let current_parts = parse_version_parts(current_version);
-    let max_len = latest_parts.len().max(current_parts.len()).max(3);
-
-    for index in 0..max_len {
-        let latest = latest_parts.get(index).copied().unwrap_or(0);
-        let current = current_parts.get(index).copied().unwrap_or(0);
-        if latest != current {
-            return latest > current;
-        }
-    }
-
-    false
-}
-
-async fn check_github_release_update() -> Result<UpdateCheckResult, String> {
-    let current_version = env!("CARGO_PKG_VERSION").to_string();
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(UPDATE_CHECK_TIMEOUT_SECS))
-        .user_agent(format!("OpenPet/{current_version}"))
-        .build()
-        .map_err(|error| format!("failed to create update-check client: {error}"))?;
-    let response = client
-        .get(GITHUB_LATEST_RELEASE_API)
-        .header("accept", "application/vnd.github+json")
-        .send()
-        .await
-        .map_err(|error| format!("failed to check GitHub Releases: {error}"))?;
-
-    let status = response.status();
-    if !status.is_success() {
-        return Err(format!("failed to check GitHub Releases: HTTP {status}"));
-    }
-
-    let release = response
-        .json::<GithubRelease>()
-        .await
-        .map_err(|error| format!("failed to parse GitHub release metadata: {error}"))?;
-    let latest_version = normalize_release_version(&release.tag_name);
-    let update_available = latest_version
-        .as_deref()
-        .is_some_and(|latest| is_newer_release(latest, &current_version));
-
-    Ok(UpdateCheckResult {
-        current_version,
-        latest_version,
-        release_name: release.name,
-        release_url: if release.html_url.trim().is_empty() {
-            GITHUB_RELEASES_URL.to_string()
-        } else {
-            release.html_url
-        },
-        published_at: release.published_at,
-        update_available,
-    })
 }
 
 fn open_folder_path(path: &Path) -> Result<(), String> {
@@ -2363,7 +1616,7 @@ fn build_tray_menu(app: &AppHandle, language: PetLanguage) -> tauri::Result<Menu
 
 fn update_tray_menu(app: &AppHandle, language: PetLanguage) -> Result<(), String> {
     let menu = build_tray_menu(app, language).map_err(|error| error.to_string())?;
-    if let Some(tray) = app.tray_by_id("openpet") {
+    if let Some(tray) = app.tray_by_id(TRAY_ID) {
         tray.set_menu(Some(menu))
             .map_err(|error| format!("failed to update tray menu: {error}"))?;
     }
@@ -2373,8 +1626,8 @@ fn update_tray_menu(app: &AppHandle, language: PetLanguage) -> Result<(), String
 fn build_tray(app: &tauri::App, language: PetLanguage) -> tauri::Result<()> {
     let menu = build_tray_menu(app.handle(), language)?;
 
-    let mut builder = TrayIconBuilder::with_id("openpet")
-        .tooltip("OpenPet")
+    let mut builder = TrayIconBuilder::with_id(TRAY_ID)
+        .tooltip(PRODUCT_NAME)
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
@@ -2521,47 +1774,6 @@ fn toggle_pet_visibility(
 }
 
 #[tauri::command]
-async fn check_for_update() -> Result<UpdateCheckResult, String> {
-    check_github_release_update().await
-}
-
-#[tauri::command]
-async fn import_pet_from_website(
-    app: AppHandle,
-    state: tauri::State<'_, AppState>,
-    url: String,
-) -> Result<RuntimeSnapshot, String> {
-    import_website_pet(&app, &state, WebsiteImportPayload { url, force: false }).await
-}
-
-#[tauri::command]
-fn list_bundled_skills(app: AppHandle) -> Result<Vec<BundledSkill>, String> {
-    let _ = bundled_skills_dir(&app)?;
-    Ok(BUNDLED_SKILL_IDS
-        .iter()
-        .filter_map(|id| bundled_skill_metadata(id))
-        .collect())
-}
-
-#[tauri::command]
-fn install_bundled_skills(
-    app: AppHandle,
-    payload: InstallBundledSkillsPayload,
-) -> Result<Vec<SkillInstallResult>, String> {
-    if payload.skill_ids.is_empty() || payload.target_ids.is_empty() {
-        return Err("select at least one skill and one target".to_string());
-    }
-
-    let mut results = Vec::new();
-    for skill_id in payload.skill_ids {
-        for target_id in &payload.target_ids {
-            results.push(install_one_skill(&app, &skill_id, target_id, payload.force));
-        }
-    }
-    Ok(results)
-}
-
-#[tauri::command]
 fn open_pet_storage_folder(
     state: tauri::State<AppState>,
     folder: PetStorageFolderKind,
@@ -2584,11 +1796,23 @@ fn open_external_url(url: String) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let state = AppState::new(RuntimeApiConfig::default());
+    // Single instance per Windows user session, keyed by the app identifier. The exit
+    // token comes from whoever spawned us; without it the protocol exit stays closed.
+    state.configure_identity(true, exit_token_from_env());
 
     tauri::Builder::default()
+        // Registered first so a duplicate launch exits during plugin setup, before this
+        // process creates any window or starts the HTTP service.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            let state = app.state::<AppState>();
+            // Never open a second window and never infer ownership from the port:
+            // surface the running instance and let the caller probe /api/status.
+            let _ = show_and_focus(app, "pet");
+            sync_pet_visibility(app, &state);
+            emit_status(app, &state);
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state.clone())
         .on_window_event(hide_settings_window_on_close)
         .setup(move |app| {
@@ -2629,6 +1853,10 @@ pub fn run() {
                 Err(error) => state.mark_api_error(format!("failed to resolve app data: {error}")),
             }
             build_tray(app, state.settings().language)?;
+            // The pet window is created hidden so a duplicate process never flashes one;
+            // the owner shows it once it is certain it owns the instance.
+            let _ = show_and_focus(app.handle(), "pet");
+            sync_pet_visibility(app.handle(), &state);
             http_api::start_http_api(app.handle().clone(), state.clone());
             Ok(())
         })
@@ -2643,15 +1871,11 @@ pub fn run() {
             show_pet,
             hide_pet,
             toggle_pet_visibility,
-            check_for_update,
-            import_pet_from_website,
-            list_bundled_skills,
-            install_bundled_skills,
             open_pet_storage_folder,
             open_external_url
         ])
         .run(tauri::generate_context!())
-        .expect("error while running OpenPet");
+        .expect("error while running PetShell");
 }
 
 pub(crate) fn emit_http_action(app: &AppHandle, state: &AppState, payload: ActionPayload) {
@@ -2744,97 +1968,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn extracts_codex_pets_ids_from_supported_urls() {
-        let share_url = url::Url::parse("https://codex-pets.net/share/star-guardian-jinx").unwrap();
-        let hash_url = url::Url::parse("https://codex-pets.net/#/pets/ameath").unwrap();
-
-        assert_eq!(
-            extract_codex_pets_id(&share_url).as_deref(),
-            Some("star-guardian-jinx")
-        );
-        assert_eq!(extract_codex_pets_id(&hash_url).as_deref(), Some("ameath"));
-    }
-
-    #[test]
-    fn rejects_local_import_urls() {
-        assert!(parse_safe_import_url("https://127.0.0.1/pets/evil").is_err());
-        assert!(parse_safe_import_url("https://localhost/pets/evil").is_err());
-        assert!(parse_safe_import_url("https://[::1]/pets/evil").is_err());
-        assert!(parse_safe_import_url("https://[fc00::1]/pets/evil").is_err());
-        assert!(parse_safe_import_url("https://169.254.1.1/pets/evil").is_err());
-        assert!(parse_safe_import_url("http://petdex.crafter.run/pets/boba").is_err());
-    }
-
-    #[test]
-    fn extracts_likely_generic_spritesheet_urls() {
-        let base = url::Url::parse("https://www.codexpetshop.com/p/ruckusbear").unwrap();
-        let html = r#"<div style="background-image: url('/sprites/ruckusbear.webp')"></div>"#;
-
-        assert_eq!(
-            extract_webp_url(html, &base).map(|url| url.to_string()),
-            Some("https://www.codexpetshop.com/sprites/ruckusbear.webp".to_string())
-        );
-    }
-
-    #[test]
-    fn deserializes_current_petdex_manifest_shape() {
-        let manifest = serde_json::from_str::<PetdexManifest>(
-            r#"{
-              "generatedAt": "2026-05-04T11:25:36.320Z",
-              "total": 468,
-              "pets": [{
-                "slug": "kebo",
-                "displayName": "Kebo",
-                "kind": "creature",
-                "submittedBy": "railly",
-                "spritesheetUrl": "https://cdn.example.test/curated/kebo/spritesheet.webp",
-                "petJsonUrl": "https://cdn.example.test/curated/kebo/pet.json",
-                "zipUrl": "https://cdn.example.test/curated/kebo/kebo.zip"
-              }]
-            }"#,
-        )
-        .unwrap();
-
-        let pet = manifest.pets.first().unwrap();
-        assert_eq!(pet.slug, "kebo");
-        assert_eq!(pet.description.as_deref(), None);
-        assert_eq!(pet.page_url.as_deref(), None);
-    }
-
-    #[test]
-    fn extracts_spriteyard_json_ld_metadata() {
-        let base = url::Url::parse("https://spriteyard.com/pets/nib/").unwrap();
-        let html = r#"
-          <script type="application/ld+json">{
-            "@context": "https://schema.org",
-            "@type": "CreativeWork",
-            "name": "Nib",
-            "description": "A pixel pet package for Codex.",
-            "image": "https://assets.spriteyard.com/pets/nib/spritesheet.webp",
-            "encoding": {
-              "@type": "MediaObject",
-              "contentUrl": "https://assets.spriteyard.com/pets/nib/nib.zip"
-            }
-          }</script>
-        "#;
-
-        assert_eq!(extract_page_display_name(html).as_deref(), Some("Nib"));
-        assert_eq!(
-            extract_page_description(html).as_deref(),
-            Some("A pixel pet package for Codex.")
-        );
-        assert_eq!(
-            extract_page_spritesheet_url(html, &base).map(|url| url.to_string()),
-            Some("https://assets.spriteyard.com/pets/nib/spritesheet.webp".to_string())
-        );
-    }
-
-    #[test]
-    fn builds_website_import_client() {
-        website_import_client().unwrap();
-    }
-
-    #[test]
     fn resolves_local_package_directory() {
         let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../public/pets/nia");
         let resolved = resolve_local_pet_source(LocalImportPayload {
@@ -2862,28 +1995,12 @@ mod tests {
     #[test]
     fn normalizes_external_settings_links() {
         assert_eq!(
-            normalize_external_url(" https://github.com/X-T-E-R/OpenPet ").unwrap(),
-            "https://github.com/X-T-E-R/OpenPet".to_string()
+            normalize_external_url(" https://example.test/attribution ").unwrap(),
+            "https://example.test/attribution".to_string()
         );
         assert!(normalize_external_url("file:///C:/Users/example").is_err());
         assert!(normalize_external_url("javascript:alert(1)").is_err());
         assert!(normalize_external_url("not a url").is_err());
-    }
-
-    #[test]
-    fn compares_github_release_versions() {
-        assert_eq!(
-            normalize_release_version("v0.2.0").as_deref(),
-            Some("0.2.0")
-        );
-        assert_eq!(
-            normalize_release_version("openpet-v1.4.0+build.3").as_deref(),
-            Some("1.4.0")
-        );
-        assert!(is_newer_release("v0.2.0", "0.1.9"));
-        assert!(is_newer_release("1.0", "0.9.9"));
-        assert!(!is_newer_release("0.1.0", "0.1.0"));
-        assert!(!is_newer_release("0.1.0", "0.2.0"));
     }
 
     #[test]
@@ -2897,7 +2014,7 @@ mod tests {
     #[test]
     fn keeps_imported_active_pet_when_loading_settings_before_catalog_refresh() {
         let root = std::env::temp_dir().join(format!(
-            "openpet-active-pet-persist-{}-{}",
+            "petshell-active-pet-persist-{}-{}",
             std::process::id(),
             now_ms()
         ));
@@ -2936,6 +2053,33 @@ mod tests {
     }
 
     #[test]
+    fn normalizes_renderer_and_appearance_settings() {
+        let defaults = PetSettings::default();
+        assert_eq!(defaults.renderer, PetRendererId::Sprite);
+        assert_eq!(defaults.live2d_appearance, "hiyori");
+
+        // 外观名只做安全字符串归一化：合法性由 renderer 依据自己的目录判定。
+        let mut settings = PetSettings::default();
+        settings.live2d_appearance = "  HiYoRi!!  ".to_string();
+        assert_eq!(normalize_pet_settings(settings).live2d_appearance, "hiyori");
+
+        let mut settings = PetSettings::default();
+        settings.live2d_appearance = String::new();
+        assert!(!normalize_pet_settings(settings).live2d_appearance.is_empty());
+
+        // 表现出口是封闭枚举：未知取值在反序列化阶段就被拒，不会静默退化成 sprite。
+        assert_eq!(
+            serde_json::from_str::<PetRendererId>("\"sprite\"").unwrap(),
+            PetRendererId::Sprite
+        );
+        assert_eq!(
+            serde_json::from_str::<PetRendererId>("\"live2d\"").unwrap(),
+            PetRendererId::Live2d
+        );
+        assert!(serde_json::from_str::<PetRendererId>("\"three\"").is_err());
+    }
+
+    #[test]
     fn normalizes_runtime_api_config() {
         let config = normalize_api_config(RuntimeApiConfig {
             listen_address: " 0.0.0.0 ".to_string(),
@@ -2955,5 +2099,79 @@ mod tests {
             port: 0,
         })
         .is_err());
+    }
+
+    #[test]
+    fn compares_exit_tokens_in_constant_time_shape() {
+        assert!(constant_time_eq(b"abcdef", b"abcdef"));
+        assert!(!constant_time_eq(b"abcdef", b"abcdeg"));
+        assert!(!constant_time_eq(b"abcdef", b"abcde"));
+        assert!(!constant_time_eq(b"", b"x"));
+        assert!(constant_time_eq(b"", b""));
+    }
+
+    #[test]
+    fn rejects_short_or_missing_exit_tokens_and_keeps_the_exit_path_closed() {
+        let state = AppState::new(RuntimeApiConfig::default());
+        state.configure_identity(true, Some("too-short".to_string()));
+        let capability = state.shutdown_capability();
+        assert!(!capability.available);
+        assert!(capability.reason.is_some());
+        assert!(matches!(
+            state.begin_shutdown(Some("too-short")),
+            ShutdownDecision::NotAvailable(_)
+        ));
+
+        let state = AppState::new(RuntimeApiConfig::default());
+        state.configure_identity(true, None);
+        assert!(!state.shutdown_capability().available);
+        assert!(matches!(
+            state.begin_shutdown(Some("0123456789abcdef")),
+            ShutdownDecision::NotAvailable(_)
+        ));
+    }
+
+    #[test]
+    fn authorizes_protocol_exit_only_with_the_matching_token() {
+        let state = AppState::new(RuntimeApiConfig::default());
+        state.configure_identity(true, Some("0123456789abcdef".to_string()));
+        assert!(state.shutdown_capability().available);
+
+        // Missing and wrong credentials are distinguishable, and neither exits.
+        assert_eq!(state.begin_shutdown(None), ShutdownDecision::TokenRequired);
+        assert_eq!(
+            state.begin_shutdown(Some("0123456789abcde")),
+            ShutdownDecision::TokenInvalid
+        );
+        assert_eq!(
+            state.begin_shutdown(Some("0123456789abcdef")),
+            ShutdownDecision::Accepted
+        );
+        // A repeat request has a defined result instead of exiting twice.
+        assert_eq!(
+            state.begin_shutdown(Some("0123456789abcdef")),
+            ShutdownDecision::AlreadyInProgress
+        );
+    }
+
+    #[test]
+    fn reports_real_identity_without_impersonating_upstream() {
+        let state = AppState::new(RuntimeApiConfig::default());
+        let snapshot = state.snapshot();
+
+        assert_eq!(snapshot.product.name, PRODUCT_NAME);
+        assert_eq!(snapshot.product.version, PRODUCT_VERSION);
+        // Attribution, not a claim to be OpenPet.
+        assert!(snapshot.product.upstream.contains("OpenPet"));
+        assert_ne!(snapshot.product.name, "OpenPet");
+
+        assert!(snapshot.capabilities.single_instance);
+        assert!(snapshot.capabilities.instance_owner);
+        assert_eq!(snapshot.capabilities.shutdown.endpoint, SHUTDOWN_ENDPOINT);
+        assert_eq!(
+            snapshot.capabilities.shutdown.version,
+            SHUTDOWN_CONTRACT_VERSION
+        );
+        assert_eq!(snapshot.capabilities.shutdown.auth, SHUTDOWN_AUTH_SCHEME);
     }
 }

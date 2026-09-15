@@ -48,6 +48,20 @@ export function pickPetActionFromPool(
   return candidates[index] ?? fallback;
 }
 
+/**
+ * Continuous poses.
+ *
+ * Distinct from the six one-shot actions: a pose has no duration and must never be
+ * reported as a completed action. Kept here (not in a renderer) because both the
+ * sprite and the Live2D renderer have to agree on what a pose is.
+ */
+export const PET_POSE_ANIMATION_IDS = ['idle', 'running-left', 'running-right'] as const;
+export type PetPoseAnimationId = (typeof PET_POSE_ANIMATION_IDS)[number];
+
+export function isPetPoseAnimationId(value: string): value is PetPoseAnimationId {
+  return (PET_POSE_ANIMATION_IDS as readonly string[]).includes(value);
+}
+
 export const PET_IDLE_SELF_PLAY_ANIMATION_IDS = [
   'waving',
   'jumping',

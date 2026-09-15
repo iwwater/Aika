@@ -3,6 +3,13 @@ import { PET_CATALOG, type PetCatalogItem, type PetId } from './catalog';
 import type { RecentCompanionEvent } from './events';
 
 export type PetLanguage = 'en' | 'zh-CN';
+export type PetRendererId = 'sprite' | 'live2d';
+export const PET_RENDERER_IDS: readonly PetRendererId[] = ['sprite', 'live2d'];
+
+export function isPetRendererId(value: unknown): value is PetRendererId {
+  return typeof value === 'string' && (PET_RENDERER_IDS as readonly string[]).includes(value);
+}
+
 export type ClickActionMode = 'fixed' | 'random';
 export type IdleActionId = 'random' | 'active-action' | PetActionAnimationId;
 export type BubbleStyle = 'soft' | 'comic' | 'glass' | 'terminal';
@@ -12,8 +19,11 @@ export type PetSettings = {
   language: PetLanguage;
   scale: number;
   reducedMotion: boolean;
-  autoUpdateChecks: boolean;
   autonomousWalking: boolean;
+  /** 首版换装是整模型切换，所以这一项就是「当前外观」。 */
+  live2dAppearance: string;
+  /** 表现出口；任一时刻只有一个 renderer 在输出。 */
+  renderer: PetRendererId;
   hoverPause: boolean;
   activePetId: PetId;
   clickActionMode: ClickActionMode;
@@ -43,6 +53,27 @@ export type PetStorageSnapshot = {
   codexDir: string;
 };
 
+/** Real identity of the sidecar. `upstream` is attribution, not a version to match. */
+export type ProductInfo = {
+  name: string;
+  version: string;
+  upstream: string;
+};
+
+export type ShutdownCapability = {
+  endpoint: string;
+  version: number;
+  auth: string;
+  available: boolean;
+  reason: string | null;
+};
+
+export type IdentityCapabilities = {
+  singleInstance: boolean;
+  instanceOwner: boolean;
+  shutdown: ShutdownCapability;
+};
+
 export type RuntimeSnapshot = {
   listenAddress: string;
   port: number;
@@ -53,6 +84,8 @@ export type RuntimeSnapshot = {
   apiError: string | null;
   apiRestartRequired: boolean;
   petVisible: boolean;
+  product: ProductInfo;
+  capabilities: IdentityCapabilities;
   settings: PetSettings;
   petStorage: PetStorageSnapshot;
   activePet: PetCatalogItem;
@@ -68,36 +101,6 @@ export type RuntimeApiConfig = {
   port: number;
 };
 
-export type UpdateCheckResult = {
-  currentVersion: string;
-  latestVersion: string | null;
-  releaseName: string | null;
-  releaseUrl: string;
-  publishedAt: string | null;
-  updateAvailable: boolean;
-};
-
-export type BundledSkill = {
-  id: string;
-  displayName: string;
-  description: string;
-};
-
-export type InstallBundledSkillsPayload = {
-  skillIds: string[];
-  targetIds: string[];
-  force: boolean;
-};
-
-export type SkillInstallResult = {
-  skillId: string;
-  targetId: string;
-  targetLabel: string;
-  targetPath: string | null;
-  status: string;
-  message: string;
-};
-
 export type ActionPayload = {
   animationId: string;
 };
@@ -111,8 +114,9 @@ export const DEFAULT_SETTINGS: PetSettings = {
   language: 'en',
   scale: 1,
   reducedMotion: false,
-  autoUpdateChecks: true,
   autonomousWalking: false,
+  live2dAppearance: 'hiyori',
+  renderer: 'sprite',
   hoverPause: true,
   activePetId: 'nia',
   clickActionMode: 'random',
@@ -144,6 +148,22 @@ export const FALLBACK_SNAPSHOT: RuntimeSnapshot = {
   apiError: 'Not connected to Tauri runtime',
   apiRestartRequired: false,
   petVisible: true,
+  product: {
+    name: 'PetShell',
+    version: '0.6.0',
+    upstream: 'OpenPet v0.1.6 (GPL-3.0-or-later)',
+  },
+  capabilities: {
+    singleInstance: true,
+    instanceOwner: true,
+    shutdown: {
+      endpoint: '/api/shutdown',
+      version: 1,
+      auth: 'bearer-token',
+      available: false,
+      reason: 'Not connected to the PetShell runtime',
+    },
+  },
   settings: DEFAULT_SETTINGS,
   petStorage: {
     preset: 'codex-custom',

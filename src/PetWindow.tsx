@@ -15,66 +15,47 @@ import {
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
+  useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
-import { PetSprite } from './pet/PetSprite';
 import {
-  PET_IDLE_SELF_PLAY_ANIMATION_IDS,
   type PetAnimationId,
   getPetAnimation,
   getPetAnimationDurationMs,
-  getPetSurfaceInsets,
-  getPetSurfaceSize,
   isPetAnimationId,
   pickPetActionFromPool,
 } from './pet/animation';
-import {
-  type PetMotionState,
-  type Rect,
-  clampPetMotionToWorkArea,
-  createInitialPetMotion,
-  createRestingPetMotion,
-  fallbackWorkArea,
-  resolvePetMotion,
-} from './pet/motion';
+import { type Rect, fallbackWorkArea } from './pet/motion';
 import {
   type ActionPayload,
   FALLBACK_SNAPSHOT,
-  type BubbleStyle,
   type PetSettings,
   type RuntimeSnapshot,
   type SayPayload,
+  isPetRendererId,
 } from './pet/settings';
+import { IdleBehaviorPlugin, type DesktopEnvironment } from './plugins/behaviors/idleBehavior';
+import { DefaultMenuPlugin } from './plugins/menus/defaultMenu';
+import { PluginRegistry } from './plugins/registry';
+import { RendererHost } from './plugins/rendererHost';
+import { Live2dRendererPlugin } from './plugins/renderers/live2dRenderer';
+import { live2dAppearanceOptions } from './plugins/renderers/live2d/catalog';
+import { SpriteRendererPlugin } from './plugins/renderers/spriteRenderer';
+import type {
+  MenuEntry,
+  PetBehaviorPlugin,
+  RendererMountContext,
+  SlotStatus,
+} from './plugins/types';
 
-const MOVE_TICK_MS = 120;
-const WORK_AREA_REFRESH_MS = 4000;
 const DEFAULT_BUBBLE_TTL_MS = 4000;
-const IDLE_SELF_PLAY_CHECK_MS = 1000;
 const DRAG_START_DISTANCE_PX = 4;
 const CURSOR_HIT_TEST_MS = 80;
 const PET_HIT_TARGET_PADDING_PX = 4;
-const CONTEXT_MENU_WIDTH = 188;
-const CONTEXT_MENU_HEIGHT = 214;
-const CONTEXT_LABELS = {
-  en: {
-    aria: 'Pet actions',
-    openSettings: 'Open settings',
-    wave: 'Wave',
-    pauseWalking: 'Pause walking',
-    roam: 'Let me roam',
-    hidePet: 'Hide pet',
-  },
-  'zh-CN': {
-    aria: '宠物操作',
-    openSettings: '打开设置',
-    wave: '挥手',
-    pauseWalking: '暂停移动',
-    roam: '自由移动',
-    hidePet: '隐藏宠物',
-  },
-} as const;
-const BUBBLE_STYLES = ['soft', 'comic', 'glass', 'terminal'] as const satisfies readonly BubbleStyle[];
+const CONTEXT_MENU_MARGIN_PX = 8;
+const FALLBACK_RENDERER_ID = 'sprite';
 
 type MonitorWorkArea = {
   rect: Rect;
@@ -133,22 +114,9 @@ function hasTauriRuntime() {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
-function pickIdleAction(settings: PetSettings): PetAnimationId {
-  if (settings.idleAction === 'active-action') return settings.clickAction;
-  if (settings.idleAction === 'random') {
-    const index = Math.floor(Math.random() * PET_IDLE_SELF_PLAY_ANIMATION_IDS.length);
-    return PET_IDLE_SELF_PLAY_ANIMATION_IDS[index] ?? 'waving';
-  }
-  return settings.idleAction;
-}
-
 function pickClickAction(settings: PetSettings): PetAnimationId {
   if (settings.clickActionMode === 'fixed') return settings.clickAction;
   return pickPetActionFromPool(settings.clickActionPool, settings.clickAction || 'waving');
-}
-
-function bubbleStyleClass(style: BubbleStyle) {
-  return BUBBLE_STYLES.includes(style) ? `pet-bubble-${style}` : 'pet-bubble-soft';
 }
 
 function pointInElementRect(
@@ -166,106 +134,114 @@ function pointInElementRect(
   );
 }
 
+/**
+ * The window is now a transport + chrome shell:
+ *   - it subscribes to runtime events and forwards them into the active renderer
+ *   - the visible pet, the bubble and the idle policy all live behind plugin slots
+ *   - the four HTTP endpoints are untouched and unaware of which renderer is running
+ */
 export function PetWindow() {
   const [snapshot, setSnapshot] = useState<RuntimeSnapshot>(FALLBACK_SNAPSHOT);
-  const [animation, setAnimation] = useState<PetAnimationId>('idle');
-  const [bubble, setBubble] = useState<string | null>(null);
   const [hovered, setHovered] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  const actionTimerRef = useRef<number | null>(null);
+  const [slotStatus, setSlotStatus] = useState<SlotStatus>('unavailable');
+  const [slotMessage, setSlotMessage] = useState<string | null>(null);
+  /**
+   * 当前真正在输出的 renderer id。
+   *
+   * 单独存一份是因为 `slotStatus` 在 ready→ready 的切换里**不会变**，而菜单与
+   * 能力相关的 UI 必须在 renderer 换人之后重建——只盯着 status 会留下过期入口。
+   */
+  const [slotRenderer, setSlotRenderer] = useState<string | null>(null);
+  const [menuEntries, setMenuEntries] = useState<readonly MenuEntry[]>([]);
+
   const actionActiveUntilRef = useRef(0);
-  const bubbleTimerRef = useRef<number | null>(null);
-  const nextClickActionRef = useRef(0);
-  const motionRef = useRef<PetMotionState | null>(null);
-  const workAreaRef = useRef<Rect>(fallbackWorkArea());
-  const workAreaScaleFactorRef = useRef(1);
-  const surfaceSizeRef = useRef(getPetSurfaceSize(1));
-  const surfaceInsetsRef = useRef(getPetSurfaceInsets(1));
-  const spriteHitTargetRef = useRef<HTMLDivElement | null>(null);
-  const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const cursorEventsIgnoredRef = useRef<boolean | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
   const draggingRef = useRef(false);
   const hoveredRef = useRef(false);
   const suppressClickRef = useRef(false);
-  const cursorEventsIgnoredRef = useRef<boolean | null>(null);
   const lastActivityRef = useRef(Date.now());
-  const lastIdleActionAtRef = useRef(0);
+  const hostElementRef = useRef<HTMLDivElement | null>(null);
+  const hitTargetRef = useRef<HTMLElement | null>(null);
+  const detachHoverRef = useRef<(() => void) | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const registryRef = useRef<PluginRegistry | null>(null);
+  const rendererHostRef = useRef<RendererHost | null>(null);
+  const behaviorRef = useRef<PetBehaviorPlugin | null>(null);
+  /** 最近一次**发起过**的切换目标，用来避免同一个失败目标被反复重试。 */
+  const requestedRendererRef = useRef<string | null>(null);
+  const snapshotRef = useRef(snapshot);
+
+  snapshotRef.current = snapshot;
 
   const tauriAvailable = hasTauriRuntime();
   const settings = snapshot.settings;
   const language = settings.language === 'zh-CN' ? 'zh-CN' : 'en';
-  const contextLabels = CONTEXT_LABELS[language];
 
   const markActivity = useCallback(() => {
     lastActivityRef.current = Date.now();
   }, []);
 
-  const setPetHovered = useCallback((active: boolean, markAsActivity = false) => {
-    if (hoveredRef.current === active) return;
-    hoveredRef.current = active;
-    if (active && markAsActivity) markActivity();
-    setHovered(active);
-  }, [markActivity]);
-
-  const playAction = useCallback((animationId: PetAnimationId, markAsActivity = true) => {
-    if (markAsActivity) markActivity();
-    if (actionTimerRef.current !== null) window.clearTimeout(actionTimerRef.current);
-    const duration = getPetAnimationDurationMs(getPetAnimation(animationId));
-    actionActiveUntilRef.current = Date.now() + duration;
-    setAnimation(animationId);
-    actionTimerRef.current = window.setTimeout(() => {
-      actionTimerRef.current = null;
-      actionActiveUntilRef.current = 0;
-      setAnimation('idle');
-    }, duration);
-  }, [markActivity]);
-
-  const say = useCallback((payload: SayPayload) => {
-    markActivity();
-    const text = payload.text.trim();
-    if (bubbleTimerRef.current !== null) window.clearTimeout(bubbleTimerRef.current);
-    setBubble(text.length > 0 ? text : null);
-    if (text.length === 0) return;
-    bubbleTimerRef.current = window.setTimeout(() => {
-      bubbleTimerRef.current = null;
-      setBubble(null);
-    }, Math.max(500, payload.ttlMs ?? DEFAULT_BUBBLE_TTL_MS));
-  }, [markActivity]);
-
-  const handlePetClick = useCallback(() => {
-    if (contextMenu) {
-      setContextMenu(null);
-      return;
-    }
-    if (suppressClickRef.current) {
-      suppressClickRef.current = false;
-      return;
-    }
-    const action = pickClickAction(settings);
-    nextClickActionRef.current += 1;
-    playAction(isPetAnimationId(action) ? action : 'waving');
-  }, [contextMenu, playAction, settings]);
-
-  const handlePetKeyDown = useCallback(
-    (event: ReactKeyboardEvent<HTMLDivElement>) => {
-      if (event.key !== 'Enter' && event.key !== ' ') return;
-      event.preventDefault();
-      handlePetClick();
+  const setPetHovered = useCallback(
+    (active: boolean, markAsActivity = false) => {
+      if (hoveredRef.current === active) return;
+      hoveredRef.current = active;
+      if (active && markAsActivity) markActivity();
+      setHovered(active);
     },
-    [handlePetClick],
+    [markActivity],
   );
 
-  const updatePetSettings = useCallback(async (nextSettings: PetSettings) => {
-    setSnapshot((current) => ({ ...current, settings: nextSettings }));
-    if (!tauriAvailable) return;
-    try {
-      const next = await invoke<RuntimeSnapshot>('update_settings', { settings: nextSettings });
-      setSnapshot(next);
-    } catch {
-      // The pet should remain usable even when previewed outside the Tauri runtime.
-    }
-  }, [tauriAvailable]);
+  const behaviorPaused = useCallback(
+    () =>
+      draggingRef.current ||
+      contextMenuRef.current !== null ||
+      (snapshotRef.current.settings.hoverPause && hoveredRef.current),
+    [],
+  );
+
+  const isActionActive = useCallback(() => Date.now() < actionActiveUntilRef.current, []);
+
+  /** Single entry point for every action, local or from the runtime. */
+  const dispatchAction = useCallback(
+    (animationId: string, source: 'runtime' | 'local' | 'behavior'): boolean => {
+      markActivity();
+      const host = rendererHostRef.current;
+      if (!host) return false;
+      const accepted = host.action({ animationId, source });
+      if (accepted && isPetAnimationId(animationId)) {
+        const duration = getPetAnimationDurationMs(getPetAnimation(animationId));
+        actionActiveUntilRef.current = Date.now() + duration;
+      }
+      return accepted;
+    },
+    [markActivity],
+  );
+
+  const applySettingsToRenderer = useCallback((next: PetSettings, nextSnapshot: RuntimeSnapshot) => {
+    rendererHostRef.current?.applySettings(next, nextSnapshot.activePet);
+  }, []);
+
+  const updatePetSettings = useCallback(
+    async (nextSettings: PetSettings) => {
+      setSnapshot((current) => {
+        const next = { ...current, settings: nextSettings };
+        applySettingsToRenderer(nextSettings, next);
+        return next;
+      });
+      if (!tauriAvailable) return;
+      try {
+        const next = await invoke<RuntimeSnapshot>('update_settings', { settings: nextSettings });
+        setSnapshot(next);
+        applySettingsToRenderer(next.settings, next);
+      } catch {
+        // The pet should remain usable even when previewed outside the Tauri runtime.
+      }
+    },
+    [applySettingsToRenderer, tauriAvailable],
+  );
 
   const openSettings = useCallback(async () => {
     setContextMenu(null);
@@ -279,69 +255,238 @@ export function PetWindow() {
     await invoke('hide_pet').catch(() => {});
   }, [tauriAvailable]);
 
+  // ---- plugin wiring -------------------------------------------------------
+
+  const registry = useMemo(() => {
+    if (registryRef.current) return registryRef.current;
+    const next = new PluginRegistry();
+    next.registerRenderer('sprite', () => new SpriteRendererPlugin());
+    // Live2D 依赖（PixiJS + 显示库 + Cubism Core）只在真正选中时才加载，
+    // 走 renderer 内部的动态 import，不进 sprite 路径的包。
+    next.registerRenderer('live2d', () => new Live2dRendererPlugin());
+    next.registerBehavior('idle', () => new IdleBehaviorPlugin({
+      environment: {
+        readWorkArea,
+        setWindowPosition: (x, y) => {
+          if (!tauriAvailable || draggingRef.current) return;
+          void getCurrentWindow()
+            .setPosition(new LogicalPosition(x, y))
+            .catch(() => {});
+        },
+        setWindowSize: (size) => {
+          if (!tauriAvailable) return;
+          void getCurrentWindow()
+            .setSize(new LogicalSize(size.width, size.height))
+            .catch(() => {});
+        },
+        isNativeWindowAvailable: () => tauriAvailable,
+      } satisfies DesktopEnvironment,
+    }));
+    next.registerMenu(new DefaultMenuPlugin());
+    registryRef.current = next;
+    return next;
+  }, [tauriAvailable]);
+
+  useEffect(() => {
+    const hostElement = hostElementRef.current;
+    if (!hostElement) return;
+
+    // Each host owns a private container, and mounting atomically replaces whatever a
+    // previous host left behind. Without this, React's double-mount leaves two
+    // renderer instances in the document at the same time.
+    const rendererContainer = document.createElement('div');
+    rendererContainer.className = 'pet-renderer-container';
+    rendererContainer.dataset.rendererHost = 'true';
+    hostElement.replaceChildren(rendererContainer);
+
+    const mountContext: RendererMountContext = {
+      host: rendererContainer,
+      pet: snapshotRef.current.activePet,
+      settings: snapshotRef.current.settings,
+      onHitTargetChange: (element) => {
+        detachHoverRef.current?.();
+        detachHoverRef.current = null;
+        hitTargetRef.current = element;
+        if (!element) return;
+        // Hover feedback has to live on the renderer's own element, which appears
+        // and disappears with the renderer instance.
+        const enter = () => setPetHovered(true, true);
+        const leave = () => setPetHovered(false);
+        element.addEventListener('mouseenter', enter);
+        element.addEventListener('mouseleave', leave);
+        detachHoverRef.current = () => {
+          element.removeEventListener('mouseenter', enter);
+          element.removeEventListener('mouseleave', leave);
+        };
+      },
+      onRuntimeFailure: (reason) => {
+        setSlotMessage(reason);
+        setSlotStatus('degraded');
+      },
+    };
+
+    const host = new RendererHost({
+      registry,
+      context: mountContext,
+      fallbackRendererId: FALLBACK_RENDERER_ID,
+    });
+    rendererHostRef.current = host;
+
+    const createBehavior = registry.getBehaviorFactory('idle');
+    const behavior = createBehavior ? createBehavior() : null;
+    if (behavior) {
+      behaviorRef.current = behavior;
+      behavior.start({
+        getSettings: () => snapshotRef.current.settings,
+        isPaused: behaviorPaused,
+        isActionActive,
+        lastActivityAt: () => lastActivityRef.current,
+        now: () => Date.now(),
+        requestAction: (animationId, source) => {
+          dispatchAction(animationId, source);
+        },
+        requestPose: (animationId) => {
+          rendererHostRef.current?.pose(animationId);
+        },
+        markActivity,
+      });
+    }
+
+    const preferred = snapshotRef.current.settings.renderer;
+    let cancelled = false;
+    void host.start(isPetRendererId(preferred) ? preferred : registry.preferredRenderer()).then(
+      (status) => {
+        setSlotRenderer(host.getActiveRendererId());
+        if (cancelled) return;
+        setSlotStatus(status);
+        setSlotMessage(host.getLastError());
+      },
+    );
+
+    return () => {
+      cancelled = true;
+      behaviorRef.current?.dispose();
+      behaviorRef.current = null;
+      rendererHostRef.current = null;
+      detachHoverRef.current?.();
+      detachHoverRef.current = null;
+      void host.stop().then(() => rendererContainer.remove());
+    };
+  }, [behaviorPaused, dispatchAction, isActionActive, markActivity, registry, setPetHovered]);
+
+  // Test/diagnostic hook used by the slot regression suite.
+  useEffect(() => {
+    (window as unknown as { __petSlots?: () => unknown }).__petSlots = () => ({
+      status: rendererHostRef.current?.getStatus() ?? 'unavailable',
+      activeRenderer: rendererHostRef.current?.getActiveRendererId() ?? null,
+      capabilities: rendererHostRef.current?.getCapabilities() ?? null,
+      counters: rendererHostRef.current?.getCounters() ?? null,
+      lastError: rendererHostRef.current?.getLastError() ?? null,
+      diagnostics: rendererHostRef.current?.getDiagnostics() ?? null,
+    });
+  }, []);
+
+  useEffect(() => {
+    const host = rendererHostRef.current;
+    // 换装入口来自**当前 renderer 的能力声明**，不是菜单自己去猜。
+    const supportsCostumes = host?.getCapabilities()?.costumes === true;
+    setMenuEntries(
+      registry.getMenu('default')?.entries({
+        settings,
+        language,
+        openSettings,
+        hidePet,
+        playAction: (animationId) => {
+          dispatchAction(animationId, 'local');
+        },
+        updateSettings: updatePetSettings,
+        ...(supportsCostumes ? { appearances: live2dAppearanceOptions() } : {}),
+      }) ?? [],
+    );
+  }, [
+    dispatchAction,
+    hidePet,
+    language,
+    openSettings,
+    registry,
+    settings,
+    slotRenderer,
+    slotStatus,
+    updatePetSettings,
+  ]);
+
+  // 表现出口切换：设置变了就请宿主换 renderer；失败保留旧出口（宿主负责）。
+  //
+  // 判定以**宿主真实的活跃 renderer** 为准，不用「我上次设过什么」的记录：设置是
+  // 异步到的（先渲染 fallback，再拿运行期快照），用一个本地 ref 记「已应用」会在
+  // 快照先到时把自己锁死——那正是第一次跑这条路径时的症状：设置里写着 live2d，
+  // 活跃的却一直是 sprite。
+  useEffect(() => {
+    const host = rendererHostRef.current;
+    if (!host) return;
+    const target = settings.renderer;
+    const active = host.getActiveRendererId();
+    if (active === target) {
+      requestedRendererRef.current = target;
+      return;
+    }
+    // 还没提交出第一个 renderer：等它落地，slotStatus 变化会再进来。
+    if (active === null) return;
+    // 同一个目标只尝试一次。失败由宿主如实标成 degraded，不在这里反复重试。
+    if (requestedRendererRef.current === target) return;
+    requestedRendererRef.current = target;
+    void host.switchTo(target).then(() => {
+      setSlotRenderer(host.getActiveRendererId());
+      setSlotStatus(host.getStatus());
+      setSlotMessage(host.getLastError());
+    });
+  }, [settings.renderer, slotStatus]);
+
+  // ---- interaction ---------------------------------------------------------
+
+  const handlePetClick = useCallback(() => {
+    if (contextMenu) {
+      setContextMenu(null);
+      return;
+    }
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
+    const action = pickClickAction(settings);
+    dispatchAction(isPetAnimationId(action) ? action : 'waving', 'local');
+  }, [contextMenu, dispatchAction, settings]);
+
+  const handlePetKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      handlePetClick();
+    },
+    [handlePetClick],
+  );
+
   const setDragActive = useCallback((active: boolean) => {
     draggingRef.current = active;
     setDragging(active);
   }, []);
 
-  const syncMotionWithWindowPosition = useCallback((position: { x: number; y: number }) => {
-    const safeScaleFactor = workAreaScaleFactorRef.current || window.devicePixelRatio || 1;
-    const current =
-      motionRef.current ??
-      createRestingPetMotion(
-        workAreaRef.current,
-        surfaceSizeRef.current,
-        surfaceInsetsRef.current,
-      );
-    const next = clampPetMotionToWorkArea(
-      {
-        ...current,
-        x: position.x / safeScaleFactor,
-        y: position.y / safeScaleFactor,
-      },
-      workAreaRef.current,
-      surfaceSizeRef.current,
-      surfaceInsetsRef.current,
-    );
-    motionRef.current = next;
-
-    const dragState = dragStateRef.current;
-    if (!dragState?.nativeDragging) return;
-    const distance = Math.hypot(next.x - dragState.startWindow.x, next.y - dragState.startWindow.y);
-    if (!dragState.started && distance >= DRAG_START_DISTANCE_PX) {
-      dragState.started = true;
-      suppressClickRef.current = true;
-      setDragActive(true);
-    }
-  }, [setDragActive]);
-
-  const moveManualDrag = useCallback((state: DragState) => {
-    const deltaX = state.latestPointer.x - state.startPointer.x;
-    const deltaY = state.latestPointer.y - state.startPointer.y;
-    const current =
-      motionRef.current ??
-      createRestingPetMotion(
-        workAreaRef.current,
-        surfaceSizeRef.current,
-        surfaceInsetsRef.current,
-      );
-    const next = clampPetMotionToWorkArea(
-      {
-        ...current,
-        x: state.startWindow.x + deltaX,
-        y: state.startWindow.y + deltaY,
-      },
-      workAreaRef.current,
-      surfaceSizeRef.current,
-      surfaceInsetsRef.current,
-    );
-    motionRef.current = next;
-    if (tauriAvailable) {
-      void getCurrentWindow()
-        .setPosition(new LogicalPosition(Math.round(next.x), Math.round(next.y)))
-        .catch(() => {});
-    }
-  }, [tauriAvailable]);
+  const moveManualDrag = useCallback(
+    (state: DragState) => {
+      const motion = behaviorRef.current;
+      const scaleFactor = window.devicePixelRatio || 1;
+      // Manual fallback while `startDragging` is unavailable; the behavior clamps it.
+      const x = state.startWindow.x + (state.latestPointer.x - state.startPointer.x);
+      const y = state.startWindow.y + (state.latestPointer.y - state.startPointer.y);
+      motion?.syncWindowPosition?.({ x, y }, scaleFactor);
+      if (tauriAvailable) {
+        void getCurrentWindow()
+          .setPosition(new LogicalPosition(Math.round(x), Math.round(y)))
+          .catch(() => {});
+      }
+    },
+    [tauriAvailable],
+  );
 
   const finishDrag = useCallback(
     (pointerId?: number) => {
@@ -354,27 +499,23 @@ export function PetWindow() {
     [setDragActive],
   );
 
-  const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-    markActivity();
-    setContextMenu(null);
-    const current =
-      motionRef.current ??
-      createRestingPetMotion(
-        workAreaRef.current,
-        surfaceSizeRef.current,
-        surfaceInsetsRef.current,
-      );
-    dragStateRef.current = {
-      pointerId: event.pointerId,
-      startPointer: { x: event.screenX, y: event.screenY },
-      latestPointer: { x: event.screenX, y: event.screenY },
-      startWindow: { x: current.x, y: current.y },
-      nativeDragging: false,
-      started: false,
-    };
-    event.currentTarget.setPointerCapture(event.pointerId);
-  }, [markActivity]);
+  const handlePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      markActivity();
+      setContextMenu(null);
+      dragStateRef.current = {
+        pointerId: event.pointerId,
+        startPointer: { x: event.screenX, y: event.screenY },
+        latestPointer: { x: event.screenX, y: event.screenY },
+        startWindow: { x: window.screenX, y: window.screenY },
+        nativeDragging: false,
+        started: false,
+      };
+      event.currentTarget.setPointerCapture(event.pointerId);
+    },
+    [markActivity],
+  );
 
   const handlePointerMove = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -424,19 +565,34 @@ export function PetWindow() {
       event.preventDefault();
       event.stopPropagation();
       finishDrag();
-      playAction('review');
-      const x = Math.min(
-        Math.max(10, event.clientX),
-        Math.max(10, window.innerWidth - CONTEXT_MENU_WIDTH - 10),
-      );
-      const y = Math.min(
-        Math.max(10, event.clientY),
-        Math.max(10, window.innerHeight - CONTEXT_MENU_HEIGHT - 10),
-      );
-      setContextMenu({ x, y });
+      dispatchAction('review', 'local');
+      // 只取点击点：菜单真实高度随条目数变化（换装项就是动态加的），
+      // 用常数估算会让末尾几条落到视口外、点不到。定位交给下面的实测收敛。
+      setContextMenu({ x: event.clientX, y: event.clientY });
     },
-    [finishDrag, playAction],
+    [dispatchAction, finishDrag],
   );
+
+  /**
+   * 按**实测**尺寸把菜单收进视口。
+   *
+   * 之前的写法用一个写死的 `CONTEXT_MENU_HEIGHT` 夹住 y，菜单一长（MVP-11 加了
+   * 外观项）末尾条目就落到视口外：元素存在、可见、但点不到。
+   */
+  useLayoutEffect(() => {
+    const element = contextMenuRef.current;
+    if (!contextMenu || !element) return;
+    const margin = CONTEXT_MENU_MARGIN_PX;
+    const rect = element.getBoundingClientRect();
+    let { x, y } = contextMenu;
+    if (rect.right > window.innerWidth - margin) x -= rect.right - (window.innerWidth - margin);
+    if (rect.bottom > window.innerHeight - margin) y -= rect.bottom - (window.innerHeight - margin);
+    x = Math.max(margin, x);
+    y = Math.max(margin, y);
+    if (x !== contextMenu.x || y !== contextMenu.y) setContextMenu({ x, y });
+  }, [contextMenu]);
+
+  // ---- window plumbing -----------------------------------------------------
 
   useEffect(() => {
     if (!tauriAvailable) return;
@@ -474,7 +630,7 @@ export function PetWindow() {
           y: (cursor.y - windowPosition.y) / safeScaleFactor,
         };
         const overSprite = pointInElementRect(
-          spriteHitTargetRef.current,
+          hitTargetRef.current,
           point,
           PET_HIT_TARGET_PADDING_PX,
         );
@@ -505,7 +661,12 @@ export function PetWindow() {
     let unlisten: (() => void) | null = null;
     void getCurrentWindow()
       .onMoved(({ payload }) => {
-        if (!cancelled) syncMotionWithWindowPosition(payload);
+        if (cancelled) return;
+        // Keep the behavior's motion model in step with the OS window position.
+        void getCurrentWindow()
+          .scaleFactor()
+          .then((scaleFactor) => behaviorRef.current?.syncWindowPosition?.(payload, scaleFactor))
+          .catch(() => {});
       })
       .then((nextUnlisten) => {
         if (cancelled) {
@@ -520,7 +681,7 @@ export function PetWindow() {
       cancelled = true;
       unlisten?.();
     };
-  }, [syncMotionWithWindowPosition, tauriAvailable]);
+  }, [tauriAvailable]);
 
   useEffect(() => {
     if (!tauriAvailable) return;
@@ -528,7 +689,9 @@ export function PetWindow() {
     let cancelled = false;
     void invoke<RuntimeSnapshot>('get_runtime_snapshot')
       .then((next) => {
-        if (!cancelled) setSnapshot(next);
+        if (cancelled) return;
+        setSnapshot(next);
+        rendererHostRef.current?.applySettings(next.settings, next.activePet);
       })
       .catch(() => {});
     return () => {
@@ -543,19 +706,27 @@ export function PetWindow() {
     const unlisteners: Array<() => void> = [];
     void Promise.all([
       listen<ActionPayload>('pet-action', (event) => {
-        if (cancelled || !isPetAnimationId(event.payload.animationId)) return;
-        playAction(event.payload.animationId);
+        if (cancelled) return;
+        // Unvalidated ids are dropped here; the renderer validates a second time.
+        dispatchAction(event.payload.animationId, 'runtime');
       }),
       listen<SayPayload>('pet-say', (event) => {
-        if (!cancelled) say(event.payload);
+        if (cancelled) return;
+        markActivity();
+        rendererHostRef.current?.bubble(
+          event.payload.text,
+          event.payload.ttlMs ?? DEFAULT_BUBBLE_TTL_MS,
+        );
       }),
       listen<PetSettings>('pet-settings', (event) => {
-        if (!cancelled) {
-          setSnapshot((current) => ({ ...current, settings: event.payload }));
-        }
+        if (cancelled) return;
+        setSnapshot((current) => ({ ...current, settings: event.payload }));
+        rendererHostRef.current?.applySettings(event.payload, snapshotRef.current.activePet);
       }),
       listen<RuntimeSnapshot>('runtime-status', (event) => {
-        if (!cancelled) setSnapshot(event.payload);
+        if (cancelled) return;
+        setSnapshot(event.payload);
+        rendererHostRef.current?.applySettings(event.payload.settings, event.payload.activePet);
       }),
     ])
       .then((next) => unlisteners.push(...next))
@@ -563,10 +734,8 @@ export function PetWindow() {
     return () => {
       cancelled = true;
       unlisteners.forEach((unlisten) => unlisten());
-      if (actionTimerRef.current !== null) window.clearTimeout(actionTimerRef.current);
-      if (bubbleTimerRef.current !== null) window.clearTimeout(bubbleTimerRef.current);
     };
-  }, [playAction, say, tauriAvailable]);
+  }, [dispatchAction, markActivity, tauriAvailable]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -580,121 +749,25 @@ export function PetWindow() {
   }, [contextMenu]);
 
   useEffect(() => {
-    if (!settings.idleSelfPlay || settings.reducedMotion) return;
-
-    const timer = window.setInterval(() => {
-      const now = Date.now();
-      const pausedByInteraction =
-        draggingRef.current || contextMenu !== null || (settings.hoverPause && hovered);
-      if (pausedByInteraction || now < actionActiveUntilRef.current) return;
-      if (now - lastActivityRef.current < settings.idleThresholdMs) return;
-      if (now - lastIdleActionAtRef.current < settings.idleActionFrequencyMs) return;
-
-      lastIdleActionAtRef.current = now;
-      playAction(pickIdleAction(settings), false);
-    }, IDLE_SELF_PLAY_CHECK_MS);
-
-    return () => window.clearInterval(timer);
-  }, [
-    contextMenu,
-    hovered,
-    playAction,
-    settings.clickAction,
-    settings.clickActionMode,
-    settings.clickActionPool,
-    settings.hoverPause,
-    settings.idleAction,
-    settings.idleActionFrequencyMs,
-    settings.idleSelfPlay,
-    settings.idleThresholdMs,
-    settings.reducedMotion,
-  ]);
-
-  useEffect(() => {
-    const surfaceSize = getPetSurfaceSize(settings.scale);
-    const surfaceInsets = getPetSurfaceInsets(settings.scale);
-    surfaceSizeRef.current = surfaceSize;
-    surfaceInsetsRef.current = surfaceInsets;
-    let cancelled = false;
-    const walkingPaused = (settings.hoverPause && hovered) || dragging;
-
-    const resizeWindow = () => {
-      if (!tauriAvailable) return;
-      void getCurrentWindow()
-        .setSize(new LogicalSize(surfaceSize.width, surfaceSize.height))
-        .catch(() => {});
-    };
-    const refreshWorkArea = async () => {
-      const snapshotWorkArea = await readWorkArea();
-      workAreaRef.current = snapshotWorkArea.rect;
-      workAreaScaleFactorRef.current = snapshotWorkArea.scaleFactor;
-      if (!motionRef.current) {
-        motionRef.current = settings.autonomousWalking
-          ? createInitialPetMotion(snapshotWorkArea.rect, surfaceSize, surfaceInsets)
-          : createRestingPetMotion(snapshotWorkArea.rect, surfaceSize, surfaceInsets);
-      } else {
-        motionRef.current = clampPetMotionToWorkArea(
-          motionRef.current,
-          snapshotWorkArea.rect,
-          surfaceSize,
-          surfaceInsets,
-        );
-      }
-    };
-    const move = () => {
-      if (cancelled) return;
-      const workArea = workAreaRef.current;
-      if (!motionRef.current) {
-        motionRef.current = settings.autonomousWalking
-          ? createInitialPetMotion(workArea, surfaceSize, surfaceInsets)
-          : createRestingPetMotion(workArea, surfaceSize, surfaceInsets);
-      }
-      const next = resolvePetMotion({
-        state: motionRef.current,
-        workArea,
-        surfaceSize,
-        surfaceInsets,
-        autonomousWalking: settings.autonomousWalking,
-        reducedMotion: settings.reducedMotion,
-        paused: walkingPaused,
-        speedPx: settings.walkingSpeedPx,
-      });
-      motionRef.current = next;
-      if (Date.now() >= actionActiveUntilRef.current) setAnimation(next.animation);
-      if (tauriAvailable && !draggingRef.current) {
-        void getCurrentWindow()
-          .setPosition(new LogicalPosition(Math.round(next.x), Math.round(next.y)))
-          .catch(() => {});
-      }
-    };
-
-    resizeWindow();
-    void refreshWorkArea().then(move);
-    const moveTimer = window.setInterval(move, settings.autonomousWalking ? MOVE_TICK_MS : 1400);
-    const workAreaTimer = window.setInterval(() => void refreshWorkArea(), WORK_AREA_REFRESH_MS);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(moveTimer);
-      window.clearInterval(workAreaTimer);
-    };
-  }, [
-    dragging,
-    hovered,
-    settings.autonomousWalking,
-    settings.hoverPause,
-    settings.reducedMotion,
-    settings.scale,
-    settings.walkingSpeedPx,
-    tauriAvailable,
-  ]);
+    // Surface resize on scale change; the behavior owns placement and timing.
+    // Must stay behind the runtime guard: the window API throws outside Tauri.
+    if (!tauriAvailable) return;
+    const behavior = behaviorRef.current;
+    if (!behavior) return;
+    void getCurrentWindow()
+      .scaleFactor()
+      .then((scaleFactor) =>
+        behavior.syncWindowPosition?.({ x: window.screenX, y: window.screenY }, scaleFactor),
+      )
+      .catch(() => {});
+  }, [settings.scale, tauriAvailable]);
 
   return (
     <div
       className={`pet-window${dragging ? ' dragging' : ''}`}
       role="button"
       tabIndex={0}
-      aria-label="OpenPet desktop pet window"
+      aria-label="PetShell desktop pet window"
       onClick={handlePetClick}
       onContextMenu={handleContextMenu}
       onKeyDown={handlePetKeyDown}
@@ -704,71 +777,47 @@ export function PetWindow() {
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
     >
-      {bubble && (
-        <div
-          className={`pet-bubble ${bubbleStyleClass(settings.bubbleStyle)}`}
-          style={{
-            fontFamily: settings.bubbleFontFamily,
-            fontSize: `${settings.bubbleFontSizePx}px`,
-            maxWidth: `min(${settings.bubbleMaxWidthPx}px, calc(100vw - 24px))`,
-          }}
-        >
-          {bubble}
+      <div
+        ref={hostElementRef}
+        className="pet-surface"
+        data-testid="pet-surface"
+        data-renderer={slotStatus === 'unavailable' ? 'none' : undefined}
+      />
+      {slotStatus === 'unavailable' && (
+        <div className="pet-slot-notice" role="status">
+          {language === 'zh-CN' ? '宠物渲染器不可用' : 'Pet renderer unavailable'}
         </div>
       )}
-      <div
-        ref={spriteHitTargetRef}
-        className="pet-hit-target"
-        data-testid="pet-hit-target"
-        onMouseEnter={() => setPetHovered(true, true)}
-        onMouseLeave={() => setPetHovered(false)}
-      >
-        <PetSprite
-          animationId={animation}
-          pet={snapshot.activePet}
-          scale={settings.scale}
-          reducedMotion={settings.reducedMotion}
-        />
-      </div>
+      {slotStatus === 'degraded' && (
+        <div className="pet-slot-notice degraded" role="status" title={slotMessage ?? undefined}>
+          {language === 'zh-CN' ? '已回退到默认外观' : 'Falling back to default renderer'}
+        </div>
+      )}
       {contextMenu && (
         <div
           ref={contextMenuRef}
           className="pet-context-menu"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           role="menu"
-          aria-label={contextLabels.aria}
+          aria-label={language === 'zh-CN' ? '宠物操作' : 'Pet actions'}
           onClick={(event) => event.stopPropagation()}
           onContextMenu={(event) => event.preventDefault()}
           onPointerDown={(event) => event.stopPropagation()}
         >
-          <button type="button" role="menuitem" onClick={() => void openSettings()}>
-            {contextLabels.openSettings}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setContextMenu(null);
-              playAction('waving');
-            }}
-          >
-            {contextLabels.wave}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() =>
-              void updatePetSettings({
-                ...settings,
-                autonomousWalking: !settings.autonomousWalking,
-              }).then(() => setContextMenu(null))
-            }
-          >
-            {settings.autonomousWalking ? contextLabels.pauseWalking : contextLabels.roam}
-          </button>
-          <button type="button" role="menuitem" onClick={() => void hidePet()}>
-            {contextLabels.hidePet}
-          </button>
+          {menuEntries.map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              role="menuitem"
+              data-menu-entry={entry.id}
+              onClick={() => {
+                setContextMenu(null);
+                void entry.run();
+              }}
+            >
+              {entry.label}
+            </button>
+          ))}
         </div>
       )}
     </div>

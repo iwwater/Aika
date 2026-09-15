@@ -5,7 +5,7 @@
 
 fn main() {
     init_x11_threads();
-    openpet_lib::run();
+    petshell_lib::run();
 }
 
 #[cfg(target_os = "linux")]
