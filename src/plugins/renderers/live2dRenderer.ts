@@ -216,10 +216,18 @@ export class Live2dRendererPlugin implements PetRendererPlugin {
     this.manifest = null;
     this.playable = [];
     // 舞台整体销毁：模型、贴图、渲染循环与 GL 上下文一起回收。
-    this.app?.destroy(true, { children: true });
+    // 销毁失败**不能**拦住下面的 DOM 清理：真机实测过，destroy 一抛，整个
+    // renderer 的节点就留在文档里，而宿主仍会把这次切换记成成功。
+    try {
+      this.app?.destroy(true, { children: true });
+    } catch (error) {
+      this.counters.stageReleaseFailures += 1;
+      this.lastReleaseError = describeError(error);
+    }
     this.app = null;
     this.engine = null;
     this.hitTarget?.remove();
+    this.root?.remove();
     this.bubbleView.dispose();
     this.root = null;
     this.hitTarget = null;
@@ -391,6 +399,11 @@ export class Live2dRendererPlugin implements PetRendererPlugin {
     if (this.engine) return this.engine;
     // 顺序是硬要求：Core 必须在引擎模块求值前就位。
     await ensureLive2dCore(LIVE2D_CORE_SCRIPT);
+    // Tauri 的 CSP 禁 eval：Pixi 默认用 new Function 生成 shader/UBO 同步代码，
+    // 真机上 prepare 会因此失败、宿主降级回 sprite——浏览器预览没有 CSP，把它掩盖了。
+    // 官方 polyfill 用免 eval 的代码路径替代（导入即生效的原型补丁），必须先于 pixi
+    // 的首次渲染装上；走动态导入也是刻意的，避免把 pixi 拖进 sprite 路径的包。
+    await import('pixi.js/unsafe-eval');
     const [pixi, engine] = await Promise.all([
       import('pixi.js'),
       // 只取 cubism 入口：裸入口还会去找已停止分发的 Cubism 2.1 运行时。

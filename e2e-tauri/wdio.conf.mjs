@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const rootDir = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const tauriTargetDir = path.join(rootDir, 'src-tauri', 'target', 'debug');
-const appBinaryName = process.platform === 'win32' ? 'openpet.exe' : 'openpet';
+const appBinaryName = process.platform === 'win32' ? 'petshell.exe' : 'petshell';
 const appBinaryPath = path.join(tauriTargetDir, appBinaryName);
 const tauriDriverBinary =
   process.env.TAURI_DRIVER ??
@@ -34,13 +34,19 @@ export const config = {
       'tauri:options': {
         application: appBinaryPath,
       },
+      // WebView2 的 console 是判断「到底是加载失败还是没画出来」的唯一现场；
+      // 排查真机问题时比反复加断点有用。
+      'goog:loggingPrefs': { browser: 'ALL' },
     },
   ],
   reporters: ['spec'],
   framework: 'mocha',
   mochaOpts: {
     ui: 'bdd',
-    timeout: 60_000,
+    // Live2D 首次要拉 Core + 模型 + 贴图；真机比浏览器慢，超时必须大于用例内部的
+    // 等待（90s），否则超时会把「确定失败」掩盖成「跑太久」。注意 Mocha 的
+    // it(title, fn, ms) 不接受第三个参数（那是 Jasmine），只能在配置里设。
+    timeout: 180_000,
   },
 
   onPrepare: () => {
