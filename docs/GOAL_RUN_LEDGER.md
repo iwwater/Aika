@@ -16,6 +16,7 @@
 - 基线 commit：`049372f`（v0.5 规划/审阅/执行计划 + 新增 SPEC + speechOutput 条件等待修复，100 文件）。
 - 原 dirty 文件已全部入基线 commit；遗留未跟踪仅为上述 4 个临时/工具项。
 - 云 TTS 3 红复核：`npm test -- src/services/voice/speechOutput.conformance.test.ts` → **12 passed (12)，exit 0**（2026-09-13 02:22）。SPEC_STATUS_REPORT 所述 3 红已由工作区修复消除，历史报告保留不改。
+- 云 TTS 3 红二次复核（2026-09-15，MVP 收口后）：**全量回归 153 文件 / 1659 项通过、0 失败**，输出用例包含在其中全绿；`SPEC_STATUS_REPORT.md` 的「必为生产缺陷」结论**不成立**，该文件保持历史原样（其顶部已自注为历史报告），结论以本轮回归为准。
 
 ## 波次清单
 
@@ -93,7 +94,7 @@
 | 7 | GW-05 | AUTO_PASS（fixture 轨，待人工） | 见会话日志 | feishuAdapter（官方能力快照、验签/重放/tenant 隔离、最小交付仅绑定私聊文本、token 刷新失败可见不泄漏）；6 定向（GW 合并）/1312 全量全绿 tsc 0；真实账户 NOT RUN |
 | 7 | GW-06 | AUTO_PASS（fixture 轨，待人工） | 见会话日志 | qqAdapter（官方能力快照与差异 QQ_CAPABILITY_GAPS、scope 精确命名、非文本/生命周期 op 明确拒绝、429 retry-after）；真实账户/审核 BLOCKED |
 | 8 | 汇总 + 相关回归 | DONE（待人工） | docs/GOAL_FINAL_STATUS.md | 最终回归 119 文件 1312 测试全绿 tsc 0；AUTO_PASS 27 / PARTIAL 4 / REVIEWED_AUTO 34 / FAIL 0 / NOT RUN 15 项 / BLOCKED 4 项 / DEFERRED 6 项；下一步人工清单八条 |
-| 8 | INT-03 发布门禁 | NOT RUN | | 发布前另安排，非本轮 |
+| 8 | INT-03 发布门禁 | **部分 PASS（2026-09-15）** | [INT-03_ACCEPTANCE.md](integration/reports/INT-03_ACCEPTANCE.md) | 全量 1659 项 / tsc / build / cargo test 41 / release 构建 / MSI 打包 / 启动+重开渲染回归全绿；**NSIS 打包 BLOCKED（工具链获取超时）**、**安装卸载回归 NOT RUN（需授权）**；不宣布发布就绪 |
 
 后置不动：FE-18～22、STT-03、TTS-03、INT-02、Live2D/Stage3/云Relay/原生Android/Push/Discovery。INT-03 发布前完整门禁不进本轮自动队列。
 

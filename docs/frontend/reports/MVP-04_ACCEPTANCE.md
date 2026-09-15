@@ -1,6 +1,6 @@
 # MVP-04 验收 · OCR Observation 与陪伴
 
-2026-09-14。依据 [RPD](../../RPD_MVP_0.5.md) MVP-R04、[SPEC](../specs/MVP-04.md)。前置 MVP-01/03 已收口（见 [MVP-03 报告](MVP-03_ACCEPTANCE.md)）。
+2026-09-14 立稿 / 2026-09-15 真机补跑。依据 [RPD](../../RPD_MVP_0.5.md) MVP-R04、[SPEC](../specs/MVP-04.md)。前置 MVP-01/03 已收口（见 [MVP-03 报告](MVP-03_ACCEPTANCE.md)）。
 
 ## 结论
 
@@ -9,7 +9,7 @@
 | A | **PASS** | 生产词表规则（含 PENTAKILL / victory / defeat / build failed）→ schema 规范化只留受控字段；重复帧合并与越界/低置信度拒绝都有用例 |
 | B | **PASS**（观察路径） | OCR 未启用/暂停/锁屏后旧结果不进 Context 或 Agent；quiet 与 busy（含**新增的锁屏**）都不触发自动轮。FE-31 会话路径的 quiet/在途门禁仍未接线，见 §4 |
 | C | **PASS** | 真规则 → 上下文源 → **生产 Runtime** → fake Provider → 桌宠表现端口：恰好一次生成、上下文含该观察、桌宠收到正文与情绪；环境层源码无桌宠 import |
-| D | **部分 PASS（device）** | 演示窗覆盖 ROI → 真实 OCR → 真实 Provider 轮落库（回复正确引用 pentakill 观察）、OpenPet 收到 thinking；**say/emotion 未在 proactive 轮出现**（开放问题）。见 §2 AC-D（2026-09-15 补跑） |
+| D | **PASS（device）** | 演示窗覆盖 ROI → 真实 OCR → 真实 Provider 轮落库（回复正确引用 pentakill 观察）；桌宠侧三类命令经 `pet_command` 诊断全部 `accepted`（17:03 轮）。原「say/emotion 未送达」经真机对照实验证实为**测量口径错误**（`recentEvents` 结构上不含 say/action），已更正。见 §2 AC-D |
 | E | **PASS** | 观察层故障不进普通对话路径；屏幕文字未授权时一句原文都出不去（含锁屏这一新挡点） |
 
 本轮**修掉一个真缺口（锁屏）**，并第一次把「观察 → 一轮生成 → 表现」这条链在**全生产实现**上端到端验证（AC-C）。
@@ -52,17 +52,22 @@
 - 屏幕文字授权开 → 摘录随上下文进入；关 → 同一轮仍在（观察是观察、原文是原文），但原文一句都不出。
 - **OCR 不直接调用桌宠**：源码边界检查——`services/environment/*.ts`（非测试）里没有任何 import 指向 `desktopPet` 或 `presentation`。
 
-### AC-D 实际非私人画面 → 真实 OCR → Agent → 外部桌宠演示 —— 部分 PASS（device，2026-09-15 补跑）
+### AC-D 实际非私人画面 → 真实 OCR → Agent → 外部桌宠演示 —— PASS（device，2026-09-15 补跑）
 
 按 §5 runbook 在真机执行（用户授权）：
 
 - **演示窗**：无边框置顶窗口精确覆盖主屏 ROI 横带（x 10–90%、y 40–60%），内容每 4s 在 PENTAKILL / VICTORY / ERROR / DEFEAT 间轮换——采集到的画面**只有演示内容**（截图取证 `%TEMP%\roi_demo.png`，未入本人私人画面）。
 - **真实链路取证**：演示配置写入后启动 debug 宿主 → 真实 WGC 帧差触发 → 真实 OCR（tesseract，词级置信度）→ 词表命中 → 门禁 → **真实 DeepSeek 生成** → 回复落库：`messages` 表新增 `assistant | proactive | さっき画面に「pentakill」って一瞬出てた。……誰かがすごいことをやり遂げた瞬間って…`（00:08:46）——回复语义正确引用了这次观察。
 - **桌宠侧**：OpenPet `/api/status` 收到该轮的 `thinking` 事件（`{"eventType":"thinking","bubbleText":"让我想一下……"}`，两次真实轮各一条）——OCR→触发→生成→桌宠通知链路为真。
-- **未达成（如实记录）**：该 proactive 轮的 **say/emotion 命令未在 OpenPet 出现**（`recentEvents` 只有 thinking、`lastAction` 停在 waiting；而用户轮在 PET-07 已证 say/emotion 可达）。差异待查。
-- **排障进展（2026-09-15）**：静态排查穷尽——runtime 对 proactive 轮与用户轮事件流完全一致（`companionRuntime.ts` 仅 `turn.source !== "proactive"` 跳过 asked 落库一处差异）；`emit` 逐订阅者容错；注册表单例；缓冲区串行泵、TTL、去重全部复核；对真机 OpenPet 直接 `POST /api/say`（`ttlMs:9990`）返回 200 并正常显示气泡——**上游接收层排除**。为此补了可观测性：`trace` 新增 `pet_command` 事件（command/outcome/code，**永不带正文**），presenter 的 `onDiagnostic` 已接线到 trace sink，Inspector 页可见；下次真实轮次即可从 trace 读出 say 的实际去向（accepted/deduped/stale/expired/timeout）。
-- **开放问题**：三次宿主启动均在约 3 分钟内退出（stderr 只有 WebView2 退出期的 unregister 噪音、无 panic、无崩溃转储；不排除被用户手动关闭，未定论）。
-- 演示用的临时 `proactive` 配置（静音时段 9–22）在取证后**已删除**，恢复默认。用户裁决：「OCR 能读就行，后面再说」——桌宠 say/emotion 缺口与宿主退出疑问留待后续。
+- **~~未达成：say/emotion 未出现~~ —— 更正：这是测量口径错误，不是产品缺口（2026-09-15）**。原判据是「`recentEvents` 里只有 thinking、`lastAction` 停在 waiting」。真机对照实验推翻了它：
+  - `POST /api/action`（`animationId=waving`）→ `lastAction` 变为 `waving`，**`recentEvents` 计数不变**；
+  - `POST /api/say`（`ttlMs=3000`）→ `bubbleText` 出现该句，**`recentEvents` 计数不变**。
+  - 即 `recentEvents` **只记录 `event` 类型调用**（thinking / success / failure），say 只体现在 `bubbleText`、action/emotion 只体现在 `lastAction`。用 `recentEvents` 判断 say/emotion 是否送达，本身就读了一个结构上不可能显示它们的通道。
+  - 且那次回复的 `mood` 是 `thinking`，其 emotion 映射与 thinking 命令同为 `waiting` —— `lastAction=waiting` 也不能作为「emotion 未送达」的证据。
+- **正确口径下的取证（2026-09-15 17:03，仍是真机、仍是 proactive 轮）**：新增的 `pet_command` 诊断（见下）逐命令落盘——`event`(thinking) `accepted` @17:03:27、`emotion` `accepted` @17:03:32、`say` `accepted` @17:03:32；同一轮回复落库（`messages`：`assistant | proactive | …pentakill…`）。**三类命令全部被上游受理**，OCR→Agent→桌宠链路完整。
+- **第二条独立取证（2026-09-15 18:34，release 构建）**：时间驱动的 proactive 轮（mood `gentle_smile`，77 字正文）——`pet_command`：`event` `accepted` @18:34:02、`emotion` `accepted` @18:34:06、`say` `accepted` @18:34:06；轮次 `turn_end completed`（4214ms，firstToken 3554ms）。**上游侧状态同时可见结果**：OpenPet `/api/status` 的 `lastAction=waving`——正是 `gentle_smile → waving` 的映射，说明 emotion 命令**真的改变了桌宠动作**（17:03 那轮 mood 是 `thinking`、映射同为 `waiting`，所以读数上看不出差别，这也是当初误判的成因之一）。
+- 为此补的可观测性（本轮新增，值得保留）：`trace` 新增 `pet_command` 事件（command/outcome/code，**永不带正文**），presenter `onDiagnostic` 接到 trace sink，Inspector 可查；这是「桌宠为什么没反应」从「靠目测」变成「看数据」的那一步。
+- **开放问题**：宿主进程此前多次自行退出（3～24 分钟不等，stderr 无 panic、无崩溃转储；不排除窗口被手动关闭）。2026-09-15 17:02 启动的那次持续运行超过 15 分钟未见异常，仍未定论。
 
 ### AC-E 观察故障不阻断普通对话；OCR 原文无授权不外发/入长期记忆 —— PASS
 

@@ -13,7 +13,7 @@ PET-* 是前端模块内的独立集成任务，避免与已有 FE 编号及 RPD
 | [PET-04](specs/PET-04.md) | 事件/情绪映射、去重、取消与期限 | PET-02；独立 fake adapter | 0.5 / **A～G PASS（fake Runtime/Clock）** |
 | [PET-05](specs/PET-05.md) | Sidecar 附着、启动、所有权及退出 | PET-01 生命周期证据、PET-02 | 0.5 / **A～G PASS（假进程端口 + 受控测试进程）** |
 | [PET-06](specs/PET-06.md) | 生产装配、设置与旧桌宠入口迁移 | PET-03/04/05 | 0.5 / **A～G PASS（生产装配 + 假外部端口）** |
-| [PET-07](specs/PET-07.md) | Windows 真实链路与故障隔离验收 | PET-01～06 | 0.5 / **部分 PASS：上游侧 device 已证；Aiki 宿主侧 NOT RUN（不得宣告闭环完成）** |
+| [PET-07](specs/PET-07.md) | Windows 真实链路与故障隔离验收 | PET-01～06 | 0.5 / **Aiki 宿主侧闭环成立：A/B PASS（device，2026-09-15 补强：`pet_command` 证 event/emotion/say 三条全部 accepted）；C/G/H/I NOT RUN、D/E/F/J 部分 PASS——本 SPEC 未整体 PASS** |
 | [PET-08](specs/PET-08.md) | NyaDeskPet 接入与 Live2D 条件里程碑 | 明确选择 0.6 Live2D；PET-02/04/06 | 0.6 / DEFERRED（条件路线；未启动） |
 
 逐份证据与命令见 `reports/PET-01_ACCEPTANCE.md` … `reports/PET-07_ACCEPTANCE.md`（PET-08 因路线未启动，不生成验收报告）。

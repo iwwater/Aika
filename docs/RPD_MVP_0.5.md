@@ -77,4 +77,4 @@ OCR内容视作未可信参考资料，不是系统指令。原图/原始OCR不�
 | ON | Crash | ON | 桌宠与聊天继续，观察降级 |
 | ON | ON | RAG Fail | Recent fallback；一次前台生成，无错误原文注入 |
 
-MVP-01→02→03→04→05→06顺序执行；最后用06补跑包含真实Wiki/RAG的05矩阵。每份记录独立AC，真实演示缺条件则写NOT RUN/BLOCKED，继续不依赖它的模块工作。旧PET报告为基线证据，尤其PET-07的Aiki宿主侧未测结论保留。发布、push及新增付费服务不在本次范围。
+MVP-01→02→03→04→05→06顺序执行；最后用06补跑包含真实Wiki/RAG的05矩阵。每份记录独立AC，真实演示缺条件则写NOT RUN/BLOCKED，继续不依赖它的模块工作。旧PET报告为基线证据；**2026-09-15 更新**：原文「尤其PET-07的Aiki宿主侧未测结论保留」已失效——PET-07 的 Aiki 宿主侧已于 09-15 补强为 **A/B PASS（device）**（`pet_command` 证 event/emotion/say 三条全部 accepted），PET-07 的 C/G/H/I 仍 NOT RUN、D/E/F/J 部分 PASS，见 [PET-07 报告](frontend/reports/PET-07_ACCEPTANCE.md)。发布、push及新增付费服务不在本次范围。

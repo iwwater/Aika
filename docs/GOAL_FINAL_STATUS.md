@@ -1,5 +1,7 @@
 # GOAL 最终状态汇总（Wave 8）
 
+> **2026-09-15 注**：本文件是 **Wave 8（09-13）里程碑快照**，其中「下一步人工清单」多条已被 09-14/09-15 的 MVP 0.5 收口与 INT-03 门禁推进或改写。**当前权威状态**见 [HANDOFF_MVP_0.5.md](HANDOFF_MVP_0.5.md)、[ACCEPTANCE_PLAN.md](ACCEPTANCE_PLAN.md)、[integration/SPEC_MVP_0.5.md](integration/SPEC_MVP_0.5.md)。
+
 日期：2026-09-13。执行方式：goal worker 自动执行（每 SPEC 一次 commit，未推送）。
 执行计划：波次 0～8（docs/GOAL_EXECUTION_PLAN.md）；持久账本：docs/GOAL_RUN_LEDGER.md。
 最终回归：`npx vitest run src` → 116 文件 1301~1312 区间增长至 **119 文件 1312 测试通过、1 skip（既有）**；`npx tsc --noEmit -p tsconfig.json` → **0 错误**。按开发规范未循环全仓 build/Tauri 打包。

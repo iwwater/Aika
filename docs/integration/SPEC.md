@@ -86,3 +86,5 @@ INT-01分自动消费者契约、浏览器真实UI、Tauri/plugin-sql、真实Pr
 | INT-01-F | 真实Provider样本与usage可见；模型质量按各LLM原AC另验 | fixture/真实分别标记，3轮不等于质量通过 |
 
 INT-01报告为reports/INT-01_ACCEPTANCE.md，按AC与宿主分列。INT-02保留全部原台词/打断/耳机外放数量；缺真人不执行。INT-03必须全test/build及桌面cargo/tauri/安装启动，只有全部适用门禁通过才发布就绪。
+
+**INT-03 执行记录（2026-09-15）**：报告见 [reports/INT-03_ACCEPTANCE.md](reports/INT-03_ACCEPTANCE.md)。全量 1659 项 / tsc / `npm run build` / `cargo test --lib` 41 / release 构建 / MSI 打包 / 启动+重开渲染回归全绿；**NSIS 打包 BLOCKED（工具链获取 `timeout: global`）**、**安装/卸载回归 NOT RUN（需授权）**。按「只有全部适用门禁通过才发布就绪」，当前状态为**部分 PASS，不发布**。

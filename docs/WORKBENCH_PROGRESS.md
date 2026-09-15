@@ -1,8 +1,10 @@
 # 调试工作台 · 进度与未完成项
 
-日期：2026-09-12
+日期：2026-09-12 立稿 · 2026-09-15 同步
 对应规划：[开发者模式与调试工作台](PLAN_DEV_DEBUG_WORKBENCH.md)
-状态：**F1～F8 已交付**（M0～M3 完成，M4 只剩 F9）。本文件记录已交付什么、还剩什么，供下次接手。
+状态：**F1～F9 已交付**（M0～M4 全部有 SPEC 与验收报告；F9 由 [FE-26](frontend/specs/FE-26.md) 于 2026-09-13 交付）。本文件记录已交付什么、还剩什么，供下次接手。
+
+> **2026-09-15 口径提示**：下文第 1 节的测试基线数字（76 文件 / 977 项）是 **09-12 当时的快照**，已被后续批次取代。当前基线为 **153 文件 / 1659 项通过、0 失败**；0.5 主线（MVP-01～06）的收口状态与遗留清单以 [HANDOFF_MVP_0.5.md](HANDOFF_MVP_0.5.md) 为准，桌宠路线以 [PET SPEC 索引](frontend/SPEC_DESKTOP_PET.md) 为准。
 
 ---
 
@@ -41,14 +43,16 @@
 
 ---
 
-## 2. 还没开始
+## 2. 还没开始（2026-09-15 复核）
 
-| 规划项 | 内容 | 已知前置 |
+| 规划项 | 内容 | 状态 / 已知前置 |
 | --- | --- | --- |
-| F9 | Ops 成本页（按日/模型/用途的 token 与估算成本、最慢轮次、错误率） | **前置已解除**（[LLM-10](llm/specs/LLM-10_PROVIDER_USAGE.md)）：四种协议的 usage 现在都解析，`turn_end.tokens.reportedTotal` 写的是平台上报值，取消与失败的轮次也带。**真实平台已验**（2026-09-12，DeepSeek，`reportedTotal` 1069 / 1076 / 1090），但动工前先读 [真实一轮验证报告](frontend/reports/REAL_TURN_VERIFICATION.md) 的两条：`estimatedPrompt` 不含系统指令、比真实 prompt 低约 2.5 倍，不能当没有 usage 时的兜底；取消的轮次在只在末包报 usage 的平台上一定拿不到数字。另外三种协议仍只有 fixture 证据。单价换算仍未做（价目表不该埋进 provider 层） |
-| M4 后置 | 评测（headless harness）入口与历史结果 | 规划文档自己标的 F9+ |
+| F9 | Ops 成本页（按日/模型/用途的 token 与估算成本、最慢轮次、错误率） | ✅ **已交付（2026-09-13，[FE-26](frontend/specs/FE-26.md)）**：A～D 自动 AC 全过、全量 1133 回归全绿；**UI 目视与真实费用比对仍留人工**。前置 [LLM-10](llm/specs/LLM-10_PROVIDER_USAGE.md) 已交付，并由 [LLM-12](llm/specs/LLM-12_USAGE_LEDGER.md) 补齐物理请求用量台账（coverage 三态/幂等 upsert） |
+| M4 后置 | 评测（headless harness）入口与历史结果 | 未启动；[审阅结论](REVIEW_V0.5_AND_BACKLOG.md) 明确「保持 F9+ backlog，不制造现阶段需求细节」 |
 
 规划文档 §3 末尾的 backlog 也都没做：用户消息编辑后重发、对话导出、Provider 配额提醒、错误气泡文案统一、设置项搜索、标题栏快速换模型。
+
+> F9 复核时值得先读 [真实一轮验证报告](frontend/reports/REAL_TURN_VERIFICATION.md) 的两条：`estimatedPrompt` 不含系统指令、比真实 prompt 低约 2.5 倍，不能当没有 usage 时的兜底；取消的轮次在只在末包报 usage 的平台上一定拿不到数字（DeepSeek 即属此类）。另三种协议（anthropic / gemini / openai-responses）的 usage 仍只有 fixture 证据。价目表版本化已由 FE-26 落地，**真实单价仍待从控制台取回后填入**。
 
 ---
 
@@ -70,7 +74,7 @@
 
 ## 4. 顺带发现、没动的仓库问题
 
-- **LLM-04 编号被两件事占用**：`docs/llm/SPEC.md` 里 LLM-04 是「单次 Agent / 后台写回（未开始）」，但 `docs/llm/reports/LLM-04_ACCEPTANCE.md` 是「设置页模型列表拉取与下拉选择」的验收报告。两者不是同一件事。没擅自改编号，因为改哪个都会动别人的历史记录。
+- ~~**LLM-04 编号被两件事占用**~~ —— **已处理（2026-09-13）**：原「设置页模型列表拉取与下拉选择」的报告已迁至 `LEGACY_MODEL_LIST_ACCEPTANCE`（旧路径保留指针）；LLM-04 现为「单次 Agent / 后台写回」，已于 09-13 实现（[报告](llm/reports/LLM-04_AGENT_MEMORY_WRITEBACK_ACCEPTANCE.md)；真实服务 NOT RUN）。
 - **`aika-crossplatform/vite.err`**：一个空文件，2026-09-11 随 LLM-04 那批提交进来的，看着像误提交的日志。没删。
 
 ## 2026-09-13 审阅更新
@@ -78,3 +82,18 @@
 Live Inspector已拆LLM-11及FE-23～25；F9已拆FE-26，均尚未实现。LLM-04编号冲突已用历史报告迁移+原路径说明处理，后台维护仍未交付。全局未验证项保持原状态；执行入口改为[安全执行计划](GOAL_EXECUTION_PLAN.md)。
 
 全文审阅补充：F9仍待实现；生产Trace仅有总token，已新增LLM-12补齐用量记录，FE-26等待它后接真实数据。当前全部待执行SPEC的设计审阅清单见[审阅记录](REVIEW_V0.5_AND_BACKLOG.md)，不替代实现审阅。
+
+## 2026-09-15 同步（本节取代上两节对「还没做」的描述）
+
+| 项 | 09-15 状态 |
+| --- | --- |
+| F9 / FE-26 Ops 成本页 | ✅ **已交付**（09-13）；UI 目视与真实费用比对留人工 |
+| LLM-11 / FE-23～25 Live Inspector | ✅ **已交付**（09-13，均 AUTO_PASS）；拖拽 / 窄窗 / 浮层 / 滚动目视留人工 |
+| LLM-12 用量台账 | ✅ **已交付**（09-13） |
+| §3-1 界面渲染 | 浏览器开发模式已冒烟；**桌面 Tauri + SQLite、F1 六项消息交互**：09-15 INT-03 已取「release 启动 + 重开渲染 + 历史从库加载」证据，但 F1 六项未逐项肉眼确认 → 记**部分** |
+| §3-2 真实对话一轮 | ✅ 已扩证：09-15 真机 proactive 轮真实落库并引用观察（MVP-04-D）；另三协议 usage 仍只有 fixture |
+| §3-3 plugin-sql 上的 SQL | **部分**：09-15 已证真实应用经 plugin-sql 建表并写入 `trace_events`；旧库 `try-ALTER` 12→16 升级路径未单独复现，`deleteMessages` 在 plugin-sql 上仍未跑 |
+| §3-4 `import.meta.env.DEV` 生产取值 | 仍 **NOT RUN** |
+| §3-5 真实模型质量 | 部分进展：LLM-05 真实门槛 09-15 补跑 **10/10 PASS**；LLM-01 六条质量检查点仍 `REVIEW REQUIRED` |
+
+全局未验证项的**当前权威清单**以 [ACCEPTANCE_PLAN.md 的 09-15 回填表](ACCEPTANCE_PLAN.md) 与 [HANDOFF_MVP_0.5.md](HANDOFF_MVP_0.5.md) 为准。

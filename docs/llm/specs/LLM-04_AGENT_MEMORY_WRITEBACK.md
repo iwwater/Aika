@@ -1,6 +1,6 @@
 # LLM-04 · 单次生成与后台维护
 
-状态：未开始。
+状态：**已实现（2026-09-13，待审阅）**。MemoryMaintenance 唯一 worker + RequestMetric 计量；定向回归 274 测试全绿；**真实服务 NOT RUN**。见[验收报告](../reports/LLM-04_AGENT_MEMORY_WRITEBACK_ACCEPTANCE.md)。（2026-09-15 同步索引口径；原文为「未开始」）
 
 ## 目标与边界
 

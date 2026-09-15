@@ -1,3 +1,5 @@
+> **2026-09-15 状态（最新，读这一行）**：本文件**已被取代，不得作为当前状态依据**。0.5 主线（MVP-01～06）六份 SPEC 已全部执行完毕——收口与遗留清单见 [docs/HANDOFF_MVP_0.5.md](docs/HANDOFF_MVP_0.5.md)，需要用户亲自验的项见 [docs/ACCEPTANCE_PLAN.md](docs/ACCEPTANCE_PLAN.md)。下文多处结论已失效：「3 红」在最新全量回归中不复现（**153 文件 / 1659 项通过、0 失败**）；「LLM-04/05 未开始」不成立（LLM-04 已于 09-13 交付、LLM-05 已 PARTIAL）；「FE-27～30 待实现」不成立（FE-27/28/29 已 SUPERSEDED、FE-30 为部分替代，桌宠改走 PET 线）。
+>
 > 2026-09-13复核提示：以下是历史执行报告，不是当前回归结论。工作区已有speechOutput契约夹具异步等待修复，三红需定向复核，不能仅凭旧失败归因生产实现。LLM-04编号已澄清，DeepSeek usage有后续真实报告；当前执行依据见[文档审阅](docs/REVIEW_V0.5_AND_BACKLOG.md)。
 
 # Aika SPEC 完成情况与冒烟测试报告（2026-09-13）

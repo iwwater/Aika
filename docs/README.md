@@ -1,6 +1,8 @@
 # Aika 文档入口
 
-> 2026-09-14 桌宠策略更新：[Aiki Desktop Pet Integration RPD](frontend/RPD_DESKTOP_PET_INTEGRATION.md) → [PET-01～08 SPEC](frontend/SPEC_DESKTOP_PET.md)。0.5 集成 OpenPet，0.6 条件接入 NyaDeskPet；停止自研桌宠 Runtime 路线。当前完成文档，非实现验收。
+> **2026-09-15 更新**：MVP 0.5 六份 SPEC 已执行完毕（见 [Handoff](HANDOFF_MVP_0.5.md)），PET-01～06 已交付、PET-07 的 Aiki 宿主侧闭环 A/B 已 PASS；FE-27/28/29 已 SUPERSEDED、FE-30 部分替代。
+>
+> 2026-09-14 桌宠策略更新：[Aiki Desktop Pet Integration RPD](frontend/RPD_DESKTOP_PET_INTEGRATION.md) → [PET-01～08 SPEC](frontend/SPEC_DESKTOP_PET.md)。0.5 集成 OpenPet，0.6 条件接入 NyaDeskPet；停止自研桌宠 Runtime 路线。（原文「当前完成文档，非实现验收」指 09-14 当时状态，现已进入实现与验收。）
 
 整个项目唯一的文档目录是仓库根 `docs/`。业务源码仍在 `aika-crossplatform/src/`；不在子工程或 src 内再建另一套 docs。目录 README 可保留最小使用说明并链接到这里。
 
@@ -14,7 +16,7 @@
 - [集成验收](integration/SPEC.md)：跨模块链路、全量回归与打包。
 - [旧阶段映射](modules/MIGRATION.md)：旧 S1–S8 要求与证据归属。
 
-CORE-01…06 已自测、待审阅：全仓只剩一条对话编排路径，内核契约已在 [共享接口](modules/CONTRACTS.md) 冻结；CORE-05-G 的输出侧可替换性已于 2026-09-11 补齐第二实现（`cloudTtsOutput`，取自 `stash@{0}` 的未跟踪提交），原 BLOCKED 解除；云端合成尚无用户入口、也未向真实云服务发过请求。LLM-01 已提交自测证据，真实模型质量未执行、尚待审阅。小阶段只测试本模块，必须联调或大任务完成后才全流程调试。S1 的历史通过记录保留，不代表新模块已全部完成。
+**2026-09-15 状态**：0.5 主线六份 SPEC（MVP-01～06）已全部执行完毕，收口与遗留清单见 [MVP 0.5 Handoff](HANDOFF_MVP_0.5.md)；需要你亲自验的项见 [验收计划](ACCEPTANCE_PLAN.md)；桌宠按 [PET 线](frontend/SPEC_DESKTOP_PET.md)（FE-20/27/28/29 已 SUPERSEDED）。CORE-01～09、LLM-01～12 已交付、待审阅：全仓只剩一条对话编排路径，内核契约已在 [共享接口](modules/CONTRACTS.md) 冻结；云端合成已有用户入口（TTS-04）但**真实云 TTS 仍未试听**。真实模型质量仅部分取证（DeepSeek 有真实样本，另三协议仍 fixture）。小阶段只测试本模块，必须联调或大任务完成后才全流程调试。S1 的历史通过记录保留，不代表新模块已全部完成。
 
 ## 产品与计划
 

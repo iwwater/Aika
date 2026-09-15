@@ -1,7 +1,9 @@
 # 前端 SPEC Handoff · 三维度交接清单
 
-日期：2026-09-14（**FE-31/32 执行后更新**）。范围：`docs/frontend/specs/` 全部 32 份 SPEC（FE-01～32）及其验收报告。源码根 `aika-crossplatform/`。
-> **2026-09-15 注**：MVP-03 已删除 Legacy Pet（`src/pet/`、`usePetWindow.ts`、`petWindow.rs` 等），本文件中涉及旧自研桌宠窗口的待办已随之失效；MVP 0.5 六份 SPEC 的收口状态与遗留清单见 [HANDOFF_MVP_0.5.md](../HANDOFF_MVP_0.5.md)。
+日期：2026-09-14（**FE-31/32 执行后更新**；2026-09-15 加注，与 [HANDOFF_MVP_0.5.md](../HANDOFF_MVP_0.5.md) 对齐）。范围：`docs/frontend/specs/` 全部 32 份 SPEC（FE-01～32）及其验收报告。源码根 `aika-crossplatform/`。
+> **2026-09-15 注（两条）**：
+> 1. MVP-03 已删除 Legacy Pet（`src/pet/`、`usePetWindow.ts`、`petWindow.rs` 等），本文件中涉及旧自研桌宠窗口的待办已随之失效；MVP 0.5 六份 SPEC 的收口状态与遗留清单见 [HANDOFF_MVP_0.5.md](../HANDOFF_MVP_0.5.md)。
+> 2. FE-33 仍**未做自身真机复验**；09-15 的 MVP-04-D 只覆盖了环境链路的一段（真实 OCR → 真实 Provider → 桌宠受理），不能替代 FE-33 的逐 AC 复验（见 [frontend/SPEC.md](SPEC.md) 的 FE-33 行）。
 用途：任何接手者（人或 worker）据此确定「还有什么没做、什么需要真实服务、什么需要人」。
 
 ## 当前快照
@@ -11,24 +13,24 @@
 - FE-15/16/17（远程输出线）：PARTIAL——本地与 Rust 单元侧完成，真实宿主/公网项未验。（FE-16 索引行已于本轮同步为 PARTIAL。）
 - FE-18～22（环境感知线，本轮 2026-09-14 完成）：模块内/逻辑轨 PASS，真机与组合项 NOT RUN（详见下）。
 - **FE-31/32：本轮已实现，状态 PARTIAL**——会话控制、意图协议、摘录投影与调度限流的生产逻辑全过（定向测试 + Rust 单元），但没有任何真实读屏、真实回复或真机演示；中文识别所缺的 `chi_sim.traineddata` 不在仓库。详见 [FE-31](reports/FE-31_ACCEPTANCE.md) / [FE-32](reports/FE-32_ACCEPTANCE.md) 验收报告。
-- FE-27～30：**仍全部未实现**（DRAFT / 待实现）。FE-30 含新增 J～N（FE-31/32 组合验收），必须最后执行。
+- FE-20 / FE-27 / FE-28 / FE-29：**已 SUPERSEDED（09-14 桌宠新路线）**，不再按原顺序派发；Live2D 条件接入归 [PET-08](specs/PET-08.md)（DEFERRED，0.6，**需用户先做路线选择**）。**FE-30 为部分替代**：0.5 桌宠表现按 PET-07 验收，环境、授权、OCR 与陪伴业务项及 A～I + J～N 继续保留。
 - **环境线装配断点已修**：此前 FE-18～22 的 PASS 全是「模块内」——生产装配里 `environmentPlugin` 从未被装、两个 source 无调用方、busy 观测者无提供方、FE-19 上下文源没进 `contextSourcesPlugin`、`ScreenState` 没 `.manage()`。本轮在 FE-31 文件范围内补齐，但**新装配从未在真实 Tauri 进程里跑过**。
 - 仓库有大量未提交改动（FE-18～22 实现 + FE-31/32 规格新增 + 索引/PRD 更新）；按仓库规则不由 worker 自行提交。
 
 ---
 
-## 一、待办 SPEC（未实现 / 未执行）
+## 一、待办 SPEC（2026-09-15 复核：FE-27/28/29 已 SUPERSEDED、FE-30 部分替代）
 
-| SPEC | 交付 | 依赖 | 关键约束 |
+| SPEC | 交付 | 依赖 | 状态与关键约束 |
 | --- | --- | --- | --- |
-| [FE-27](specs/FE-27.md) | Live2D 素材/运行时核实、manifest 校验、表现契约（character.presentation.v1） | 无 | 素材与 SDK 条款须核实登记；无合法包时 FE-27-C 记 BLOCKED，不得整份标 PASS |
-| [FE-28](specs/FE-28.md) | 真实 Live2D 渲染、表情动作、失败回退 | FE-27；pet 集成需 FE-20 | 真实 WebGL 截图/视频留证；缺包 B/E BLOCKED |
-| [FE-29](specs/FE-29.md) | 实际播放能量、口型、打断同步 | FE-27；真实 pet 口型需 FE-20/28 | 先核查播放后端能量支持矩阵；口型偏差 ≤150ms/打断 ≤300ms 需外录音画 |
-| [FE-30](specs/FE-30.md) | 组合链路、权限、性能与设备验收（A～I + **新增 J～N**） | FE-18～22、27～29、31、32 的生产实现 | **必须最后执行**；J～N 覆盖 FE-31/32 组合（COMP-07），旧九份通过不构成完整交付；30 分钟组合负载 + 安装包离线资源验证 |
+| [FE-27](specs/FE-27.md) | Live2D 素材/运行时核实、manifest 校验、表现契约（character.presentation.v1） | 无 | **SUPERSEDED（09-14 桌宠新路线）**——不建自有 manifest/renderer 体系，映射 profile 归 PET-01/02（已交付）。历史约束保留：素材与 SDK 条款须核实登记；无合法包时 FE-27-C 记 BLOCKED，不得整份标 PASS |
+| [FE-28](specs/FE-28.md) | 真实 Live2D 渲染、表情动作、失败回退 | FE-27；pet 集成需 FE-20 | **SUPERSEDED**——Live2D 条件接入归 [PET-08](specs/PET-08.md)（DEFERRED，0.6，需用户先选路线）。历史约束：真实 WebGL 截图/视频留证；缺包 B/E BLOCKED |
+| [FE-29](specs/FE-29.md) | 实际播放能量、口型、打断同步 | FE-27；真实 pet 口型需 FE-20/28 | **SUPERSEDED**——0.5 不实现桌宠口型，TTS 仍由 Aiki 播放。历史约束：口型偏差 ≤150ms/打断 ≤300ms 需外录音画 |
+| [FE-30](specs/FE-30.md) | 组合链路、权限、性能与设备验收（A～I + **新增 J～N**） | FE-18～22、31、32 的生产实现 | **部分替代，未执行**——0.5 桌宠表现按 PET-07 验收，自研窗口/Live2D 组合项不作其门禁；环境、授权、OCR 与陪伴业务项继续保留，**A～I + J～N 不得省略**；30 分钟组合负载 + 安装包离线资源验证 |
 
 | [FE-33](specs/FE-33.md) | 环境链路真机装配验收（不含 Live2D） | FE-18～22/31/32 已实现且装配已接通 | **下一个该做的**；只验「新接上的生产装配在真机上是否真的通」，收口 FE-19/20/21/22/31/32 的设备遗留项；需真机 + 用户在场 + 一份 Provider 凭据；**不替代 FE-30** |
 
-执行顺序建议：**先做 [FE-33](specs/FE-33.md)**（不依赖任何素材，只需要一次真机），与角色线 FE-27→28→29 并行；最后 FE-30 收口。FE-30 的 J～N 具体条目见 `specs/FE-30.md` 场景矩阵。
+执行顺序建议（09-15 修订）：**先做 [FE-33](specs/FE-33.md)**（不依赖任何素材，只需一次真机 + 用户在场），收口 FE-19/20/21/22/31/32 的设备遗留项。**角色线不再是 FE-27→28→29**——先做「是否走 0.6 NyaDeskPet/Live2D」的路线决策，再决定是否启动 [PET-08](specs/PET-08.md)。最后 FE-30 收口（A～I + J～N），具体条目见 `specs/FE-30.md` 场景矩阵。
 
 另有两件小待办（非 SPEC 主体）：
 - ~~`SPEC.md` 索引 FE-16 行状态过期~~ —— 本轮已同步为 PARTIAL。

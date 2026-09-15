@@ -164,7 +164,7 @@ waku 是本地优先个人 Agent（Python，四支柱：Harness / Loop / Memory 
 | M1 | F1 其余交互（发音/撤回/重生成/Rewind） | **全部交付**：撤回/重新生成 [FE-06](frontend/specs/FE-06.md)、点击朗读 [FE-07](frontend/specs/FE-07.md)、Rewind [FE-08](frontend/specs/FE-08.md)。四项都有 fake Runtime 下的逐项 AC 与突变验证；真机目视一律 NOT RUN。原先「需要按时间截断端口」的推测不成立，原因见 FE-08 |
 | M2 | F3 Trace 协议 + fake sink 全链单测；F2 开发者入口 | 事件 schema 版本化；脱敏用例；sink 故障不影响主链路。**已交付**：[LLM-06](llm/specs/LLM-06_TRACE_PROTOCOL.md) 协议与两个 sink、[LLM-07](llm/specs/LLM-07_TRACE_WIRING.md) Runtime 接入与开关、[LLM-08](llm/specs/LLM-08_TRACE_SOURCES.md) 余下三个事件源、[FE-09](frontend/specs/FE-09.md) 开发者入口与 Trace 页（F4 一并交付） |
 | M3 | F4/F5/F6 工作台页面（读 M2 数据） | 用 harness 回放数据驱动页面，不依赖真实模型。**已交付**：F4 随 [FE-09](frontend/specs/FE-09.md)；F5/F6 [FE-10](frontend/specs/FE-10.md)（能力调用视图、装配拓扑与一轮数据流）。页面渲染无 DOM 测试环境，真机目视 NOT RUN |
-| M4 | F7 记忆管理页；F8/F9 视需要后置 | 管理操作有契约测试；统计口径有单测。**F7 已交付**（[FE-11](frontend/specs/FE-11.md)）：管理操作跑在生产仓储 + 内存 store 上，十一处突变命中；真机目视 NOT RUN。F8已交付待审阅，F9已拆FE-26待执行 |
+| M4 | F7 记忆管理页；F8/F9 视需要后置 | 管理操作有契约测试；统计口径有单测。**F7 已交付**（[FE-11](frontend/specs/FE-11.md)）：管理操作跑在生产仓储 + 内存 store 上，十一处突变命中；真机目视 NOT RUN。F8已交付待审阅，**F9 已交付**（[FE-26](frontend/specs/FE-26.md)，2026-09-13，AUTO_PASS；UI 目视与真实费用比对留人工） |
 
 执行按仓库既有规则：一次一个 SPEC，验收报告落 `docs/<module>/reports/`，mock 不冒充真实模型质量。
 

@@ -1,8 +1,9 @@
 # PET-07 验收报告 · Windows OpenPet 闭环（跨模块里程碑）
 
-> 2026-09-14 · 需求 DPI-07 · [SPEC](../specs/PET-07.md) · 协议 [PET-01_PROTOCOL.md](PET-01_PROTOCOL.md)
+> 2026-09-14 立稿 / 2026-09-15 补强 · 需求 DPI-07 · [SPEC](../specs/PET-07.md) · 协议 [PET-01_PROTOCOL.md](PET-01_PROTOCOL.md)
 >
-> ## 结论：**闭环 PASS（含真机核对修出的三个缺陷；PET-07-C 仍 NOT RUN）**
+> ## 结论：**Aiki 宿主侧闭环成立——PET-07-A/B PASS（device）**。含真机核对修出的三个缺陷。
+> 其余 AC：**C/G/H/I NOT RUN**、**D/E/F/J 部分 PASS（F 含 BLOCKED 项）**。逐条见 §3。**不宣告本 SPEC 整体 PASS。**
 >
 > 本轮在本机装好并跑通了**原版 OpenPet v0.1.6**，把 SPEC 里所有「需要上游真实行为」的前置
 > 一次性取证（§2），并在 **Aiki 桌面宿主**上跑通了真正的闭环：一轮真实对话 →
@@ -11,7 +12,7 @@
 >
 > 真机核对的价值在本轮体现得很直接：模块级全绿的同时，链路**其实是断的**——
 > 一个带下划线的 mood 名让整份 profile 静默失效（§2.3 缺陷 1）。修完才通。
-> 仍未取证的只有 **PET-07-C（真实切换角色）**，其余逐条见 §3。
+> 仍未取证的是 **PET-07-C/G/H/I**，以及 D/E/F/J 中标注为部分的那些项，逐条见 §3。
 
 ## 1. 前置状态
 
@@ -130,7 +131,7 @@ PET-05 18 / 架构 28），`tsc` 无错误，宿主重建并重启，闭环重�
 | AC | 结论 | 说明 |
 | --- | --- | --- |
 | PET-07-A | **PASS（device）** | 上游侧：OpenPet 外部安装、启动、角色可见、`127.0.0.1:17321` 可访问。Aiki 侧：宿主已构建并运行；**真实宿主传输成功且不依赖浏览器 CORS**——日志型替身记录到来自宿主进程的 `GET /api/status`，10 秒一次、仅此一端点（§2.2）。唯一未覆盖的是「对**真实** OpenPet 的 same-path 表现」，它在 PET-07-B 的点击里一并完成 |
-| PET-07-B | **PASS（device）** | 真实 Aiki 轮次取证：`recentEvents` 出现 `{eventType:"thinking", bubbleText:"让我想一下……"}`（此前为空）；回复气泡由用户目视确认；`lastAction=waving` 与 `gentle_smile → waving` 映射一致。中文气泡与动作可见性另有上游侧单独取证 |
+| PET-07-B | **PASS（device，2026-09-15 补强）** | 真实 Aiki 轮次取证：`recentEvents` 出现 `{eventType:"thinking", bubbleText:"让我想一下……"}`（此前为空）；回复气泡由用户目视确认。2026-09-15 补上逐命令证据：`pet_command` 诊断显示真实 proactive 轮的 `event`/`emotion`/`say` **三条全部 `accepted`**（17:03:27/17:03:32；18:34 在 release 构建上复现 18:34:02/18:34:06），回复同时落库，且 18:34 那轮在 OpenPet 侧观测到 `lastAction=waving`——与 `gentle_smile → waving` 映射一致，**emotion 确实驱动了上游动作**。**Aiki 宿主侧闭环成立**（此前「say/emotion 未送达」的疑点已证为测量口径错误：`recentEvents` 只记录 `event` 调用，say 只看 `bubbleText`、action 只看 `lastAction`，见 [MVP-04 报告 §2 AC-D](MVP-04_ACCEPTANCE.md)） |
 | PET-07-C | **NOT RUN** | 需要切换真实角色后再验证文本仍显示、能力更新、旧映射不再被当已验证 |
 | PET-07-D | **部分 PASS** | TTL 语义在真机上暴露并修掉（缺陷 3：4 秒 → 按长度、上限 10 秒）；气泡按 TTL 消退有间接证据（TTL 到期后 `bubbleText` 读回为 null）。「已受理 action 的持续行为」仍无独立观测 |
 | PET-07-E | **部分 PASS** | 桌宠挂载状态下多轮真实对话正常完成（用户消息 → 回复），未见桌宠阻塞对话；TTS 调度与桌宠错误的交互未单独观测 |
@@ -140,9 +141,10 @@ PET-05 18 / 架构 28），`tsc` 无错误，宿主重建并重启，闭环重�
 | PET-07-I | **NOT RUN** | 30 次交互与 10 分钟待机的受理/可见 P95、CPU/RSS 口径**未测**；本报告不凭感受给结论 |
 | PET-07-J | **部分 PASS** | 出站白名单与哨兵过滤已在 PET-04-G 覆盖；「安装器与 runtime 路径清楚」已由 PET-01-A 取证（安装器哈希 + 实际 exe 路径，且安装器/卸载器会被校验拒绝）。协议与素材权利记录完整（§PROTOCOL §1/§4） |
 
-## 4. 剩余工作与执行清单（只有 Aiki 侧了）
+## 4. 剩余工作与执行清单（Aiki 侧）
 
-上游侧已经就绪，剩下的全部是「把 Aiki 宿主跑起来」：
+上游侧已经就绪。Aiki 宿主侧已跑通「启动 → 真实对话 → 桌宠收到命令」这一条（PET-07-A/B，见 §3），
+但下面第 5～7 步（managed 生命周期、退出行为、性能口径）仍需宿主操作；PET-07-C 需先切换真实角色：
 
 ```text
 # 1) 构建并运行 Aiki 桌面宿主（PET-07 允许的必要宿主构建）
@@ -179,6 +181,13 @@ npm run tauri build          # 或 npm run tauri dev
 ## 6. 诚实表述
 
 - 0.5 桌宠集成的**模块级**证据齐备（PET-02～06），**上游侧**已用真机取证（PET-01 全 PASS）。
-- **跨模块闭环未取证**：Aiki 宿主侧一个 AC 都还没跑。因此不宣告完成、不把模块 PASS
-  或上游 PASS 继承为本报告的结论。
-- 拿到 §4 的执行结果后重新出具本报告即可闭项。
+- **跨模块闭环已成立（2026-09-15 补强）**：Aiki 宿主侧的真实轮次已取证——`pet_command` 诊断显示
+  真实 proactive 轮的 `event`/`emotion`/`say` **三条全部 `accepted`**（17:03:27 / 17:03:32，并于
+  18:34 在 release 构建上复现），回复同时落库，OpenPet 侧观测到 `lastAction=waving`（与
+  `gentle_smile → waving` 映射一致）。§3 的 **PET-07-A/B 即据此判 PASS（device）**。
+- **不得被读成整体完成**：PET-07-C/G/H/I 仍 **NOT RUN**；D/E/F/J 为**部分 PASS**，其中 PET-07-F
+  含 **BLOCKED** 项（用真实 exe 跑 `ProcessManager` 未做）。模块 PASS 与上游 PASS **未被继承**为
+  这些 AC 的结论。
+- **修订留痕**：本报告 09-14 版曾写「跨模块闭环未取证：Aiki 宿主侧一个 AC 都还没跑」。该表述在
+  09-15 补强后**已作废**——此处保留说明是为了交代结论何时被改写，不表示现状。
+- §4 的清单仍是补齐 C/G/H/I 与 D/E/F/J 各部分的路径；跑完后据此更新本报告即可闭项。
