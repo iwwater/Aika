@@ -26,7 +26,7 @@
 | TODO-10 | Streaming Voice Pipeline V2（流式 ASR/TTS 改造） | 0.5 现状＝Silero VAD 切整段→Whisper 整段识别，「流式收音但非流式识别」；`SpeechInputEngine` 契约（speechStart/segmentFinal/turnReady）已就位，Web Speech 路线已支持 interim | 新增 `StreamingAsrInput`（WebSocket 长连接 ASR Session，partial→UI、final→turnReady），Silero 与 Streaming ASR 并行；P1 另含 LLM Phrase Chunker、Streaming TTS；**不重写架构、不全项目 WebSocket 化**，保留 VAD/turnReady/一回合一次 LLM | 资料已沉淀：[STT further 笔记](stt/further/STREAMING_ASR_PIPELINE_V2_NOTES.md)；待立项拆 SPEC（候选 STT-05，与 TODO-06 相关） | P1 | 愿望（已登记资料） |
 | KB-01 | 知识库文件批量导入 | index已有importDocuments；尚需管理端口、文件读取宿主与UI，不只是选择器 | 复用事务/去重/归属/限额，首版支持格式在SPEC冻结；不引入研究型RAG | [KB-01 草案](llm/specs/KB-01.md) | P2 | SPEC已拆，未派发 |
 | MEM-DEC-01 | 回复候选与后台抽取双轨 | memoryCandidates无生产消费点，当前确认流依赖后台抽取 | 接通candidate确认流或从生成协议删除；两者都需去重/来源/撤权或兼容处理，不估作半小时 | [派发审阅C档](REVIEW_DISPATCH_2026-09-15.md) | P1 | 待决策 |
-| TODO-11 | 桌宠气泡位置修正（2026-09-16 用户提出） | 气泡由 pet-shell 渲染：`.pet-bubble` 固定在**窗口顶部居中**（pet-shell `src/styles.css:1052`，`top:18px; left:50%`），会盖住模型头部；MVP-15 (b) 接通 `/api/say` 后每次点击回应都冒泡，问题更显眼 | **待拍板目标位置**：宠物头顶上方（不遮脸，随窗口尺寸自适应）？还是气泡在窗口外侧/跟随模型位置？拍板后大概率是 pet-shell 一处 CSS/布局小修（含四种气泡样式 preview 一致性） | 待立项（pet-shell 侧 UI 小修，先拍板位置再动手） | P2 | 待澄清 |
+| TODO-11 | 桌宠气泡位置修正（2026-09-16 用户提出；2026-09-17 追加长度问题） | 气泡由 pet-shell 渲染：`.pet-bubble` 固定在**窗口顶部居中**（pet-shell `src/styles.css:1052`，`top:18px; left:50%`），会盖住模型头部；MVP-15 (b) 接通 `/api/say` 后每次点击回应都冒泡，问题更显眼。**2026-09-17 验收补一层**：除位置外，**长回复没有长度收敛策略**——实测 8 行日语气泡直接盖住模型，需同时定「超长怎么办」（截断 / 分句轮播 / 限字数） | **待拍板目标位置**：宠物头顶上方（不遮脸，随窗口尺寸自适应）？还是气泡在窗口外侧/跟随模型位置？**位置与长度策略一起拍**，拍板后大概率是 pet-shell 一处 CSS/布局小修（含四种气泡样式 preview 一致性） | 待立项（pet-shell 侧 UI 小修，先拍板位置再动手） | P2 | 待澄清 |
 
 ## 当前唯一在推进的规划
 
