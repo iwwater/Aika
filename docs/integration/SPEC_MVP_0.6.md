@@ -10,7 +10,7 @@
 - [MVP-09](reports/MVP-09_ACCEPTANCE.md)：**A/B/C/D/F PASS，E PARTIAL**——`product`/`capabilities` 识别、版本绑定、owned-only 协议退出与回退、三通道与双仓 fixture 同步已落地；**屏幕可见层未跑**，故本 SPEC 尚未整体收口。
 - MVP-11：**A～F PASS**（Live2D renderer 与首版换装，Windows 真机 + WebDriver 取证；见 [MVP-11 报告](reports/MVP-11_ACCEPTANCE.md)）。
 - MVP-13：**执行中，报告 PARTIAL**（[MVP-13 报告](reports/MVP-13_ACCEPTANCE.md)）——MSI 构建/启动/重开、四端点逐项复测、Live2D 在 release 产物的可见表现（像素证据）、10 分钟待机与 30 次交互均已取；抓出 **DEF-1**（Live2D 素材随包分发，**已由 MVP-14 修复**）、**DEF-2**（Live2D 整窗鼠标穿透，已修复并人工复验）、**DEF-3**（导入宠物贴图 URL 取不到，已修复并真机复验）；AC-F 安装/卸载未跑。
-- MVP-12：**范围已冻结（仅点击），待派发**（[明细](specs/MVP-12.md)）。
+- MVP-12：**A～E PASS**（仅点击范围；[报告](reports/MVP-12_ACCEPTANCE.md)）——反向点击通道双仓落地：实例级一次性凭据（成对注入、attach 零携带）、版本封闭、按 `eventId` 去重、回环 only；**真人操作已闭合**（真实鼠标点击 → 宠物判定 → POST 到 Aiki 注入的 URL → 受理恰好一次）；撤销迟到输入实测 `unarmed:1` 且 `accepted` 不回退。偏差两项（实例身份由凭据承载而非报文字段、`eventId` 非 RFC UUID）与三项未闭合（单实例转交、真实断连分支、真实链路双击边界）见报告 §7。AC-D 按范围冻结记「不适用」。
 - KB-01：**NOT RUN**，仍未派发实施。
 - MVP-14：**已实施，报告 PARTIAL**（[报告](reports/MVP-14_ACCEPTANCE.md)）——**DEF-1 已消除**：官方示例模型移出分发包（exe −7,883,776 B、MSI −7,938,048 B，exe 内模型标记 0 命中而 Core 仍 1 命中），Core 留包内、**CSP 未放宽**；Live2D 仍可见（首帧约 1.0 s）。未跑：删目录的破坏性降级实测、`e2e:tauri`。
 
@@ -18,8 +18,8 @@
 
 | 决策 | 当前状态 | 影响 |
 | --- | --- | --- |
-| 正式产品名、独立仓库名及位置 | 待用户决定；文档暂用 pet-shell | MVP-07 建仓、MVP-08 品牌资产 |
-| 自用或对外分发 | 待用户决定 | MVP-07 依赖组合可行性、MVP-13 发行材料 |
+| 正式产品名、独立仓库名及位置 | 位置**已定** `f:/AIVoice/pet-shell`（2026-09-16 口径统一）；正式产品名/仓库名仍待定，文档暂用 PetShell / pet-shell | MVP-08 品牌资产（改名要同步 profile 与契约） |
+| 自用或对外分发 | **已定：自用不分发**（2026-09-16 口径统一） | 一旦对外分发，Live2D 许可组合需在 MVP-13 之前核查 |
 | MVP-12 是否纳入、点击或文件输入范围 | **已定：纳入，仅点击**（2026-09-16 口径统一） | 文件分支不适用；输入契约已冻结，可派发 |
 
 用户决定产品范围后仍须通过技术出口；不把决定等同于已证明兼容。Live2D 未通过技术/目标用途许可核查时，相关路径保持 BLOCKED，不擅自删减 0.6 DoD 或以 sprite 成果宣告 0.6 完成。
