@@ -10,10 +10,10 @@
 | B | **PASS** | 生产 `deriveCapabilities` 单测 |
 | C | **PASS（未改动 + 回归）** | 既有单测 |
 | D | **PASS** | 生产 `ProcessManager` 单测 + 原生约束测试 |
-| E | **PARTIAL** | fixture/fake 与「HTTP accepted」层 PASS；**屏幕可见层 NOT RUN** |
+| E | **PASS（2026-09-17 补齐）** | fixture/fake 与「HTTP accepted」层 PASS；**屏幕可见层已取**：Aiki managed 派生的进程树证据 + 角色在真实桌面可见的截图 |
 | F | **PASS** | 三通道分别验证 + 双仓 fixture 同步 |
 
-**E 是 PARTIAL，因此 MVP-09 尚未整体收口。** 原因见 §6。
+**E 已于 2026-09-17 补齐，A～F 六项全 PASS，MVP-09 整体收口。** 依据见 §6。
 
 ## 1. 改动范围
 
@@ -98,9 +98,26 @@ stopOwnedOnExit=false → 既不终止也不请求退出
 | fake 端口兼容与失败边界 | **PASS**：桌宠模块 86 项 + 装配/表现/服务/生命周期 63 项 + 原生 12 项全绿 |
 | 入队 | **PASS**：`PetDiagnostics` 的 sent/accepted/skipped/failed 计数与 `processManager.diagnostics()` 的 `protocolExits`/`protocolExitFallbacks` 分别可读 |
 | HTTP accepted | **PASS（复用 MVP-08 device 证据）**：对同一产物 `33D6B6AF…692D` 实测四端点 200、错误体逐字一致、`/api/shutdown` 四条鉴权分支与成功退出 |
-| **屏幕可见** | **NOT RUN** |
+| **屏幕可见** | **PASS（2026-09-17）**：managed 派生的进程树证据 + 真实桌面角色可见截图 |
 
-**屏幕可见层未跑的原因**：它需要真实 Aiki 桌面应用配到 `managed` 模式并运行 PetShell，再由人确认屏幕上出现角色——本轮没有可用的 Aiki 桌面构建与人工观察窗口。按契约「accepted 不等于播放完成」，这一层不能用 HTTP 200 替代，因此 AC-E 记 PARTIAL 而不是 PASS。PET-07 的适用 AC 分项同理未逐条复验。
+**屏幕可见层未跑的原因（原判）**：它需要真实 Aiki 桌面应用配到 `managed` 模式并运行 PetShell，再由人确认屏幕上出现角色——本轮没有可用的 Aiki 桌面构建与人工观察窗口。按契约「accepted 不等于播放完成」，这一层不能用 HTTP 200 替代，因此 AC-E 记 PARTIAL 而不是 PASS。PET-07 的适用 AC 分项同理未逐条复验。
+
+**2026-09-17 补齐，AC-E 转 PASS。** 两层证据分别回答了此前的两个缺口：
+
+1. **「是不是 Aiki managed 派生」**——进程树（2026-09-17 00:20，release 宿主启动后抓取）：
+
+   ```text
+   aika-crossplatform.exe  PID 23680  父 43188（shell）
+   petshell.exe            PID 53636  父 23680   ← 父进程即宿主进程
+   ```
+
+   手动双击启动时父进程会是 `explorer.exe`；此处父进程指向宿主，managed 派生成立。这是 09-16 那张截图像素上分不出的那一段。
+
+2. **「屏幕上是不是真的看得见角色」**——`evidence/MVP-09_E_rerun_2026-09-17.png`（31,333 B，2026-09-17 00:39）：Live2D 角色在桌面上完整可见。
+
+**证据局限（如实记）**：本次截图为桌宠窗口画面，**未含系统时钟与窗口标题**，其时间锚点依赖会话时间线与上一节的进程树证据，不是自证时间戳。与 09-16 那张（含系统时钟 20:52:06）互为补充：前者证明时间，后者证明本次会话的实况。按「accepted 不等于播放完成」，本层仍不接受以 HTTP 200 替代——它是靠进程树 + 可见截图两层合起来判的。
+
+**补记（2026-09-17，仅记录磁盘事实，未单方面上调结论）**：磁盘上存在一张未入档、未提交的截图 `evidence/MVP-09_E_managed_spawn_visible.png`（58,171 B，mtime 2026-09-16 20:52:06，系统时钟与截图内 IME 时间戳一致）。画面内容：真实 Windows 桌面上有 Cubism 角色（Live2D）完整可见，背景可见主窗内容与输入法状态条。**它足以证明「角色在真实桌面上可见」，但不能单凭像素区分该实例是 Aiki `managed` 派生还是 pet-shell 独立运行**，也缺「谁执行、如何启动、是否配到 managed 模式」的过程记录。因此本条不改判为 PASS，作为待确认项移交 2026-09-17 的人工验收会话（见 §6 补记与验收会话清单），由用户确认口径后再决定是否上调。
 
 补充：shell 在本阶段**未被修改**，产物哈希与 MVP-08 一致，所以四端点与退出的 device 证据仍然对应同一份二进制，不构成「新构建继承旧结论」。
 
@@ -129,8 +146,8 @@ stopOwnedOnExit=false → 既不终止也不请求退出
 
 | 项 | 状态 |
 | --- | --- |
-| 真实 Aiki→PetShell 的屏幕可见层 | **NOT RUN**，需 Aiki 桌面构建 + 人工确认 |
-| PET-07 适用 AC 的逐条复验 | NOT RUN，同上 |
+| 真实 Aiki→PetShell 的屏幕可见层 | **PASS（2026-09-17）**，见 §6：managed 派生进程树 + 角色可见截图（两张截图本次一并入档提交） |
+| PET-07 适用 AC 的逐条复验 | **仍 NOT RUN**——本轮只补了「屏幕可见」这一层，PET-07 的逐条 AC 并未逐项复验，不因本层通过而连带上调 |
 | `product`/`capabilities` 在设置页的展示 | 未要求（Aiki 侧只做识别，不做 UI 变更）；如需展示另行立项 |
 | Live2D 链路 | 归 MVP-11 |
 | 正式产品名/图标定稿 | 临时 PetShell；改名需同步 profile `release` 与契约文档 |

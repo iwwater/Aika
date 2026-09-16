@@ -7,7 +7,7 @@
 - [MVP-07](reports/MVP-07_ACCEPTANCE.md)：**A～E PASS**（基线与可复现构建、四端点/功能盘点、Live2D 技术出口、剪枝、可推进范围）。
 - [MVP-10](reports/MVP-10_ACCEPTANCE.md)：**A～E PASS**（renderer/behavior/menu 三槽与默认实现迁移）。
 - [MVP-08](reports/MVP-08_ACCEPTANCE.md)：**A～F PASS**（品牌替换、菜单入口、单实例、退出语义、协议退出鉴权、回归）。临时标识 PetShell / `dev.aiki.petshell`。
-- [MVP-09](reports/MVP-09_ACCEPTANCE.md)：**A/B/C/D/F PASS，E PARTIAL**——`product`/`capabilities` 识别、版本绑定、owned-only 协议退出与回退、三通道与双仓 fixture 同步已落地；**屏幕可见层未跑**，故本 SPEC 尚未整体收口。
+- [MVP-09](reports/MVP-09_ACCEPTANCE.md)：**A～F 全 PASS（2026-09-17 收口）**——`product`/`capabilities` 识别、版本绑定、owned-only 协议退出与回退、三通道与双仓 fixture 同步已落地；**屏幕可见层已于 2026-09-17 补齐**：managed 派生的进程树证据（`petshell.exe` 父进程 = 宿主）+ 角色在真实桌面可见的截图（`MVP-09_E_managed_spawn_visible.png` 09-16 20:52 含系统时钟、`MVP-09_E_rerun_2026-09-17.png` 09-17 00:39），两张本次一并入档提交。PET-07 适用 AC 的逐条复验**仍 NOT RUN**，不因本层通过而连带上调。
 - MVP-11：**A～F PASS**（Live2D renderer 与首版换装，Windows 真机 + WebDriver 取证；见 [MVP-11 报告](reports/MVP-11_ACCEPTANCE.md)）。
 - MVP-13：**报告 AC-D/E/F PASS，A/B/C 部分**（[MVP-13 报告](reports/MVP-13_ACCEPTANCE.md)）——MSI 构建/启动/重开、四端点逐项复测、Live2D 在 release 产物的可见表现（像素证据）、10 分钟待机与 30 次交互均已取；三个缺陷 **DEF-1/2/3 全部处置**（DEF-1 由 MVP-14 修复，DEF-2/DEF-3 在本份内修复复验）；**AC-F 安装/卸载已于 2026-09-16 授权补测 PASS**（安装副本 903 ms 就绪、四端点 200、卸载残留清零、用户数据 41 文件不变）。**遗留**：`attach`/断连恢复、FPS 侧证据、Cubism Core 分发条件核查，以及「安装模式 per-machine vs per-user」需产品决定（现为 per-machine，要求提权）。
 - MVP-12：**A～E PASS**（仅点击范围；[报告](reports/MVP-12_ACCEPTANCE.md)）——反向点击通道双仓落地：实例级一次性凭据（成对注入、attach 零携带）、版本封闭、按 `eventId` 去重、回环 only；**真人操作已闭合**（真实鼠标点击 → 宠物判定 → POST 到 Aiki 注入的 URL → 受理恰好一次）；撤销迟到输入实测 `unarmed:1` 且 `accepted` 不回退。偏差两项（实例身份由凭据承载而非报文字段、`eventId` 非 RFC UUID）与三项未闭合（单实例转交、真实断连分支、真实链路双击边界）见报告 §7。AC-D 按范围冻结记「不适用」。
