@@ -2,18 +2,45 @@
  * Fetches the Live2D Cubism Core runtime and the official sample models used by the
  * Live2D renderer (MVP-11).
  *
+ * **分发边界（MVP-14 处置 DEF-1）——两件事不要混**：
+ *
+ * - **Cubism Core 是 SDK 运行时，留在包内**：下到 `public/live2d/core/`，Vite 会把它
+ *   复制进 `dist/` 并嵌入可执行文件（同源脚本，`script-src 'self'` 即可，无需放宽 CSP）。
+ * - **官方示例模型不入包**：下到应用数据目录的 `live2d/models/`，由 shell 自己的回环
+ *   HTTP 按需提供（CSP 的 `connect-src` / `img-src` 本就放行 `http://127.0.0.1:*`）。
+ *
  * Assets are deliberately **not** vendored into the repository: they are licensed
- * material, and the fork is a personal-use build (see MVP-07 AC-C). They land in
- * `public/live2d/`, which Vite copies into `dist/` and `.gitignore` excludes from git.
+ * material, and the fork is a personal-use build (see MVP-07 AC-C).
  *
  * Usage: node scripts/fetch-live2d-assets.mjs [modelId ...]
+ *   PET_SHELL_LIVE2D_MODELS_DIR  覆盖模型输出目录（默认按平台推导）
  */
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const OUT_ROOT = join(ROOT, 'public', 'live2d');
+const IDENTIFIER = 'dev.aiki.petshell';
+/** Core 留在包里：这里就是 Vite 的 `public/` 目录。 */
+const CORE_OUT_ROOT = join(ROOT, 'public', 'live2d');
+
+/** Tauri 的 app_data_dir：与应用的 `app.path().app_data_dir()` 口径一致。 */
+function appDataDir() {
+  if (process.platform === 'win32') {
+    const base = process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming');
+    return join(base, IDENTIFIER);
+  }
+  if (process.platform === 'darwin') {
+    return join(homedir(), 'Library', 'Application Support', IDENTIFIER);
+  }
+  const base = process.env.XDG_DATA_HOME ?? join(homedir(), '.local', 'share');
+  return join(base, IDENTIFIER);
+}
+
+/** 模型不入包：目标是应用数据目录下的 `live2d/models`。 */
+const MODELS_OUT_ROOT =
+  process.env.PET_SHELL_LIVE2D_MODELS_DIR ?? join(appDataDir(), 'live2d', 'models');
 
 const SAMPLES_BASE = 'https://raw.githubusercontent.com/Live2D/CubismWebSamples/master';
 const CORE_URL = 'https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js';
@@ -66,7 +93,7 @@ async function fetchModel(id) {
   if (!spec) throw new Error(`unknown model '${id}' (known: ${Object.keys(MODELS).join(', ')})`);
 
   const manifestName = `${spec.file}.model3.json`;
-  const target = join(OUT_ROOT, 'models', id);
+  const target = join(MODELS_OUT_ROOT, id);
   const manifestUrl = `${SAMPLES_BASE}/Samples/Resources/${spec.dir}/${manifestName}`;
   const manifestText = new TextDecoder().decode(await fetchBytes(manifestUrl));
   await mkdir(target, { recursive: true });
@@ -89,7 +116,10 @@ async function main() {
   const requested = process.argv.slice(2);
   const ids = requested.length ? requested : DEFAULT_MODELS;
 
-  const core = await fetchToFile(CORE_URL, join(OUT_ROOT, 'core', 'live2dcubismcore.min.js'));
+  const core = await fetchToFile(
+    CORE_URL,
+    join(CORE_OUT_ROOT, 'core', 'live2dcubismcore.min.js'),
+  );
   console.log(`core            live2dcubismcore.min.js  ${core} bytes`);
 
   for (const id of ids) {
@@ -97,7 +127,8 @@ async function main() {
     console.log(`${id.padEnd(15)} ${String(result.files).padStart(3)} files  ${result.bytes} bytes`);
   }
 
-  console.log(`\nassets -> ${OUT_ROOT} (git-ignored; copied into dist/ by Vite)`);
+  console.log(`\ncore   -> ${CORE_OUT_ROOT}/core        (留包内：Vite 复制进 dist/)`);
+  console.log(`models -> ${MODELS_OUT_ROOT}  (不入包：shell 从应用数据目录经回环 HTTP 提供)`);
 }
 
 main().catch((error) => {

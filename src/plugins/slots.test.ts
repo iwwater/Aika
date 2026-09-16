@@ -132,6 +132,7 @@ function mountContext(): RendererMountContext {
     host: document.createElement('div'),
     pet: FALLBACK_SNAPSHOT.activePet,
     settings: DEFAULT_SETTINGS,
+    apiBaseUrl: 'http://127.0.0.1:17321',
     onHitTargetChange: () => {},
     onRuntimeFailure: () => {},
   };
@@ -328,6 +329,7 @@ describe('RendererHost lifecycle', () => {
       host: document.createElement('div'),
       pet: FALLBACK_SNAPSHOT.activePet,
       settings: DEFAULT_SETTINGS,
+      apiBaseUrl: 'http://127.0.0.1:17321',
       onHitTargetChange: (element) => events.push(element),
       onRuntimeFailure: () => {},
     };

@@ -8,6 +8,7 @@ use std::{
     fs,
     io::{BufRead, BufReader, Read, Write},
     net::{TcpListener, TcpStream},
+    path::Path,
     thread,
     time::Duration,
 };
@@ -79,6 +80,20 @@ fn handle_stream(mut stream: TcpStream, app: &AppHandle, state: &AppState) {
                     &mut stream,
                     404,
                     &serde_json::json!({ "ok": false, "error": "pet spritesheet not found" }),
+                ),
+            };
+            return;
+        }
+
+        // Live2D 模型资源（MVP-14）：模型不入包，改由这里按需提供。
+        // 路径校验与目录归属都在 AppState 里，这一层只负责选内容类型。
+        if let Some(relative) = request.path.strip_prefix("/live2d/models/") {
+            let _ = match state.live2d_asset_path(relative) {
+                Some(path) => write_file(&mut stream, &path, model_content_type(&path)),
+                None => write_json(
+                    &mut stream,
+                    404,
+                    &serde_json::json!({ "ok": false, "error": "live2d asset not found" }),
                 ),
             };
             return;
@@ -264,6 +279,21 @@ where
     stream.write_all(&body)
 }
 
+/// 模型资源只有三类：json（manifest / motion / expression / physics）、png（贴图）
+/// 与 moc3（二进制模型）。其它扩展名按二进制流给，不做猜测。
+fn model_content_type(path: &Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("png") => "image/png",
+        Some("json") => "application/json; charset=utf-8",
+        _ => "application/octet-stream",
+    }
+}
+
 fn write_file(
     stream: &mut TcpStream,
     path: &std::path::Path,
@@ -313,5 +343,28 @@ mod tests {
         assert_eq!(reason(401), "Unauthorized");
         assert_eq!(reason(403), "Forbidden");
         assert_eq!(reason(503), "Service Unavailable");
+    }
+
+    #[test]
+    fn serves_model_assets_with_types_the_engine_can_use() {
+        // 贴图给 image/png，manifest/motion/expression 给 json，moc3 给二进制流。
+        assert_eq!(
+            model_content_type(Path::new("hiyori/Hiyori.2048/texture_00.png")),
+            "image/png"
+        );
+        assert_eq!(
+            model_content_type(Path::new("hiyori/Hiyori.model3.json")),
+            "application/json; charset=utf-8"
+        );
+        assert_eq!(
+            model_content_type(Path::new("hiyori/Hiyori.moc3")),
+            "application/octet-stream"
+        );
+        // 扩展名大小写不敏感；没有扩展名时不猜。
+        assert_eq!(model_content_type(Path::new("a/TEXTURE.PNG")), "image/png");
+        assert_eq!(
+            model_content_type(Path::new("a/no-extension")),
+            "application/octet-stream"
+        );
     }
 }

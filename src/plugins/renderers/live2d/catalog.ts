@@ -25,8 +25,17 @@ export interface Live2dAppearance {
   actions: Record<string, Live2dActionEntry>;
 }
 
+/** 同源资源前缀。**只放 Core**：它是 SDK 运行时，留在包内（`script-src 'self'` 即可）。 */
 export const LIVE2D_ASSETS_BASE = "/live2d";
 export const LIVE2D_CORE_SCRIPT = `${LIVE2D_ASSETS_BASE}/core/live2dcubismcore.min.js`;
+
+/**
+ * 模型资源在回环 API 上的路径前缀。
+ *
+ * 模型**不入包**（MVP-14 处置 DEF-1：官方示例模型不得随包分发），改由 shell 从
+ * 应用数据目录按需提供。Core 与模型的分发边界不同，所以两者走不同的前缀。
+ */
+export const LIVE2D_MODELS_ROUTE = "/live2d/models";
 
 export const LIVE2D_APPEARANCES: readonly Live2dAppearance[] = [
   {
@@ -75,9 +84,16 @@ export function getLive2dAppearance(id: unknown): Live2dAppearance | null {
   return LIVE2D_APPEARANCES.find((appearance) => appearance.id === id) ?? null;
 }
 
-/** manifest 的完整 URL；模型自身引用的贴图相对该 URL 解析。 */
-export function live2dManifestUrl(appearance: Live2dAppearance): string {
-  return `${LIVE2D_ASSETS_BASE}/models/${appearance.id}/${appearance.manifest}`;
+/**
+ * manifest 的完整 URL；模型自身引用的贴图与动作都相对该 URL 解析。
+ *
+ * 必须用回环 API 的**绝对**地址：模型不入包，所以同源相对路径会 404。
+ * 基址为空时返回空串，由调用方按「模型不可用」处理，不静默退化成相对路径。
+ */
+export function live2dManifestUrl(appearance: Live2dAppearance, apiBaseUrl: string): string {
+  const base = apiBaseUrl.trim().replace(/\/+$/, "");
+  if (!base) return "";
+  return `${base}${LIVE2D_MODELS_ROUTE}/${appearance.id}/${appearance.manifest}`;
 }
 
 /** 供菜单使用的选项列表；顺序即目录顺序。 */

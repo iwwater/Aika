@@ -66,6 +66,8 @@ export class Live2dRendererPlugin implements PetRendererPlugin {
 
   private context: RendererMountContext | null = null;
   private settings: PetSettings | null = null;
+  /** 回环 API 基址；模型不入包（MVP-14），模型文件经它提供。prepare 时由宿主注入。 */
+  private apiBaseUrl = "";
   private root: HTMLDivElement | null = null;
   private hitTarget: HTMLDivElement | null = null;
   private readonly bubbleView = new BubbleView(this.id);
@@ -116,6 +118,7 @@ export class Live2dRendererPlugin implements PetRendererPlugin {
     if (this.disposed) throw new Error('live2d renderer has already been disposed');
     this.context = context;
     this.settings = context.settings;
+    this.apiBaseUrl = context.apiBaseUrl;
 
     const root = document.createElement('div');
     root.className = 'pet-live2d';
@@ -439,7 +442,14 @@ export class Live2dRendererPlugin implements PetRendererPlugin {
     let stage: PixiApplication | null = null;
     try {
       const engine = await this.loadEngine();
-      const modelUrl = live2dManifestUrl(appearance);
+      const modelUrl = live2dManifestUrl(appearance, this.apiBaseUrl);
+      if (!modelUrl) {
+        // 宿主没给回环基址。模型不入包，同源相对路径必然 404，所以这里直接失败让
+        // 宿主降级，而不是拿相对路径去碰运气——「确定失败」比「碰巧能用」可验收。
+        throw new Error(
+          'live2d models are served over the loopback API, but the host provided no base URL',
+        );
+      }
 
       // 每次换装都建一个**独立舞台**，而不是在旧舞台里换模型。
       //

@@ -35,6 +35,14 @@ export interface RendererMountContext {
   readonly host: HTMLElement;
   readonly pet: PetCatalogItem;
   readonly settings: PetSettings;
+  /**
+   * 回环 API 基址（例如 `http://127.0.0.1:17321`）。
+   *
+   * Live2D 模型**不入包**（MVP-14）：模型文件由 shell 自己的回环 HTTP 从应用数据
+   * 目录提供，渲染器按这个基址拼 URL。CSP 的 `connect-src` / `img-src` 本就放行
+   * `http://127.0.0.1:*`，所以这条路径不需要放宽 CSP。
+   */
+  readonly apiBaseUrl: string;
   /** Called when the renderer's interactive region changes, for click-through handling. */
   readonly onHitTargetChange: (element: HTMLElement | null) => void;
   /** Called when the renderer fails after activation and the window should degrade. */

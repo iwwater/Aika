@@ -22,5 +22,7 @@ probe/live2d/assets/
 probe/live2d/probe-screenshot.png
 
 # MVP-11 runtime assets: Cubism Core plus the official sample models are licensed
-# material fetched by `node scripts/fetch-live2d-assets.mjs`. They are never vendored.
+# Cubism Core（SDK 运行时），由 `node scripts/fetch-live2d-assets.mjs` 取到；它留在包内。
+# 官方示例模型**不在这里**：脚本会把它们直接下到应用数据目录的 live2d/models/，
+# 既不进仓库也不进包（MVP-14 处置 DEF-1）。
 public/live2d/

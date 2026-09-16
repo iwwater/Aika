@@ -303,6 +303,8 @@ export function PetWindow() {
       host: rendererContainer,
       pet: snapshotRef.current.activePet,
       settings: snapshotRef.current.settings,
+      // 模型不入包（MVP-14），Live2D 渲染器靠这个基址从回环 API 取模型文件。
+      apiBaseUrl: snapshotRef.current.apiBaseUrl,
       onHitTargetChange: (element) => {
         detachHoverRef.current?.();
         detachHoverRef.current = null;

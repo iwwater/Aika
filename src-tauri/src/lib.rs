@@ -299,6 +299,42 @@ fn app_data_pet_storage_dir(app_data_dir: &Path) -> PathBuf {
     app_data_dir.join("pets")
 }
 
+/// Live2D 模型在应用数据目录下的位置（`<app data>/live2d/models`）。
+///
+/// 模型**不入包**（MVP-14 处置 DEF-1）：它们由使用者按
+/// `scripts/fetch-live2d-assets.mjs` 放在这里，经回环 HTTP 提供给 WebView。
+fn live2d_models_dir(app_data_dir: &Path) -> PathBuf {
+    app_data_dir.join("live2d").join("models")
+}
+
+/// 把 URL 里的相对路径解析成模型目录下的真实文件路径。
+///
+/// 这是模型资源的**唯一信任边界**：目录内容由使用者放置、路径来自 HTTP 请求，
+/// 所以只接受由 `[A-Za-z0-9._-]` 组成的段，拒绝空段、`.` 与 `..`，并要求至少
+/// 「外观目录 + 文件名」两段。任何不满足的输入一律返回 `None`——不做纠正、不做
+/// 规范化后再判断，避免 `..` 在规范化过程里被消掉而绕过检查。
+fn resolve_live2d_asset(models_dir: &Path, relative: &str) -> Option<PathBuf> {
+    if relative.is_empty() || relative.len() > 512 {
+        return None;
+    }
+    let mut path = models_dir.to_path_buf();
+    let mut segments = 0_usize;
+    for segment in relative.split('/') {
+        if segment.is_empty() || segment == "." || segment == ".." {
+            return None;
+        }
+        if !segment
+            .chars()
+            .all(|value| value.is_ascii_alphanumeric() || matches!(value, '.' | '_' | '-'))
+        {
+            return None;
+        }
+        path.push(segment);
+        segments += 1;
+    }
+    (segments >= 2).then_some(path)
+}
+
 fn resolve_pet_storage_dir(app_data_dir: &Path, settings: &PetSettings) -> Result<PathBuf, String> {
     match settings.pet_storage_preset {
         PetStoragePreset::AppData => Ok(app_data_pet_storage_dir(app_data_dir)),
@@ -1043,6 +1079,18 @@ impl AppState {
         // 用扫描时记下的实际路径：目录名与清单 id 可以不同（Codex 约定），
         // 用 id 拼目录会让快照广告的 URL 404。
         let path = pet.local_spritesheet.clone()?;
+        path.is_file().then_some(path)
+    }
+
+    /// 解析一个 Live2D 模型资源（相对 `<app data>/live2d/models`）。
+    ///
+    /// 返回 `None` 即 404：路径非法、越界，或文件不存在。锁只在取目录时持有。
+    pub(crate) fn live2d_asset_path(&self, relative: &str) -> Option<PathBuf> {
+        let models_dir = {
+            let state = self.inner.lock().expect("runtime state poisoned");
+            live2d_models_dir(state.app_data_dir.as_ref()?)
+        };
+        let path = resolve_live2d_asset(&models_dir, relative)?;
         path.is_file().then_some(path)
     }
 
@@ -2244,5 +2292,48 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn rejects_model_asset_paths_that_escape_the_models_directory() {
+        let root = Path::new("/models");
+
+        // 真实模型里的形态：外观目录 + 文件，可再带一层子目录。
+        for accepted in [
+            "hiyori/Hiyori.model3.json",
+            "hiyori/Hiyori.moc3",
+            "hiyori/motions/Hiyori_m01.motion3.json",
+            "hiyori/Hiyori.2048/texture_00.png",
+            "mao/expressions/exp_01.exp3.json",
+        ] {
+            let resolved = resolve_live2d_asset(root, accepted).expect(accepted);
+            assert!(resolved.starts_with(root));
+            assert!(resolved.ends_with(accepted));
+        }
+
+        // 逃逸尝试与非资源形态一律拒绝（不做纠正、不做规范化后再判断）。
+        for rejected in [
+            "",
+            "hiyori",
+            "hiyori/",
+            "hiyori//texture.png",
+            "../secrets",
+            "hiyori/../../secrets",
+            "hiyori/..",
+            "/etc/passwd",
+            "hiyori\\..\\..\\secrets",
+            "hiyori/%2e%2e/secrets",
+            "hiyori/texture.png?x=1",
+            "hiyori/te:xture.png",
+        ] {
+            assert!(
+                resolve_live2d_asset(root, rejected).is_none(),
+                "accepted {rejected}"
+            );
+        }
+
+        // 超长输入直接拒绝，不截断后使用。
+        let long = format!("hiyori/{}", "a".repeat(600));
+        assert!(resolve_live2d_asset(root, &long).is_none());
     }
 }
