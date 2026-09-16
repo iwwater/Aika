@@ -9,7 +9,7 @@
 - [MVP-08](reports/MVP-08_ACCEPTANCE.md)：**A～F PASS**（品牌替换、菜单入口、单实例、退出语义、协议退出鉴权、回归）。临时标识 PetShell / `dev.aiki.petshell`。
 - [MVP-09](reports/MVP-09_ACCEPTANCE.md)：**A/B/C/D/F PASS，E PARTIAL**——`product`/`capabilities` 识别、版本绑定、owned-only 协议退出与回退、三通道与双仓 fixture 同步已落地；**屏幕可见层未跑**，故本 SPEC 尚未整体收口。
 - MVP-11：**A～F PASS**（Live2D renderer 与首版换装，Windows 真机 + WebDriver 取证；见 [MVP-11 报告](reports/MVP-11_ACCEPTANCE.md)）。
-- MVP-13：**执行中，报告 PARTIAL**（[MVP-13 报告](reports/MVP-13_ACCEPTANCE.md)）——MSI 构建/启动/重开、四端点逐项复测、Live2D 在 release 产物的可见表现（像素证据）、10 分钟待机与 30 次交互均已取；抓出 **DEF-1**（Live2D 素材随包分发，**已由 MVP-14 修复**）、**DEF-2**（Live2D 整窗鼠标穿透，已修复并人工复验）、**DEF-3**（导入宠物贴图 URL 取不到，已修复并真机复验）；AC-F 安装/卸载未跑。
+- MVP-13：**报告 AC-D/E/F PASS，A/B/C 部分**（[MVP-13 报告](reports/MVP-13_ACCEPTANCE.md)）——MSI 构建/启动/重开、四端点逐项复测、Live2D 在 release 产物的可见表现（像素证据）、10 分钟待机与 30 次交互均已取；三个缺陷 **DEF-1/2/3 全部处置**（DEF-1 由 MVP-14 修复，DEF-2/DEF-3 在本份内修复复验）；**AC-F 安装/卸载已于 2026-09-16 授权补测 PASS**（安装副本 903 ms 就绪、四端点 200、卸载残留清零、用户数据 41 文件不变）。**遗留**：`attach`/断连恢复、FPS 侧证据、Cubism Core 分发条件核查，以及「安装模式 per-machine vs per-user」需产品决定（现为 per-machine，要求提权）。
 - MVP-12：**A～E PASS**（仅点击范围；[报告](reports/MVP-12_ACCEPTANCE.md)）——反向点击通道双仓落地：实例级一次性凭据（成对注入、attach 零携带）、版本封闭、按 `eventId` 去重、回环 only；**真人操作已闭合**（真实鼠标点击 → 宠物判定 → POST 到 Aiki 注入的 URL → 受理恰好一次）；撤销迟到输入实测 `unarmed:1` 且 `accepted` 不回退。偏差两项（实例身份由凭据承载而非报文字段、`eventId` 非 RFC UUID）与三项未闭合（单实例转交、真实断连分支、真实链路双击边界）见报告 §7。AC-D 按范围冻结记「不适用」。
 - KB-01：**NOT RUN**，仍未派发实施。
 - MVP-15：**草案，未派发**（[点击的 Aika 侧语义](specs/MVP-15_CLICK_CONSUMER.md)）——补上 MVP-12 §4 留出的消费者语义：v1（点击只作为可观测事实，不生成对话轮/不调 provider/不命令宠物做动作）已随 MVP-12 落地并冻结；v2 四个候选语义（零行为 / 受限轻量回应 / 对话入口 / 在场信号）与「无论选哪个都要满足的 6 条不变量」已列，**待用户拍板 §5**。隐私相关选项（D 在场信号）建议单独立项。

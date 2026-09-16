@@ -11,10 +11,10 @@
 | C 性能 | **PARTIAL** | HTTP 受理 P95、气泡可见、冷启动、10 分钟待机、30 次交互的 CPU/RAM 均已取；**FPS 无证据**、反复切换未分段采样 |
 | D 出站与日志 | **PASS** | 无 HTTP 客户端、CSP 限制出站、无日志文件、令牌零命中；本地路径暴露已登记 |
 | E MSI 构建与包内容 | **PARTIAL** | MSI 构建/启动/重开 PASS；包内容登记发现的 **DEF-1 已由 [MVP-14](MVP-14_ACCEPTANCE.md) 修复**（官方示例模型移出分发包，exe −7.9 MB / MSI −7.9 MB） |
-| F 安装/卸载 | **NOT RUN** | 需明确授权的环境，本轮未做 |
+| F 安装/卸载 | **PASS**（2026-09-16 授权补测） | 提权安装 → 安装副本运行（903 ms 就绪、四端点 200）→ 卸载 → 残留清零；**用户数据 41 文件不变**。未提权时是 1603/1925（per-machine + ALLUSERS=1），详见 §7 |
 | G 三线裁决 | 见 §9 | 模块完成 / 0.6 产品 DoD / 发行就绪 分别裁决 |
 
-**本报告不宣告 0.6 完成。** AC-E 的包内容缺陷（DEF-1）与 AC-F 未执行，按 SPEC「未解决的组合许可条件阻塞相关对外发行」处理。
+**本报告不宣告 0.6 完成。** 原两条阻塞均已解除：DEF-1 由 [MVP-14](MVP-14_ACCEPTANCE.md) 修复并验收、**AC-F 已于 2026-09-16 授权补测 PASS**；0.6 仍未达成的部分见 §9（`attach`、断连恢复、FPS 侧证据、Cubism Core 分发条件核查、安装模式待定）。
 
 ## 0. 基线与环境（AC-A）
 
@@ -398,9 +398,32 @@ GET /api/pets/phoebe/spritesheet        → 404（目录名不是身份，原语
 
 关于「未知 `animationId` 返回 200」：这是 **PET-01 已冻结的上游语义**，[PET-01 §4](../../frontend/reports/PET-01_PROTOCOL.md) 原文即「上游不校验 `animationId`，实测 `{"animationId":"backflip"}` 返回 200 并把 `backflip` 原样写进 `lastAction`」。因此**不判为漂移**；「不靠乱发动作猜能力」也就仍然是 Aiki 侧白名单的责任，不是 shell 的义务。
 
-## 7. AC-F：安装 / 卸载 — NOT RUN
+## 7. AC-F：安装 / 卸载 — PASS（2026-09-16 授权补测）
 
-需明确授权的环境，且不得操作用户日用系统；本轮未执行。与 INT-03 只复用同一产物与环境的适用证据，不重复跑无变化的全门禁。
+授权：用户 2026-09-16 明确授权在本机执行安装/卸载回归。
+
+前置：备份 `%APPDATA%\dev.aiki.petshell`（41 文件 / 9,246,256 B）；停掉全部实例。
+产物 `PetShell_0.6.0_x64_en-US.msi` **5,537,792 B**，sha256 `6E1EAA34…4429`，
+ProductCode `{F98D0012-0570-46C2-880E-6E084DE90294}`，**`ALLUSERS=1`（per-machine）**。
+
+| 步骤 | 命令 | 结果 |
+| --- | --- | --- |
+| 未提权安装（对照组） | `msiexec /i <msi> /qn /norestart` | **1603**；日志根因 **Error 1925**「You do not have sufficient privileges to complete this installation for all users of the machine」；安装目录未创建、无半成品 |
+| 提权安装 | 同上 + UAC 授权 | 成功：`C:\Program Files\PetShell\petshell.exe` **12,502,016 B**（与 release 产物同尺寸）+ `Uninstall PetShell.lnk` |
+| 安装副本运行 | 启动安装路径的 exe | 冷启动就绪 **903 ms**；`product=PetShell/0.6.0`（upstream 署名保留）；`capabilities.shutdown.available=true`、`singleInstance=true`；`POST /api/say` 200；`GET /live2d/models/hiyori/Hiyori.model3.json` **200**；协议退出 200 → 进程退出、端口 17321 释放 |
+| **用户数据** | 安装前后对比 | activePet `nia`、`renderer=live2d`、`appearance=hiyori`、宠物目录 2 项 —— **安装不清空、不迁移用户数据** |
+| 提权卸载 | `msiexec /x {F98D0012-…} /qn /norestart` + UAC 授权 | 成功（日志 `Removal completed successfully`），目录 2 s 内移除 |
+| 残留检查 | 目录 / 快捷方式 / 进程 / 注册表 / 数据 | 安装目录不存在；开始菜单 **0**；桌面与公共桌面快捷方式 **0**；进程 **0**；`ProductState=-1`（已卸载）；**应用数据 41 → 41 文件不变**、`renderer=live2d` 保持 |
+
+**结论：AC-F PASS。** 两条要记住的事实：
+
+1. **per-machine 安装需要管理员权限**（`ALLUSERS=1`）：未提权时 1603 + 1925，且不会留下半成品。
+   自用场景只需用户点一次 UAC；**若将来对外分发，「per-machine 还是 per-user」是需要单独决定的产品项**
+   （决定安装到 `Program Files` 还是用户目录、是否需要提权）。
+2. **安装与卸载都不碰用户数据**：`%APPDATA%\dev.aiki.petshell` 原样保留，重装/卸载不会丢宠物与设置。
+
+边界（不外推）：本轮是**最小验证**（安装 → 能起来 → 四端点 → 卸载 → 残留），不重复 INT-03 已覆盖的打包门禁；
+**未做**跨版本升级（新版覆盖旧版）、非默认安装路径、多用户环境下的 per-machine 行为。
 
 ## 8. 取证方法学注记（给下一次验收）
 
@@ -414,11 +437,11 @@ GET /api/pets/phoebe/spritesheet        → 404（目录名不是身份，原语
 
 | 线 | 裁决 |
 | --- | --- |
-| **模块完成** | MVP-07/08/10/11 已 PASS；MVP-09 PARTIAL（屏幕可见层）；**MVP-13 本份 PARTIAL**（AC-A/B/C 部分、E 部分、F 未跑）。三个缺陷 **DEF-1 / DEF-2 / DEF-3 已全部处置**：DEF-2、DEF-3 在本份内修复复验，DEF-1 由 [MVP-14](MVP-14_ACCEPTANCE.md) 修复并验收 |
-| **0.6 产品 DoD** | **未达成**。缺：经菜单的 sprite↔Live2D 切换、`attach`、断连恢复、安装/卸载、FPS 侧证据；且 DEF-1 未处置。（本轮已补齐 Live2D 在 release 产物的可见证据，并修复了 DEF-2 交互缺陷） |
-| **发行就绪** | **未达成，但不再被 DEF-1 阻塞**（模型已移出分发包）。剩余：AC-F 安装/卸载未验、Cubism Core 自身分发条件未核查、`attach`/断连恢复未验 |
+| **模块完成** | MVP-07/08/10/11 已 PASS；MVP-09 PARTIAL（屏幕可见层）；**MVP-13 本份：AC-D/E/F PASS，A/B/C 部分**。三个缺陷 **DEF-1 / DEF-2 / DEF-3 已全部处置**：DEF-2、DEF-3 在本份内修复复验，DEF-1 由 [MVP-14](MVP-14_ACCEPTANCE.md) 修复并验收 |
+| **0.6 产品 DoD** | **未达成**。缺：`attach`、断连恢复、FPS 侧证据；~~经菜单的外观切换~~（已由 [MVP-14 §4.2](MVP-14_ACCEPTANCE.md) 的 e2e 覆盖）、~~安装/卸载~~（本份 §7 已补 PASS）、~~DEF-1~~（已处置） |
+| **发行就绪** | **未达成，但不再被 DEF-1/AC-F 阻塞**。剩余：Cubism Core 自身分发条件未核查、`attach`/断连恢复未验、**安装模式（per-machine vs per-user）需产品决定**（现在要求提权） |
 
-**仍需人工/授权环境**（不因本报告自动关闭）：安装/卸载回归（AC-F）、PET-07 逐条复验、`attach` 与断连恢复、经菜单的 sprite↔Live2D 切换、FPS/交互侧性能采样。
+**仍需人工/授权环境**（不因本报告自动关闭）：PET-07 逐条复验、`attach` 与断连恢复、经菜单切换 renderer（外观切换已由 MVP-14 e2e 覆盖）、FPS/交互侧性能采样。
 
 ## 10. 未覆盖与阻塞
 
@@ -427,7 +450,7 @@ GET /api/pets/phoebe/spritesheet        → 404（目录名不是身份，原语
 | DEF-1 Live2D 素材进包 | **已修复并验收**（[MVP-14](MVP-14_ACCEPTANCE.md)）：官方示例模型移出分发包，Core 留包内，CSP 未放宽 |
 | DEF-2 整窗鼠标穿透 | **已修复并人工复验通过**（`a3d1d26` + 重建产物）；右键菜单/点击走同一输入路径，未单独复验 |
 | DEF-3 导入宠物贴图 URL 取不到 | **已修复并真机复验**（`34acf78` + 重建产物 `D9E1CB67…`）：广告的 URL 返回 200 且字节数与磁盘一致；两种非身份形态仍 404 |
-| AC-F 安装/卸载 | NOT RUN，需授权环境 |
+| AC-F 安装/卸载 | **PASS**（2026-09-16 授权补测，见 §7）：安装副本 903 ms 就绪、四端点 200、卸载残留清零、用户数据不变 |
 | Live2D release 可见表现 | **已取**，见 §6.1（像素证据） |
 | `attach` / 断连恢复 | NOT RUN，需 Aiki 侧联动 |
 | FPS / 交互侧性能 | NOT RUN |
