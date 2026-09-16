@@ -8,6 +8,7 @@ import {
   createPetProcessManager,
   validatePetExecutable,
   type PetProcessManager,
+  type PetProcessSpawnOptions,
 } from "./processManager";
 import {
   createFakeClock,
@@ -457,5 +458,110 @@ describe("PET-05-G 双轨记录", () => {
     expect(source).toContain("desktop_pet_process_stop");
     // 只按句柄停止：模块里不存在「按名字批量 kill」的接口。
     expect(source).not.toMatch(/taskkill|by_name/i);
+  });
+});
+
+/**
+ * MVP-12 反向点击通道：武装与撤销必须跟**所有权**同步，而不是跟「配置」同步。
+ * 这里钉住的是时机——受管派生才武装、归还所有权就撤销、attach 永不武装。
+ */
+describe("MVP-12 反向点击通道的武装与撤销", () => {
+  function clickPort(
+    options: {
+      arm?: () => Promise<{ url: string; token: string } | null>;
+      withoutCapability?: boolean;
+    } = {},
+  ): {
+    port: FakeOsProcessPort;
+    spawnOptions: Array<PetProcessSpawnOptions | undefined>;
+    calls: { arm: number; disarm: number };
+  } {
+    const fake = createFakeOsProcessPort();
+    const spawnOptions: Array<PetProcessSpawnOptions | undefined> = [];
+    const calls = { arm: 0, disarm: 0 };
+    const port: FakeOsProcessPort = {
+      ...fake,
+      spawn: (path, spawnOption) => {
+        spawnOptions.push(spawnOption);
+        return fake.spawn(path, spawnOption);
+      },
+      ...(options.withoutCapability
+        ? {}
+        : {
+            armClickChannel: async () => {
+              calls.arm += 1;
+              return options.arm
+                ? options.arm()
+                : { url: "http://127.0.0.1:9/api/pet/click", token: "click-token-0123456789" };
+            },
+            disarmClickChannel: async () => {
+              calls.disarm += 1;
+            },
+          }),
+    };
+    return { port, spawnOptions, calls };
+  }
+
+  it("受管派生：武装一次并注入成对凭据；归还所有权时撤销", async () => {
+    const { port, spawnOptions, calls } = clickPort();
+    const harness = build({ port, createExitToken: () => "0123456789abcdef" });
+    await harness.settle(harness.manager.ensureReady());
+
+    expect(calls.arm).toBe(1);
+    expect(spawnOptions).toHaveLength(1);
+    expect(spawnOptions[0]).toMatchObject({
+      exitToken: "0123456789abcdef",
+      clickUrl: "http://127.0.0.1:9/api/pet/click",
+      clickToken: "click-token-0123456789",
+    });
+
+    await harness.settle(harness.manager.dispose());
+    expect(calls.disarm).toBe(1);
+  });
+
+  it("attach 模式零武装：没有派生就没有反向通道", async () => {
+    const { port, spawnOptions, calls } = clickPort();
+    const harness = build({ mode: "attach", port });
+    await harness.settle(harness.manager.ensureReady());
+
+    expect(calls.arm).toBe(0);
+    expect(spawnOptions).toHaveLength(0);
+  });
+
+  it("武装失败：派生照常，但不注入点击凭据", async () => {
+    const { port, spawnOptions, calls } = clickPort({
+      arm: async () => {
+        throw new Error("host has no click endpoint");
+      },
+    });
+    const harness = build({ port });
+    await harness.settle(harness.manager.ensureReady());
+
+    expect(spawnOptions).toHaveLength(1);
+    expect(spawnOptions[0]?.clickUrl).toBeUndefined();
+    expect(spawnOptions[0]?.clickToken).toBeUndefined();
+    expect(calls.disarm).toBe(0);
+  });
+
+  it("宿主没有这个能力：不注入任何东西（不回退成「没凭据也让它上报」）", async () => {
+    const { port, spawnOptions, calls } = clickPort({ withoutCapability: true });
+    const harness = build({ port });
+    await harness.settle(harness.manager.ensureReady());
+
+    expect(spawnOptions).toHaveLength(1);
+    expect(spawnOptions[0]).toBeUndefined();
+    expect(calls.arm).toBe(0);
+  });
+
+  it("武装成功但派生失败：立刻撤销，不让凭据悬着", async () => {
+    const { port, calls } = clickPort();
+    port.failSpawnWith(new Error("Access is denied"));
+    const harness = build({ port });
+
+    await expect(harness.settle(harness.manager.ensureReady())).rejects.toBeInstanceOf(
+      PetProcessError,
+    );
+    expect(calls.arm).toBe(1);
+    expect(calls.disarm).toBe(1);
   });
 });

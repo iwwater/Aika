@@ -2,6 +2,7 @@ mod desktop_pet_http;
 mod desktop_pet_process;
 mod foreground;
 mod gateway;
+mod pet_click_endpoint;
 mod remote;
 mod screen;
 mod secret_store;
@@ -44,6 +45,9 @@ pub fn run() {
             desktop_pet_process::desktop_pet_process_alive,
             desktop_pet_process::desktop_pet_process_exit_status,
             desktop_pet_process::desktop_pet_process_stop,
+            pet_click_endpoint::pet_click_arm,
+            pet_click_endpoint::pet_click_disarm,
+            pet_click_endpoint::pet_click_diagnostics,
             screen::environment_screen_supported,
             screen::environment_screen_enable,
             screen::environment_capture_region,
@@ -63,6 +67,10 @@ pub fn run() {
             secret_store::secret_delete,
         ])
         .setup(|app| {
+            // 反向点击通道（MVP-12）：绑回环、端口由系统分配。**启动监听本身不是
+            // 对外能力**——没有实例被武装时一律 403，只有 arm 过的 owned 实例能上报。
+            let _ = app.manage(pet_click_endpoint::start(app.handle().clone())?);
+
             let open = MenuItem::with_id(app, "open", "显示愛花", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "完全退出 Aika", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open, &quit])?;

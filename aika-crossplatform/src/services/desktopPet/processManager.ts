@@ -24,11 +24,32 @@ export interface PetProcessSpawnOptions {
    * 携带它。原生实现只把它写进一个具名环境变量，不给任意 env 入口。
    */
   exitToken?: string;
+  /**
+   * 反向点击通道（MVP-12）：`{ url, token }` 成对注入。
+   *
+   * 方向与退出令牌相反：这一个授权的是**子进程向我们上报点击**。只在校验通过的
+   * 受管派生上传；attach 路径永不携带。缺任一个就整体不注入。
+   */
+  clickUrl?: string;
+  clickToken?: string;
 }
 
 export interface PetProcessPort {
   /** 使用实参数组、不经过 shell；路径由调用方校验过。 */
   spawn(executablePath: string, options?: PetProcessSpawnOptions): Promise<PetProcessHandle>;
+  /**
+   * 武装反向点击通道，返回派生时要注入的 `{ url, token }`。
+   *
+   * 可选：宿主没有这个能力时返回 `null`／不实现，于是受管派生不带点击凭据、
+   * 通道保持关闭（子进程零请求）。**不回退**成「没有凭据也让它上报」。
+   */
+  armClickChannel?(): Promise<{ url: string; token: string } | null>;
+  /**
+   * 归还所有权时撤销：凭据立刻失效，迟到输入被拒。
+   *
+   * 与 `arm` 成对出现，缺省即视为无需撤销。
+   */
+  disarmClickChannel?(): Promise<void>;
   isAlive(handle: PetProcessHandle): boolean | Promise<boolean>;
   /**
    * 退出原因。**可选**：拿不到它就无法断言「确定崩溃」，于是永不自动重启——
@@ -202,11 +223,21 @@ export function createPetProcessManager(deps: PetProcessManagerDeps): PetProcess
     lastError: null,
   };
 
-  /** 放弃所有权时必须同时丢弃令牌，避免它被用到不再属于我们的实例上。 */
+  /**
+   * 放弃所有权：两种凭据都要一起丢。
+   *
+   * 退出令牌不再属于我们就不再使用；点击凭据必须**主动撤销**——否则迟到的点击
+   * 仍会被受理，等于「实例已经不属于我们了，它还能替我们说话」。
+   */
   function releaseOwnership(): void {
     handle = null;
     owned = false;
     ownedExitToken = null;
+    if (deps.port?.disarmClickChannel) {
+      void deps.port.disarmClickChannel().catch(() => {
+        // 撤销失败由宿主侧记账；这里不重试，也不阻塞所有权释放。
+      });
+    }
   }
 
   function sleep(ms: number): Promise<void> {
@@ -300,12 +331,36 @@ export function createPetProcessManager(deps: PetProcessManagerDeps): PetProcess
         exitToken = null;
       }
     }
+    // 反向点击通道：只在**这一次受管派生**上武装。拿不到凭据就不带——通道保持
+    // 关闭（子进程零请求），而不是让它没凭据也乱报、只换来一串 403。
+    let click: { url: string; token: string } | null = null;
+    if (deps.port.armClickChannel) {
+      try {
+        click = await deps.port.armClickChannel();
+      } catch {
+        click = null;
+      }
+    }
+    const spawnOptions: PetProcessSpawnOptions = {};
+    if (exitToken) spawnOptions.exitToken = exitToken;
+    if (click) {
+      spawnOptions.clickUrl = click.url;
+      spawnOptions.clickToken = click.token;
+    }
+
     let spawned: PetProcessHandle;
     try {
-      spawned = await deps.port.spawn(validation.path, exitToken ? { exitToken } : undefined);
+      spawned = await deps.port.spawn(
+        validation.path,
+        Object.keys(spawnOptions).length > 0 ? spawnOptions : undefined,
+      );
     } catch {
       phase = "offline";
       diagnostics.lastError = "spawn_failed";
+      // 武装过但没有实例在位：立刻撤销，别让凭据悬着。
+      if (click && deps.port.disarmClickChannel) {
+        void deps.port.disarmClickChannel().catch(() => {});
+      }
       throw new PetProcessError("spawn_failed");
     }
     handle = spawned;

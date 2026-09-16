@@ -33,13 +33,35 @@ export function createTauriPetProcessPort(options: TauriPetProcessPortOptions): 
       executablePath: string,
       options?: PetProcessSpawnOptions,
     ): Promise<PetProcessHandle> {
-      // 路径已经过 `validatePetExecutable`；Rust 侧会再校验一次。令牌也只在
-      // 这一次启动里注入一个具名环境变量——没有任意参数或任意 env 的位置。
+      // 路径已经过 `validatePetExecutable`；Rust 侧会再校验一次。凭据只在这一次
+      // 启动里注入具名环境变量——没有任意参数或任意 env 的位置。
       const raw = await invoke("desktop_pet_process_spawn", {
         path: executablePath,
         ...(options?.exitToken ? { exitToken: options.exitToken } : {}),
+        // 点击通道成对注入：缺一个就不传，Rust 侧也按「半套凭据不注入」处理。
+        ...(options?.clickUrl && options?.clickToken
+          ? { clickUrl: options.clickUrl, clickToken: options.clickToken }
+          : {}),
       });
       return { pid: readPid(raw) };
+    },
+
+    /**
+     * 反向点击通道的武装与撤销（MVP-12）。
+     *
+     * 凭据由 Rust 侧生成并保管，这里只负责在派生前后各调一次、不带任何参数：
+     * 于是渲染进程里根本没有「让 Aiki 接受任意点击」的位置，而且只有主窗调得动
+     * 这两个命令。
+     */
+    async armClickChannel(): Promise<{ url: string; token: string } | null> {
+      const raw = (await invoke("pet_click_arm")) as { url?: unknown; token?: unknown } | null;
+      const url = typeof raw?.url === "string" ? raw.url : "";
+      const token = typeof raw?.token === "string" ? raw.token : "";
+      return url && token ? { url, token } : null;
+    },
+
+    async disarmClickChannel(): Promise<void> {
+      await invoke("pet_click_disarm");
     },
 
     async isAlive(handle: PetProcessHandle): Promise<boolean> {

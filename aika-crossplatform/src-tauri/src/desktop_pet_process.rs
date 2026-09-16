@@ -144,18 +144,41 @@ fn base_command(path: &str) -> Command {
 /// 受管退出令牌的环境变量名（与 PetShell 侧 `EXIT_TOKEN_ENV` 一致）。
 pub const EXIT_TOKEN_ENV: &str = "PET_SHELL_EXIT_TOKEN";
 
-/// 启动命令 + 唯一的具名注入项。
+/// 反向点击通道的两个变量名（与 PetShell 侧 `pet_click.rs` 一致）。
+pub const CLICK_URL_ENV: &str = "PET_SHELL_CLICK_URL";
+pub const CLICK_TOKEN_ENV: &str = "PET_SHELL_CLICK_TOKEN";
+
+/// 注入给子进程的凭据集合：**具名、封闭、全部由我们自己生成**。
 ///
-/// 刻意不做「任意 env 表」：调用方给不了别的变量名，也给不了额外参数。退出令牌
-/// 是我们自己生成、只交给本进程启动的那个子进程的凭据，不是让上层往子进程里塞
-/// 任意环境的能力。
-fn spawn_command(path: &str, exit_token: Option<&str>) -> Command {
+/// 两种凭据方向相反：退出令牌是「Aiki → shell」的授权（我们请它退出），点击凭据是
+/// 「shell → Aiki」的授权（它向我们上报点击）。都不是让上层往子进程里塞任意环境的能力。
+#[derive(Debug, Default, Clone)]
+pub struct PetChildCredentials {
+    pub exit_token: Option<String>,
+    pub click_url: Option<String>,
+    pub click_token: Option<String>,
+}
+
+fn trimmed(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|value| !value.is_empty())
+}
+
+/// 启动命令 + 具名注入项。
+///
+/// 刻意不做「任意 env 表」：调用方给不了别的变量名，也给不了额外参数。空白等同于
+/// 没有；点击通道是**一对**，URL 与凭据缺任一个就整体不注入，免得子进程拿着半套
+/// 凭据去猜目标。
+fn spawn_command(path: &str, credentials: &PetChildCredentials) -> Command {
     let mut command = base_command(path);
-    if let Some(token) = exit_token {
-        let token = token.trim();
-        if !token.is_empty() {
-            command.env(EXIT_TOKEN_ENV, token);
-        }
+    if let Some(token) = trimmed(credentials.exit_token.as_deref()) {
+        command.env(EXIT_TOKEN_ENV, token);
+    }
+    if let (Some(url), Some(token)) = (
+        trimmed(credentials.click_url.as_deref()),
+        trimmed(credentials.click_token.as_deref()),
+    ) {
+        command.env(CLICK_URL_ENV, url);
+        command.env(CLICK_TOKEN_ENV, token);
     }
     command
 }
@@ -224,17 +247,24 @@ pub fn desktop_pet_process_validate(path: String) -> Result<(), ProcessFailure> 
 
 /// 启动配置好的运行程序。
 ///
-/// 参数只有一个路径 + 一个可选的受管退出令牌：**没有第三个参数**，也没有任意
-/// 环境变量或命令行片段，所以不存在"把 Agent 输出当命令行"的入口。
+/// 参数只有「路径 + 三个具名凭据」：没有任意环境变量或命令行片段，所以不存在
+/// 「把 Agent 输出当命令行」的入口。
 #[tauri::command]
 pub fn desktop_pet_process_spawn(
     state: tauri::State<'_, DesktopPetProcessState>,
     path: String,
     exit_token: Option<String>,
+    click_url: Option<String>,
+    click_token: Option<String>,
 ) -> Result<SpawnOutcome, ProcessFailure> {
     let path = validate_executable(&path).map_err(|error| ProcessFailure::new(error.kind()))?;
+    let credentials = PetChildCredentials {
+        exit_token,
+        click_url,
+        click_token,
+    };
     let children = state.handles();
-    let pid = spawn_with(spawn_command(&path, exit_token.as_deref()), &children)?;
+    let pid = spawn_with(spawn_command(&path, &credentials), &children)?;
     Ok(SpawnOutcome { pid, path })
 }
 
@@ -344,16 +374,8 @@ mod tests {
         assert_eq!(stranger.unwrap_err().kind, "unknown_process");
     }
 
-    #[test]
-    fn the_exit_token_is_the_only_thing_injected_into_a_spawn() {
-        let without = spawn_command(r"C:\pet\pet.exe", None);
-        assert_eq!(without.get_envs().count(), 0, "没有令牌时不应注入任何变量");
-
-        let blank = spawn_command(r"C:\pet\pet.exe", Some("   "));
-        assert_eq!(blank.get_envs().count(), 0, "空白令牌等同于没有令牌");
-
-        let with = spawn_command(r"C:\pet\pet.exe", Some("0123456789abcdef"));
-        let envs: Vec<(String, Option<String>)> = with
+    fn env_pairs(command: &Command) -> Vec<(String, Option<String>)> {
+        command
             .get_envs()
             .map(|(key, value)| {
                 (
@@ -361,10 +383,66 @@ mod tests {
                     value.map(|v| v.to_string_lossy().to_string()),
                 )
             })
-            .collect();
-        assert_eq!(envs.len(), 1, "只允许注入一个变量");
+            .collect()
+    }
+
+    /// 注入面是**封闭的三个具名变量**，不是「任意 env 表」。
+    #[test]
+    fn only_the_named_credentials_are_injected_into_a_spawn() {
+        let none = spawn_command(r"C:\pet\pet.exe", &PetChildCredentials::default());
+        assert_eq!(none.get_envs().count(), 0, "没有凭据时不应注入任何变量");
+
+        let blanks = spawn_command(
+            r"C:\pet\pet.exe",
+            &PetChildCredentials {
+                exit_token: Some("   ".to_string()),
+                click_url: Some(String::new()),
+                click_token: Some("  ".to_string()),
+            },
+        );
+        assert_eq!(blanks.get_envs().count(), 0, "空白等同于没有凭据");
+
+        let exit_only = spawn_command(
+            r"C:\pet\pet.exe",
+            &PetChildCredentials {
+                exit_token: Some("0123456789abcdef".to_string()),
+                ..Default::default()
+            },
+        );
+        let envs = env_pairs(&exit_only);
+        assert_eq!(envs.len(), 1, "只给退出令牌时只注入一个变量");
         assert_eq!(envs[0].0, EXIT_TOKEN_ENV);
         assert_eq!(envs[0].1.as_deref(), Some("0123456789abcdef"));
+
+        // 点击通道是一对：只有 URL 或只有凭据都不注入——半套凭据只会让子进程去猜。
+        for half in [
+            PetChildCredentials {
+                click_url: Some("http://127.0.0.1:9/api/pet/click".to_string()),
+                ..Default::default()
+            },
+            PetChildCredentials {
+                click_token: Some("click-token-0123456789".to_string()),
+                ..Default::default()
+            },
+        ] {
+            let command = spawn_command(r"C:\pet\pet.exe", &half);
+            assert_eq!(command.get_envs().count(), 0, "半套凭据不注入");
+        }
+
+        let full = spawn_command(
+            r"C:\pet\pet.exe",
+            &PetChildCredentials {
+                exit_token: Some("0123456789abcdef".to_string()),
+                click_url: Some("http://127.0.0.1:9/api/pet/click".to_string()),
+                click_token: Some("click-token-0123456789".to_string()),
+            },
+        );
+        let envs = env_pairs(&full);
+        assert_eq!(envs.len(), 3, "只允许这三个具名变量");
+        let names: Vec<&str> = envs.iter().map(|(name, _)| name.as_str()).collect();
+        assert!(names.contains(&EXIT_TOKEN_ENV));
+        assert!(names.contains(&CLICK_URL_ENV));
+        assert!(names.contains(&CLICK_TOKEN_ENV));
     }
 
     #[test]
