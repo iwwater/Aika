@@ -138,6 +138,19 @@ export interface CompanionPresenter {
   setProvider(next: ProviderConfig): Promise<void>;
   setProactive(next: ProactiveSettings): Promise<void>;
   /**
+   * 只回答「现在能不能插一句话」（MVP-15 B：点击桌宠的回应）。
+   *
+   * 复用与主动消息**同一份** canSend 输入（勿扰时段 / 每日上限 / 最小间隔）与同一个
+   * 纯函数，**不建轮、不写库、不计数、不通知**——它不是第二条发送路径，只是一次只读判断。
+   *
+   * 放在 Presenter 而不是让调用方自己算：那些输入（今日主动计数、最近一次发送时刻、
+   * 当前勿扰设置）只有 Presenter 手上有，外面再算一遍就是第二套判断。
+   *
+   * 与主动发送的唯一差别：**不要求 provider 已连接**——插一句话不需要模型，
+   * 离线时她照样可以「嗯？」一声。
+   */
+  canSpeakAside(): Promise<boolean>;
+  /**
    * 环境驱动的主动一轮（FE-31 接线用）。
    *
    * 走的是与时间驱动 tick、FE-22 环境触发器**同一个**共享发送预约与同一份
@@ -1104,6 +1117,28 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
     if (storage) await saveProvider(storage, next);
   }
 
+  /**
+   * 只判「能不能插一句话」，不做任何轮次动作（MVP-15 B）。
+   *
+   * 这里刻意复用与 `submitProactive` / `runProactiveTick` **同一份** canSend 输入与
+   * 同一个纯函数——多一份判断就早晚会和主路径不一致。
+   */
+  async function canSpeakAside(): Promise<boolean> {
+    if (!storage || !ready || !proactive.enabled) return false;
+    const now = Date.now();
+    const lastMessageAt = timestamps.length ? timestamps[timestamps.length - 1] : null;
+    const messagesToday = await storage.countProactiveSince(startOfToday(now));
+    return canSend({
+      nowMillis: now,
+      hour: new Date(now).getHours(),
+      quietStartHour: proactive.quietStartHour,
+      quietEndHour: proactive.quietEndHour,
+      messagesToday,
+      lastMessageAt,
+      enabled: proactive.enabled,
+    });
+  }
+
   async function setProactive(next: ProactiveSettings): Promise<void> {
     proactive = next;
     commit();
@@ -1303,6 +1338,7 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
     rewind,
     setProvider,
     setProactive,
+    canSpeakAside,
     setMemoryExtractionEnabled,
     setVoiceBackend,
     setVoiceOutput,

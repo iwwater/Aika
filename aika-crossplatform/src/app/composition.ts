@@ -13,6 +13,7 @@ import type { PresentationServices } from "../presentation/fallback";
 import { capabilityPlugins } from "./plugins";
 import { presentationPlugin } from "./plugins/presentationPlugin";
 import { selectHostPlugins, type HostOptions } from "./hosts";
+import type { ServiceResolver } from "./plugins/petClickReactionPlugin";
 
 /**
  * 组合根。
@@ -47,7 +48,25 @@ export interface Composition {
 export async function createAikaKernel(options: CompositionOptions = {}): Promise<Composition> {
   const kernel = createKernel({ logger: options.logger });
 
-  for (const plugin of options.hostPlugins ?? selectHostPlugins(options)) kernel.use(plugin);
+  /**
+   * 启动后解析器：给需要**延后解析**的宿主插件用（见 `HostOptions.resolve`）。
+   *
+   * Presenter 是惰性构造的，而它们的工厂要求内核已 ready——启动期间解析会报
+   * `kernel is starting`；插件的 registrar 在 activate 返回后又失效。所以把解析
+   * 能力从这里递出去，让插件在真正用的时候（点击到达）再取。
+   * 组合根本来就是白名单里允许调用 `registry.resolve` 的地方。
+   */
+  const resolveService: ServiceResolver = (token) => {
+    try {
+      return kernel.registry.tryResolve(token);
+    } catch {
+      // 内核 failed 之后 tryResolve 也会抛：一律按「没有这个能力」处理。
+      return null;
+    }
+  };
+
+  const hostOptions: HostOptions = { ...options, resolve: options.resolve ?? resolveService };
+  for (const plugin of options.hostPlugins ?? selectHostPlugins(hostOptions)) kernel.use(plugin);
   // 默认装配能力插件；测试或特殊宿主可显式覆盖。
   for (const plugin of options.featurePlugins ?? capabilityPlugins()) kernel.use(plugin);
   // 展示层在内核里也是普通插件：注册表提供实例，Hook 经 useService 取。

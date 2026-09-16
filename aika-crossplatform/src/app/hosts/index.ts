@@ -24,6 +24,9 @@ import { createCaptureScheduler } from "../../services/environment/captureSchedu
 import { environmentPlugin } from "../plugins/environmentPlugin";
 import { environmentHostPlugin } from "../plugins/environmentHostPlugin";
 import { desktopPetPlugin } from "./desktopPet";
+import {
+  petClickReactionPlugin, type PetClickEvent, type ServiceResolver,
+} from "../plugins/petClickReactionPlugin";
 import { isTauriHost } from "./detect";
 import {
   fetchPlugin, hostLifecyclePlugin, notifierPlugin, outboundTransportPlugin, remotePlugin,
@@ -48,6 +51,15 @@ export interface HostOptions {
    * 也让宿主装配层能与心跳共用同一个实例（epoch 必须一致）。
    */
   hostLifecycle?: HostLifecycle;
+  /**
+   * **启动后**的服务解析器，由组合根注入。
+   *
+   * 给需要「延后解析」的宿主插件用：Presenter 的工厂要求内核已 ready，activate 期间
+   * 解析会失败，而 `PluginContext.registrar` 在 activate 返回后即被 revoke——于是把
+   * 解析推迟到真正用的时候（例如点击到达时），是唯一不破坏惰性构造契约的做法。
+   * 不注入时相关插件仍会激活，只是每次都记 `unavailable`。
+   */
+  resolve?: ServiceResolver;
 }
 
 function baseHost(
@@ -166,6 +178,33 @@ export function tauriHostPlugins(options: HostOptions = {}): AikaPlugin[] {
     desktopPetPlugin({
       http: createTauriPetHttpPort(invoke),
       process: createTauriPetProcessPort({ invoke }),
+    }),
+    // 点击回应（MVP-15 B，2026-09-16 用户拍板）：点击 → 一句固定短语。
+    // 事实来自 Rust 接收端只发授权主窗的事件；`listen` 只在这里 import，
+    // 服务的说话权与终审分别从 VoicePresenter / CompanionPresenter 拿，不复制判断。
+    petClickReactionPlugin({
+      // 解析器由组合根给；没有它就没有这个行为（而不是退化成「不带终审也说」）。
+      ...(options.resolve ? { resolve: options.resolve } : {}),
+      clickSource: {
+        subscribe(handler) {
+          let unlisten: (() => void) | null = null;
+          let cancelled = false;
+          void import("@tauri-apps/api/event")
+            .then(({ listen }) =>
+              listen("pet://click", (event) => handler(event.payload as PetClickEvent)),
+            )
+            .then((dispose) => {
+              // 订阅是异步建立的：建立之前就被退订，就直接把它扔掉。
+              if (cancelled) dispose();
+              else unlisten = dispose;
+            })
+            .catch(() => undefined);
+          return () => {
+            cancelled = true;
+            unlisten?.();
+          };
+        },
+      },
     }),
     remotePlugin(createTauriRemoteHost()),
     // 出站传输：帧经 Rust 缓存供手机页长轮询；命令经 `outbound://command` 下行。

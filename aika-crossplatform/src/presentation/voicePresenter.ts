@@ -123,6 +123,16 @@ export interface VoicePresenter {
   /** 停止朗读。不影响语音会话自己的播放。 */
   stopSpeaking(): void;
   /**
+   * 插一句短话（MVP-15 B：点击桌宠的回应）。
+   *
+   * 与朗读消息遵循同一套说话权规则：语音会话开着时不抢、正在念时不叠话。
+   * 它**不建轮、不进聊天记录、不写记忆、不碰字幕**——只经同一个队列开口，
+   * 因为机器只有一套嗓子。返回 `false` = 这次没开口（调用方据此计数，不重试）。
+   */
+  speakAside(text: string): boolean;
+  /** 输出链路当前是否正在出声（含插话）。点击回应据此不叠话。 */
+  isSpeaking(): boolean;
+  /**
    * 应用新的语音输出配置（TTS-04）：停旧队列、按新配置重建引擎与队列。
    * 不发任何网络请求；实际生效链路与原因经 outputStatus 可见。
    */
@@ -703,6 +713,26 @@ export function createVoicePresenter(deps: VoicePresenterDeps = {}): VoicePresen
     clearBubblePlayback();
   }
 
+  /**
+   * 插一句短话：只开口，不认领字幕、不设 speakingMessageId。
+   *
+   * 三条拒绝理由各自对应一个已存在的边界，不是新造规则：
+   * 已 dispose、语音会话占着说话权、队列正在出声（不叠话）。
+   */
+  function speakAside(text: string): boolean {
+    if (disposed) return false;
+    if (isOpen) return false;
+    if (queue.isSpeaking()) return false;
+    const sentences = splitIntoSentences(text ?? "");
+    if (!sentences.length) return false;
+    queue.speak(sentences);
+    return true;
+  }
+
+  function isSpeaking(): boolean {
+    return queue.isSpeaking();
+  }
+
   function appendCaption(speaker: VoiceCaption["speaker"], text: string, translation?: string): number {
     captionId += 1;
     const caption: VoiceCaption = { id: captionId, speaker, text, translation };
@@ -980,6 +1010,8 @@ export function createVoicePresenter(deps: VoicePresenterDeps = {}): VoicePresen
     close,
     speakMessage,
     stopSpeaking,
+    speakAside,
+    isSpeaking,
     applyVoiceOutput,
     interruptAndListen,
     sendNow,

@@ -60,9 +60,23 @@ MVP-12 把「用户点了宠物」这个事实从 pet-shell 送到了 Aika 就�
 | --- | --- |
 | 核心策略模块 `services/desktopPet/clickReaction.ts` | **已实现**：短语池 `CLICK_REACTION_PHRASES`、`CLICK_REACTION_MIN_INTERVAL_MS = 30_000`、不排队、不打断、不冒错；抑制原因封闭五类（`disabled/cooldown/gate/speaking/unavailable`）并逐类计数 |
 | 定向测试 `clickReaction.test.ts` | **11 项通过**：冷启动即回应、冷却内连点只回一次、29 999 ms 抑制 / 30 000 ms 放行、关掉后不查终审不出声、终审不过不出声、说话中不叠话、**没出声不推进冷却**、终审或出声抛错都不冒泡、诊断是快照、池内短句且无「需要上下文才成立」的措辞 |
-| **接线（clickSource + `canSend`/出声注入）** | **NOT RUN**：前端要拿到点击事实需要 `listen("pet://click")` 端口，`gate()` 要取 presenter 的 `ProactiveSettings` 与消息计数，`speak()` 要拿既有出声队列——这三处未做 |
+| **接线（clickSource + 终审 + 出声）** | **已实现**：① `app/hosts/index.ts` 把 `listen("pet://click")` 包成 `clickSource` 端口（`@tauri-apps` 只在这里 import）；② 新插件 `app/plugins/petClickReactionPlugin.ts` 订阅点击、经 token 提供 `ClickReaction` 服务；③ 终审走 **`CompanionPresenter.canSpeakAside()`**、出声走 **`VoicePresenter.speakAside()/isSpeaking()`**——两处都复用既有链路，没有第二套判断、没有第二个队列 |
+| 接线测试 `petClickReactionPlugin.test.ts` | **8 项通过**（真实内核 + 假 Presenter/假点击源）：单击出声、冷却内连点只响一次、终审否决则一次不出声、说话中不叠话、无语音链路仍激活且只记账、满 30s 后第二次照常、**dispose 退订**、服务可解析诊断可读 |
 
-**⚠️ 不得把上表读成「已上线」**：模块与测试已就位，但**尚无生产消费点**——用户现在点击桌宠不会听到任何回应，v1 的诊断计数仍是对外可观测的全部。
+**两个新方法的边界（同时改动了 Presenter 契约）**
+
+| 方法 | 规矩 |
+| --- | --- |
+| `CompanionPresenter.canSpeakAside()` | 与主动消息**同一份** canSend 输入与同一个纯函数；**不建轮、不写库、不计数、不通知**。唯一差别：**不要求 provider 已连接**（插一句话不需要模型，离线也能「嗯？」一声） |
+| `VoicePresenter.speakAside(text)` / `isSpeaking()` | 与朗读消息同一套说话权规则：会话开着不抢、正在念不叠话；**不设 `speakingMessageId`、不碰字幕**（它不是为了「正在朗读某条消息」而存在的） |
+
+**架构约束（踩过才知道，写下来免得下次再踩）**：Presenter 的工厂在 `starting` 期间解析会抛
+`kernel is starting; call start() first`，而 `PluginContext.registrar` 在 activate 返回后即被 revoke。
+所以本插件**不在 activate 里解析 Presenter**，而是由组合根注入一个「启动后解析器」
+（`HostOptions.resolve`，组合根本就是白名单里允许调用 `registry.resolve` 的地方），
+在**点击真的发生时才问**。时钟这类普通服务仍走 registrar（activate 期间合法）。
+
+**⚠️ 尚未验证的那一层**：以上是模块与接线层的证据（单测 + 真实内核）。**真正按一次桌宠听到她开口**要问你的耳朵——本轮我只能在真实应用里验到「事件到达 + 出声调用被触发」这一层（见 §6）。
 
 ### 选项 C：点击 = 开一轮对话
 - **MVP-12 已明确排除「默认点击生成一轮对话」**。只能作为**用户显式开关**（默认关）。
