@@ -27,6 +27,7 @@ import {
   isPetAnimationId,
   pickPetActionFromPool,
 } from './pet/animation';
+import { createClickReportGate, type ClickReportGate } from './pet/clickChannel';
 import { type Rect, fallbackWorkArea } from './pet/motion';
 import {
   type ActionPayload,
@@ -162,6 +163,9 @@ export function PetWindow() {
   const draggingRef = useRef(false);
   const hoveredRef = useRef(false);
   const suppressClickRef = useRef(false);
+  /** 反向点击通道的冷却闸门（MVP-12）；懒初始化，避免每次渲染都新建一个。 */
+  const clickReportGateRef = useRef<ClickReportGate | null>(null);
+  if (clickReportGateRef.current === null) clickReportGateRef.current = createClickReportGate();
   const lastActivityRef = useRef(Date.now());
   const hostElementRef = useRef<HTMLDivElement | null>(null);
   const hitTargetRef = useRef<HTMLElement | null>(null);
@@ -457,7 +461,13 @@ export function PetWindow() {
     }
     const action = pickClickAction(settings);
     dispatchAction(isPetAnimationId(action) ? action : 'waving', 'local');
-  }, [contextMenu, dispatchAction, settings]);
+    // 反向通道（MVP-12）：只把这个事实报给派生我们的 Aiki，**不生成业务轮**——
+    // 是否回应、怎么回应由 Aiki 决定。冷却窗口把双击折叠成一次；只有宿主拿到了
+    // 凭据才有请求，attach 实例是零请求。失败只记账，不打扰点击。
+    if (tauriAvailable && clickReportGateRef.current?.shouldReport()) {
+      void invoke('report_pet_click').catch(() => {});
+    }
+  }, [contextMenu, dispatchAction, settings, tauriAvailable]);
 
   const handlePetKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {

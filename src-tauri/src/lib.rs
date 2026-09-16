@@ -1,5 +1,7 @@
 mod http_api;
+mod pet_click;
 
+use pet_click::{ClickChannel, PetClickDiagnostics};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -605,6 +607,9 @@ struct RuntimeState {
 #[derive(Clone)]
 pub struct AppState {
     inner: Arc<Mutex<RuntimeState>>,
+    /// 反向点击通道（MVP-12）。刻意与 `RuntimeState` 分开：它有自己的锁，
+    /// 点击路径不该去抢运行状态那把锁。
+    click: Arc<ClickChannel>,
 }
 
 fn pet_storage_snapshot_from_state(state: &RuntimeState) -> PetStorageSnapshot {
@@ -699,7 +704,28 @@ impl AppState {
                 exit_token_reason: Some("exit token not configured".to_string()),
                 shutdown_requested: false,
             })),
+            click: Arc::new(ClickChannel::default()),
         }
+    }
+
+    /// 从环境配置反向点击通道（MVP-12）。
+    ///
+    /// URL 与凭据都由派生我们的 Aiki 注入；缺任一个就保持关闭、**零请求**——
+    /// attach 实例拿不到它们，这是「没被派生的实例不反向说话」的落点，
+    /// 不是错误状态。
+    pub fn configure_click_channel_from_env(&self) {
+        let url = std::env::var(pet_click::CLICK_URL_ENV).ok();
+        let token = std::env::var(pet_click::CLICK_TOKEN_ENV).ok();
+        self.click.configure(url.as_deref(), token.as_deref());
+    }
+
+    /// 上报一次点击。返回是否入队；通道关闭时为 `false`。
+    pub fn report_pet_click(&self) -> bool {
+        self.click.report()
+    }
+
+    pub fn pet_click_diagnostics(&self) -> PetClickDiagnostics {
+        self.click.diagnostics()
     }
 
     /// Records who this process is. `exit_token` being absent is not an error: it means
@@ -1841,6 +1867,21 @@ fn toggle_pet_visibility(
     toggle_pet_window(&app, &state)
 }
 
+/// 上报一次宠物点击（MVP-12 反向通道）。
+///
+/// 只上报事实：不生成对话轮、不播动作——那两件事由 Aiki 侧策略决定。通道关闭时
+/// 返回 `false`，调用方**不应**把它当成错误：attach 实例本来就该零请求。
+#[tauri::command]
+fn report_pet_click(state: tauri::State<AppState>) -> bool {
+    state.report_pet_click()
+}
+
+/// 反向通道计数，供设置页与验收读数用。**不含凭据与目标地址**。
+#[tauri::command]
+fn pet_click_diagnostics(state: tauri::State<AppState>) -> PetClickDiagnostics {
+    state.pet_click_diagnostics()
+}
+
 #[tauri::command]
 fn open_pet_storage_folder(
     state: tauri::State<AppState>,
@@ -1867,6 +1908,8 @@ pub fn run() {
     // Single instance per Windows user session, keyed by the app identifier. The exit
     // token comes from whoever spawned us; without it the protocol exit stays closed.
     state.configure_identity(true, exit_token_from_env());
+    // 反向点击通道：URL 与凭据同样由派生我们的 Aiki 注入；缺任一个即保持零请求。
+    state.configure_click_channel_from_env();
 
     tauri::Builder::default()
         // Registered first so a duplicate launch exits during plugin setup, before this
@@ -1940,6 +1983,8 @@ pub fn run() {
             hide_pet,
             toggle_pet_visibility,
             open_pet_storage_folder,
+            report_pet_click,
+            pet_click_diagnostics,
             open_external_url
         ])
         .run(tauri::generate_context!())
