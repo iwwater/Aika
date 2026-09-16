@@ -1,5 +1,7 @@
 # LLM SPEC 执行索引
 
+> 2026-09-15 文档修订：[KB-01 文件批量导入](specs/KB-01.md)已拆独立草案，未派发、AC 全部 NOT RUN，不依赖 0.6 或研究型 RAG。MVP-06 的真实 Voice 与记忆双轨裁决见 [0.5 收口索引](../integration/SPEC_MVP_0.5.md)，不因已有模块结果清账。
+
 需求见 [LLM PRD](PRD.md)。每次只下发一份下面的 SPEC；相关测试在本模块完成，不依赖真实 STT/TTS/前端。
 
 | SPEC | 交付 | 状态 |

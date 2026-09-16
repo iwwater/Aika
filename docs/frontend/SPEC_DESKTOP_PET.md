@@ -14,12 +14,12 @@ PET-* 是前端模块内的独立集成任务，避免与已有 FE 编号及 RPD
 | [PET-05](specs/PET-05.md) | Sidecar 附着、启动、所有权及退出 | PET-01 生命周期证据、PET-02 | 0.5 / **A～G PASS（假进程端口 + 受控测试进程）** |
 | [PET-06](specs/PET-06.md) | 生产装配、设置与旧桌宠入口迁移 | PET-03/04/05 | 0.5 / **A～G PASS（生产装配 + 假外部端口）** |
 | [PET-07](specs/PET-07.md) | Windows 真实链路与故障隔离验收 | PET-01～06 | 0.5 / **Aiki 宿主侧闭环成立：A/B PASS（device，2026-09-15 补强：`pet_command` 证 event/emotion/say 三条全部 accepted）；C/G/H/I NOT RUN、D/E/F/J 部分 PASS——本 SPEC 未整体 PASS** |
-| [PET-08](specs/PET-08.md) | NyaDeskPet 接入与 Live2D 条件里程碑 | 明确选择 0.6 Live2D；PET-02/04/06 | 0.6 / DEFERRED（条件路线；未启动） |
+| [PET-08](specs/PET-08.md) | NyaDeskPet 历史条件路线 | 不作为当前派发项 | 规划已由 [MVP-11 草案](../integration/specs/MVP-11.md)替代；历史实现 NOT RUN |
 
 逐份证据与命令见 `reports/PET-01_ACCEPTANCE.md` … `reports/PET-07_ACCEPTANCE.md`（PET-08 因路线未启动，不生成验收报告）。
 模块级 PASS ≠ 全流程通过：0.5 的跨模块真实链路结论**只能**由 PET-07 在真机给出。
 
-推荐执行：01→02→03→04→05→06→07。PET-04 逻辑不依赖真实 Runtime；上游安装受阻时仍可完成 fake 路径，但协议与设备结论必须分列。PET-08 首段可行性不成立时记录阻塞，不转自研 renderer。
+0.5 原依赖顺序：01→02→03→04→05→06→07；已通过的适用证据不要求重做。PET-04 逻辑不依赖真实 Runtime，协议与设备结论必须分列。PET-08 已退出当前计划；0.6 按 [新索引](../integration/SPEC_MVP_0.6.md)的独立 shell 草案及技术门禁，不从本索引自动派发。
 
 ## 统一派发规则
 

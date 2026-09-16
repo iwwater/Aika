@@ -1,5 +1,7 @@
 # Aiki Desktop Pet Integration — RPD
 
+> **2026-09-15 当前口径**：下文 v0.2 保留为 0.5 接入基线，原“实现 NOT RUN”是起草时状态；当前结果以 [PET 索引](SPEC_DESKTOP_PET.md)及 [0.5 收口索引](../integration/SPEC_MVP_0.5.md)为准。0.6 路线由 [Pet Shell RPD v1.2](../RPD_MVP_0.6.md)及 [SPEC 草案](../integration/SPEC_MVP_0.6.md)覆盖；NyaDeskPet 不作为当前可派发路线。0.5 仍集成原版 Runtime；0.6 规划也不恢复 Aika 主应用内自研窗口。本次仅修改文档。
+
 > Version: 0.2 · 2026-09-14 · Windows First
 > 决策：集成现成 Runtime；文档已重写，代码与实机验收 NOT RUN。
 > 产品称 Aiki；现有仓库名 Aika、代码标识 aika 均不重命名。

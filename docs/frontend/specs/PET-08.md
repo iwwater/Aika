@@ -1,5 +1,7 @@
 # PET-08 · NyaDeskPet Live2D 条件接入
 
+> **2026-09-15 规划替代**：下文保留为历史参考；当前 0.6 Live2D 规格为 [MVP-11 草案](../../integration/specs/MVP-11.md)。本份不再作为可派发任务，不因选择 Live2D 自动启动 NyaDeskPet 接入；历史实现仍 NOT RUN。
+
 状态：DEFERRED（0.6条件路线），实现NOT RUN。需求DPI-08。
 启动条件：明确选择Live2D路线；复用PET-02/04/06接口。0.5不为本SPEC等待。
 
