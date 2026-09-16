@@ -28,6 +28,9 @@ import {
   OK_POST,
   OK_STATUS,
   OK_STATUS_WITH_VERSION,
+  PETSHELL_200_EXITING,
+  PETSHELL_STATUS_NO_EXIT_TOKEN,
+  PETSHELL_STATUS_SNAPSHOT,
   RESPONSE_FIXTURES,
 } from "./fixtures/openPetFixtures";
 
@@ -96,8 +99,11 @@ describe("PET-03-A 四端点黄金 fixture", () => {
     expect(JSON.parse(buildEventRequest("http://127.0.0.1:17321", "success").body!)).toEqual({ type: "success" });
   });
 
-  it("端点表是封闭的四项，没有 emotion、也没有任意路径", () => {
-    expect(Object.keys(OPENPET_ENDPOINTS).sort()).toEqual(["action", "event", "say", "status"]);
+  it("端点表是封闭集合，没有 emotion、也没有任意路径", () => {
+    // 四控制端点 + fork 增量的 shutdown；多出来的这一项是**新增**，不是语义漂移。
+    expect(Object.keys(OPENPET_ENDPOINTS).sort()).toEqual([
+      "action", "event", "say", "shutdown", "status",
+    ]);
     for (const spec of Object.values(OPENPET_ENDPOINTS)) {
       expect(spec.path.startsWith("/api/")).toBe(true);
     }
@@ -322,5 +328,95 @@ describe("PET-03-E 双轨记录", () => {
       "utf8",
     );
     expect(lib).toContain("desktop_pet_http::desktop_pet_http_request");
+    // MVP-09：fork 增量端点与凭据门禁同样必须在原生固定表里，否则前端"能用"只是假象。
+    expect(source).toContain("/api/shutdown");
+    expect(source).toContain("accepts_credential");
+  });
+});
+
+describe("MVP-09-A/D 身份、能力与协议退出", () => {
+  it("如实读取 PetShell 的 product 与 shutdown 能力，四端点语义不变", async () => {
+    const http = createFakePetHttp(alwaysRespond(PETSHELL_STATUS_SNAPSHOT));
+    const clock = createFakeClock(1_000);
+    const adapter = createOpenPetAdapter({
+      http, clock, endpoint: "http://127.0.0.1:17321",
+      profile: () => fakePetProfile({ release: "0.6.0" }),
+    });
+
+    const status = await adapter.status();
+    expect(status.connection).toBe("ready");
+    expect(status.product).toEqual({
+      name: "PetShell",
+      version: "0.6.0",
+      upstream: expect.stringContaining("OpenPet"),
+    });
+    expect(status.shutdown).toEqual({
+      endpoint: "/api/shutdown", version: 1, auth: "bearer-token", available: true,
+    });
+    // 新字段是**新增**：成功判定与请求形状一字未改。
+    expect(await adapter.say("回来啦", contextAt(clock))).toEqual({ outcome: "accepted" });
+    expect(http.calls[1]).toMatchObject({ endpoint: "say", method: "POST" });
+  });
+
+  it("能力未声明可用时一次退出请求都不发", async () => {
+    for (const response of [PETSHELL_STATUS_NO_EXIT_TOKEN, OK_STATUS]) {
+      const http = createFakePetHttp(alwaysRespond(response));
+      const clock = createFakeClock(0);
+      const adapter = createOpenPetAdapter({
+        http, clock, endpoint: "http://127.0.0.1:17321", profile: () => null,
+      });
+      await adapter.status();
+      // 旧上游连 capabilities 都没有：默认不可用，不做"试一下"。
+      expect(await adapter.requestExit("0123456789abcdef", contextAt(clock)))
+        .toEqual({ outcome: "skipped", code: "unsupported" });
+      expect(http.countOf("shutdown")).toBe(0);
+    }
+  });
+
+  it("凭据只随退出端点发出，其它端点一律不携带", async () => {
+    const http = createFakePetHttp();
+    const clock = createFakeClock(0);
+    const adapter = createOpenPetAdapter({
+      http, clock, endpoint: "http://127.0.0.1:17321", profile: () => fakePetProfile({ release: "0.6.0" }),
+    });
+    // 顺序消费：探测 → say → 退出。少准备一个响应就会落到「连接被拒」的默认行为。
+    http.enqueue(PETSHELL_STATUS_SNAPSHOT, OK_POST, PETSHELL_200_EXITING);
+    await adapter.status();
+    await adapter.say("在的", contextAt(clock));
+    expect(await adapter.requestExit("0123456789abcdef", contextAt(clock))).toEqual({ outcome: "accepted" });
+
+    const shutdownCall = http.calls.find((call) => call.endpoint === "shutdown");
+    expect(shutdownCall).toMatchObject({ method: "POST", bearerToken: "0123456789abcdef" });
+    expect(
+      http.calls.filter((call) => call.endpoint !== "shutdown")
+        .every((call) => call.bearerToken === undefined),
+    ).toBe(true);
+  });
+
+  it("401/403/503 判 failed 而不是 incompatible：对面仍是兼容运行时", () => {
+    for (const [status, code] of [
+      [401, "invalid_input"], [403, "unsupported"], [503, "http_error"],
+    ] as const) {
+      expect(parseOpenPetResponse(status, "{}")).toEqual({ kind: "rejected", status, code });
+    }
+    // 对照：路由不存在仍然是「协议变了」。
+    expect(parseOpenPetResponse(404, "{}")).toMatchObject({ kind: "incompatible" });
+  });
+
+  it("能力随每次探测刷新：实例重启后旧能力不再被沿用", async () => {
+    const http = createFakePetHttp();
+    const clock = createFakeClock(0);
+    const adapter = createOpenPetAdapter({
+      http, clock, endpoint: "http://127.0.0.1:17321", profile: () => fakePetProfile({ release: "0.6.0" }),
+    });
+    http.enqueue(PETSHELL_STATUS_SNAPSHOT, PETSHELL_STATUS_NO_EXIT_TOKEN);
+    await adapter.status();
+    expect(adapter.shutdownCapability()?.available).toBe(true);
+    await adapter.status();
+    expect(adapter.shutdownCapability()?.available).toBe(false);
+
+    expect(await adapter.requestExit("0123456789abcdef", contextAt(clock)))
+      .toEqual({ outcome: "skipped", code: "unsupported" });
+    expect(http.countOf("shutdown")).toBe(0);
   });
 });

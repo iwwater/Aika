@@ -24,6 +24,8 @@ interface PetStatus {
   provider: 'openpet' | 'nyadeskpet';
   connection: 'disabled' | 'connecting' | 'ready' | 'offline' | 'incompatible';
   runtimeVersion?: string; // 上游未提供时不伪造
+  product?: { name?: string; version?: string; upstream?: string }; // 运行时真实身份（fork 增量）
+  shutdown?: { endpoint: string; version: number; auth: string; available: boolean };
   petId?: string;
   checkedAt: number;
   stale: boolean;
@@ -38,9 +40,13 @@ interface DesktopPetAdapter {
   emotion(name: string, ctx: PetContext): Promise<PetResult>;
   event(type: PetEvent, message: string | undefined,
     ctx: PetContext): Promise<PetResult>;
+  /** 可选：仅当运行时声明 shutdown.available 时实现；凭据必须由调用者提供。 */
+  requestExit?(token: string, ctx: PetContext): Promise<PetResult>;
   dispose(): Promise<void>;
 }
 ```
+
+`product` 与 `shutdown` 是**可加性新增**（见 §7）：旧运行时没有这两个字段，行为与 v1 完全一致。
 
 `DesktopPetService` 提供 enable/disable、status、四个业务方法与状态订阅；它分配 commandId、默认 deadline 和本地 generation，业务调用者不手造这些字段。Adapter 只接收归一化命令；ProcessManager 另由 Service 注入，不放进业务接口。
 
@@ -51,7 +57,8 @@ interface DesktopPetAdapter {
 | 项目 | v1 规则 |
 | --- | --- |
 | endpoint | 默认 `http://127.0.0.1:17321`；只允许 http、127.0.0.1 或 ::1、合法端口、无凭证/路径/query/fragment；localhost 在配置边界归一化为 127.0.0.1 |
-| 网络 | 原生宿主固定四端点；禁用环境代理与重定向；不提供任意 URL fetch/invoke |
+| 网络 | 原生宿主固定端点表；禁用环境代理与重定向；不提供任意 URL fetch/invoke。表内四控制端点对上游与 fork 一致；`shutdown` 是 §7 登记的 fork 增量，仅由受管退出路径使用 |
+| 凭据 | 只有 `shutdown` 端点接受 `Authorization: Bearer <token>`；其它端点即使附带也一律忽略。凭据不写日志、不写入错误体、不出现在快照里 |
 | 文本 | trim 后为空拒绝；最多 500 Unicode code points；更长按边界截断加省略号并记录截断计数；短状态最多 80 |
 | 动作/情绪 | 只接受 profile 的语义白名单；不接收路径、脚本或命令行 |
 | 超时 | 单请求 1500ms；默认本地 deadline 4000ms；TTL 按剩余时间限制到 500～10000ms，剩余不足 500ms 直接 expired |
@@ -135,4 +142,39 @@ OpenPet 没有在本次资料中核实到通用 capabilities 端点。PET-01 查
 
 默认不自动重启。显式启用后仅重启确定崩溃的自有进程，5 分钟最多 2 次；用户正常退出不重启，原因不明则转离线由用户重连。disable/退出撤销重启计划；stopOwnedOnExit=false 时保留自有进程并释放所有权，下次只 attach。
 
-stopOwnedOnExit=true：优先使用已验证退出机制；没有协议退出端点时只对自有进程句柄执行宿主终止，并在设置明确“退出时终止由 Aiki 启动的桌宠”。不得虚构 HTTP shutdown；超时 3 秒记录失败，不能拖住 Aiki 退出。
+stopOwnedOnExit=true：优先使用已验证退出机制；没有协议退出端点时只对自有进程句柄执行宿主终止，并在设置明确“退出时终止由 Aiki 启动的桌宠”。不得虚构 HTTP shutdown；超时 3 秒记录失败，不能拖住 Aiki 退出。fork 实现声明协议退出时的具体顺序见 §7。
+
+## 7. PetShell 增量登记（2026-09-15，MVP-08/MVP-09）
+
+fork 出来的 pet-shell **复用同一套线协议**：四端点的方法、路径、请求字段、成功/失败语义与 v0.1.6 逐字一致，PET-01 的 fixture 继续有效。它另有两处**新增**，都必须按本节消费，不得外推到上游：
+
+**7.1 真实身份（`/api/status` 新增字段）**
+
+```json
+"product": { "name": "PetShell", "version": "0.6.0", "upstream": "OpenPet v0.1.6 (GPL-3.0-or-later)" }
+```
+
+`upstream` 只作署名，**不参与任何判定**。`version` 是运行时自己的版本，与上游 `version` 字段不是同一回事——上游从不提供该字段（PET-01 已实证），因此：
+
+- 版本判定取值口径为 `runtimeVersion ?? product.version`；两者都缺时**不做**版本判定。
+- 这让「改了实现却沿用旧 profile」被正确挡住：PetShell 自报 `0.6.0`，profile 也必须锁 `0.6.0`，否则能力退回 `unknown`。
+- `provider` 仍是 `openpet`：线协议未变，改 provider 会波及配置与 profile 校验，收益为零。
+
+**7.2 协议退出（`POST /api/shutdown`）**
+
+| 项 | 值 |
+| --- | --- |
+| 契约版本 | `1`（`shutdown.version`） |
+| 鉴权 | `Authorization: Bearer <token>`；方案名必需 |
+| 凭据来源 | 派生该进程时注入的环境变量 `PET_SHELL_EXIT_TOKEN`（≥16 字符） |
+| 可用性 | `shutdown.available`；缺失或 `false` 一律视为不可用 |
+| 成功 | `200 {"ok":true,"shuttingDown":true,"endpoint":"/api/shutdown"}` |
+| 失败 | `401` 凭据缺失/错误；`403` 本实例未启用退出；`503` 已在退出中 |
+
+调用规则（越权退出的代价远高于少用一次新能力）：
+
+- **只有 owned 实例**才调用；attach 路径永不携带凭据、永不请求退出。
+- 凭据由 Aiki 生成、只交给本次 spawn 的子进程，只存在内存，随所有权释放而丢弃；拿不到安全随机源时**放弃**该能力，不回退到可预测的随机数。
+- 401/403/503 一律判 `failed`（不是 `incompatible`）：对面仍是兼容运行时，只是这次不许退出。任一步失败即**回退到进程句柄**，终止范围不扩大。
+- 协议退出成功后仍释放进程句柄（原生侧句柄表不留死条目）。
+- 端口被占时该实例不绑定端口，因此**没有**协议退出通道，只能由宿主句柄回收——这是有意的，不凭端口推断所有权。

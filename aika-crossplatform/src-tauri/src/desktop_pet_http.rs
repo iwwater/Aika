@@ -26,6 +26,8 @@ pub enum PetEndpoint {
     Say,
     Action,
     Event,
+    /// 受管 sidecar 的协议退出（PetShell 增量；上游 OpenPet 没有这个端点）。
+    Shutdown,
 }
 
 impl PetEndpoint {
@@ -35,6 +37,7 @@ impl PetEndpoint {
             "say" => Some(Self::Say),
             "action" => Some(Self::Action),
             "event" => Some(Self::Event),
+            "shutdown" => Some(Self::Shutdown),
             _ => None,
         }
     }
@@ -45,11 +48,18 @@ impl PetEndpoint {
             Self::Say => "/api/say",
             Self::Action => "/api/action",
             Self::Event => "/api/event",
+            Self::Shutdown => "/api/shutdown",
         }
     }
 
     pub fn is_post(self) -> bool {
         !matches!(self, Self::Status)
+    }
+
+    /// 只有退出端点接受凭据。给别的端点附带 Authorization 会被忽略，
+    /// 这样"页面能拿到请求任意地址的能力"仍然不成立，也不会把令牌撒到别的路由上。
+    pub fn accepts_credential(self) -> bool {
+        matches!(self, Self::Shutdown)
     }
 }
 
@@ -114,6 +124,7 @@ pub async fn desktop_pet_http_request(
     endpoint: String,
     body: Option<String>,
     timeout_ms: Option<u64>,
+    bearer_token: Option<String>,
 ) -> Result<PetHttpOutcome, PetHttpError> {
     let endpoint = PetEndpoint::parse(&endpoint).ok_or_else(|| PetHttpError::new("blocked"))?;
     let url = endpoint_url(&base, endpoint).ok_or_else(|| PetHttpError::new("blocked"))?;
@@ -140,6 +151,15 @@ pub async fn desktop_pet_http_request(
     };
     if let Some(payload) = body {
         request = request.body(payload);
+    }
+    // 凭据只发给退出端点，且从不回显、不写日志、不出现在错误里。
+    if endpoint.accepts_credential() {
+        if let Some(token) = bearer_token {
+            let token = token.trim();
+            if !token.is_empty() {
+                request = request.header("Authorization", format!("Bearer {token}"));
+            }
+        }
     }
 
     let response = request.send().await.map_err(|error| {
@@ -226,12 +246,26 @@ mod tests {
         assert_eq!(PetEndpoint::parse("say").map(PetEndpoint::path), Some("/api/say"));
         assert_eq!(PetEndpoint::parse("action").map(PetEndpoint::path), Some("/api/action"));
         assert_eq!(PetEndpoint::parse("event").map(PetEndpoint::path), Some("/api/event"));
+        assert_eq!(PetEndpoint::parse("shutdown").map(PetEndpoint::path), Some("/api/shutdown"));
         assert!(!PetEndpoint::parse("status").unwrap().is_post());
         assert!(PetEndpoint::parse("action").unwrap().is_post());
+        assert!(PetEndpoint::parse("shutdown").unwrap().is_post());
         // 不存在的端点必须是 None：否则页面就能自己造路径。
         assert!(PetEndpoint::parse("emotion").is_none());
         assert!(PetEndpoint::parse("../secret").is_none());
         assert!(PetEndpoint::parse("http://evil.example").is_none());
+    }
+
+    #[test]
+    fn only_the_shutdown_endpoint_accepts_a_credential() {
+        assert!(PetEndpoint::Shutdown.accepts_credential());
+        for endpoint in [PetEndpoint::Status, PetEndpoint::Say, PetEndpoint::Action, PetEndpoint::Event] {
+            assert!(
+                !endpoint.accepts_credential(),
+                "{:?} 不应接受凭据",
+                endpoint
+            );
+        }
     }
 
     #[test]

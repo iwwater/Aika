@@ -45,6 +45,8 @@ function build(options: {
   stopOwnedOnExit?: boolean;
   probe?: () => Promise<PetConnection>;
   port?: FakeOsProcessPort;
+  createExitToken?: () => string;
+  protocolExit?: (token: string) => Promise<boolean>;
 } = {}): Harness {
   const clock = createFakeClock(0);
   const timers = createFakeTimers();
@@ -60,6 +62,8 @@ function build(options: {
       autoRestart: options.autoRestart ?? false,
       stopOwnedOnExit: options.stopOwnedOnExit ?? false,
     }),
+    ...(options.createExitToken ? { createExitToken: options.createExitToken } : {}),
+    ...(options.protocolExit ? { protocolExit: options.protocolExit } : {}),
   });
 
   async function advance(ms: number): Promise<void> {
@@ -106,6 +110,142 @@ describe("PET-05-A attach 模式零 spawn / 零 stop", () => {
       expect(harness.spawns()).toEqual([]);
       expect(harness.port.stopCalls).toEqual([]);
     }
+  });
+});
+
+describe("MVP-09-D 协议退出只作用于 owned 实例", () => {
+  const TOKEN = "0123456789abcdef0123456789abcdef";
+
+  it("managed 启动时注入令牌，退出时先走协议退出", async () => {
+    const seen: string[] = [];
+    const harness = build({
+      stopOwnedOnExit: true,
+      createExitToken: () => TOKEN,
+      protocolExit: async (token) => {
+        seen.push(token);
+        return true;
+      },
+    });
+    await harness.settle(harness.manager.ensureReady());
+    // 令牌只在 spawn 时注入，且就是本进程生成的那一份。
+    expect(harness.port.spawnTokens).toEqual([TOKEN]);
+
+    await harness.manager.dispose();
+    expect(seen).toEqual([TOKEN]);
+    // 协议退出成功后仍会释放句柄（否则原生侧句柄表会留下死条目）。
+    expect(harness.port.stopCalls).toHaveLength(1);
+    expect(harness.manager.diagnostics()).toMatchObject({
+      protocolExits: 1,
+      protocolExitFallbacks: 0,
+    });
+  });
+
+  it("协议退出被拒时回退到进程句柄，且计数如实", async () => {
+    const harness = build({
+      stopOwnedOnExit: true,
+      createExitToken: () => TOKEN,
+      protocolExit: async () => false,
+    });
+    await harness.settle(harness.manager.ensureReady());
+    await harness.manager.dispose();
+
+    expect(harness.port.stopCalls).toHaveLength(1);
+    expect(harness.manager.diagnostics()).toMatchObject({
+      protocolExits: 0,
+      protocolExitFallbacks: 1,
+      stopped: 1,
+    });
+  });
+
+  it("协议退出挂起时不拖住 dispose，按超时回退", async () => {
+    const harness = build({
+      stopOwnedOnExit: true,
+      createExitToken: () => TOKEN,
+      protocolExit: () => new Promise<boolean>(() => {}),
+    });
+    await harness.settle(harness.manager.ensureReady());
+    await harness.settle(harness.manager.dispose());
+
+    expect(harness.port.stopCalls).toHaveLength(1);
+    expect(harness.manager.diagnostics().protocolExitFallbacks).toBe(1);
+  });
+
+  it("attach 模式既不生成令牌也不尝试协议退出", async () => {
+    let called = 0;
+    const harness = build({
+      mode: "attach",
+      probe: async () => "ready",
+      stopOwnedOnExit: true,
+      createExitToken: () => TOKEN,
+      protocolExit: async () => {
+        called += 1;
+        return true;
+      },
+    });
+    await harness.manager.ensureReady();
+    await harness.manager.dispose();
+
+    expect(harness.spawns()).toEqual([]);
+    expect(harness.port.spawnTokens).toEqual([]);
+    expect(called).toBe(0);
+    expect(harness.port.stopCalls).toEqual([]);
+  });
+
+  it("stopOwnedOnExit=false 时既不动进程也不请求退出", async () => {
+    let called = 0;
+    const harness = build({
+      stopOwnedOnExit: false,
+      createExitToken: () => TOKEN,
+      protocolExit: async () => {
+        called += 1;
+        return true;
+      },
+    });
+    await harness.settle(harness.manager.ensureReady());
+    await harness.manager.dispose();
+
+    expect(called).toBe(0);
+    expect(harness.port.stopCalls).toEqual([]);
+    expect(harness.manager.diagnostics()).toMatchObject({
+      protocolExits: 0,
+      protocolExitFallbacks: 0,
+    });
+  });
+
+  it("没有令牌来源时完全不涉及协议退出，行为与旧策略一致", async () => {
+    const harness = build({ stopOwnedOnExit: true, protocolExit: async () => true });
+    await harness.settle(harness.manager.ensureReady());
+    expect(harness.port.spawnTokens).toEqual([undefined]);
+
+    await harness.manager.dispose();
+    expect(harness.port.stopCalls).toHaveLength(1);
+    expect(harness.manager.diagnostics()).toMatchObject({
+      protocolExits: 0,
+      protocolExitFallbacks: 0,
+      stopped: 1,
+    });
+  });
+
+  it("单实例转交后释放所有权，不再持有令牌", async () => {
+    const seen: string[] = [];
+    const port = createFakeOsProcessPort();
+    const harness = build({
+      port,
+      stopOwnedOnExit: true,
+      createExitToken: () => TOKEN,
+      protocolExit: async (token) => {
+        seen.push(token);
+        return true;
+      },
+    });
+    // 我们起的进程立刻退出，但端点是通的 → 按 attach 处理。
+    port.exitNormally();
+    await harness.settle(harness.manager.ensureReady());
+    expect(harness.manager.status()).toMatchObject({ owned: false });
+
+    await harness.manager.dispose();
+    expect(seen).toEqual([]);
+    expect(port.stopCalls).toEqual([]);
   });
 });
 

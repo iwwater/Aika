@@ -288,6 +288,8 @@ interface FakeProcessRecord {
 export interface FakeOsProcessPort extends PetProcessPort {
   /** spawn 收到过的路径（按顺序）。 */
   readonly spawns: string[];
+  /** 每次 spawn 携带的受管退出令牌（没有则为 undefined）——用来证明 attach 不携带它。 */
+  readonly spawnTokens: Array<string | undefined>;
   readonly stopCalls: number[];
   /** 让某个进程表现为「确定崩溃」（非零退出码）。不传 pid 时作用于最近一次 spawn。 */
   crash(pid?: number, code?: number): void;
@@ -316,6 +318,7 @@ export interface FakeOsProcessPort extends PetProcessPort {
  */
 export function createFakeOsProcessPort(): FakeOsProcessPort {
   const spawns: string[] = [];
+  const spawnTokens: Array<string | undefined> = [];
   const stopCalls: number[] = [];
   const processes = new Map<number, FakeProcessRecord>();
   let nextPid = 1000;
@@ -341,6 +344,7 @@ export function createFakeOsProcessPort(): FakeOsProcessPort {
 
   return {
     get spawns() { return spawns; },
+    get spawnTokens() { return spawnTokens; },
     get stopCalls() { return stopCalls; },
 
     crash(pid, code = 1) {
@@ -375,9 +379,10 @@ export function createFakeOsProcessPort(): FakeOsProcessPort {
       return lastSpawned;
     },
 
-    async spawn(executablePath) {
+    async spawn(executablePath, options) {
       if (spawnFailure) throw spawnFailure;
       spawns.push(executablePath);
+      spawnTokens.push(options?.exitToken);
       const pid = nextPid++;
       lastSpawned = pid;
       const record: FakeProcessRecord = { alive: true, exited: false, code: null };

@@ -141,6 +141,25 @@ fn base_command(path: &str) -> Command {
     command
 }
 
+/// 受管退出令牌的环境变量名（与 PetShell 侧 `EXIT_TOKEN_ENV` 一致）。
+pub const EXIT_TOKEN_ENV: &str = "PET_SHELL_EXIT_TOKEN";
+
+/// 启动命令 + 唯一的具名注入项。
+///
+/// 刻意不做「任意 env 表」：调用方给不了别的变量名，也给不了额外参数。退出令牌
+/// 是我们自己生成、只交给本进程启动的那个子进程的凭据，不是让上层往子进程里塞
+/// 任意环境的能力。
+fn spawn_command(path: &str, exit_token: Option<&str>) -> Command {
+    let mut command = base_command(path);
+    if let Some(token) = exit_token {
+        let token = token.trim();
+        if !token.is_empty() {
+            command.env(EXIT_TOKEN_ENV, token);
+        }
+    }
+    command
+}
+
 fn spawn_with(
     mut command: Command,
     children: &Arc<Mutex<HashMap<u32, Child>>>,
@@ -205,16 +224,17 @@ pub fn desktop_pet_process_validate(path: String) -> Result<(), ProcessFailure> 
 
 /// 启动配置好的运行程序。
 ///
-/// 参数只有一个路径：**没有第二个参数可用**，所以不存在"把 Agent 输出当命令行"
-/// 的入口。
+/// 参数只有一个路径 + 一个可选的受管退出令牌：**没有第三个参数**，也没有任意
+/// 环境变量或命令行片段，所以不存在"把 Agent 输出当命令行"的入口。
 #[tauri::command]
 pub fn desktop_pet_process_spawn(
     state: tauri::State<'_, DesktopPetProcessState>,
     path: String,
+    exit_token: Option<String>,
 ) -> Result<SpawnOutcome, ProcessFailure> {
     let path = validate_executable(&path).map_err(|error| ProcessFailure::new(error.kind()))?;
     let children = state.handles();
-    let pid = spawn_with(base_command(&path), &children)?;
+    let pid = spawn_with(spawn_command(&path, exit_token.as_deref()), &children)?;
     Ok(SpawnOutcome { pid, path })
 }
 
@@ -322,6 +342,29 @@ mod tests {
         // 不属于我们的 pid：停止必须失败，绝不按名字或 pid 猜测。
         let stranger = stop_child(Arc::clone(&children), 999_999, Some(200));
         assert_eq!(stranger.unwrap_err().kind, "unknown_process");
+    }
+
+    #[test]
+    fn the_exit_token_is_the_only_thing_injected_into_a_spawn() {
+        let without = spawn_command(r"C:\pet\pet.exe", None);
+        assert_eq!(without.get_envs().count(), 0, "没有令牌时不应注入任何变量");
+
+        let blank = spawn_command(r"C:\pet\pet.exe", Some("   "));
+        assert_eq!(blank.get_envs().count(), 0, "空白令牌等同于没有令牌");
+
+        let with = spawn_command(r"C:\pet\pet.exe", Some("0123456789abcdef"));
+        let envs: Vec<(String, Option<String>)> = with
+            .get_envs()
+            .map(|(key, value)| {
+                (
+                    key.to_string_lossy().to_string(),
+                    value.map(|v| v.to_string_lossy().to_string()),
+                )
+            })
+            .collect();
+        assert_eq!(envs.len(), 1, "只允许注入一个变量");
+        assert_eq!(envs[0].0, EXIT_TOKEN_ENV);
+        assert_eq!(envs[0].1.as_deref(), Some("0123456789abcdef"));
     }
 
     #[test]

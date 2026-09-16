@@ -63,6 +63,8 @@ export function createTauriPetHttpPort(invoke: PetInvoke): PetHttpPort {
           endpoint: request.endpoint,
           body: request.body ?? null,
           timeoutMs: request.timeoutMs,
+          // 凭据原样转交；Rust 侧只对 shutdown 端点使用它。
+          bearerToken: request.bearerToken ?? null,
         });
       } catch (error) {
         throw toFailure(error);

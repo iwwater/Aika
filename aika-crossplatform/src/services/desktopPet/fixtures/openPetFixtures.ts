@@ -74,6 +74,84 @@ export const DEVICE_STATUS_SNAPSHOT: PetHttpResponse = jsonResponse(200, {
   startedAtMs: 1789384498470,
 });
 
+/**
+ * PetShell（fork）的 `/api/status` 形状（MVP-08 实机核对）。
+ *
+ * 与上游的差别**只有新增字段**：`product` 报真实身份、`capabilities` 报单实例与
+ * 协议退出。四端点语义、快照字段、错误体一律未变——所以旧 fixture 继续有效，
+ * 这条只是让「同一协议、不同实现」在测试里有据可依。
+ */
+export const PETSHELL_STATUS_SNAPSHOT: PetHttpResponse = jsonResponse(200, {
+  activePet: { id: "nia", displayName: "Nia", imported: false, spritesheetPath: "spritesheet.webp" },
+  apiBaseUrl: "http://127.0.0.1:17321",
+  apiError: null,
+  apiListening: true,
+  apiRestartRequired: false,
+  bubbleText: null,
+  capabilities: {
+    singleInstance: true,
+    instanceOwner: true,
+    shutdown: {
+      endpoint: "/api/shutdown",
+      version: 1,
+      auth: "bearer-token",
+      available: true,
+      reason: null,
+    },
+  },
+  configuredListenAddress: "127.0.0.1",
+  configuredPort: 17321,
+  lastAction: null,
+  listenAddress: "127.0.0.1",
+  petCatalog: [],
+  petVisible: true,
+  port: 17321,
+  product: { name: "PetShell", version: "0.6.0", upstream: "OpenPet v0.1.6 (GPL-3.0-or-later)" },
+  recentEvents: [],
+  startedAtMs: 1789384498470,
+});
+
+/** 同一实例**没有**配置退出令牌时的形状：能力仍在，但不可用。 */
+export const PETSHELL_STATUS_NO_EXIT_TOKEN: PetHttpResponse = jsonResponse(200, {
+  activePet: { id: "nia" },
+  capabilities: {
+    singleInstance: true,
+    instanceOwner: true,
+    shutdown: {
+      endpoint: "/api/shutdown",
+      version: 1,
+      auth: "bearer-token",
+      available: false,
+      reason: "PET_SHELL_EXIT_TOKEN was not provided at launch",
+    },
+  },
+  port: 17321,
+  product: { name: "PetShell", version: "0.6.0", upstream: "OpenPet v0.1.6 (GPL-3.0-or-later)" },
+});
+
+/** 协议退出错误体（逐字取自 MVP-08 真机核对）。 */
+export const PETSHELL_401_TOKEN_REQUIRED: PetHttpResponse = {
+  status: 401,
+  bodyText: '{"error":"exit token required","ok":false}',
+};
+export const PETSHELL_401_TOKEN_REJECTED: PetHttpResponse = {
+  status: 401,
+  bodyText: '{"error":"exit token rejected","ok":false}',
+};
+export const PETSHELL_403_NOT_AVAILABLE: PetHttpResponse = {
+  status: 403,
+  bodyText: '{"error":"PET_SHELL_EXIT_TOKEN was not provided at launch","ok":false}',
+};
+export const PETSHELL_503_ALREADY_EXITING: PetHttpResponse = {
+  status: 503,
+  bodyText: '{"error":"shutdown already in progress","ok":false}',
+};
+export const PETSHELL_200_EXITING: PetHttpResponse = jsonResponse(200, {
+  ok: true,
+  shuttingDown: true,
+  endpoint: "/api/shutdown",
+});
+
 /** 实机错误响应：`{"error":…,"ok":false}`（v0.1.6，逐字取自 PET-01_PROTOCOL §2.3）。 */
 export const DEVICE_400_BLANK_ANIMATION: PetHttpResponse = {
   status: 400,

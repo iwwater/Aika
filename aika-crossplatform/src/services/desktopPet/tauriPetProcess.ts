@@ -1,5 +1,5 @@
 import type { PetInvoke } from "./tauriPetHttp";
-import type { PetProcessHandle, PetProcessPort } from "./processManager";
+import type { PetProcessHandle, PetProcessPort, PetProcessSpawnOptions } from "./processManager";
 
 /**
  * 原生进程端口（PET-06）。
@@ -29,9 +29,16 @@ export function createTauriPetProcessPort(options: TauriPetProcessPortOptions): 
   const { invoke } = options;
 
   return {
-    async spawn(executablePath: string): Promise<PetProcessHandle> {
-      // 路径已经过 `validatePetExecutable`；Rust 侧会再校验一次。
-      const raw = await invoke("desktop_pet_process_spawn", { path: executablePath });
+    async spawn(
+      executablePath: string,
+      options?: PetProcessSpawnOptions,
+    ): Promise<PetProcessHandle> {
+      // 路径已经过 `validatePetExecutable`；Rust 侧会再校验一次。令牌也只在
+      // 这一次启动里注入一个具名环境变量——没有任意参数或任意 env 的位置。
+      const raw = await invoke("desktop_pet_process_spawn", {
+        path: executablePath,
+        ...(options?.exitToken ? { exitToken: options.exitToken } : {}),
+      });
       return { pid: readPid(raw) };
     },
 

@@ -12,7 +12,7 @@ import type { PetProfileV1 } from "../../services/desktopPet/profile";
 import { SettingsToken } from "../../services/storage/tokens";
 import { ClockToken, TimersToken } from "../../services/time/tokens";
 import { createSystemClock, createSystemTimers } from "../../services/time/systemTime";
-import { PET_CONFIG_DEFAULTS } from "../../services/desktopPet/contracts";
+import { PET_CONFIG_DEFAULTS, PET_REQUEST_TIMEOUT_MS } from "../../services/desktopPet/contracts";
 import { createPresentationLifecycle, OPENPET_PRESENTATION_MANIFEST, PresentationLifecycleToken } from "../../services/desktopPet/lifecycle";
 
 /**
@@ -41,6 +41,22 @@ export interface DesktopPetHostOptions {
 }
 
 export const DESKTOP_PET_PLUGIN_ID = "host.desktopPet";
+
+/**
+ * 生成受管退出令牌。
+ *
+ * 用平台安全随机源；拿不到就**抛错**——管理器会把「生成失败」当成没有令牌，
+ * 于是协议退出不可用、回退到句柄策略。退回到可预测的随机数比没有这个能力更糟。
+ */
+function createExitToken(): string {
+  const webCrypto = globalThis.crypto;
+  if (!webCrypto?.getRandomValues) {
+    throw new Error("secure random unavailable for the managed exit token");
+  }
+  const bytes = new Uint8Array(24);
+  webCrypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
 
 export function desktopPetPlugin(options: DesktopPetHostOptions): AikaPlugin {
   return {
@@ -94,6 +110,18 @@ export function desktopPetPlugin(options: DesktopPetHostOptions): AikaPlugin {
             autoRestart: config?.autoRestart ?? false,
             stopOwnedOnExit: config?.stopOwnedOnExit ?? false,
           };
+        },
+        // 受管退出凭据：只在内存里，随所有权释放而丢弃，不进日志也不落盘。
+        createExitToken,
+        // 协议退出（MVP-08/09 增量）。ability 门禁在 adapter 里：对面没声明可用
+        // 就直接返回 skipped，这里据此回退到进程句柄——**不扩大**终止范围。
+        protocolExit: async (token) => {
+          if (!adapter.requestExit) return false;
+          const result = await adapter.requestExit(token, {
+            commandId: "protocol-exit",
+            expiresAt: clock.now() + PET_REQUEST_TIMEOUT_MS,
+          });
+          return result.outcome === "accepted";
         },
       });
 

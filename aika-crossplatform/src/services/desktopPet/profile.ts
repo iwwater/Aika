@@ -1,11 +1,13 @@
 import {
   PET_CAPABILITY_NAMES,
   isPetEvent,
+  reportedRuntimeVersion,
   type Capability,
   type PetCapabilityMap,
   type PetCapabilityName,
   type PetConnection,
   type PetEvent,
+  type PetProductInfo,
   type PetProfileLike,
   type PetProviderId,
 } from "./contracts";
@@ -154,8 +156,13 @@ export interface CapabilityInput {
   declared?: Partial<PetCapabilityMap>;
   profile: PetProfileV1 | null;
   connection: PetConnection;
-  /** 上游 status 报的版本；没有就不做版本判定。 */
+  /**
+   * 运行时自报的版本：优先上游 `version`，其次运行时真实版本（`product.version`）。
+   * 缺失就不做版本判定。
+   */
   runtimeVersion?: string;
+  /** 运行时自报的真实身份；旧运行时没有这个字段。 */
+  product?: PetProductInfo;
   /** 上游当前角色；与 profile 不符即失效动作映射。 */
   petId?: string;
   provider: PetProviderId;
@@ -182,7 +189,12 @@ export function deriveCapabilities(input: CapabilityInput): PetCapabilityMap {
 
   // 上报版本存在但与锁定版本不符 → 不猜动作（连 say 也退回 unknown：
   // 响应 schema 未实证，不能保证上游还认这个请求体）。
-  if (input.runtimeVersion !== undefined && input.runtimeVersion !== profile.release) {
+  //
+  // 取值口径含运行时真实版本：PetShell 自报 0.6.0，就要求 profile 也锁 0.6.0。
+  // 若只看上游 `version` 字段，一个改了实现却沿用旧 profile 的组合会被当成
+  // 「兼容」放过去——那正是「能力必须绑定实际版本」要挡住的。
+  const reportedVersion = reportedRuntimeVersion(input);
+  if (reportedVersion !== undefined && reportedVersion !== profile.release) {
     return unknownCapabilities();
   }
 

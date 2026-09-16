@@ -1,7 +1,9 @@
 import {
   PET_REQUEST_TIMEOUT_MS,
   normalizeLoopbackEndpoint,
+  type PetProductInfo,
   type PetResultCode,
+  type PetShutdownCapability,
 } from "./contracts";
 
 /**
@@ -24,13 +26,15 @@ import {
  * = 拒绝」，并额外要求端点路径来自固定表——页面永远拿不到「请求任意 URL」的能力。
  */
 
-export type PetEndpointKey = "status" | "say" | "action" | "event";
+export type PetEndpointKey = "status" | "say" | "action" | "event" | "shutdown";
 
 export const OPENPET_ENDPOINTS: Readonly<Record<PetEndpointKey, { method: "GET" | "POST"; path: string }>> = {
   status: { method: "GET", path: "/api/status" },
   say: { method: "POST", path: "/api/say" },
   action: { method: "POST", path: "/api/action" },
   event: { method: "POST", path: "/api/event" },
+  // PetShell 增量：上游 OpenPet v0.1.6 没有这个端点（PET-01 §5 已实证）。
+  shutdown: { method: "POST", path: "/api/shutdown" },
 };
 
 /** 响应体上限 256KiB；超限一律协议错误，不截断后当成功。 */
@@ -67,6 +71,11 @@ export interface PetHttpRequest {
    * 原生实现另有 1500ms 硬超时，所以取消不会留下悬挂连接。
    */
   signal?: AbortSignal;
+  /**
+   * 受管退出凭据。**只在 `shutdown` 端点生效**：原生侧对其它端点忽略它，所以
+   * 页面拿不到「往任意路由附带令牌」的能力。
+   */
+  bearerToken?: string;
 }
 
 export interface PetHttpResponse {
@@ -89,8 +98,49 @@ export interface OpenPetStatusSnapshot {
   petId?: string;
   /** 上游未提供时**不伪造**。 */
   runtimeVersion?: string;
+  /** 运行时自报的真实身份；旧运行时没有这个字段。 */
+  product?: PetProductInfo;
+  /** 协议退出能力；缺字段一律按「不可用」处理。 */
+  shutdown?: PetShutdownCapability;
   /** 上游若提供动作清单则解析；没有就交给人工 profile。 */
   actions?: string[];
+}
+
+/** 读数：`product` 整体缺失或三个字段都读不到时返回 undefined，不编造。 */
+function readProduct(source: Record<string, unknown>): PetProductInfo | undefined {
+  const raw = source.product;
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return undefined;
+  const record = raw as Record<string, unknown>;
+  const name = readString(record, "name");
+  const version = readString(record, "version");
+  const upstream = readString(record, "upstream");
+  if (name === undefined && version === undefined && upstream === undefined) return undefined;
+  return {
+    ...(name !== undefined ? { name } : {}),
+    ...(version !== undefined ? { version } : {}),
+    ...(upstream !== undefined ? { upstream } : {}),
+  };
+}
+
+/**
+ * 读数：`available` 缺失即视为**不可用**。
+ *
+ * 这是 fail-closed 的一侧：越权退出的代价远高于「少用一次新能力」，所以只有对面
+ * 明确写 `available: true` 才认。
+ */
+function readShutdown(source: Record<string, unknown>): PetShutdownCapability | undefined {
+  const capabilities = source.capabilities;
+  if (typeof capabilities !== "object" || capabilities === null || Array.isArray(capabilities)) {
+    return undefined;
+  }
+  const raw = (capabilities as Record<string, unknown>).shutdown;
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return undefined;
+  const record = raw as Record<string, unknown>;
+  const endpoint = readString(record, "endpoint");
+  const version = readPositiveInt(record, "version");
+  const auth = readString(record, "auth");
+  if (endpoint === undefined || version === undefined || auth === undefined) return undefined;
+  return { endpoint, version, auth, available: record.available === true };
 }
 
 export type OpenPetVerdict =
@@ -146,6 +196,23 @@ export function buildEventRequest(
   return buildRequest(base, "event", payload);
 }
 
+/**
+ * 协议退出请求。
+ *
+ * 凭据是调用者给的**自己派发时用的那一份**；没有凭据就不该走到这里——`available`
+ * 为假时调用方必须直接沿用进程句柄策略。
+ */
+export function buildShutdownRequest(base: string, token: string): PetHttpRequest {
+  return {
+    method: "POST",
+    base,
+    endpoint: "shutdown",
+    body: JSON.stringify({}),
+    timeoutMs: PET_REQUEST_TIMEOUT_MS,
+    bearerToken: token,
+  };
+}
+
 function isJsonObject(text: string): Record<string, unknown> | null {
   let parsed: unknown;
   try {
@@ -199,6 +266,12 @@ export function readStatusSnapshot(payload: Record<string, unknown>): OpenPetSta
   const actions = readStringArray(payload, "actions");
   if (actions !== undefined) snapshot.actions = actions;
 
+  const product = readProduct(payload);
+  if (product !== undefined) snapshot.product = product;
+
+  const shutdown = readShutdown(payload);
+  if (shutdown !== undefined) snapshot.shutdown = shutdown;
+
   return snapshot;
 }
 
@@ -212,6 +285,11 @@ function classifyNonOkStatus(status: number): OpenPetVerdict {
   // 400 = 我们发错了请求体（实机实测：空 animationId、坏 JSON、ttlMs 类型不对）。
   // 协议是通的，所以判 failed/invalid_input，而不是 incompatible。
   if (status === 400) return { kind: "rejected", status, code: "invalid_input" };
+  // 401/403 只可能来自退出端点：凭据没给对，或本实例没启用退出。
+  // **不判 incompatible**——对面仍是兼容的运行时，只是这次不许我们退出；
+  // 调用方必须据此回退到进程句柄，而不是从此停止发送。
+  if (status === 401) return { kind: "rejected", status, code: "invalid_input" };
+  if (status === 403) return { kind: "rejected", status, code: "unsupported" };
   return { kind: "rejected", status, code: "http_error" };
 }
 

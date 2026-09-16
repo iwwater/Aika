@@ -16,9 +16,19 @@ import type { DesktopPetProcessPort, PetConnection, PetProcessMode } from "./con
 
 export type PetProcessHandle = unknown;
 
+export interface PetProcessSpawnOptions {
+  /**
+   * 受管退出令牌。
+   *
+   * 只交给**本进程启动的**子进程，且只在校验通过的启动路径上传；attach 路径永不
+   * 携带它。原生实现只把它写进一个具名环境变量，不给任意 env 入口。
+   */
+  exitToken?: string;
+}
+
 export interface PetProcessPort {
   /** 使用实参数组、不经过 shell；路径由调用方校验过。 */
-  spawn(executablePath: string): Promise<PetProcessHandle>;
+  spawn(executablePath: string, options?: PetProcessSpawnOptions): Promise<PetProcessHandle>;
   isAlive(handle: PetProcessHandle): boolean | Promise<boolean>;
   /**
    * 退出原因。**可选**：拿不到它就无法断言「确定崩溃」，于是永不自动重启——
@@ -119,6 +129,10 @@ export interface PetProcessDiagnostics {
   budgetExceeded: number;
   stopped: number;
   stopFailures: number;
+  /** 协议退出被受理的次数。 */
+  protocolExits: number;
+  /** 协议退出未成功、回退到进程句柄的次数（能力缺失/凭据失效/对面拒绝）。 */
+  protocolExitFallbacks: number;
   lastError: PetProcessErrorKind | null;
 }
 
@@ -148,6 +162,20 @@ export interface PetProcessManagerDeps {
   restartBudget?: number;
   restartWindowMs?: number;
   restartDelayMs?: number;
+  /**
+   * 生成受管退出令牌。缺省则协议退出不可用，一律走进程句柄。
+   *
+   * 令牌只存在内存里，随所有权释放而丢弃，不进日志、不进快照、不落盘。
+   */
+  createExitToken?: () => string;
+  /**
+   * 协议退出（可选增量）。
+   *
+   * 只在 `owned === true` 的实例上被调用。返回 `false` 表示这次没有退出成功
+   * （能力未声明、凭据失效、对面拒绝、超时），调用方**必须**回退到进程句柄——
+   * 这条回退是「新能力缺失时不扩大终止范围」的落点。
+   */
+  protocolExit?: (token: string) => Promise<boolean>;
 }
 
 export function createPetProcessManager(deps: PetProcessManagerDeps): PetProcessManager {
@@ -160,6 +188,8 @@ export function createPetProcessManager(deps: PetProcessManagerDeps): PetProcess
 
   let handle: PetProcessHandle | null = null;
   let owned = false;
+  /** 只在本进程持有所有权期间存在。 */
+  let ownedExitToken: string | null = null;
   let phase: PetProcessPhase = "idle";
   let disposed = false;
   let cancelled = false;
@@ -168,8 +198,16 @@ export function createPetProcessManager(deps: PetProcessManagerDeps): PetProcess
   const restartTimers = new Set<unknown>();
   const diagnostics: PetProcessDiagnostics = {
     spawns: 0, attaches: 0, restarts: 0, budgetExceeded: 0,
-    stopped: 0, stopFailures: 0, lastError: null,
+    stopped: 0, stopFailures: 0, protocolExits: 0, protocolExitFallbacks: 0,
+    lastError: null,
   };
+
+  /** 放弃所有权时必须同时丢弃令牌，避免它被用到不再属于我们的实例上。 */
+  function releaseOwnership(): void {
+    handle = null;
+    owned = false;
+    ownedExitToken = null;
+  }
 
   function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => {
@@ -252,9 +290,19 @@ export function createPetProcessManager(deps: PetProcessManagerDeps): PetProcess
     }
 
     phase = "starting";
+    // 令牌只发给**这次由我们启动的**进程：attach 分支在上面已经返回，走不到这里。
+    // 生成不了就当作没有令牌——协议退出失效，回退到既有句柄策略，而不是让启动失败。
+    let exitToken: string | null = null;
+    if (deps.createExitToken) {
+      try {
+        exitToken = deps.createExitToken() || null;
+      } catch {
+        exitToken = null;
+      }
+    }
     let spawned: PetProcessHandle;
     try {
-      spawned = await deps.port.spawn(validation.path);
+      spawned = await deps.port.spawn(validation.path, exitToken ? { exitToken } : undefined);
     } catch {
       phase = "offline";
       diagnostics.lastError = "spawn_failed";
@@ -262,6 +310,7 @@ export function createPetProcessManager(deps: PetProcessManagerDeps): PetProcess
     }
     handle = spawned;
     owned = true;
+    ownedExitToken = exitToken;
     diagnostics.spawns += 1;
 
     if (!(await waitForReady())) {
@@ -274,8 +323,7 @@ export function createPetProcessManager(deps: PetProcessManagerDeps): PetProcess
     // 单实例转交：我们起的那个进程已经退出，但服务端点是通的——说明窗口由
     // **别的实例**提供。这时候按 attach 处理，绝不把它当成自己的进程。
     if (!(await alive(spawned))) {
-      handle = null;
-      owned = false;
+      releaseOwnership();
       diagnostics.attaches += 1;
     }
     phase = "ready";
@@ -298,8 +346,7 @@ export function createPetProcessManager(deps: PetProcessManagerDeps): PetProcess
     const timer = deps.timers.setTimeout(() => {
       restartTimers.delete(timer);
       if (disposed || cancelled) return;
-      handle = null;
-      owned = false;
+      releaseOwnership();
       diagnostics.restarts += 1;
       void ensureReady().catch(() => {
         // 重启失败就是 offline；用户仍可手动重连。
@@ -321,8 +368,7 @@ export function createPetProcessManager(deps: PetProcessManagerDeps): PetProcess
     // 只有「确定崩溃」（exited 且退出码非 0）才谈重启；正常退出与原因不明一律
     // 释放所有权，交给用户手动重连——把用户主动关掉的程序拉起来是最糟的行为。
     const crashed = info !== null && info.exited && info.code !== null && info.code !== 0;
-    handle = null;
-    owned = false;
+    releaseOwnership();
     if (crashed) scheduleRestart();
   }
 
@@ -401,9 +447,25 @@ export function createPetProcessManager(deps: PetProcessManagerDeps): PetProcess
       }
       const config = deps.config();
       const current = handle;
+      // 只有「自己启动的 + 配置允许终止」才谈终止；attach 与已释放所有权的分支
+      // 一律零动作，绝不扩大终止范围。
       if (current !== null && owned && config.stopOwnedOnExit && deps.port) {
         if (await alive(current)) {
+          const token = ownedExitToken;
+          if (token !== null && deps.protocolExit) {
+            // 先请 sidecar 自己退出：它会释放 HTTP 监听、托盘与渲染资源。
+            let graceful = false;
+            try {
+              graceful = await withTimeout(deps.protocolExit(token), stopTimeoutMs, "cancelled");
+            } catch {
+              graceful = false;
+            }
+            if (graceful) diagnostics.protocolExits += 1;
+            else diagnostics.protocolExitFallbacks += 1;
+          }
           try {
+            // 协议退出成功时这一步只是释放句柄（进程已自行退出）；它失败时，
+            // 这一步才是真正的终止路径。
             await withTimeout(deps.port.stop(current), stopTimeoutMs, "cancelled");
             diagnostics.stopped += 1;
           } catch {
@@ -413,8 +475,7 @@ export function createPetProcessManager(deps: PetProcessManagerDeps): PetProcess
         }
       }
       // stopOwnedOnExit=false：保留自有进程并**释放所有权**，下次只 attach。
-      handle = null;
-      owned = false;
+      releaseOwnership();
       phase = "idle";
     },
   };

@@ -99,6 +99,31 @@ export interface PetContext {
 
 export type PetProviderId = "openpet" | "nyadeskpet";
 
+/**
+ * 运行时的**真实身份**（MVP-08/MVP-09 增量）。
+ *
+ * fork 出来的实现（PetShell）沿用 OpenPet 的线协议，但不再是 OpenPet：`name`
+ * 与 `version` 如实回报，`upstream` 只作署名。**不据此推断协议兼容性**——线协议
+ * 兼容与否仍由四端点的响应语义决定。
+ */
+export interface PetProductInfo {
+  name?: string;
+  version?: string;
+  upstream?: string;
+}
+
+/**
+ * 协议退出能力（PetShell 增量；上游 OpenPet 没有这个端点）。
+ *
+ * `available=false` 表示该实例没有可用的退出凭据，此时**不得**尝试退出它。
+ */
+export interface PetShutdownCapability {
+  endpoint: string;
+  version: number;
+  available: boolean;
+  auth: string;
+}
+
 export type PetConnection = "disabled" | "connecting" | "ready" | "offline" | "incompatible";
 
 export interface PetStatus {
@@ -106,12 +131,29 @@ export interface PetStatus {
   connection: PetConnection;
   /** 上游没提供版本时不伪造。 */
   runtimeVersion?: string;
+  /** 运行时自报的真实身份；旧运行时没有这个字段。 */
+  product?: PetProductInfo;
+  /** 协议退出可用性；没有即视为不可用，不尝试退出。 */
+  shutdown?: PetShutdownCapability;
   petId?: string;
   checkedAt: number;
   stale: boolean;
   capabilities: PetCapabilityMap;
   /** Aiki 可用的语义名；供应商映射保留在 adapter/profile 内。 */
   actions: string[];
+}
+
+/**
+ * 版本判定的取值口径：优先上游自报的 `runtimeVersion`，其次运行时的真实版本。
+ *
+ * 两者都缺就返回 undefined —— 此时**不做**版本判定（旧行为），因为「没版本」不等于
+ * 「版本不匹配」。`deriveCapabilities` 是唯一消费者。
+ */
+export function reportedRuntimeVersion(status: {
+  runtimeVersion?: string;
+  product?: PetProductInfo;
+}): string | undefined {
+  return status.runtimeVersion ?? status.product?.version;
 }
 
 /** adapter 的构造参数已经注入传输；这里只暴露归一化命令。 */
@@ -121,6 +163,13 @@ export interface DesktopPetAdapter {
   action(name: string, context: PetContext): Promise<PetResult>;
   emotion(name: string, context: PetContext): Promise<PetResult>;
   event(type: PetEvent, message: string | undefined, context: PetContext): Promise<PetResult>;
+  /**
+   * 协议退出（可选能力）。
+   *
+   * 只有运行时明确声明 `shutdown.available` 时才应实现；实现方必须要求调用者
+   * 提供**本进程实际派发时用的**那份凭据。`accepted` 只表示对面受理了退出请求。
+   */
+  requestExit?(token: string, context: PetContext): Promise<PetResult>;
   dispose(): Promise<void>;
 }
 

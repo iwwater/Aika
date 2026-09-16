@@ -8,8 +8,10 @@ import {
   type PetConnection,
   type PetContext,
   type PetEvent,
+  type PetProductInfo,
   type PetProviderId,
   type PetResult,
+  type PetShutdownCapability,
   type PetStatus,
 } from "./contracts";
 import {
@@ -18,6 +20,7 @@ import {
   buildEventRequest,
   buildRequest,
   buildSayRequest,
+  buildShutdownRequest,
   parseOpenPetResponse,
   PetHttpFailure,
   toPostResult,
@@ -66,6 +69,12 @@ export interface OpenPetAdapter extends DesktopPetAdapter {
   runtimeVersion(): string | undefined;
   /** 最近一次探测到的角色 id。 */
   currentPetId(): string | undefined;
+  /** 最近一次探测到的运行时真实身份；旧运行时为 undefined。 */
+  product(): PetProductInfo | undefined;
+  /** 最近一次探测到的协议退出能力；缺字段一律为 undefined（等同不可用）。 */
+  shutdownCapability(): PetShutdownCapability | undefined;
+  /** 协议退出：能力不可用时直接跳过，不发请求。 */
+  requestExit(token: string, context: PetContext): Promise<PetResult>;
 }
 
 /**
@@ -106,6 +115,8 @@ export function createOpenPetAdapter(deps: OpenPetAdapterDeps): OpenPetAdapter {
   let disposed = false;
   let lastPetId: string | undefined;
   let lastVersion: string | undefined;
+  let lastProduct: PetProductInfo | undefined;
+  let lastShutdown: PetShutdownCapability | undefined;
   const inFlight = new Set<AbortController>();
 
   function offline(connection: PetConnection): PetStatus {
@@ -113,6 +124,8 @@ export function createOpenPetAdapter(deps: OpenPetAdapterDeps): OpenPetAdapter {
       provider,
       connection,
       ...(lastVersion !== undefined ? { runtimeVersion: lastVersion } : {}),
+      ...(lastProduct !== undefined ? { product: lastProduct } : {}),
+      ...(lastShutdown !== undefined ? { shutdown: lastShutdown } : {}),
       ...(lastPetId !== undefined ? { petId: lastPetId } : {}),
       checkedAt: deps.clock.now(),
       stale: true,
@@ -184,10 +197,15 @@ export function createOpenPetAdapter(deps: OpenPetAdapterDeps): OpenPetAdapter {
         if (verdict.kind === "accepted") {
           lastPetId = verdict.snapshot?.petId ?? lastPetId;
           lastVersion = verdict.snapshot?.runtimeVersion ?? lastVersion;
+          lastProduct = verdict.snapshot?.product ?? lastProduct;
+          // 能力随每次探测刷新：实例重启后可能就没有退出令牌了，不能复用旧值。
+          lastShutdown = verdict.snapshot?.shutdown ?? lastShutdown;
           return {
             provider,
             connection: "ready",
             ...(lastVersion !== undefined ? { runtimeVersion: lastVersion } : {}),
+            ...(lastProduct !== undefined ? { product: lastProduct } : {}),
+            ...(lastShutdown !== undefined ? { shutdown: lastShutdown } : {}),
             ...(lastPetId !== undefined ? { petId: lastPetId } : {}),
             checkedAt: deps.clock.now(),
             stale: false,
@@ -240,6 +258,15 @@ export function createOpenPetAdapter(deps: OpenPetAdapterDeps): OpenPetAdapter {
       return post(buildEventRequest(base(), upstreamType, message, ttl));
     },
 
+    async requestExit(token: string, context: PetContext): Promise<PetResult> {
+      // 能力没被明确声明可用就不发：普通 attach 客户端没有退出权，试一下不是策略。
+      if (!lastShutdown?.available) return skipped("unsupported");
+      if (!token.trim()) return skipped("unsupported");
+      const ttl = remainingTtl(context);
+      if (ttl === null) return skipped("expired");
+      return post(buildShutdownRequest(base(), token));
+    },
+
     async dispose(): Promise<void> {
       if (disposed) return;
       disposed = true;
@@ -259,6 +286,14 @@ export function createOpenPetAdapter(deps: OpenPetAdapterDeps): OpenPetAdapter {
 
     currentPetId(): string | undefined {
       return lastPetId;
+    },
+
+    product(): PetProductInfo | undefined {
+      return lastProduct;
+    },
+
+    shutdownCapability(): PetShutdownCapability | undefined {
+      return lastShutdown;
     },
   };
 }
