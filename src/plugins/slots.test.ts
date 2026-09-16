@@ -78,6 +78,55 @@ class FakeRenderer implements PetRendererPlugin {
   }
 }
 
+/**
+ * Renderer that owns a real element and follows the hit-target contract, so the
+ * window-level consequences of a slot switch can be asserted without pixels.
+ */
+class HitTargetRenderer implements PetRendererPlugin {
+  readonly displayName: string;
+  disposeCalls = 0;
+  private context: RendererMountContext | null = null;
+
+  constructor(
+    readonly id: string,
+    private readonly element: HTMLElement,
+  ) {
+    this.displayName = id;
+  }
+
+  capabilities(): RendererCapabilities {
+    return { actions: ['waving'], bubble: true, costumes: false, hitAreas: false };
+  }
+
+  async prepare(context: RendererMountContext): Promise<void> {
+    this.context = context;
+    context.onHitTargetChange(this.element);
+  }
+
+  activate(): void {}
+
+  deactivate(): void {}
+
+  action(): boolean {
+    return false;
+  }
+
+  pose(): boolean {
+    return false;
+  }
+
+  bubble(): void {}
+
+  applySettings(): void {}
+
+  async dispose(): Promise<void> {
+    this.disposeCalls += 1;
+    // 与两个真实渲染器一致：dispose 会把「自己的」命中元素置空。
+    this.context?.onHitTargetChange(null);
+    this.context = null;
+  }
+}
+
 function mountContext(): RendererMountContext {
   return {
     host: document.createElement('div'),
@@ -268,6 +317,44 @@ describe('RendererHost lifecycle', () => {
     // deactivate runs on every hand-over plus inside dispose, so it can only be >=.
     expect(sprite.deactivateCalls).toBeGreaterThanOrEqual(sprite.disposeCalls);
     expect(host.getCapabilities()).toBeNull();
+  });
+
+  it("keeps the incoming renderer's hit target when the superseded renderer is disposed", async () => {
+    // 真机缺陷回归：启动时先挂 sprite，真设置到达后切到 live2d；旧实例的 dispose
+    // 发生在新实例 prepare 之后。旧实现让旧实例直接清空共享槽位，于是窗口永久失去
+    // 命中元素 → 整窗鼠标穿透 → 拖不动、点不动、右键菜单不出来。单测原先看不见。
+    const events: Array<HTMLElement | null> = [];
+    const context: RendererMountContext = {
+      host: document.createElement('div'),
+      pet: FALLBACK_SNAPSHOT.activePet,
+      settings: DEFAULT_SETTINGS,
+      onHitTargetChange: (element) => events.push(element),
+      onRuntimeFailure: () => {},
+    };
+    const spriteElement = document.createElement('div');
+    const live2dElement = document.createElement('div');
+    const sprite = new HitTargetRenderer('sprite', spriteElement);
+    const live2d = new HitTargetRenderer('live2d', live2dElement);
+    const registry = new PluginRegistry();
+    registry.registerRenderer('sprite', () => sprite);
+    registry.registerRenderer('live2d', () => live2d);
+
+    const host = new RendererHost({ registry, context, fallbackRendererId: 'sprite' });
+    await host.start('sprite');
+    expect(events[events.length - 1]).toBe(spriteElement);
+
+    await host.switchTo('live2d');
+
+    expect(host.getActiveRendererId()).toBe('live2d');
+    // 当前交互区域必须是新实例的元素。
+    expect(events[events.length - 1]).toBe(live2dElement);
+    // 被替换的实例确实释放了，但它没能把交互区域清空。
+    expect(sprite.disposeCalls).toBe(1);
+    expect(events).not.toContain(null);
+
+    // 槽位整体停掉时，交互区域才允许回到「没有」。
+    await host.stop();
+    expect(events[events.length - 1]).toBeNull();
   });
 });
 

@@ -52,6 +52,16 @@ export class RendererHost {
   private active: ActiveInstance | null = null;
   private status: SlotStatus = 'unavailable';
   private lastError: string | null = null;
+  /**
+   * 每个实例注册的命中元素，按实例记录。
+   *
+   * 窗口需要的只有**当前活跃实例**那一个。让实例自己往共享槽位里写 `null` 是不行的：
+   * 旧实例的 `dispose()` 在新实例 `prepare()` **之后**才跑，它那一句 `null` 会把新实例
+   * 刚注册的元素覆盖掉。窗口拿不到命中元素就会一直忽略鼠标事件——整窗鼠标穿透，
+   * 拖动、点击、右键菜单一起失效（真机症状：sprite 能拖，Live2D 拖不动）。
+   */
+  private readonly hitTargets = new Map<PetRendererPlugin, HTMLElement | null>();
+  private publishedHitTarget: HTMLElement | null = null;
   private readonly counterState: RendererHostCounters = {
     starts: 0,
     switches: 0,
@@ -242,8 +252,17 @@ export class RendererHost {
     const generation = this.generation;
     this.status = 'preparing';
 
+    // 注册写进实例自己的条目，能不能发布由 publishHitTarget() 决定。
+    const scopedContext: RendererMountContext = {
+      ...this.context,
+      onHitTargetChange: (element) => {
+        this.hitTargets.set(plugin, element);
+        this.publishHitTarget();
+      },
+    };
+
     try {
-      await plugin.prepare(this.context);
+      await plugin.prepare(scopedContext);
     } catch (error) {
       this.counterState.failedPreparations += 1;
       this.recordFailure(error);
@@ -265,6 +284,8 @@ export class RendererHost {
       plugin.activate();
     } catch (error) {
       this.active = previous;
+      // 失败实例不得继续占着命中元素：把仍是输出方的那个实例的元素恢复回来。
+      this.publishHitTarget();
       this.recordFailure(error);
       this.status = previous ? 'degraded' : 'unavailable';
       if (previous) previous.plugin.activate();
@@ -274,11 +295,15 @@ export class RendererHost {
 
     // lastError is intentionally kept: a degraded host still owes the user the reason.
     this.status = 'ready';
+    // 新实例开始输出，它的命中元素此时才成为窗口的交互区域。
+    this.publishHitTarget();
     if (previous) await this.disposeInstance(previous);
     return true;
   }
 
   private async disposeInstance(instance: ActiveInstance): Promise<void> {
+    // 先撤下它注册的元素：实例在 dispose 里再喊一声 `null`，也只写回自己那条记录。
+    this.hitTargets.delete(instance.plugin);
     try {
       instance.plugin.deactivate();
     } catch {
@@ -291,6 +316,21 @@ export class RendererHost {
     } finally {
       this.counterState.disposedInstances += 1;
     }
+    this.publishHitTarget();
+  }
+
+  /**
+   * 发布「当前活跃实例」的命中元素。
+   *
+   * 交互区域只能由活跃实例决定，不能由「谁最后喊话」决定：切换时旧实例的 dispose
+   * 发生在新实例 prepare 之后，若由它直接清空共享槽位，窗口会永久丢失命中元素，
+   * 表现就是整窗鼠标穿透（0.6 真机缺陷：sprite 能拖、Live2D 拖不动）。
+   */
+  private publishHitTarget(): void {
+    const live = this.active ? this.hitTargets.get(this.active.plugin) ?? null : null;
+    if (live === this.publishedHitTarget) return;
+    this.publishedHitTarget = live;
+    this.context.onHitTargetChange(live);
   }
 
   private recordFailure(error: unknown): void {
