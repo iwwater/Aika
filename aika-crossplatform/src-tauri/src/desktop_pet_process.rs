@@ -105,7 +105,8 @@ pub struct DesktopPetProcessState {
 }
 
 impl DesktopPetProcessState {
-    pub fn handles(&self) -> Arc<Mutex<HashMap<u32, OwnedChild>>> {
+    /// 仅供本模块与测试操作句柄表；对外只暴露命令与收尾函数。
+    pub(crate) fn handles(&self) -> Arc<Mutex<HashMap<u32, OwnedChild>>> {
         Arc::clone(&self.children)
     }
 }
