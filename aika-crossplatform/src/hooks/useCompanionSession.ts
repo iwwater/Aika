@@ -39,6 +39,11 @@ export function useCompanionSession() {
     (enabled: boolean) => presenter.setMemoryExtractionEnabled(enabled),
     [presenter],
   );
+  // MVP-15 B：点击桌宠时的回应开关（默认开）。与「主动消息」互不影响。
+  const setPetClickReactionEnabled = useCallback(
+    (enabled: boolean) => presenter.setPetClickReactionEnabled(enabled),
+    [presenter],
+  );
   const setVoiceBackend = useCallback((next: VoiceBackendConfig) => presenter.setVoiceBackend(next), [presenter]);
   const setVoiceOutput = useCallback(
     (next: Parameters<CompanionPresenter["setVoiceOutput"]>[0]) => presenter.setVoiceOutput(next),
@@ -65,6 +70,7 @@ export function useCompanionSession() {
     setProvider,
     setProactive,
     setMemoryExtractionEnabled,
+    setPetClickReactionEnabled,
     setVoiceBackend,
     setVoiceOutput,
     removeVoiceApiKey,
@@ -74,7 +80,7 @@ export function useCompanionSession() {
     confirmMemory,
     deleteMemory,
   }), [
-    snapshot, send, retry, regenerate, withdraw, rewind, setProvider, setProactive, setMemoryExtractionEnabled, setVoiceBackend,
+    snapshot, send, retry, regenerate, withdraw, rewind, setProvider, setProactive, setMemoryExtractionEnabled, setPetClickReactionEnabled, setVoiceBackend,
     setVoiceOutput, removeVoiceApiKey,
     setModeConfig, setMode, exitScenario, confirmMemory, deleteMemory,
   ]);

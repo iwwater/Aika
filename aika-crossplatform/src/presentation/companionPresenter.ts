@@ -85,6 +85,8 @@ export interface CompanionViewModel {
   provider: ProviderConfig;
   memories: readonly MemoryRecord[];
   memoryExtractionEnabled: boolean;
+  /** 点击桌宠时回应一声的开关（MVP-15 B）。默认开。 */
+  petClickReactionEnabled: boolean;
   proactive: ProactiveSettings;
   voiceBackend: VoiceBackendConfig;
   /** 语音输出持久化配置（不含 Key——Key 不进快照/Trace，只报 hasApiKey）。
@@ -162,6 +164,13 @@ export interface CompanionPresenter {
    */
   sendEnvironmentProactive(buffer: readonly string[]): Promise<boolean>;
   setMemoryExtractionEnabled(enabled: boolean): Promise<void>;
+  /**
+   * 点击桌宠时的回应开关（MVP-15 B）。**默认开**。
+   *
+   * 与「主动消息」分开：那个管她主动开口（每日上限/最小间隔/勿扰），
+   * 这个管「你点了她之后的一声回应」。两者叠加——主动关掉时也不会因点击出声。
+   */
+  setPetClickReactionEnabled(enabled: boolean): Promise<void>;
   setVoiceBackend(next: VoiceBackendConfig): Promise<void>;
   /** 保存并应用语音输出配置（TTS-04）；持久化失败时抛错且不切内存。 */
   setVoiceOutput(next: VoiceOutputConfig): Promise<void>;
@@ -303,6 +312,8 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
   let summaryCoversUntil = 0;
   let proactive: ProactiveSettings = DEFAULT_PROACTIVE_SETTINGS;
   let memoryExtractionEnabled = true;
+  /** 点击桌宠时的回应（MVP-15 B）。**默认开**：点了它就该有反应。 */
+  let petClickReactionEnabled = true;
   let voiceBackend: VoiceBackendConfig = DEFAULT_VOICE_BACKEND;
   let modeConfig: ModeConfig = DEFAULT_MODE_CONFIG;
   let stickers: Sticker[] = [];
@@ -520,6 +531,11 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
     if (rawExtraction) {
       maintenanceEnabled = rawExtraction === "true";
       memoryExtractionEnabled = maintenanceEnabled;
+    }
+    // MVP-15 B：点击回应开关。**默认开**，所以只在显式存过 "false" 时才关。
+    if (storage) {
+      const rawClickReaction = await storage.getSetting(SETTING_KEYS.petClickReaction);
+      if (rawClickReaction === "false") petClickReactionEnabled = false;
     }
     voiceBackend = {
       backend: (rawBackend as VoiceBackendConfig["backend"]) || DEFAULT_VOICE_BACKEND.backend,
@@ -1155,6 +1171,16 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
     await storage?.setSetting(SETTING_KEYS.memoryExtraction, String(enabled));
   }
 
+  /**
+   * 点击桌宠时的回应开关（MVP-15 B）。默认开，与「主动消息」互相独立：
+   * 关了它只是「点她也不应声」，不影响她按自己的节奏主动开口。
+   */
+  async function setPetClickReactionEnabled(enabled: boolean): Promise<void> {
+    petClickReactionEnabled = enabled;
+    commit();
+    await storage?.setSetting(SETTING_KEYS.petClickReaction, String(enabled));
+  }
+
   async function setVoiceBackend(next: VoiceBackendConfig): Promise<void> {
     voiceBackend = next;
     commit();
@@ -1298,6 +1324,7 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
         provider,
         memories,
         memoryExtractionEnabled,
+        petClickReactionEnabled,
         proactive,
         voiceBackend,
         voiceOutput: voiceOutput ? {
@@ -1340,6 +1367,7 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
     setProactive,
     canSpeakAside,
     setMemoryExtractionEnabled,
+    setPetClickReactionEnabled,
     setVoiceBackend,
     setVoiceOutput,
     removeVoiceApiKey,

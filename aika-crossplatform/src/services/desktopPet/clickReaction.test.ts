@@ -103,6 +103,25 @@ describe("点击回应（MVP-15 B）", () => {
     expect(reaction.diagnostics().suppressed.disabled).toBe(1);
   });
 
+  it("setEnabled 立刻生效，且关掉不占用冷却", async () => {
+    const { reaction, clock, spoken } = setup();
+
+    await reaction.handle();
+    expect(spoken).toHaveLength(1);
+
+    // 关掉：随后的点击被抑制，但没有推进冷却。
+    reaction.setEnabled(false);
+    clock.advance(1_000);
+    await expect(reaction.handle()).resolves.toBe("disabled");
+    expect(spoken).toHaveLength(1);
+
+    // 重新打开：只要过了冷却就能正常回应（不是「关过一次就哑掉」）。
+    reaction.setEnabled(true);
+    clock.advance(CLICK_REACTION_MIN_INTERVAL_MS);
+    await expect(reaction.handle()).resolves.toBeNull();
+    expect(spoken).toHaveLength(2);
+  });
+
   it("canSend 终审没过就不出声（安静时段/上限/最小间隔共用同一出口）", async () => {
     const { reaction, spoken } = setup({ gate: false });
 

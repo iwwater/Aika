@@ -68,6 +68,13 @@ export interface ClickReactionDeps {
 
 export interface ClickReaction {
   /**
+   * 更新用户开关。
+   *
+   * 装配层在每次点击前读一次设置再喂进来（设置端口没有变更订阅），所以「关掉」
+   * 立刻生效，不用重启应用。不调用就用构造时的值（缺省视为开）。
+   */
+  setEnabled(enabled: boolean): void;
+  /**
    * 收到一次点击事实。返回 `null` = 已经回应，否则是抑制原因。
    * **不抛错、不排队、不重试。**
    */
@@ -78,6 +85,8 @@ export interface ClickReaction {
 export function createClickReaction(deps: ClickReactionDeps): ClickReaction {
   const isEnabled = deps.isEnabled ?? (() => true);
   const isSpeaking = deps.isSpeaking ?? (() => false);
+  /** 装配层在每次点击前刷新的开关值；`null` = 还没刷过，用构造时那个判断。 */
+  let enabledOverride: boolean | null = null;
   let lastRespondedAt: number | null = null;
   let cursor = 0;
 
@@ -93,10 +102,14 @@ export function createClickReaction(deps: ClickReactionDeps): ClickReaction {
   }
 
   return {
+    setEnabled(next) {
+      enabledOverride = next;
+    },
+
     async handle() {
       diagnostics.received += 1;
       try {
-        if (!isEnabled()) return suppress("disabled");
+        if (!(enabledOverride ?? isEnabled())) return suppress("disabled");
 
         const now = deps.clock.now();
         if (lastRespondedAt !== null && now - lastRespondedAt < CLICK_REACTION_MIN_INTERVAL_MS) {

@@ -80,6 +80,13 @@ export interface AikaStorage {
 export const SETTING_KEYS = {
   provider: "provider",
   proactive: "proactive",
+  /**
+   * 点击桌宠时的回应开关（MVP-15 B）。**默认开**：用户点了它就该有反应。
+   *
+   * 与「主动消息」分开：那个管的是她**主动**开口（每日上限、最小间隔、勿扰），
+   * 这一个管的是**你点了她之后**的一声回应。两者叠加判定，但可以各自关。
+   */
+  petClickReaction: "pet.clickReaction",
   proactiveLastSentAt: "proactive.lastSentAt",
   proactiveLastReason: "proactive.lastReason",
   memoryExtraction: "memory.extraction",

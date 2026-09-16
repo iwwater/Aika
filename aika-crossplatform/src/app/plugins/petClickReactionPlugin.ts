@@ -73,7 +73,19 @@ export function petClickReactionPlugin(deps: {
 
       // 订阅在 dispose 时退订：插件拆掉后不该还有事件往一个死服务里灌。
       const unsubscribe = deps.clickSource.subscribe(() => {
-        void reaction.handle();
+        void (async () => {
+          // 用户开关每次点击现读一次：设置端口没有变更订阅，读到即最新，
+          // 「关掉立刻生效」不用重启应用。快照拿不到（没装展示层 / 测试桩没有
+          // 这个方法）时按默认开——开关缺失不该变成「永远沉默」。
+          try {
+            const snapshot = resolve(CompanionPresenterToken)?.getSnapshot?.();
+            const enabled = snapshot?.petClickReactionEnabled;
+            reaction.setEnabled(typeof enabled === "boolean" ? enabled : true);
+          } catch {
+            reaction.setEnabled(true);
+          }
+          await reaction.handle();
+        })();
       });
       context.onDispose(unsubscribe);
 

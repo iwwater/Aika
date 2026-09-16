@@ -61,7 +61,8 @@ MVP-12 把「用户点了宠物」这个事实从 pet-shell 送到了 Aika 就�
 | 核心策略模块 `services/desktopPet/clickReaction.ts` | **已实现**：短语池 `CLICK_REACTION_PHRASES`、`CLICK_REACTION_MIN_INTERVAL_MS = 30_000`、不排队、不打断、不冒错；抑制原因封闭五类（`disabled/cooldown/gate/speaking/unavailable`）并逐类计数 |
 | 定向测试 `clickReaction.test.ts` | **11 项通过**：冷启动即回应、冷却内连点只回一次、29 999 ms 抑制 / 30 000 ms 放行、关掉后不查终审不出声、终审不过不出声、说话中不叠话、**没出声不推进冷却**、终审或出声抛错都不冒泡、诊断是快照、池内短句且无「需要上下文才成立」的措辞 |
 | **接线（clickSource + 终审 + 出声）** | **已实现**：① `app/hosts/index.ts` 把 `listen("pet://click")` 包成 `clickSource` 端口（`@tauri-apps` 只在这里 import）；② 新插件 `app/plugins/petClickReactionPlugin.ts` 订阅点击、经 token 提供 `ClickReaction` 服务；③ 终审走 **`CompanionPresenter.canSpeakAside()`**、出声走 **`VoicePresenter.speakAside()/isSpeaking()`**——两处都复用既有链路，没有第二套判断、没有第二个队列 |
-| 接线测试 `petClickReactionPlugin.test.ts` | **8 项通过**（真实内核 + 假 Presenter/假点击源）：单击出声、冷却内连点只响一次、终审否决则一次不出声、说话中不叠话、无语音链路仍激活且只记账、满 30s 后第二次照常、**dispose 退订**、服务可解析诊断可读 |
+| 接线测试 `petClickReactionPlugin.test.ts` | **9 项通过**（真实内核 + 假 Presenter/假点击源）：单击出声、冷却内连点只响一次、终审否决则一次不出声、说话中不叠话、无语音链路仍激活且只记账、满 30s 后第二次照常、**dispose 退订**、服务可解析诊断可读、**用户开关关掉即沉默（打开即恢复）** |
+| **独立开关（2026-09-16 用户选 (b)）** | `SETTING_KEYS.petClickReaction = "pet.clickReaction"`，**默认开**；UI 在「主动 / 被动响应」里（`点击桌宠时应一声`）。插件在**每次点击前**从 Presenter 快照现读一次（设置端口没有变更订阅，读到即最新，关掉立刻生效不用重启）；快照拿不到时按默认开——开关缺失不该变成「永远沉默」 |
 
 **两个新方法的边界（同时改动了 Presenter 契约）**
 

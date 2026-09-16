@@ -543,6 +543,13 @@ function App() {
               </button>
               <span className="toggle-hint">开启后每轮对话结束会额外发一次抽取请求，会产生平台调用费用。</span>
             </div>
+            <div className="toggle-row">
+              <button className={`toggle ${session.petClickReactionEnabled ? "on" : ""}`} onClick={() => void session.setPetClickReactionEnabled(!session.petClickReactionEnabled)}>
+                <Bell size={15} />
+                <span>点击桌宠时应一声 · {session.petClickReactionEnabled ? "开" : "关"}</span>
+              </button>
+              <span className="toggle-hint">点了桌宠她会说一句短话（短语来自本地，不调模型、不花费用）。两次之间至少隔 30 秒，连点不会攒着一起说；她正在说话时不会叠话。仍受「主动消息」的免打扰时段约束。</span>
+            </div>
 
             {environment.snapshot.available && (
               <>

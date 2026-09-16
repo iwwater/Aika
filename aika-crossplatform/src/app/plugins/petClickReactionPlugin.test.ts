@@ -174,6 +174,61 @@ describe("点击回应接线（MVP-15 B）", () => {
     expect(diagnostics.suppressed.unavailable).toBe(1);
   });
 
+  it("用户开关（presenter 快照）关掉时不出声，记 disabled", async () => {
+    const clicks = fakeClickSource();
+    const spoken: string[] = [];
+    const clock = createFakeClock(0);
+    let clickReactionEnabled = false; // 模拟用户在设置里把它关了
+
+    const kernel = createKernel();
+    kernel.use({
+      id: "fake.clock",
+      version: "1.0.0",
+      provides: [ClockToken],
+      activate: (context) => context.registrar.provide(ClockToken, () => clock),
+    });
+    kernel.use({
+      id: "fake.companion",
+      version: "1.0.0",
+      provides: [CompanionPresenterToken],
+      activate: (context) =>
+        context.registrar.provide(CompanionPresenterToken, () =>
+          ({
+            getSnapshot: () => ({ petClickReactionEnabled: clickReactionEnabled }),
+            canSpeakAside: async () => true,
+          }) as never,
+        ),
+    });
+    kernel.use({
+      id: "fake.voice",
+      version: "1.0.0",
+      provides: [VoicePresenterToken],
+      activate: (context) =>
+        context.registrar.provide(VoicePresenterToken, () =>
+          ({ speakAside: (text: string) => { spoken.push(text); return true; }, isSpeaking: () => false }) as never,
+        ),
+    });
+    kernel.use(petClickReactionPlugin({
+      clickSource: clicks.source,
+      resolve: (serviceToken) => kernel.registry.tryResolve(serviceToken),
+    }));
+    const report = await kernel.start();
+    expect(report.ok).toBe(true);
+    const reaction = kernel.registry.resolve(PetClickReactionToken);
+    const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    clicks.emit();
+    await flush();
+    expect(spoken).toEqual([]);
+    expect(reaction.diagnostics().suppressed.disabled).toBe(1);
+
+    // 用户把它打开：同一份快照读数变了，下一次点击照常出声。
+    clickReactionEnabled = true;
+    clicks.emit();
+    await flush();
+    expect(spoken).toEqual([CLICK_REACTION_PHRASES[0]]);
+  });
+
   it("兑现最小间隔：满 30s 后第二次点击照常回应", async () => {
     const { clicks, spoken, clock, flush } = await start({});
 
