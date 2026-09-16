@@ -66,7 +66,7 @@ WiX 工具链 `WixTools314` 已在本地缓存，构建全程离线。NSIS 未�
 
 ## 2. 缺陷
 
-本轮真机验收抓到两个缺陷：**DEF-1** 包内容与许可前提不符（未修复，阻塞对外发行）；**DEF-2** Live2D 模式下整窗鼠标穿透（已修复，待重建后人工复验）。
+本轮真机验收抓到三个缺陷：**DEF-1** 包内容与许可前提不符（未修复，阻塞对外发行）；**DEF-2** Live2D 模式下整窗鼠标穿透（已修复并人工复验）；**DEF-3** 导入宠物在目录名 ≠ 清单 id 时贴图 URL 取不到（未修复）。
 
 ### 2.1 DEF-1：Live2D 素材进入了可执行文件与安装包
 
@@ -173,6 +173,54 @@ npx tsc --noEmit                           → 退出码 0
 右键菜单与点击动作走的是同一条输入路径（取决于窗口能否收到鼠标事件），本节据此判定由同一次修复覆盖；若后续发现菜单单独失效，另开缺陷、不并入本条。
 
 修复提交：pet-shell `a3d1d267f8f29b1efe8201af53d510b98ed302da`（分支 `aiki/0.6`，仅本地）。
+
+### 2.3 DEF-3：导入宠物的贴图 URL 取不到（目录名 ≠ 清单 id 时）
+
+**性质**：功能缺陷。触发条件是**合法布局**，不是畸形数据。**未修复**（本轮只登记）。
+
+#### 证据
+
+本机 `~/.codex/pets/` 下目录名是 `phoebe`，其 `pet.json` 声明的 `id` 是 `phoebe-jiubi`：
+
+```json
+{ "id": "phoebe-jiubi", "displayName": "菲比啾比", "spritesheetPath": "spritesheet.webp" }
+```
+
+`/api/status` 把它列进 `petCatalog` 并广告如下 URL，但两条 URL 形态都取不到：
+
+```text
+"id":"phoebe-jiubi", "imported":true,
+"spritesheetUrl":"http://127.0.0.1:17321/api/pets/phoebe-jiubi/spritesheet"
+
+GET /api/pets/phoebe-jiubi/spritesheet   → 404
+GET /api/pets/phoebe/spritesheet         → 404
+```
+
+#### 根因（`src-tauri/src/lib.rs`）
+
+扫描与查询对「身份」的口径不一致：
+
+- **扫描**（`:977-1002`）按**子目录**枚举，`id` 取自目录内的 `pet.json`，只用**目录**去校验 `spritesheet.webp` 是否存在；**目录路径本身没有被保留**（`PetManifest` 没有位置字段）。
+- **查询**（`:1020-1029`）反过来把清单里的 `id` 当**目录名**拼路径：
+
+```rust
+let path = imported_dir.join(&pet.id).join(&pet.spritesheet_path);
+```
+
+于是目录名 ≠ 清单 `id` 时：目录被扫描接受、进入目录列表，但路径永远拼不出来。
+
+#### 触发面与影响
+
+- 触发条件是 **Codex 目录约定**——目录名任意、身份写在清单里。`petStoragePreset = "codex-custom"`（`activeDir = ~/.codex/pets`）存在的意义就是支持这种形态，所以不是畸形数据。
+- 影响：快照广告了自己取不到的 URL；消费者（Aiki）按 `spritesheetUrl` 加载该宠物会失败。该宠物在界面上能否切换、失败后如何降级，本轮**未实测**。
+- **零测试覆盖**：`imported_pet_spritesheet_path` 在 `lib.rs` 中只有定义这一处，没有任何测试引用，也没有「目录名 ≠ id」的用例——这是它没被既有测试挡住的原因。
+
+#### 修复方向（不预设结论，留给对应 SPEC）
+
+1. 扫描时把解析出的绝对贴图路径随目录一起记住（目录内部映射 `id → path`，或加一个不参与序列化的位置字段），查询只查这份映射；
+2. 或反过来要求并校验「目录名 == 清单 id」。
+
+前者兼容现有数据；后者会让现有 Codex 目录直接不可用。取舍需在 SPEC 里定，本轮不擅自改。
 
 ## 3. AC-B：生命周期与越权关闭
 
@@ -281,7 +329,7 @@ npx tsc --noEmit                           → 退出码 0
 | 项 | 结果 |
 | --- | --- |
 | sprite 真实可见表现 | **PASS**：副屏 `340x296` 窗口可见，角色正常渲染并播放待机动画；截图见 §4.2 三张证据 |
-| 四端点 | **PASS（复用 MVP-08/09 device 证据，同一 shell commit）**：`/api/status` 本轮真机复测 200；`say` 中文回读逐字一致；动作/事件为 MVP-08 device 证据 |
+| 四端点 | **PASS（本轮在 release 产物上逐项复测，见 §6.2）**：成功 / 未知 / 错误 / TTL 四类语义均与 PET-01 冻结口径一致 |
 | **Live2D 真实可见表现** | **见 §6.1** |
 | PET-07 适用 AC 逐项 | **NOT RUN**（未逐条重排） |
 
@@ -301,6 +349,26 @@ npx tsc --noEmit                           → 退出码 0
 
 整模型换装与经右键菜单的切换仍以 [MVP-11](MVP-11_ACCEPTANCE.md) 的真机 WebDriver 证据为准（同一 pet-shell commit `6ac67cc`）；本轮未重复驱动菜单路径。
 
+### 6.2 四端点在 release 产物上的逐项复测
+
+容器就绪、`renderer=live2d` 的同一实例上执行（2026-09-16）：
+
+| 用例 | 结果 | 与 PET-01 冻结口径 |
+| --- | --- | --- |
+| `GET /api/status` | 200，字段见 §1 | 一致 |
+| `POST /api/say {"text":"ttl probe","ttlMs":1500}` | 200；t=0、t=1s 仍有 `bubbleText`，**t=2.5s 已置空** | TTL 生效，一致 |
+| `POST /api/action {"animationId":"waving"}` | 200 | 一致 |
+| `POST /api/event {"type":"reviewing"}` | 200，`recentEvents` 增长、动作映射为 `review` | 一致 |
+| `POST /api/event {"type":"bogus"}` | **400**，`unknown variant \`bogus\`, expected one of \`thinking\`, \`tool-running\`, \`reviewing\`, \`success\`, \`failure\`, \`attention\`` | **错误体与 fixture 逐字一致** |
+| `POST /api/action {"animationId":"not-a-real-action"}` | **200**，该字符串被原样写进 `lastAction` | 一致（见下） |
+| `GET /api/nope` | 404 `{"error":"route not found","ok":false}` | 逐字一致 |
+| `GET /api/say`（方法错误） | 404 | 一致（PET-01 口径：404/405/415 归 incompatible） |
+| `POST /api/import/website` | 404 `{"error":"route not found","ok":false}` | 剪枝保持，一致 |
+| `GET /api/pets/<内置宠物>/spritesheet` | 404 | 一致（内置宠物走内嵌资源 `/pets/<id>/spritesheet.webp`，不经 API） |
+| `GET /api/pets/<导入宠物>/spritesheet` | **404** | **不一致 → 见 §2.3 DEF-3** |
+
+关于「未知 `animationId` 返回 200」：这是 **PET-01 已冻结的上游语义**，[PET-01 §4](../../frontend/reports/PET-01_PROTOCOL.md) 原文即「上游不校验 `animationId`，实测 `{"animationId":"backflip"}` 返回 200 并把 `backflip` 原样写进 `lastAction`」。因此**不判为漂移**；「不靠乱发动作猜能力」也就仍然是 Aiki 侧白名单的责任，不是 shell 的义务。
+
 ## 7. AC-F：安装 / 卸载 — NOT RUN
 
 需明确授权的环境，且不得操作用户日用系统；本轮未执行。与 INT-03 只复用同一产物与环境的适用证据，不重复跑无变化的全门禁。
@@ -317,7 +385,7 @@ npx tsc --noEmit                           → 退出码 0
 
 | 线 | 裁决 |
 | --- | --- |
-| **模块完成** | MVP-07/08/10/11 已 PASS；MVP-09 PARTIAL（屏幕可见层）；**MVP-13 本份 PARTIAL**（AC-A/B/C 部分、E 部分、F 未跑） |
+| **模块完成** | MVP-07/08/10/11 已 PASS；MVP-09 PARTIAL（屏幕可见层）；**MVP-13 本份 PARTIAL**（AC-A/B/C 部分、E 部分、F 未跑），并登记 **DEF-1 / DEF-3 两个未修复缺陷**（DEF-2 已修复） |
 | **0.6 产品 DoD** | **未达成**。缺：经菜单的 sprite↔Live2D 切换、`attach`、断连恢复、安装/卸载、FPS 侧证据；且 DEF-1 未处置。（本轮已补齐 Live2D 在 release 产物的可见证据，并修复了 DEF-2 交互缺陷） |
 | **发行就绪** | **未达成，且被 DEF-1 阻塞**。AC-E 明确「未解决的组合许可条件阻塞相关对外发行」——当前包内含 Live2D 官方示例模型与 Cubism Core |
 
@@ -329,6 +397,7 @@ npx tsc --noEmit                           → 退出码 0
 | --- | --- |
 | DEF-1 Live2D 素材进包 | **未修复**，按 SPEC 规则回对应 SPEC 处置；阻塞对外发行 |
 | DEF-2 整窗鼠标穿透 | **已修复并人工复验通过**（`a3d1d26` + 重建产物）；右键菜单/点击走同一输入路径，未单独复验 |
+| DEF-3 导入宠物贴图 URL 取不到 | **未修复**，已定位到 `src-tauri/src/lib.rs:1020-1029`；「按目录还是按清单 id」的取舍需在对应 SPEC 定 |
 | AC-F 安装/卸载 | NOT RUN，需授权环境 |
 | Live2D release 可见表现 | **已取**，见 §6.1（像素证据） |
 | `attach` / 断连恢复 | NOT RUN，需 Aiki 侧联动 |
