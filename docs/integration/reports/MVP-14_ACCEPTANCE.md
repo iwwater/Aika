@@ -10,7 +10,7 @@
 | B 体积量化 | **PASS** | exe −7,883,776 B；MSI −7,938,048 B |
 | C 缺资产可见降级 | **PASS** | 破坏性实测已补（§4.1）：移走模型目录后仍可用、回退默认 renderer、屏幕可见并显示提示；恢复后 Live2D 复原 |
 | D 来源与放置登记 | **PASS** | 目录、来源脚本、可覆盖环境变量均已登记；模型仍不入仓库 |
-| E dev/E2E 不回归 | **PARTIAL** | 单测 34 / `tsc` 0 / 构建通过；`e2e:tauri` 未重跑 |
+| E dev/E2E 不回归 | **PASS** | 单测 34 / `tsc` 0 / 构建通过；`e2e:tauri` **已重跑并 2 passing**（§4.2）——模型外置后在 debug/dev 路径上 Live2D 仍真实加载 |
 | F CSP 未放宽 | **PASS** | `tauri.conf.json` 的 CSP 逐字未改 |
 
 **DEF-1 已消除。** 对外发行不再被「官方示例模型随包分发」阻塞；Cubism Core 自身的分发条件仍须单独核查（本 SPEC 不作法律结论）。
@@ -105,12 +105,39 @@ cargo test --lib   → running 16 tests；test result: ok. 16 passed; 0 failed
 这同时验证了 MVP-11 既有契约在资产外置后的实际表现：`prepare` 失败 → 宿主回退默认 renderer，
 且**用户始终看得到东西**（这正是 AC-C 要的「缺资产可见降级」）。
 
+## 4.2 `e2e:tauri` 重跑（AC-E 定案，2026-09-16 补）
+
+模型外置后，dev/debug 路径与 release 路径的行为一致性需要实测：debug 构建同样从**应用数据的
+回环路由**取模型（不是 `dist/`），所以这条用例能同时验「外置后 dev 不回归」与「同一份资产路径在两条路径下都成立」。
+
+```text
+cd pet-shell
+pnpm tauri build --debug --no-bundle        退出码 0（36 s；debug 产物 18,509,312 B）
+TAURI_NATIVE_DRIVER=<msedgedriver.exe> \
+OPENPET_SKIP_TAURI_BUILD=1 pnpm e2e:tauri   退出码 0；Spec Files 1 passed；2 passing (3s)
+
+  ✓ boots the native pet window and opens its context menu
+  ✓ renders a real Live2D model after a real settings change, and switches appearance from the menu
+```
+
+两条用例覆盖：原生窗口启动与右键菜单、**真实 `update_settings` 改动**后 Live2D 接管（含真实
+WebGL 帧缓冲回读：不透明度/颜色数/透明像素占比）、真实菜单换装到 Mao 且像素指纹不同、
+单一输出（任一时刻只有一个 renderer 的 DOM 与一个 hit target）、**结束时把设置还原**。
+本轮新取证：[`device-live2d-hiyori.png`](evidence/device-live2d-hiyori.png)、
+[`device-live2d-mao.png`](evidence/device-live2d-mao.png)。
+
+**工具链注意（下次别踩）**：`tauri-driver` 需要 `msedgedriver.exe`，它**不在 PATH 里**——
+本轮首次运行即因此失败（`can not find binary msedgedriver.exe in the PATH`，退出码 1）。
+本机现成的一份在 `%TEMP%\petshell-verify\edgedriver\msedgedriver.exe`（MVP-11 那轮留下的），
+用 `TAURI_NATIVE_DRIVER` 指过去即可。**该目录在 `%TEMP%` 下，被系统清理后需重新获取**——
+这是环境依赖，不是仓库缺陷。
+
 ## 5. 未覆盖与观察
 
 | 项 | 状态 |
 | --- | --- |
 | 删掉模型目录后的**破坏性**降级实测 | **已做（§4.1）**：改名移走后回退默认 renderer 且提示可见，恢复后 Live2D 复原。用改名而非删除，效果等价、可无损回滚 |
-| `e2e:tauri` 重跑 | 未跑（需 debug 构建 + WebDriver） |
+| `e2e:tauri` 重跑 | **已做（§4.2）**：退出码 0、2 passing；需 `TAURI_NATIVE_DRIVER` 指向 `msedgedriver.exe` |
 | 首次（冷）加载 | 迁移后**第一次**启动在 +8 s 抓到的画面尚未绘制完成；此后多次启动稳定在 **~1.0 s**。原因未定位（可疑：首次读取 9 MB 文件的系统缓存未热）；记为观察，不是缺陷 |
 | 观察（非缺陷） | Pixi 贴图解码 worker 会 `fetch` 一个 `data:` 探测图，被 CSP 的 `connect-src`（不含 `data:`）拦下并在控制台报错；**渲染不受影响**（像素回读非空、画面正确）。本轮**未改 CSP**，如实登记 |
 | Cubism Core 的分发条件 | 仍须在对外发行前单独核查（不作法律结论） |
@@ -125,4 +152,5 @@ cargo test --lib   → running 16 tests；test result: ok. 16 passed; 0 failed
 ## 7. 待后续
 
 - 对外发行前的 Cubism Core 分发条件核查（原 MVP-13 AC-E 要求，未因本报告关闭）。
-- `e2e:tauri` 在 dev 路径上的复跑（模型外置后 dev 与 release 行为一致，但未实测）。
+- ~~`e2e:tauri` 在 dev 路径上的复跑~~ **→ 2026-09-16 已跑并 2 passing（§4.2）**；AC-E 转为 PASS。
+- `msedgedriver.exe` 的来源：本轮用的是 `%TEMP%` 下的历史副本。若要在干净环境/CI 上跑 e2e，需要先解决它的获取与版本匹配（本报告只登记现状，未引入下载流程）。

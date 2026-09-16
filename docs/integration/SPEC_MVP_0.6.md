@@ -13,7 +13,7 @@
 - MVP-12：**A～E PASS**（仅点击范围；[报告](reports/MVP-12_ACCEPTANCE.md)）——反向点击通道双仓落地：实例级一次性凭据（成对注入、attach 零携带）、版本封闭、按 `eventId` 去重、回环 only；**真人操作已闭合**（真实鼠标点击 → 宠物判定 → POST 到 Aiki 注入的 URL → 受理恰好一次）；撤销迟到输入实测 `unarmed:1` 且 `accepted` 不回退。偏差两项（实例身份由凭据承载而非报文字段、`eventId` 非 RFC UUID）与三项未闭合（单实例转交、真实断连分支、真实链路双击边界）见报告 §7。AC-D 按范围冻结记「不适用」。
 - KB-01：**NOT RUN**，仍未派发实施。
 - MVP-15：**草案，未派发**（[点击的 Aika 侧语义](specs/MVP-15_CLICK_CONSUMER.md)）——补上 MVP-12 §4 留出的消费者语义：v1（点击只作为可观测事实，不生成对话轮/不调 provider/不命令宠物做动作）已随 MVP-12 落地并冻结；v2 四个候选语义（零行为 / 受限轻量回应 / 对话入口 / 在场信号）与「无论选哪个都要满足的 6 条不变量」已列，**待用户拍板 §5**。隐私相关选项（D 在场信号）建议单独立项。
-- MVP-14：**A/B/D/F PASS，C 已 PASS（补测），E PARTIAL**（[报告](reports/MVP-14_ACCEPTANCE.md)）——**DEF-1 已消除**：官方示例模型移出分发包（exe −7,883,776 B、MSI −7,938,048 B，exe 内模型标记 0 命中而 Core 仍 1 命中），Core 留包内、**CSP 未放宽**；Live2D 仍可见（首帧约 1.0 s）。**AC-C 破坏性实测已补**：移走模型目录后仍可用、回退默认 renderer 且提示可见、恢复后 Live2D 复原（§4.1，像素证据）。未跑：`e2e:tauri` 重跑。
+- MVP-14：**A～F 全 PASS**（[报告](reports/MVP-14_ACCEPTANCE.md)）——**DEF-1 已消除**：官方示例模型移出分发包（exe −7,883,776 B、MSI −7,938,048 B，exe 内模型标记 0 命中而 Core 仍 1 命中），Core 留包内、**CSP 未放宽**；Live2D 仍可见（首帧约 1.0 s）。**AC-C 破坏性实测已补**（§4.1，像素证据）；**AC-E `e2e:tauri` 已重跑 2 passing**（§4.2，debug 路径实测；需 `TAURI_NATIVE_DRIVER` 指向 `msedgedriver.exe`——它不在 PATH，是环境依赖）。
 
 ## 决策与进入条件
 
