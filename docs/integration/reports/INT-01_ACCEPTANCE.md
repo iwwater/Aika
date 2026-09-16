@@ -24,3 +24,23 @@
 
 - **INT-01 当前状态：PARTIAL**。自动消费者契约列全部通过（109 测试 exit 0）；浏览器页面、Tauri/plugin-sql、真实手机、真实 Provider 四列 NOT RUN，构成人工/真实设备验收队列（见执行计划人工补验清单）。
 - 未做任何真实外发、真实宿主启动或生产构建；无范围外改动。
+
+## 补记：生产 DEV 开关（2026-09-16，构建级证据）
+
+INT-01-D 三子项中的「生产 DEV 开关」已有可复现证据；其余两子项（Tauri 启动重开、plugin-sql 生产 SQL）**仍为 NOT RUN**，因此该 AC 不上调整列结论。
+
+```text
+cd aika-crossplatform
+npm run build                        退出码 0；产物 dist/assets/index-6kdOB5CA.js（588.81 kB），built in 5.54s
+```
+
+产物核对（`dist/assets/*.js` 共 4 个资源全扫）：
+
+| 检查 | 结果 |
+| --- | --- |
+| 产物中残留的 `import.meta.env` 引用 | **0**（已被 Vite 静态替换） |
+| `defaultTraceSettings()` 的编译形态 | `function nj(){let t=!1;try{t=!1}catch{t=!1}return{enabled:t,includeText:!1}}`，即 `enabled = false` |
+
+结论：**生产构建下 Trace 默认关**——`services/trace/traceSettings.ts:28` 依赖的 `import.meta.env.DEV` 在构建期被替换为 `false`，与[规划文档 §7 问题 2](../../PLAN_DEV_DEBUG_WORKBENCH.md)的取舍一致；`includeText` 与构建无关，恒为 `false`。
+
+边界（不外推）：本节是**构建产物级**证据，不替代真实桌面宿主启动的目视验收，也不构成 INT-01-D 其余子项的证据；本轮未做真实外发，未启动真实宿主。

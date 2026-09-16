@@ -67,7 +67,7 @@
    **这一次查出四件只有真实数据才看得见的事**：① 工作台打开时不取数，必须手点刷新，而空态文案会让人以为是 Trace 没记到；② 「首 token」量的是首个**可见正文字符**，比平台首字节晚约 460ms（平台 TTFB 实测 216–338ms，与 prompt 大小无关）；③ `estimatedPrompt` 不含 1831 字系统指令，比真实 prompt 低约 2.5 倍，F9 成本页不能拿它当兜底；④ 取消的轮次在 DeepSeek 上一定拿不到 usage（只在末包报），已烧掉的 token 只能估——而能估的那个数正是 ③。
    仍然没验的：Tauri 真机（INT-01）、另外三种协议的 usage、语音链路（报告 §5 记了一条没能复现的观察）。
 3. **`plugin-sql` 上的 SQL 没执行过**。CORE-08 的 `DELETE ... IN (…)`、LLM-06 的 trace 建表与清理，证据都来自 node:sqlite 真实引擎跑生产 SQL，不等于 Tauri 环境验证。留 INT-01。
-4. **`import.meta.env.DEV` 在生产构建下的实际取值**没验过（Trace 默认开关依赖它）：冒烟跑的是 dev server，恰恰是 `DEV === true` 的那一侧。
+4. ~~**`import.meta.env.DEV` 在生产构建下的实际取值**没验过（Trace 默认开关依赖它）：冒烟跑的是 dev server，恰恰是 `DEV === true` 的那一侧。~~ **→ 2026-09-16 已验**：生产构建产物中 `import.meta.env` 引用为 0，`defaultTraceSettings()` 编译为 `enabled=false`（即生产默认关）。证据见 [INT-01 报告补记](integration/reports/INT-01_ACCEPTANCE.md)。
 5. **真实模型质量**：LLM-09 让「双语退化率」第一次可测了（`reply` 事件的 `translationDuplicatesReply` 比例），FE-10 让它在单轮里一眼可见。已有的真机样本是 **3 轮、全部未退化**（DeepSeek / openai-compatible，见 [真实一轮验证报告](frontend/reports/REAL_TURN_VERIFICATION.md)）——只能说「这三轮没退化」，样本量不够算比率，也没覆盖另外三种协议。
 
 ---
