@@ -1136,14 +1136,18 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
   /**
    * 只判「能不能插一句话」，不做任何轮次动作（MVP-15 B）。
    *
-   * 这里刻意复用与 `submitProactive` / `runProactiveTick` **同一份** canSend 输入与
-   * 同一个纯函数——多一份判断就早晚会和主路径不一致。
+   * **不受「主动消息」总开关影响**（2026-09-16 用户拍板 (ii)）：那个开关管的是她
+   * **主动**开口；点击是用户发起的，主动开关关着也该应一声。勿扰时段、每日上限与
+   * 最小间隔仍然生效——它们防的是打扰，不是回应。
+   *
+   * 复用与 `submitProactive` / `runProactiveTick` **同一个**纯函数（`canSend`），
+   * 只是 `enabled` 传 true：多一份判断就早晚会和主路径不一致。
+   * 与主动发送的另两个差别：不要求 provider 已连接（短语不需要模型），也不写库。
    */
   async function canSpeakAside(): Promise<boolean> {
-    if (!storage || !ready || !proactive.enabled) return false;
     const now = Date.now();
     const lastMessageAt = timestamps.length ? timestamps[timestamps.length - 1] : null;
-    const messagesToday = await storage.countProactiveSince(startOfToday(now));
+    const messagesToday = await storage?.countProactiveSince(startOfToday(now)) ?? 0;
     return canSend({
       nowMillis: now,
       hour: new Date(now).getHours(),
@@ -1151,7 +1155,7 @@ export function createCompanionPresenter(deps: CompanionPresenterDeps): Companio
       quietEndHour: proactive.quietEndHour,
       messagesToday,
       lastMessageAt,
-      enabled: proactive.enabled,
+      enabled: true,
     });
   }
 

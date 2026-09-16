@@ -68,7 +68,7 @@ MVP-12 把「用户点了宠物」这个事实从 pet-shell 送到了 Aika 就�
 
 | 方法 | 规矩 |
 | --- | --- |
-| `CompanionPresenter.canSpeakAside()` | 与主动消息**同一份** canSend 输入与同一个纯函数；**不建轮、不写库、不计数、不通知**。唯一差别：**不要求 provider 已连接**（插一句话不需要模型，离线也能「嗯？」一声） |
+| `CompanionPresenter.canSpeakAside()` | 与主动消息**同一个** canSend 纯函数；**不建轮、不写库、不计数、不通知**。三个差别：**① 不受「主动消息」总开关影响**（2026-09-16 用户拍板 (ii)——那个开关管她**主动**开口，点击是用户发起的，`enabled` 恒传 true）；② 不要求 provider 已连接（短语不需要模型，离线也能「嗯？」一声）；③ 不写库。勿扰时段、每日上限、最小间隔**仍然生效**——它们防的是打扰，不是回应。**缺口**：这条语义尚无 presenter 级单测（companionPresenter 的测试骨架没摸透，记录为欠账） |
 | `VoicePresenter.speakAside(text)` / `isSpeaking()` | 与朗读消息同一套说话权规则：会话开着不抢、正在念不叠话；**不设 `speakingMessageId`、不碰字幕**（它不是为了「正在朗读某条消息」而存在的） |
 
 **架构约束（踩过才知道，写下来免得下次再踩）**：Presenter 的工厂在 `starting` 期间解析会抛
