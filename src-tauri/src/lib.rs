@@ -188,6 +188,14 @@ pub struct PetManifest {
     pub source_url: Option<String>,
     #[serde(default)]
     pub imported: bool,
+    /// 磁盘上的实际贴图路径，**仅进程内使用**。
+    ///
+    /// 导入宠物的目录名不保证等于 `id`（Codex 约定：目录名任意、身份写在
+    /// `pet.json` 里），所以路径必须在扫描时随目录一起记下来；查询时若改用
+    /// `id` 去拼目录，快照就会广告一个取不到的 URL（MVP-13 DEF-3）。
+    /// 不参与 JSON：既不写出，也不从 `pet.json` 读入。
+    #[serde(skip)]
+    pub(crate) local_spritesheet: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -231,6 +239,8 @@ fn bundled_pet_manifests() -> Vec<PetManifest> {
         source_name: None,
         source_url: None,
         imported: false,
+        // 内置宠物走内嵌资源，不经文件系统，所以没有本地贴图路径。
+        local_spritesheet: None,
     }]
 }
 
@@ -997,7 +1007,14 @@ impl AppState {
                 }
                 manifest.imported = true;
                 manifest.spritesheet_path = "spritesheet.webp".to_string();
-                if pet_dir.join(&manifest.spritesheet_path).is_file() {
+                // 目录名可以不同于清单 id（Codex 约定），所以路径在这里定死，
+                // 查询时不再用 id 去拼目录。
+                manifest.local_spritesheet = Some(pet_dir.join(&manifest.spritesheet_path));
+                if manifest
+                    .local_spritesheet
+                    .as_ref()
+                    .is_some_and(|path| path.is_file())
+                {
                     imported.push(manifest);
                 }
             }
@@ -1019,12 +1036,13 @@ impl AppState {
 
     pub(crate) fn imported_pet_spritesheet_path(&self, id: &str) -> Option<PathBuf> {
         let state = self.inner.lock().expect("runtime state poisoned");
-        let imported_dir = state.imported_pets_dir.as_ref()?;
         let pet = state
             .pet_catalog
             .iter()
             .find(|pet| pet.imported && pet.id == id)?;
-        let path = imported_dir.join(&pet.id).join(&pet.spritesheet_path);
+        // 用扫描时记下的实际路径：目录名与清单 id 可以不同（Codex 约定），
+        // 用 id 拼目录会让快照广告的 URL 404。
+        let path = pet.local_spritesheet.clone()?;
         path.is_file().then_some(path)
     }
 
@@ -1306,6 +1324,8 @@ pub(crate) fn import_local_pet(
         source_name: resolved.source_name,
         source_url: resolved.source_url,
         imported: true,
+        // 落盘后紧接着 refresh_imported_pets()，实际路径由扫描写回。
+        local_spritesheet: None,
     };
     let manifest_json = serde_json::to_string_pretty(&manifest)
         .map_err(|error| format!("failed to serialize pet.json: {error}"))?;
@@ -2173,5 +2193,56 @@ mod tests {
             SHUTDOWN_CONTRACT_VERSION
         );
         assert_eq!(snapshot.capabilities.shutdown.auth, SHUTDOWN_AUTH_SCHEME);
+    }
+
+    #[test]
+    fn serves_spritesheets_for_imported_pets_whose_directory_name_differs_from_the_id() {
+        // Codex 约定：目录名任意、身份写在 pet.json 里。扫描按目录枚举，若查询时改用
+        // 清单 id 当目录名拼路径，快照广告的 spritesheetUrl 就会 404（MVP-13 DEF-3）。
+        let root = std::env::temp_dir().join(format!(
+            "petshell-imported-dir-mismatch-{}-{}",
+            std::process::id(),
+            now_ms()
+        ));
+        let imported_root = root.join("pets");
+        let pet_dir = imported_root.join("phoebe");
+        fs::create_dir_all(&pet_dir).unwrap();
+        fs::write(pet_dir.join("spritesheet.webp"), b"placeholder").unwrap();
+        fs::write(
+            pet_dir.join("pet.json"),
+            r#"{
+  "id": "phoebe-jiubi",
+  "displayName": "Phoebe",
+  "description": "directory name differs from the manifest id",
+  "spritesheetPath": "spritesheet.webp",
+  "imported": true
+}"#,
+        )
+        .unwrap();
+
+        let state = AppState::new(RuntimeApiConfig::default());
+        state
+            .configure_app_paths(root.join("app-data"), None)
+            .unwrap();
+        let mut settings = PetSettings::default();
+        settings.pet_storage_preset = PetStoragePreset::Custom;
+        settings.custom_pet_storage_dir = Some(imported_root.to_string_lossy().to_string());
+        state.configure_settings(settings).unwrap();
+        state.refresh_imported_pets().unwrap();
+
+        // 目录被扫描接受，清单 id 也进了 catalog。
+        assert!(state
+            .snapshot()
+            .pet_catalog
+            .iter()
+            .any(|pet| pet.id == "phoebe-jiubi" && pet.imported));
+
+        // 广告出去的 URL 必须真的取得到。
+        assert_eq!(
+            state.imported_pet_spritesheet_path("phoebe-jiubi"),
+            Some(pet_dir.join("spritesheet.webp"))
+        );
+
+        let _ = fs::remove_dir_all(root);
     }
 }
