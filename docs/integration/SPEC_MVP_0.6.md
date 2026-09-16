@@ -12,7 +12,7 @@
 - MVP-13：**报告 AC-D/E/F PASS，A/B/C 部分**（[MVP-13 报告](reports/MVP-13_ACCEPTANCE.md)）——MSI 构建/启动/重开、四端点逐项复测、Live2D 在 release 产物的可见表现（像素证据）、10 分钟待机与 30 次交互均已取；三个缺陷 **DEF-1/2/3 全部处置**（DEF-1 由 MVP-14 修复，DEF-2/DEF-3 在本份内修复复验）；**AC-F 安装/卸载已于 2026-09-16 授权补测 PASS**（安装副本 903 ms 就绪、四端点 200、卸载残留清零、用户数据 41 文件不变）。**遗留**：`attach`/断连恢复、FPS 侧证据、Cubism Core 分发条件核查，以及「安装模式 per-machine vs per-user」需产品决定（现为 per-machine，要求提权）。
 - MVP-12：**A～E PASS**（仅点击范围；[报告](reports/MVP-12_ACCEPTANCE.md)）——反向点击通道双仓落地：实例级一次性凭据（成对注入、attach 零携带）、版本封闭、按 `eventId` 去重、回环 only；**真人操作已闭合**（真实鼠标点击 → 宠物判定 → POST 到 Aiki 注入的 URL → 受理恰好一次）；撤销迟到输入实测 `unarmed:1` 且 `accepted` 不回退。偏差两项（实例身份由凭据承载而非报文字段、`eventId` 非 RFC UUID）与三项未闭合（单实例转交、真实断连分支、真实链路双击边界）见报告 §7。AC-D 按范围冻结记「不适用」。
 - KB-01：**NOT RUN**，仍未派发实施。
-- MVP-15：**草案，未派发**（[点击的 Aika 侧语义](specs/MVP-15_CLICK_CONSUMER.md)）——补上 MVP-12 §4 留出的消费者语义：v1（点击只作为可观测事实，不生成对话轮/不调 provider/不命令宠物做动作）已随 MVP-12 落地并冻结；v2 四个候选语义（零行为 / 受限轻量回应 / 对话入口 / 在场信号）与「无论选哪个都要满足的 6 条不变量」已列，**待用户拍板 §5**。隐私相关选项（D 在场信号）建议单独立项。
+- MVP-15：**B 已拍板，核心已实现，接线未做**（[点击的 Aika 侧语义](specs/MVP-15_CLICK_CONSUMER.md)）——2026-09-16 用户选 **B（受限轻量回应）**：点击 → 固定短语池的一句（不调 provider）× `canSend` 终审 × ≥30s 冷却 × 不排队 × 不打断 × 不冒错。核心模块 `clickReaction.ts` + **11 项定向测试通过**已就位；**接线（`listen("pet://click")` 端口、`canSend`/出声注入）NOT RUN——尚无生产消费点，用户点击目前听不到回应**。C（对话入口）/D（在场信号，带隐私风险）未采用，D 建议单独立项。
 - MVP-14：**A～F 全 PASS**（[报告](reports/MVP-14_ACCEPTANCE.md)）——**DEF-1 已消除**：官方示例模型移出分发包（exe −7,883,776 B、MSI −7,938,048 B，exe 内模型标记 0 命中而 Core 仍 1 命中），Core 留包内、**CSP 未放宽**；Live2D 仍可见（首帧约 1.0 s）。**AC-C 破坏性实测已补**（§4.1，像素证据）；**AC-E `e2e:tauri` 已重跑 2 passing**（§4.2，debug 路径实测；需 `TAURI_NATIVE_DRIVER` 指向 `msedgedriver.exe`——它不在 PATH，是环境依赖）。
 
 ## 决策与进入条件
