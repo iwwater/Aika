@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | A 模型不再进包 | **PASS** | exe 内模型文件名 0 命中；`live2dcubismcore` 仍 1 命中（正对照） |
 | B 体积量化 | **PASS** | exe −7,883,776 B；MSI −7,938,048 B |
-| C 缺资产可见降级 | **PARTIAL** | 降级路径复用 MVP-11 既有契约 + 新增「无基址即失败」分支；**未做删目录的破坏性实测** |
+| C 缺资产可见降级 | **PASS** | 破坏性实测已补（§4.1）：移走模型目录后仍可用、回退默认 renderer、屏幕可见并显示提示；恢复后 Live2D 复原 |
 | D 来源与放置登记 | **PASS** | 目录、来源脚本、可覆盖环境变量均已登记；模型仍不入仓库 |
 | E dev/E2E 不回归 | **PARTIAL** | 单测 34 / `tsc` 0 / 构建通过；`e2e:tauri` 未重跑 |
 | F CSP 未放宽 | **PASS** | `tauri.conf.json` 的 CSP 逐字未改 |
@@ -90,11 +90,26 @@ npx tsc --noEmit   → 退出码 0
 cargo test --lib   → running 16 tests；test result: ok. 16 passed; 0 failed
 ```
 
+## 4.1 缺资产的破坏性实测（AC-C 定案，2026-09-16 补）
+
+方法：**改名而非删除**（`<app data>/live2d/models` → `models.bak`，40 文件 / 9,245,631 B），
+效果等价于用户把目录删掉（路径不存在），且可无损回滚。全程只重启 shell，不改配置。
+
+| 阶段 | 观测 | 结论 |
+| --- | --- | --- |
+| 缺资产启动 | `/api/status` **200**，进程存活，`petVisible=true`，`renderer=live2d`（持久化设置未回退） | 不崩、不挂、不拒启 |
+| 缺资产画面 | **回退到默认 renderer**：屏幕上是 sprite（Nia），并弹出 `.pet-slot-notice` 提示 **"Falling back to default renderer"**：[`MVP-14_missing_assets_degraded.png`](evidence/MVP-14_missing_assets_degraded.png) | **可见降级**，不是空窗、不是黑屏 |
+| 缺资产路由 | `GET /live2d/models/hiyori/Hiyori.model3.json` → **404**（路由仍可用，只是资产不在） | 失败面明确 |
+| 恢复资产 | 目录改名回原位（40 文件）→ 重启：`/api/status` 200、模型路由 **200**、屏幕上是完整的 **Hiyori Live2D 模型**（无提示）：[`MVP-14_assets_restored.png`](evidence/MVP-14_assets_restored.png) | 可恢复，无需重装或改配置 |
+
+这同时验证了 MVP-11 既有契约在资产外置后的实际表现：`prepare` 失败 → 宿主回退默认 renderer，
+且**用户始终看得到东西**（这正是 AC-C 要的「缺资产可见降级」）。
+
 ## 5. 未覆盖与观察
 
 | 项 | 状态 |
 | --- | --- |
-| 删掉模型目录后的**破坏性**降级实测 | **未做**：会破坏本机可用资产。降级路径本身有两个保证——渲染器在 `prepare` 失败时让宿主回退（MVP-11 既有契约），以及新增的「基址为空即失败」分支；界面提示沿用 `.pet-slot-notice`（MVP-11 既有） |
+| 删掉模型目录后的**破坏性**降级实测 | **已做（§4.1）**：改名移走后回退默认 renderer 且提示可见，恢复后 Live2D 复原。用改名而非删除，效果等价、可无损回滚 |
 | `e2e:tauri` 重跑 | 未跑（需 debug 构建 + WebDriver） |
 | 首次（冷）加载 | 迁移后**第一次**启动在 +8 s 抓到的画面尚未绘制完成；此后多次启动稳定在 **~1.0 s**。原因未定位（可疑：首次读取 9 MB 文件的系统缓存未热）；记为观察，不是缺陷 |
 | 观察（非缺陷） | Pixi 贴图解码 worker 会 `fetch` 一个 `data:` 探测图，被 CSP 的 `connect-src`（不含 `data:`）拦下并在控制台报错；**渲染不受影响**（像素回读非空、画面正确）。本轮**未改 CSP**，如实登记 |
