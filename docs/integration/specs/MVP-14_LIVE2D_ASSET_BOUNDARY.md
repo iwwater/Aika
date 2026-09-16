@@ -1,6 +1,6 @@
 # MVP-14 · Live2D 素材的分发边界（DRAFT）
 
-状态：**草案，未派发**。依据：[MVP-13 报告](../reports/MVP-13_ACCEPTANCE.md) §2.1 的 **DEF-1**。范围：`f:/AIVoice/pet-shell` 的构建打包与资产加载路径；不重写 renderer、不改 Live2D 渲染逻辑。
+状态：**草案，未派发**。依据：[MVP-13 报告](../reports/MVP-13_ACCEPTANCE.md) §2.1 的 **DEF-1**。范围：shell 源码（**2026-09-17 起位于 Aika 仓库 `pet-shell` 分支**，原 `f:/AIVoice/pet-shell`）的构建打包与资产加载路径；不重写 renderer、不改 Live2D 渲染逻辑。
 
 ## 1. 问题（已取证的现状）
 

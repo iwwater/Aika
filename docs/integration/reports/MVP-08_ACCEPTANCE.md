@@ -4,6 +4,8 @@
 
 用户决策：仓库 `f:/AIVoice/pet-shell`；**自用，不对外分发**。显示名与标识按授权使用临时值 **PetShell** / `dev.aiki.petshell`，可随时再改。
 
+> **2026-09-17 注（不改变本轮结论）**：shell 源码已推送为 Aika 仓库的 **`pet-shell` 分支**；上句「仓库 `f:/AIVoice/pet-shell`」是 2026-09-15 当时的形态。本报告的 AC 结论与证据不受影响，统一口径见 [SPEC 索引](../SPEC_MVP_0.6.md)。
+
 ## 状态摘要
 
 | AC | 结论 | 证据等级 |

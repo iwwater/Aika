@@ -2,7 +2,9 @@
 
 > 2026-09-15审阅修订：仅更新方案，仍待确认，未授权实施。派发与欠账口径见[审阅结论](REVIEW_DISPATCH_2026-09-15.md)。技术可行性门禁先于剪枝；不得将“拍板”理解为绕过兼容与许可核查。
 >
-> **2026-09-16 口径更新**：三项产品决策已定——① 位置 `f:/AIVoice/pet-shell`；② **自用不分发**；③ **MVP-12 纳入，且仅点击交互**（文件分支不适用）。据此 MVP-07/08/09/10/11 已实施并出报告、MVP-13 执行中；本文其余处出现的「待用户确认／条件占位」按本注读，MVP-12 的输入契约见 [MVP-12 明细](integration/specs/MVP-12.md)。
+> **2026-09-16 口径更新**（其中 ① 已于 2026-09-17 变更，见下）：三项产品决策已定——① 位置 `f:/AIVoice/pet-shell`；② **自用不分发**；③ **MVP-12 纳入，且仅点击交互**（文件分支不适用）。据此 MVP-07/08/09/10/11 已实施并出报告、MVP-13 执行中；本文其余处出现的「待用户确认／条件占位」按本注读，MVP-12 的输入契约见 [MVP-12 明细](integration/specs/MVP-12.md)。
+>
+> **2026-09-17 更新（用户决定：不新开仓库）**：① 代码位置改为 **Aika 仓库的 `pet-shell` 分支**——shell 源码已推送至该分支，含 `aiki/0.6` 的 24 个提交完整历史；本地工作副本仍在 `f:/AIVoice/pet-shell`。② 自用不分发、③ MVP-12 仅点击交互**均不变**。本文 §2「fork 不进 Aika 仓库」一句按本注作废。
 
 日期：2026-09-15。基线：`0efa11c`。需求来自用户 2026-09-15 对话：桌宠只留前端表现层，其余剪枝＋插件化＋品牌替换＋接自有后端，并新增 Live2D 换装。[SPEC 索引及 MVP-07～13 明细](integration/SPEC_MVP_0.6.md)已拆成草案，沿用 MVP 编号空间。本次仅授权修改文档，未授权实施；MVP-12 仍是条件占位。
 
@@ -37,7 +39,7 @@ Aiki（不改或少改）
   DesktopPetService（契约 · 事件映射 · profile）
         │ OpenPetAdapter（兼容优先）    Sidecar 进程管理
         │ HTTP loopback · 四端点
-  pet-shell（独立仓库，fork 自 OpenPet v0.1.6）
+  pet-shell（Aika 仓库 pet-shell 分支，fork 自 OpenPet v0.1.6）
     薄壳：窗口 / 托盘 / 单实例 / 退出端点
     兼容 API：status · say · action · event
     插件槽：renderer · menu · behavior
@@ -47,7 +49,7 @@ Aiki（不改或少改）
   剪枝：仅删除上游核实存在且不需要的功能与品牌资产
 ```
 
-fork 是**独立仓库**，不进 Aika 仓库、不在 aika-crossplatform 内建目录；Aika `docs/` 仍是唯一文档根，0.6 的 SPEC 与报告写在 Aika docs（归属见 §8）。跨仓契约 = PET-01 冻结 fixtures（`src/services/desktopPet/fixtures/openPetFixtures.ts`）：契约变更必须双仓同轮修订并复跑契约测试，禁止单方漂移。
+fork **原为独立仓库**（2026-09-16 口径：「不进 Aika 仓库」）；**2026-09-17 起按用户决定改为 Aika 仓库的 `pet-shell` 分支**——不在 `aika-crossplatform` 内建目录、不与 `master` 混线，两个分支历史独立，`git checkout` 切换。Aika `docs/` 仍是唯一文档根，0.6 的 SPEC 与报告写在 Aika docs（归属见 §8）。跨仓（现为跨分支）契约 = PET-01 冻结 fixtures（`src/services/desktopPet/fixtures/openPetFixtures.ts`）：契约变更必须**同轮修订两侧**并复跑契约测试，禁止单方漂移——这一条不因落点从仓库变为分支而放宽。
 
 ## 4. 需求与 SPEC 映射
 
@@ -100,14 +102,14 @@ fork 是**独立仓库**，不进 Aika 仓库、不在 aika-crossplatform 内建
 
 执行顺序调整为MVP-07基线/可行性/剪枝→MVP-10最小插件槽→MVP-08品牌/菜单/生命周期→MVP-09兼容联调→MVP-11 Live2D→MVP-13。编号保持不变，不要求按编号数值排序。四端点回归从07起每阶段执行，09是综合出口。MVP-12若纳入，先冻结输入种类、可信身份、权限和重复请求语义，再按依赖排入，不笼统“插队”。一次一份SPEC；报告统一写integration/reports，真实/fixture分列。MVP-13与INT-03复用同一发行基线的适用证据，不重复跑无变化的全套门禁。
 
-**待用户确认后生效**：a) 正式产品名/仓库名（文档设计可暂用pet-shell）；b) 自用还是对外分发；c) MVP-12是否纳入及具体输入范围。决定之后先执行07技术出口，再进入剪枝；本次审阅没有代替用户作上述决定。
+**待用户确认后生效**：a) 正式产品名/仓库名（文档设计可暂用pet-shell）——**2026-09-17：代码位置已定（Aika 仓库 `pet-shell` 分支），正式产品名仍待定**；b) 自用还是对外分发；c) MVP-12是否纳入及具体输入范围。决定之后先执行07技术出口，再进入剪枝；本次审阅没有代替用户作上述决定。
 
 ## 9. 旧计划迁移
 
 | 旧项 | 新裁决 |
 | --- | --- |
 | PET-08（NyaDeskPet 条件接入） | 用户已明确选择 Live2D 路线，且路线为 fork＋自建 renderer；PET-08 由 MVP-11 取代并搁置，其 WS 协议与音频条件保留为反向通道/口型的参考蓝本 |
-| PET-01 协议基线 | 继续作为四端点契约的唯一事实来源；fixtures 同步进 pet-shell 仓库 |
+| PET-01 协议基线 | 继续作为四端点契约的唯一事实来源；fixtures 同步进 pet-shell 侧（2026-09-17 起为 Aika 仓库 `pet-shell` 分支） |
 | PET-02～07 交付 | 原基线证据保留，不自动覆盖 fork；MVP-09 做双端兼容复验及已登记的 Aika 最小增量，旧未测项不继承为 PASS |
 | FE-27/28/29（SUPERSEDED） | 维持；渲染器在 pet-shell 内实现，不恢复 Aika 主应用自研渲染 |
 | tools/live2d-pipeline | 本轮不自动恢复素材生产或ComfyUI；MVP-11消费现成已授权模型。工坊/素材流水线按TODO独立立项 |
