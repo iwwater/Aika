@@ -42,6 +42,8 @@ export function createTauriPetProcessPort(options: TauriPetProcessPortOptions): 
         ...(options?.clickUrl && options?.clickToken
           ? { clickUrl: options.clickUrl, clickToken: options.clickToken }
           : {}),
+        // 宿主退出的承诺也在 spawn 时定死：托盘「完全退出」由 Rust 收尾兑现。
+        ...(options?.stopOnHostExit ? { stopOnHostExit: true } : {}),
       });
       return { pid: readPid(raw) };
     },

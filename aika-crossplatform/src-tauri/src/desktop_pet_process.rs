@@ -90,13 +90,22 @@ pub fn validate_executable(raw: &str) -> Result<String, ValidationError> {
     Ok(path.to_string())
 }
 
+/// 一个受管句柄：进程本体 + 宿主退出时的承诺。
+#[derive(Debug)]
+struct OwnedChild {
+    child: Child,
+    /// 来自配置 `stopOwnedOnExit`：宿主退出时是否把这只桌宠一起带走。
+    /// spawn 时定死——宿主退出路径不读配置、不问前端，直接按承诺执行。
+    stop_on_host_exit: bool,
+}
+
 #[derive(Default)]
 pub struct DesktopPetProcessState {
-    children: Arc<Mutex<HashMap<u32, Child>>>,
+    children: Arc<Mutex<HashMap<u32, OwnedChild>>>,
 }
 
 impl DesktopPetProcessState {
-    pub fn handles(&self) -> Arc<Mutex<HashMap<u32, Child>>> {
+    pub fn handles(&self) -> Arc<Mutex<HashMap<u32, OwnedChild>>> {
         Arc::clone(&self.children)
     }
 }
@@ -185,23 +194,30 @@ fn spawn_command(path: &str, credentials: &PetChildCredentials) -> Command {
 
 fn spawn_with(
     mut command: Command,
-    children: &Arc<Mutex<HashMap<u32, Child>>>,
+    children: &Arc<Mutex<HashMap<u32, OwnedChild>>>,
+    stop_on_host_exit: bool,
 ) -> Result<u32, ProcessFailure> {
-    let child = command.spawn().map_err(|_| ProcessFailure::new("spawn_failed"))?;
+    let mut child = command.spawn().map_err(|_| ProcessFailure::new("spawn_failed"))?;
     let pid = child.id();
     if let Ok(mut guard) = children.lock() {
-        guard.insert(pid, child);
+        guard.insert(
+            pid,
+            OwnedChild {
+                child,
+                stop_on_host_exit,
+            },
+        );
     }
     Ok(pid)
 }
 
 fn is_alive(
-    children: &Arc<Mutex<HashMap<u32, Child>>>,
+    children: &Arc<Mutex<HashMap<u32, OwnedChild>>>,
     pid: u32,
 ) -> Result<bool, ProcessFailure> {
     let mut guard = children.lock().map_err(|_| ProcessFailure::new("state_poisoned"))?;
-    let child = guard.get_mut(&pid).ok_or_else(|| ProcessFailure::new("unknown_process"))?;
-    match child.try_wait() {
+    let entry = guard.get_mut(&pid).ok_or_else(|| ProcessFailure::new("unknown_process"))?;
+    match entry.child.try_wait() {
         Ok(None) => Ok(true),
         Ok(Some(_)) => Ok(false),
         Err(_) => Err(ProcessFailure::new("unknown_process")),
@@ -210,15 +226,15 @@ fn is_alive(
 
 /// 只停止本进程持有的句柄；停止后句柄即被移除（所有权不可重复使用）。
 fn stop_child(
-    children: Arc<Mutex<HashMap<u32, Child>>>,
+    children: Arc<Mutex<HashMap<u32, OwnedChild>>>,
     pid: u32,
     timeout_ms: Option<u64>,
 ) -> Result<(), ProcessFailure> {
-    let mut child = {
+    let mut entry = {
         let mut guard = children.lock().map_err(|_| ProcessFailure::new("state_poisoned"))?;
         guard.remove(&pid).ok_or_else(|| ProcessFailure::new("unknown_process"))?
     };
-    let _ = child.kill();
+    let _ = entry.child.kill();
     let timeout = Duration::from_millis(
         timeout_ms
             .unwrap_or(STOP_TIMEOUT_MS)
@@ -226,7 +242,7 @@ fn stop_child(
     );
     let deadline = Instant::now() + timeout;
     loop {
-        match child.try_wait() {
+        match entry.child.try_wait() {
             Ok(Some(_)) | Err(_) => return Ok(()),
             Ok(None) => {
                 if Instant::now() >= deadline {
@@ -236,6 +252,32 @@ fn stop_child(
             }
         }
     }
+}
+
+/// 宿主退出前的收尾：把按承诺该带走的桌宠全部停掉，返回停掉的数量。
+///
+/// 为什么要在这里做：托盘「完全退出」是 `app.exit(0)` 立即退出，JS 侧的
+/// `dispose()`（PET-05 的正常清理点）根本不会执行——实测 owned 桌宠被遗留成孤儿。
+/// 等待有界（每只最多 `timeout_ms`），保证退出不被拖死。
+pub fn stop_all_on_host_exit(
+    state: &DesktopPetProcessState,
+    timeout_ms: Option<u64>,
+) -> usize {
+    let targets: Vec<u32> = match state.children.lock() {
+        Ok(guard) => guard
+            .iter()
+            .filter(|(_, entry)| entry.stop_on_host_exit)
+            .map(|(pid, _)| *pid)
+            .collect(),
+        Err(_) => return 0,
+    };
+    let mut stopped = 0;
+    for pid in targets {
+        if stop_child(Arc::clone(&state.children), pid, timeout_ms).is_ok() {
+            stopped += 1;
+        }
+    }
+    stopped
 }
 
 #[tauri::command]
@@ -256,6 +298,7 @@ pub fn desktop_pet_process_spawn(
     exit_token: Option<String>,
     click_url: Option<String>,
     click_token: Option<String>,
+    stop_on_host_exit: Option<bool>,
 ) -> Result<SpawnOutcome, ProcessFailure> {
     let path = validate_executable(&path).map_err(|error| ProcessFailure::new(error.kind()))?;
     let credentials = PetChildCredentials {
@@ -264,7 +307,11 @@ pub fn desktop_pet_process_spawn(
         click_token,
     };
     let children = state.handles();
-    let pid = spawn_with(spawn_command(&path, &credentials), &children)?;
+    let pid = spawn_with(
+        spawn_command(&path, &credentials),
+        &children,
+        stop_on_host_exit.unwrap_or(false),
+    )?;
     Ok(SpawnOutcome { pid, path })
 }
 
@@ -283,8 +330,8 @@ pub fn desktop_pet_process_exit_status(
 ) -> Result<ExitStatusOutcome, ProcessFailure> {
     let children = state.handles();
     let mut guard = children.lock().map_err(|_| ProcessFailure::new("state_poisoned"))?;
-    let child = guard.get_mut(&pid).ok_or_else(|| ProcessFailure::new("unknown_process"))?;
-    match child.try_wait() {
+    let entry = guard.get_mut(&pid).ok_or_else(|| ProcessFailure::new("unknown_process"))?;
+    match entry.child.try_wait() {
         Ok(Some(status)) => Ok(ExitStatusOutcome { exited: true, code: status.code() }),
         Ok(None) => Ok(ExitStatusOutcome { exited: false, code: None }),
         // 查询失败按"原因不明"上报：调用方据此**不会**自动重启。
@@ -357,11 +404,11 @@ mod tests {
         if !Path::new(shell).exists() {
             return;
         }
-        let children: Arc<Mutex<HashMap<u32, Child>>> = Arc::new(Mutex::new(HashMap::new()));
+        let children: Arc<Mutex<HashMap<u32, OwnedChild>>> = Arc::new(Mutex::new(HashMap::new()));
         let mut command = base_command(shell);
         // 一个约 5 秒的"睡眠"，无需外部依赖。
         command.args(["/C", "ping -n 6 127.0.0.1 > nul"]);
-        let pid = spawn_with(command, &children).expect("spawn 应当成功");
+        let pid = spawn_with(command, &children, false).expect("spawn 应当成功");
         assert!(is_alive(&children, pid).unwrap_or(false), "刚起的进程应当是活的");
         assert!(children.lock().unwrap().contains_key(&pid));
 
@@ -372,6 +419,36 @@ mod tests {
         // 不属于我们的 pid：停止必须失败，绝不按名字或 pid 猜测。
         let stranger = stop_child(Arc::clone(&children), 999_999, Some(200));
         assert_eq!(stranger.unwrap_err().kind, "unknown_process");
+    }
+
+    /// 宿主退出收尾：只带走带承诺的，不带没承诺的（stopOwnedOnExit=false 的桌宠
+    /// 是用户自己起的，宿主退出无权替他做决定）。
+    #[test]
+    #[cfg(windows)]
+    fn stop_all_on_host_exit_only_takes_flagged_children() {
+        let shell = r"C:\Windows\System32\cmd.exe";
+        if !Path::new(shell).exists() {
+            return;
+        }
+        let children: Arc<Mutex<HashMap<u32, OwnedChild>>> = Arc::new(Mutex::new(HashMap::new()));
+        let mut flagged = base_command(shell);
+        flagged.args(["/C", "ping -n 6 127.0.0.1 > nul"]);
+        let mut unflagged = base_command(shell);
+        unflagged.args(["/C", "ping -n 6 127.0.0.1 > nul"]);
+        let flagged_pid = spawn_with(flagged, &children, true).expect("spawn 应当成功");
+        let unflagged_pid = spawn_with(unflagged, &children, false).expect("spawn 应当成功");
+
+        let stopped = stop_all_on_host_exit(&DesktopPetProcessState {
+            children: Arc::clone(&children),
+        }, Some(5_000));
+
+        assert_eq!(stopped, 1, "只停带承诺的那一只");
+        assert!(!children.lock().unwrap().contains_key(&flagged_pid));
+        assert!(children.lock().unwrap().contains_key(&unflagged_pid));
+        assert!(is_alive(&children, unflagged_pid).unwrap_or(false), "没承诺的不能被误杀");
+
+        // 收尾后把没承诺的也清掉，测试不留进程。
+        stop_child(Arc::clone(&children), unflagged_pid, Some(5_000)).expect("stop 应当成功");
     }
 
     fn env_pairs(command: &Command) -> Vec<(String, Option<String>)> {

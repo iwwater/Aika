@@ -32,6 +32,14 @@ export interface PetProcessSpawnOptions {
    */
   clickUrl?: string;
   clickToken?: string;
+  /**
+   * 宿主退出时是否把这只桌宠一起带走（配置 `stopOwnedOnExit`）。
+   *
+   * 在 spawn 时定死并下沉到 Rust 侧：托盘「完全退出」是立即退出，JS 的 dispose
+   * 不会执行，所以这个承诺必须由 Rust 在退出路径上兑现（实测不这样做会把 owned
+   * 桌宠遗留成孤儿）。
+   */
+  stopOnHostExit?: boolean;
 }
 
 export interface PetProcessPort {
@@ -347,6 +355,9 @@ export function createPetProcessManager(deps: PetProcessManagerDeps): PetProcess
       spawnOptions.clickUrl = click.url;
       spawnOptions.clickToken = click.token;
     }
+    // stopOwnedOnExit 在 spawn 时定死并下沉到 Rust：托盘「完全退出」是立即退出，
+    // JS 的 dispose 不会执行，承诺必须由 Rust 在退出路径上兑现（孤儿实测）。
+    if (deps.config().stopOwnedOnExit) spawnOptions.stopOnHostExit = true;
 
     let spawned: PetProcessHandle;
     try {

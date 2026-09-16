@@ -83,7 +83,18 @@ pub fn run() {
                 .show_menu_on_left_click(true)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "open" => show_main_window(app),
-                    "quit" => app.exit(0),
+                    "quit" => {
+                        // 完全退出 = 先兑现 stopOwnedOnExit 的承诺（把自己启动的桌宠带走，
+                        // 有界等待），再退。app.exit(0) 是立即退出，JS 侧的 dispose 不会
+                        // 执行——实测不这样做会把 owned 桌宠遗留成孤儿（2026-09-16）。
+                        let state = app.state::<desktop_pet_process::DesktopPetProcessState>();
+                        let stopped =
+                            desktop_pet_process::stop_all_on_host_exit(&state, Some(2_000));
+                        if stopped > 0 {
+                            eprintln!("[aika] quit: stopped {stopped} owned desktop pet(s)");
+                        }
+                        app.exit(0);
+                    }
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {

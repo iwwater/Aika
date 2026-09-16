@@ -504,7 +504,7 @@ describe("MVP-12 反向点击通道的武装与撤销", () => {
 
   it("受管派生：武装一次并注入成对凭据；归还所有权时撤销", async () => {
     const { port, spawnOptions, calls } = clickPort();
-    const harness = build({ port, createExitToken: () => "0123456789abcdef" });
+    const harness = build({ port, createExitToken: () => "0123456789abcdef", stopOwnedOnExit: true });
     await harness.settle(harness.manager.ensureReady());
 
     expect(calls.arm).toBe(1);
@@ -513,6 +513,8 @@ describe("MVP-12 反向点击通道的武装与撤销", () => {
       exitToken: "0123456789abcdef",
       clickUrl: "http://127.0.0.1:9/api/pet/click",
       clickToken: "click-token-0123456789",
+      // stopOwnedOnExit 在 spawn 时定死并下沉到 Rust：托盘退出靠它收尾。
+      stopOnHostExit: true,
     });
 
     await harness.settle(harness.manager.dispose());
