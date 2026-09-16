@@ -9,7 +9,8 @@
 - [MVP-08](reports/MVP-08_ACCEPTANCE.md)：**A～F PASS**（品牌替换、菜单入口、单实例、退出语义、协议退出鉴权、回归）。临时标识 PetShell / `dev.aiki.petshell`。
 - [MVP-09](reports/MVP-09_ACCEPTANCE.md)：**A/B/C/D/F PASS，E PARTIAL**——`product`/`capabilities` 识别、版本绑定、owned-only 协议退出与回退、三通道与双仓 fixture 同步已落地；**屏幕可见层未跑**，故本 SPEC 尚未整体收口。
 - MVP-11：**A～F PASS**（Live2D renderer 与首版换装，Windows 真机 + WebDriver 取证；见 [MVP-11 报告](reports/MVP-11_ACCEPTANCE.md)）。
-- MVP-12、MVP-13、KB-01：**NOT RUN**，仍未派发实施。
+- MVP-13：**执行中，报告 PARTIAL**（[MVP-13 报告](reports/MVP-13_ACCEPTANCE.md)）——MSI 构建/启动/重开 PASS；抓出 **DEF-1**（Live2D 素材随包分发，阻塞对外发行）与 **DEF-2**（Live2D 整窗鼠标穿透，已修复并人工复验）；AC-F 安装/卸载未跑。
+- MVP-12、KB-01：**NOT RUN**，仍未派发实施。
 
 ## 决策与进入条件
 
