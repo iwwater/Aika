@@ -1,6 +1,9 @@
 import { token, type AikaPlugin, type ServiceToken } from "../../kernel";
 import { CompanionPresenterToken, VoicePresenterToken } from "../../presentation/tokens";
-import { createClickReaction, type ClickReaction } from "../../services/desktopPet/clickReaction";
+import {
+  createClickReaction, type ClickReaction,
+} from "../../services/desktopPet/clickReaction";
+import { DesktopPetServiceToken } from "../../services/desktopPet/contracts";
 import { ClockToken } from "../../services/time/tokens";
 import { createSystemClock } from "../../services/time/systemTime";
 
@@ -55,7 +58,7 @@ export function petClickReactionPlugin(deps: {
   return {
     id: "desktopPet.clickReaction",
     version: "1.0.0",
-    optional: [CompanionPresenterToken, VoicePresenterToken, ClockToken],
+    optional: [CompanionPresenterToken, VoicePresenterToken, DesktopPetServiceToken, ClockToken],
     provides: [PetClickReactionToken],
     activate(context) {
       const resolve: ServiceResolver = deps.resolve ?? (() => null);
@@ -67,6 +70,14 @@ export function petClickReactionPlugin(deps: {
         clock,
         // 每次点击现问一次：Presenter 是惰性构造的，问早了（启动期）会拿到 null。
         speak: (text) => resolve(VoicePresenterToken)?.speakAside(text) ?? false,
+        // 气泡：同一句话在宠物头顶冒出来（走 /api/say）。失败静默，不影响出声。
+        bubble: (text) => {
+          try {
+            void resolve(DesktopPetServiceToken)?.say(text).catch(() => undefined);
+          } catch {
+            /* 气泡失败不影响出声 */
+          }
+        },
         isSpeaking: () => resolve(VoicePresenterToken)?.isSpeaking() ?? false,
         gate: async () => (await resolve(CompanionPresenterToken)?.canSpeakAside()) ?? false,
       });

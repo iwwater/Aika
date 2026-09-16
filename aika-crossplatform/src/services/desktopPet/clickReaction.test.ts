@@ -55,7 +55,7 @@ describe("点击回应（MVP-15 B）", () => {
 
     await reaction.handle();
     for (let index = 0; index < 5; index += 1) {
-      clock.advance(1_000);
+      clock.advance(500);
       await expect(reaction.handle()).resolves.toBe("cooldown");
     }
 
@@ -120,6 +120,36 @@ describe("点击回应（MVP-15 B）", () => {
     clock.advance(CLICK_REACTION_MIN_INTERVAL_MS);
     await expect(reaction.handle()).resolves.toBeNull();
     expect(spoken).toHaveLength(2);
+  });
+
+  it("回应同时冒气泡（2026-09-16 用户要求）；气泡失败不影响出声", async () => {
+    const clock = createFakeClock(0);
+    const spoken: string[] = [];
+    const bubbles: string[] = [];
+    let bubbleThrows = false;
+    const reaction = createClickReaction({
+      clock,
+      speak: (text) => {
+        spoken.push(text);
+        return true;
+      },
+      bubble: (text) => {
+        if (bubbleThrows) throw new Error("say failed");
+        bubbles.push(text);
+      },
+      gate: async () => true,
+    });
+
+    await reaction.handle();
+    expect(bubbles).toEqual([CLICK_REACTION_PHRASES[0]]);
+    expect(spoken).toEqual(bubbles);
+
+    // 气泡通道炸了：出声照常，且不回滚「已回应」的状态。
+    bubbleThrows = true;
+    clock.advance(CLICK_REACTION_MIN_INTERVAL_MS);
+    await reaction.handle();
+    expect(spoken).toHaveLength(2);
+    expect(reaction.diagnostics().responded).toBe(2);
   });
 
   it("canSend 终审没过就不出声（安静时段/上限/最小间隔共用同一出口）", async () => {

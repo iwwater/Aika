@@ -10,7 +10,7 @@
 
 | 文件 | 内容 |
 | --- | --- |
-| `src/services/desktopPet/clickReaction.ts` | 策略模块：短语池、`CLICK_REACTION_MIN_INTERVAL_MS = 30_000`、不排队、不打断、不冒错、五类抑制计数 |
+| `src/services/desktopPet/clickReaction.ts` | 策略模块：短语池、`CLICK_REACTION_MIN_INTERVAL_MS = 5_000`（2026-09-16 用户从 30s 调低）、不排队、不打断、不冒错、五类抑制计数；回应同时经 `bubble()` 冒桌宠气泡（失败不影响出声） |
 | `src/services/desktopPet/clickReaction.test.ts` | 11 项定向测试 |
 | `src/app/plugins/petClickReactionPlugin.ts` | 接线插件：`clickSource` → 终审 → 出声；经 token 提供 `ClickReaction`（诊断可读） |
 | `src/app/plugins/petClickReactionPlugin.test.ts` | 8 项接线测试（真实内核 + 假 Presenter / 假点击源） |
@@ -65,7 +65,7 @@ npm run tauri build -- --no-bundle                              退出码 0（95
 | **人耳确认**（真的出声） | **NOT RUN**：本轮为不影响用户工作，把合成调用拦下取证，**没有真的播放**。四条链路证据（受理 → 出声调用 → 冷却 → 终审）都已成立，差的只是「有没有声音」。 |
 | **默认不出声**（`proactive.enabled` 默认 false） | **已解决（2026-09-16 用户选 (b)+(ii)）**：① 新增**独立开关** `pet.clickReaction` **默认开**（UI「主动 / 被动响应」里「点击桌宠时应一声」；快照开关已验证：关掉即沉默、打开即恢复）；② **`canSpeakAside` 不再受「主动消息」总开关影响**（`enabled` 恒传 true）——主动消息关着，点了她也应这一声。两层语义：`主动消息` 关 = 她不**主动**开口；`点击回应` 关 = 点了也不出声。勿扰时段/每日上限/最小间隔仍生效。**缺口**：这条语义的 presenter 级单测未补（见 §4 的测试清单），接线层的开关行为已有测试。 |
 | 短语池内容/语气 | 现为 5 句「确认收到」型短句（不含需要上下文才成立的措辞，单测锁定）。要更丰富就得调模型，那超出选项 B 的授权。 |
-| 冷却时长 30 s | 与 SPEC 一致；要更长/更短改一个常数即可（验收表会同步）。 |
+| 冷却时长 | **已按用户要求从 30s 调为 5s**（2026-09-16）。同时按用户反馈补两条：回应**带桌宠气泡**（`/api/say`，与出声同一句）；连续点击**不吞掉正在说的话**（说话中的新点击只计数，不取消旧输出）——真正的「排队接续」需要改 `SpeechQueue` 的回合语义（`speak()` 封回合后 `enqueue` 不接受追加），本轮不做，如实记录。 |
 
 ## 6. 边界（不外推）
 

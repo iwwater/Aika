@@ -229,7 +229,7 @@ describe("点击回应接线（MVP-15 B）", () => {
     expect(spoken).toEqual([CLICK_REACTION_PHRASES[0]]);
   });
 
-  it("兑现最小间隔：满 30s 后第二次点击照常回应", async () => {
+  it("兑现最小间隔（5s）：冷却一过第二次点击照常回应", async () => {
     const { clicks, spoken, clock, flush } = await start({});
 
     clicks.emit();

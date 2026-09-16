@@ -18,8 +18,8 @@ import type { Clock } from "../time/tokens";
  * （shell 本地的 clickAction 已经在播动作，双重动作会打架）。
  */
 
-/** 最小间隔：同一只宠物被连点也只回应一次。写进 SPEC 的常数，改动需同步验收。 */
-export const CLICK_REACTION_MIN_INTERVAL_MS = 30_000;
+/** 最小间隔：同一只宠物被连点也只回应一次。写进 SPEC 的常数（2026-09-16 用户定为 5s）。 */
+export const CLICK_REACTION_MIN_INTERVAL_MS = 5_000;
 
 /**
  * 固定短语池。
@@ -58,6 +58,11 @@ export interface ClickReactionDeps {
   clock: Clock;
   /** 真的开口。返回 `false` 表示没出声（引擎不可用/被拒绝），此时**不占用冷却**。 */
   speak(text: string): boolean;
+  /**
+   * 桌宠气泡（`/api/say`）：短话同时在宠物头顶冒出来（2026-09-16 用户要求）。
+   * 失败只静默——气泡是锦上添花，不能反过来影响出声。
+   */
+  bubble?(text: string): void;
   /** canSend 终审——与主动消息同一个出口，不在这里另造一套。 */
   gate(): Promise<boolean>;
   isEnabled?: () => boolean;
@@ -129,6 +134,14 @@ export function createClickReaction(deps: ClickReactionDeps): ClickReaction {
 
         lastRespondedAt = deps.clock.now();
         diagnostics.responded += 1;
+        // 气泡与出声同一句；它出问题绝不回滚「已回应」的状态。
+        if (deps.bubble) {
+          try {
+            deps.bubble(phrase);
+          } catch {
+            /* 气泡失败不影响出声 */
+          }
+        }
         return null;
       } catch {
         // 点击是旁路：任何实现意外都不许回到窗口事件链路上。
