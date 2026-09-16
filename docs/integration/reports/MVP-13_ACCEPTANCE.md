@@ -46,9 +46,10 @@ pnpm tauri:build --bundles msi      退出码 0
 | --- | --- | --- | --- |
 | `PetShell_0.6.0_x64_en-US.msi`（首建，17:08） | 13,475,840 B | `E5A130006E19E0568A2DC45FD7F5696B62B359BAC47876BE5F06B60975D0C12B` | §1–§5 各项证据的来源构建 |
 | `PetShell_0.6.0_x64_en-US.msi`（修复 DEF-2 后重建，17:27） | 13,475,840 B | `D3B5394BC46ED5095D78CF1EB50ED08821E1C5E7966A29EA3A179D482B071513` | §2.2 的修复验证与人工复验所用构建 |
-| `petshell.exe`（MSI 载荷） | 20,385,792 B | — | 两次构建同尺寸；包内容见 §2.1 |
+| `PetShell_0.6.0_x64_en-US.msi`（修复 DEF-3 后重建，17:49） | 13,475,840 B | `D9E1CB671AA7DE10F428A9C11DD7670674159721017D4E6E5ACFB9D6C59960C6` | §2.3 的真机复验所用构建（含 DEF-2 修复） |
+| `petshell.exe`（MSI 载荷） | 20,385,792 B | — | 三次构建同尺寸；包内容见 §2.1 |
 
-两次构建都执行了同一条命令且都退出码 0；**并列记录而不是覆盖**，是因为 §1–§5 的证据来自首建，而 DEF-2 的修复验证来自重建，两者的产物不是同一份。
+三次构建都执行了同一条命令且都退出码 0；**并列记录而不是覆盖**，是因为 §1–§5 的证据来自首建，而两个缺陷的修复验证分别来自后两次重建，三者的产物不是同一份。
 
 WiX 工具链 `WixTools314` 已在本地缓存，构建全程离线。NSIS 未尝试：INT-03 已记其工具链 `timeout: global`，本 SPEC 的 AC 只要求 MSI。
 
@@ -94,7 +95,7 @@ WiX 工具链 `WixTools314` 已在本地缓存，构建全程离线。NSIS 未�
 
 1. **许可**：自用场景尚可；一旦对外分发，即构成分发 Live2D 官方示例模型 + Cubism Core，触发 Cubism SDK 的用途条件与模型使用条款。AC-E 要求的「按目标用途登记模型授权」因此无法给出「不含第三方模型」的结论。
 2. **包体积**：分发包 44% 是示例模型。
-3. **建议**：单独立 SPEC 处理，候选方向（不预设结论）——运行时按需获取模型、构建配置区分带/不带模型、或把模型移出 `public/`。需同时说明「换装依赖的模型从哪来」，否则会退化成「Live2D 装不上」。
+3. **去向**：已起草独立 SPEC —— [MVP-14 · Live2D 素材的分发边界](../specs/MVP-14_LIVE2D_ASSET_BOUNDARY.md)（**草案，未派发**）。推荐方案为「只把官方示例模型移出 bundle、Cubism Core 留包内、CSP 不放宽」，并把「缺资产时可见降级」列进 AC。Cubism Core 自身的分发条件仍须在对外发行前单独核查（本报告不作法律结论）。
 
 ### 2.2 DEF-2：Live2D 模式下拖动与点击全部失效（整窗鼠标穿透）
 
@@ -176,7 +177,7 @@ npx tsc --noEmit                           → 退出码 0
 
 ### 2.3 DEF-3：导入宠物的贴图 URL 取不到（目录名 ≠ 清单 id 时）
 
-**性质**：功能缺陷。触发条件是**合法布局**，不是畸形数据。**未修复**（本轮只登记）。
+**性质**：功能缺陷。触发条件是**合法布局**，不是畸形数据。**已修复并经真机复验**（见本节末）。
 
 #### 证据
 
@@ -221,6 +222,32 @@ let path = imported_dir.join(&pet.id).join(&pet.spritesheet_path);
 2. 或反过来要求并校验「目录名 == 清单 id」。
 
 前者兼容现有数据；后者会让现有 Codex 目录直接不可用。取舍需在 SPEC 里定，本轮不擅自改。
+
+#### 修复（pet-shell `34acf78`）
+
+`PetManifest` 增加一个**不参与 JSON** 的字段 `local_spritesheet`（`#[serde(skip)]`）：
+
+- **扫描**时把实际贴图路径随目录一起记下来（`pet_dir.join("spritesheet.webp")`）；
+- **查询**只读这份路径，不再用清单 `id` 拼目录；
+- 内置宠物为 `None`（走内嵌资源）；导入写入路径也为 `None`，落盘后紧接着重新扫描，路径由扫描写回；
+- 保留原有的 `is_file()` 复查——文件被删除仍按 404 处理，原语义不放松。
+
+新增回归用例 `serves_spritesheets_for_imported_pets_whose_directory_name_differs_from_the_id`（目录 `phoebe`、清单 id `phoebe-jiubi`）。
+
+```text
+cd pet-shell/src-tauri
+cargo test --lib    → running 14 tests；test result: ok. 14 passed; 0 failed; 0 ignored
+```
+
+#### 真机复验（2026-09-16，重建产物 `D9E1CB67…`）
+
+```text
+GET /api/pets/phoebe-jiubi/spritesheet  → 200，1,793,324 B（与磁盘 spritesheet.webp 字节数一致）
+GET /api/pets/nia/spritesheet           → 404（内置宠物走内嵌资源，原语义保持）
+GET /api/pets/phoebe/spritesheet        → 404（目录名不是身份，原语义保持）
+```
+
+即：**曾经 404 的那条 URL 现在真的返回了贴图**，且不是「放宽成谁都给」——两种非身份形态仍按原样 404。
 
 ## 3. AC-B：生命周期与越权关闭
 
@@ -365,7 +392,7 @@ let path = imported_dir.join(&pet.id).join(&pet.spritesheet_path);
 | `GET /api/say`（方法错误） | 404 | 一致（PET-01 口径：404/405/415 归 incompatible） |
 | `POST /api/import/website` | 404 `{"error":"route not found","ok":false}` | 剪枝保持，一致 |
 | `GET /api/pets/<内置宠物>/spritesheet` | 404 | 一致（内置宠物走内嵌资源 `/pets/<id>/spritesheet.webp`，不经 API） |
-| `GET /api/pets/<导入宠物>/spritesheet` | **404** | **不一致 → 见 §2.3 DEF-3** |
+| `GET /api/pets/<导入宠物>/spritesheet` | 首建产物上 **404** → **同一口径下定位为 §2.3 DEF-3；修复后复测 200（字节数与磁盘一致）** | 修复前不一致，修复后一致 |
 
 关于「未知 `animationId` 返回 200」：这是 **PET-01 已冻结的上游语义**，[PET-01 §4](../../frontend/reports/PET-01_PROTOCOL.md) 原文即「上游不校验 `animationId`，实测 `{"animationId":"backflip"}` 返回 200 并把 `backflip` 原样写进 `lastAction`」。因此**不判为漂移**；「不靠乱发动作猜能力」也就仍然是 Aiki 侧白名单的责任，不是 shell 的义务。
 
@@ -385,7 +412,7 @@ let path = imported_dir.join(&pet.id).join(&pet.spritesheet_path);
 
 | 线 | 裁决 |
 | --- | --- |
-| **模块完成** | MVP-07/08/10/11 已 PASS；MVP-09 PARTIAL（屏幕可见层）；**MVP-13 本份 PARTIAL**（AC-A/B/C 部分、E 部分、F 未跑），并登记 **DEF-1 / DEF-3 两个未修复缺陷**（DEF-2 已修复） |
+| **模块完成** | MVP-07/08/10/11 已 PASS；MVP-09 PARTIAL（屏幕可见层）；**MVP-13 本份 PARTIAL**（AC-A/B/C 部分、E 部分、F 未跑）。三个缺陷中 **DEF-2 / DEF-3 已修复并复验**，仅 **DEF-1 未处置** |
 | **0.6 产品 DoD** | **未达成**。缺：经菜单的 sprite↔Live2D 切换、`attach`、断连恢复、安装/卸载、FPS 侧证据；且 DEF-1 未处置。（本轮已补齐 Live2D 在 release 产物的可见证据，并修复了 DEF-2 交互缺陷） |
 | **发行就绪** | **未达成，且被 DEF-1 阻塞**。AC-E 明确「未解决的组合许可条件阻塞相关对外发行」——当前包内含 Live2D 官方示例模型与 Cubism Core |
 
@@ -397,7 +424,7 @@ let path = imported_dir.join(&pet.id).join(&pet.spritesheet_path);
 | --- | --- |
 | DEF-1 Live2D 素材进包 | **未修复**，按 SPEC 规则回对应 SPEC 处置；阻塞对外发行 |
 | DEF-2 整窗鼠标穿透 | **已修复并人工复验通过**（`a3d1d26` + 重建产物）；右键菜单/点击走同一输入路径，未单独复验 |
-| DEF-3 导入宠物贴图 URL 取不到 | **未修复**，已定位到 `src-tauri/src/lib.rs:1020-1029`；「按目录还是按清单 id」的取舍需在对应 SPEC 定 |
+| DEF-3 导入宠物贴图 URL 取不到 | **已修复并真机复验**（`34acf78` + 重建产物 `D9E1CB67…`）：广告的 URL 返回 200 且字节数与磁盘一致；两种非身份形态仍 404 |
 | AC-F 安装/卸载 | NOT RUN，需授权环境 |
 | Live2D release 可见表现 | **已取**，见 §6.1（像素证据） |
 | `attach` / 断连恢复 | NOT RUN，需 Aiki 侧联动 |

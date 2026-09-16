@@ -9,9 +9,10 @@
 - [MVP-08](reports/MVP-08_ACCEPTANCE.md)：**A～F PASS**（品牌替换、菜单入口、单实例、退出语义、协议退出鉴权、回归）。临时标识 PetShell / `dev.aiki.petshell`。
 - [MVP-09](reports/MVP-09_ACCEPTANCE.md)：**A/B/C/D/F PASS，E PARTIAL**——`product`/`capabilities` 识别、版本绑定、owned-only 协议退出与回退、三通道与双仓 fixture 同步已落地；**屏幕可见层未跑**，故本 SPEC 尚未整体收口。
 - MVP-11：**A～F PASS**（Live2D renderer 与首版换装，Windows 真机 + WebDriver 取证；见 [MVP-11 报告](reports/MVP-11_ACCEPTANCE.md)）。
-- MVP-13：**执行中，报告 PARTIAL**（[MVP-13 报告](reports/MVP-13_ACCEPTANCE.md)）——MSI 构建/启动/重开、四端点逐项复测、Live2D 在 release 产物的可见表现（像素证据）、10 分钟待机与 30 次交互均已取；抓出 **DEF-1**（Live2D 素材随包分发，阻塞对外发行）、**DEF-2**（Live2D 整窗鼠标穿透，已修复并人工复验）、**DEF-3**（导入宠物贴图 URL 取不到，未修复）；AC-F 安装/卸载未跑。
+- MVP-13：**执行中，报告 PARTIAL**（[MVP-13 报告](reports/MVP-13_ACCEPTANCE.md)）——MSI 构建/启动/重开、四端点逐项复测、Live2D 在 release 产物的可见表现（像素证据）、10 分钟待机与 30 次交互均已取；抓出 **DEF-1**（Live2D 素材随包分发，阻塞对外发行，**未修复**）、**DEF-2**（Live2D 整窗鼠标穿透，已修复并人工复验）、**DEF-3**（导入宠物贴图 URL 取不到，已修复并真机复验）；AC-F 安装/卸载未跑。
 - MVP-12：**范围已冻结（仅点击），待派发**（[明细](specs/MVP-12.md)）。
 - KB-01：**NOT RUN**，仍未派发实施。
+- MVP-14：**草案，未派发**（[Live2D 素材的分发边界](specs/MVP-14_LIVE2D_ASSET_BOUNDARY.md)）——处置 MVP-13 的 **DEF-1**：让 release 产物不再包含 Live2D 官方示例模型。
 
 ## 决策与进入条件
 
@@ -34,6 +35,7 @@
 | [MVP-11](specs/MVP-11.md) | Live2D 与首种换装方式 | MVP-07 Live2D 可行性 PASS、MVP-09/10 | DRAFT |
 | [MVP-12](specs/MVP-12.md) | 点击 → Aika 反向通道（**仅点击**，文件分支不适用） | 范围已冻结；MVP-08/09 已 PASS | 可派发 |
 | [MVP-13](specs/MVP-13.md) | 真机、性能、打包及用途对应许可验收 | MVP-08～11；12 仅在纳入时要求 | DRAFT |
+| [MVP-14](specs/MVP-14_LIVE2D_ASSET_BOUNDARY.md) | Live2D 素材的分发边界（处置 DEF-1） | MVP-13（DEF-1 取证） | DRAFT，未派发 |
 
 执行顺序：**07 → 10 → 08 → 09 → 11 → 13**。12 的范围已冻结（仅点击），排在 13 之后补齐。每次一份，四端点回归从 07 起持续进行，09 是综合兼容出口。可独立推进的 sprite 工作不代表 Live2D 阻塞已解除。
 
