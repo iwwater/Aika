@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "declaration": true,
+    "outDir": "dist",
+    "rootDir": ".",
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "skipLibCheck": true
+  },
+  "include": [
+    "contracts/**/*.ts",
+    "core/**/*.ts",
+    "app/**/*.ts",
+    "media/**/*.ts",
+    "providers/**/*.ts",
+    "memory/**/*.ts",
+    "companion/**/*.ts",
+    "management/**/*.ts",
+    "harness/**/*.ts",
+    "projects/**/*.ts",
+    "desktop/**/*.ts",
+    "tests/**/*.ts"
+  ],
+  "exclude": [
+    "desktop/vendor/**",
+    "desktop/build/**"
+  ]
+}

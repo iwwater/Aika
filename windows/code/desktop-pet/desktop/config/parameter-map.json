@@ -1,0 +1,6 @@
+{
+  "headYaw": "ParamAngleX",
+  "headPitch": "ParamAngleY",
+  "headRoll": "ParamAngleZ",
+  "mouthForm": "ParamMouthForm"
+}

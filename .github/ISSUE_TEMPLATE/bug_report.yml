@@ -1,0 +1,41 @@
+name: Bug report / 问题反馈
+description: Report a reproducible macOS or Windows problem / 提交可复现的问题
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please remove API keys, tokens, account details and private chat/data before posting.
+        提交前删除密钥、令牌、账号信息及私人聊天/数据。请勿上传私有迁移包。
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform / 平台
+      options: [macOS, Windows]
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: OS, Node.js and source version / 系统、Node.js及代码版本
+      placeholder: "Windows 11 x64 / Node 24.19.0 / commit"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce / 复现步骤
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Expected and actual behavior / 预期与实际结果
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized error or logs / 已脱敏的错误或日志
+      description: "Do not include credentials, private data or model files. 不要附带凭据、私密数据或模型文件。"
+      render: text
