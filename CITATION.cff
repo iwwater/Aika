@@ -1,0 +1,8 @@
+cff-version: 1.2.0
+message: "使用或引用本项目时，请注明 AAAAGENT、作者和项目链接；禁止商业用途，详见 LICENSE。Please credit the project and authors when using or citing it. Commercial use is prohibited; see LICENSE."
+title: "AAAAGENT: DeepSeek / Codex × Live2D companion"
+type: software
+authors:
+  - family-names: "phoiex"
+repository-code: "https://github.com/phoiex/AAAAGENT"
+url: "https://github.com/phoiex/AAAAGENT"

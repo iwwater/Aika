@@ -26,7 +26,7 @@
 
 本目录中的文件是项目后续生成与拆层的设计产物，不是该仓库原图的原样拷贝。上游可能涉及的署名、非商业使用、相同方式共享及角色权利要求，不因 AI 重绘或本地处理消失。不要将本目录理解为已获商用许可、官方角色授权或无条件再分发授权。公开上传前应核实衍生作品的发布范围；在授权链没有厘清时，不能对第三方承诺已完成权利清理。
 
-软件代码、设计稿和第三方 Live2D 模型是不同的授权对象。即使以后给代码添加开源许可证，也不自动覆盖这些角色素材。现用不可二次转发的 Live2D 模型不在这个发布包中。
+软件代码、设计稿和第三方 Live2D 模型是不同的授权对象。代码的[非商业使用及署名许可](../../../LICENSE)只覆盖项目作者有权许可的原创部分，不会替代这些角色素材的上游条款。现用不可二次转发的 Live2D 模型不在这个发布包中。
 
 <a id="english"></a>
 
@@ -42,4 +42,4 @@ The historical reference repository is [fornarwhal/deepseek-whale-girl-icon](htt
 
 These files are subsequent project-generated and separated artwork, not verbatim copies of that repository's original image. Redrawing does not remove underlying attribution, noncommercial, share-alike or character-rights obligations. Commercial use, official character licensing and unrestricted redistribution are not granted by this document. Verify the scope of derivative publication before public upload; do not represent unresolved rights as cleared.
 
-Any future license for software code must be distinguished from artwork and third-party model licenses. The non-redistributable character used by the private installation is excluded.
+The software’s [Noncommercial and Attribution License](../../../LICENSE) covers only original material the project authors have the right to license; it does not replace artwork or third-party model terms. The non-redistributable character used by the private installation is excluded.
