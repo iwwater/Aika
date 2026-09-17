@@ -73,6 +73,13 @@ export class JellyfishRenderer extends CubismUserModel {
     const physics = await read(this.settings.getPhysicsFileName()); this.loadPhysics(physics, physics.byteLength);
     this.blink = CubismEyeBlink.create(this.settings);
     this.parameterIndices = new Map(Array.from(this._model.getModel().parameters.ids, (id, i) => [id, i]));
+    // Optional, model-specific switches belong in the ignored local mapping.
+    this.parameterOverrides = new Map(Object.entries(parameterMap.parameterOverrides ?? {}));
+    for (const [id, value] of this.parameterOverrides) {
+      const index = this.parameterIndices.get(id), parameters = this._model.getModel().parameters;
+      if (index === undefined || !Number.isFinite(value) || value < parameters.minimumValues[index] || value > parameters.maximumValues[index])
+        throw new Error('Local parameter override is outside the model range');
+    }
     const supported = new Set(automaticItems.map(item => item.expressionName));
     const appearance = new Set(presetCatalog.items.filter(item => item.category === 'appearance').map(item => item.expressionName));
     for (let i = 0; i < this.settings.getExpressionCount(); i++) {
@@ -91,6 +98,7 @@ export class JellyfishRenderer extends CubismUserModel {
     this.motionParameters = new Set(JSON.parse(new TextDecoder().decode(motion)).Curves.filter(c => c.Target === 'Parameter').map(c => c.Id));
     this.runtimeParameters = new Set([...this.expressionParameters, ...this.motionParameters, ...interactionParameters, 'ParamBodyAngleX', 'ParamEyeLOpen', 'ParamEyeROpen', parameterMap.mouthForm, 'ParamMouthOpenY']);
     for (const id of this.runtimeParameters) { if (!this.parameterIndices.has(id)) throw new Error('动作引用了模型不存在的参数'); this.previewParameters.add(id); this.appearanceParameters.delete(id); }
+    for (const [id, value] of this.parameterOverrides) this.set(id, value);
     this._model.update();
     this.defaults = Array.from(this._model.getModel().parameters.values);
   }
@@ -217,6 +225,7 @@ export class JellyfishRenderer extends CubismUserModel {
     // This asset's MouthForm2 is a smile shape; only MouthOpenY receives output amplitude.
     this.set(parameterMap.mouthForm, face === '星星眼' ? .7 : face === '脸红' ? .25 : 0);
     this.set('ParamMouthOpenY', active ? Math.min(1, Math.sqrt(view.mouth) * 1.9) : 0);
+    for (const [id, value] of this.parameterOverrides) this.set(id, value);
     this._model.update();
     this.draw();
   }

@@ -6,8 +6,9 @@ export class BackendConnection {
   generation = 0;
   state = 'disconnected';
   child = null;
-  constructor({ onState, onMessage, timeoutMs = 15000, limit = 64 * 1024 * 1024 }) {
-    Object.assign(this, { onState, onMessage, timeoutMs, limit });
+  closing = new Set();
+  constructor({ onState, onMessage, timeoutMs = 15000, shutdownTimeoutMs = 10000, limit = 64 * 1024 * 1024 }) {
+    Object.assign(this, { onState, onMessage, timeoutMs, shutdownTimeoutMs, limit });
   }
   start(executable, args, env = process.env) {
     this.close();
@@ -65,10 +66,17 @@ export class BackendConnection {
   close() {
     clearTimeout(this.deadline); this.state = 'disconnected';
     const child = this.child; this.child = null;
-    if (!child) return;
+    if (!child) return Promise.all(this.closing);
     // EOF lets the backend flush SQLite and remove its own lock on Windows.
+    const done = new Promise(resolve => {
+      if (child.exitCode !== null || child.signalCode !== null) { resolve(); return; }
+      const timer = setTimeout(() => child.kill('SIGKILL'), this.shutdownTimeoutMs);
+      child.once('exit', () => { clearTimeout(timer); resolve(); });
+      child.once('error', () => { clearTimeout(timer); resolve(); });
+    });
+    this.closing.add(done);
+    void done.then(() => this.closing.delete(done));
     child.stdin.end();
-    const timer = setTimeout(() => { if (child.exitCode === null) child.kill('SIGKILL'); }, 2000);
-    timer.unref(); child.once('exit', () => clearTimeout(timer));
+    return Promise.all(this.closing);
   }
 }

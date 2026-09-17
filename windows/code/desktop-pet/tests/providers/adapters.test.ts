@@ -23,7 +23,7 @@ function stream(data: unknown, split = false): Response {
 async function captured(store: MemoryMediaStore, withImage = true): Promise<CapturedInput> {
   const audio = await store.put(scope, waveform(), 'audio/wav');
   const image = await store.put(scope, Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2QmcAAAAASUVORK5CYII=', 'base64')), 'image/png');
-  return { scope, audio, images: withImage ? Array.from({length:9},()=>({...image})) : [], inputEndedAt: new Date().toISOString(), captureStoppedAt: new Date().toISOString() };
+  return { scope, audio, images: withImage ? Array.from({length:3},()=>({...image})) : [], inputEndedAt: new Date().toISOString(), captureStoppedAt: new Date().toISOString() };
 }
 const perception = (emotion = 'neutral') => ({ transcript: '我没事。', emotion });
 function dialogue(): DialogueRequest { return { scope, text: '你好', context: { scope, characterPrompt: '朋友角色', recent: [{ id: 't:user', characterId: 'friend', role: 'user', text: '你好', createdAt: '2026-09-06T00:00:00Z' }], summary: '', memories: [], perception: null, inputTokenBudget: 5000 } }; }
@@ -45,7 +45,7 @@ test('real audio/image bytes and their IDs reach the perception boundary; split 
   assert.deepEqual(Buffer.from(content[0].input_audio.data.split(',')[1], 'base64'), Buffer.from(await store.read(scope, input.audio)));
   assert.deepEqual(Buffer.from(content[1].image_url.url.split(',')[1], 'base64'), Buffer.from(await store.read(scope, input.images[0]!)));
   assert.deepEqual(result.modalities[0]?.inputIds, [input.audio.id]); assert.equal(result.status, 'complete');
-  assert.equal(content.filter((part:any)=>part.type==='image_url').length,9);
+  assert.equal(content.filter((part:any)=>part.type==='image_url').length,3);
   assert.deepEqual(result.cues,[]);assert.equal(result.emotion,'neutral');
   assert.deepEqual(permit.outcomes[0]?.usage, { prompt_tokens: 22, completion_tokens: 10 });
 });

@@ -22,6 +22,7 @@ import { HarnessForwarding } from '../harness/forwarding.js';
 import { ForwardReceipts } from '../harness/receipts.js';
 import { HarnessConnection } from '../harness/connection.js';
 import { CodexAppConnection, verifyCodexAppBuild } from '../harness/codex-app.js';
+import { CodexWindowsConnection } from '../harness/codex-windows.js';
 import { harnessLaunchUrl, relayPresetReady, workPresetReady, RELAY_PRESET_ID } from '../harness/preset.js';
 import { harnessAccounting } from '../harness/accounting.js';
 import { EvaluationBudget } from '../core/evaluation-budget.js';
@@ -35,14 +36,15 @@ export async function startRuntimeManagement(base: TrialConfiguration, configFil
   try { projects = new SqliteProjectIndex(resolve(base.projectRoot, '.local/data/project-index.sqlite')); }
   catch { process.stderr.write('Project index unavailable; companion data unchanged.\n'); }
   const descriptorFile = resolve(dirname(configFile), 'management-session.json');
-  const location = { dshHome: resolve(homedir(), '.dsh'), projectRoot: base.projectRoot, nodeExecutable: process.execPath, managementDescriptor: descriptorFile };
+  const location = { dshHome: resolve(process.env.DSH_HOME || resolve(homedir(), '.dsh')), projectRoot: base.projectRoot, nodeExecutable: process.execPath, managementDescriptor: descriptorFile };
   let tasks: HarnessForwarding | undefined;
   let receipts: ForwardReceipts | undefined;
   const harnessDirectory = process.env.PET_HARNESS_HOME || (process.platform === 'win32' ? resolve(process.env.APPDATA || homedir(), 'DeepSeek Harness') : resolve(homedir(), 'Library/Application Support/DeepSeek Harness'));
+  const windowsCodex = process.platform === 'win32' ? new CodexWindowsConnection(resolve(process.env.CODEX_HOME || resolve(homedir(), '.codex'))) : undefined;
   const makeForwarding = (receipts: ForwardReceipts) => {
     const harness = new HarnessConnection(() => harnessLaunchUrl(resolve(harnessDirectory, 'web.log')));
     return new HarnessForwarding({ receipts, projects:projects!,
-      codex: new CodexAppConnection(resolve(homedir(), '.codex')), compatible: verifyCodexAppBuild,
+      codex: windowsCodex ?? new CodexAppConnection(resolve(homedir(), '.codex')), compatible: windowsCodex ? () => windowsCodex.compatible() : verifyCodexAppBuild,
       harness, nativeWork: harness, workPresetReady: () => workPresetReady(location),
       presetReady: () => relayPresetReady(location), presetId: RELAY_PRESET_ID,
       workspace: resolve(harnessDirectory, 'workspace'),
@@ -73,7 +75,7 @@ export async function startRuntimeManagement(base: TrialConfiguration, configFil
     const forwarding=makeForwarding(channelReceipts);forwarding.startUsageObservation();
     return {receipts:channelReceipts,forwarding,projects};
   }, async close() {
-    try { balances.close(); await server.close(); } finally { await tasks?.close(); await projects?.close(); }
+    try { balances.close(); await server.close(); } finally { await tasks?.close(); await windowsCodex?.close(); await projects?.close(); }
     try { const current = JSON.parse(await readFile(file, 'utf8')); if (current.instanceId === runtime.instanceId) await unlink(file); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   } };

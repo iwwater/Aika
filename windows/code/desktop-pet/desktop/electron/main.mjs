@@ -125,7 +125,16 @@ win.webContents.on('render-process-gone', () => { ready = false; connection.clos
 win.on('blur', () => { if (beforeResize !== undefined) { prefs.width = beforeResize; beforeResize = undefined; layout(); } deliver('hotkeyEvent', { type: 'cancel' }); });
 screen.on('display-metrics-changed', layout); screen.on('display-removed', layout);
 app.on('second-instance', () => { win.show(); win.focus(); });
-app.on('before-quit', () => { connection.close(); });
+let quitDrained = false, quitPending = false;
+app.on('before-quit', event => {
+  if (quitDrained) return;
+  event.preventDefault();
+  if (quitPending) return;
+  quitPending = true;
+  // Keep pipes and the Electron event loop alive until backend EOF cleanup
+  // finishes. Otherwise Windows can leave backend.lock after the window closes.
+  void connection.close().then(() => writes).finally(() => { quitDrained = true; app.quit(); });
+});
 app.on('window-all-closed', () => app.quit());
 layout();
 await win.loadURL('pet://app/index.html');

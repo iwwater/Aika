@@ -67,6 +67,14 @@ test('invalid IDs, empty input and nonabsolute cwd cannot reach host', async () 
   assert.equal(calls, 0);
 });
 
+test('Windows drive-qualified working directories reach the native host unchanged', { skip: process.platform !== 'win32' }, async t => {
+  const f = await fixture(t, []), cwd = 'C:\\Users\\测试用户\\Task Workspace';
+  await f.connection.createWorkSession(sessionId, cwd);
+  assert.equal(f.seen[0].payload.args.request.cwd, cwd);
+  await assert.rejects(f.connection.createWorkSession(sessionId, 'C:relative'));
+  assert.equal(f.seen.length, 3);
+});
+
 test('completion crosses pages and ignores newer unrelated successful turn and private model internals', async t => {
   const f = await fixture(t, [start(), user(), answer('正确结果'), end(), start(2), user('other'), answer('wrong private result', 2), end('completed', 2)], { pageSize: 1 });
   const result = await f.connection.workReceipt(sessionId, requestId);

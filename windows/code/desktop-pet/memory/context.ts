@@ -58,11 +58,12 @@ export function assembleContext(ledger: ContextReader, scope: TurnScope, text: s
       context = candidate; countedInputTokens = tokens; selectedIds.push(id);
     } else omittedIds.push(id);
   };
-  // Select a contiguous suffix of complete user-led turns. Never take an orphan
-  // assistant or skip a long latest turn in favor of unrelated older fragments.
+  // Select a contiguous suffix of complete turns. An explicitly edited manual
+  // record is independent human evidence, even when its original user turn is
+  // absent. Ordinary orphan assistant output still cannot enter the context.
   const turns: typeof data.recent[]=[];
   for(const message of data.recent){
-    if(message.role==='user')turns.push([message]);
+    if(message.role==='user'||message.origin==='manual'&&!turns.length)turns.push([message]);
     else if(turns.length)turns[turns.length-1]=[...turns[turns.length-1]!,message];
     else omittedIds.push(message.id);
   }

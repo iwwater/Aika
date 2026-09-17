@@ -1,4 +1,4 @@
-import {isPrivateFileSync} from '../core/platform-files.js';
+import {isPrivateFileSync,restrictPrivatePathSync} from '../core/platform-files.js';
 import { readFile, lstat, mkdir, writeFile } from 'node:fs/promises';
 import { join, isAbsolute } from 'node:path';
 
@@ -40,6 +40,7 @@ export async function installRelayPreset(location: RelayPresetLocation, id = REL
   const directory = join(location.dshHome, '.agent-presets', id);
   await mkdir(join(location.dshHome, '.agent-presets'), { recursive: true, mode: 0o700 });
   await mkdir(directory, { mode: 0o700 });
+  restrictPrivatePathSync(directory);
   await writeFile(join(directory, 'agent.cordis.yml'), relayPresetContents(location), { flag: 'wx', mode: 0o600 });
   await writeFile(join(directory, 'preset.yml'), 'name: Desktop pet relay\ndescription: Forward confirmed requests to existing Codex tasks.\n', { flag: 'wx', mode: 0o600 });
 }
@@ -66,6 +67,7 @@ export async function installWorkPreset(location: Pick<RelayPresetLocation,'dshH
   const directory=join(location.dshHome,'.agent-presets',WORK_PRESET_ID);
   await mkdir(join(location.dshHome,'.agent-presets'),{recursive:true,mode:0o700});
   await mkdir(directory,{mode:0o700});
+  restrictPrivatePathSync(directory);
   await writeFile(join(directory,'agent.cordis.yml'),WORK_PRESET_CONTENTS,{flag:'wx',mode:0o600});
   await writeFile(join(directory,'preset.yml'),'name: Desktop pet work\ndescription: Execute a confirmed small task with native tools and approvals.\n',{flag:'wx',mode:0o600});
 }

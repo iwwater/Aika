@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { chmodSync, lstatSync, type Stats } from 'node:fs';
+import { chmodSync, lstatSync, openSync, fstatSync, closeSync, type Stats } from 'node:fs';
 import { isAbsolute, relative, resolve, sep, win32 } from 'node:path';
 
 /** relative() can return a drive-qualified path when Windows volumes differ. */
@@ -53,7 +53,18 @@ function windowsAcl(filename: string, action: 'check' | 'restrict'): void {
 export function isPrivateFileSync(filename: string, opened?: Stats): boolean {
   try {
     const info = lstatSync(filename);
-    if (!info.isFile() || info.isSymbolicLink() || opened && (info.dev !== opened.dev || info.ino !== opened.ino)) return false;
+    if (!info.isFile() || info.isSymbolicLink()) return false;
+    if (opened) {
+      // Some Windows Node/libuv versions report dev=0 for path-based stat,
+      // but a volume serial for fstat. Compare two handles on that platform;
+      // never drop the device check or read credential contents.
+      let identity = info;
+      if (process.platform === 'win32' && info.dev !== opened.dev) {
+        const fd = openSync(filename, 'r');
+        try { identity = fstatSync(fd); } finally { closeSync(fd); }
+      }
+      if (identity.dev !== opened.dev || identity.ino !== opened.ino) return false;
+    }
     if (process.platform === 'win32') windowsAcl(filename, 'check');
     else if ((info.mode & 0o077) !== 0 || process.getuid && info.uid !== process.getuid()) return false;
     return true;

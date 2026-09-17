@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, rm, mkdir, readFile, symlink } from 'node:fs/promises';
+import { mkdtemp, writeFile, rm, mkdir, readFile, symlink, open, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, win32 } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -9,13 +9,29 @@ import { assetResponse } from '../../desktop/electron/assets.mjs';
 import { fitDisplay } from '../../desktop/electron/layout.mjs';
 import { SqliteProjectIndex } from '../../dist/projects/sqlite-project-index.js';
 import { FinanceCredentials } from '../../dist/management/balance-credentials.js';
+import { WeChatStore } from '../../dist/wechat/store.js';
 import { managementUrl } from '../../tools/management-url.mjs';
+import { installWorkPreset, workPresetReady, installRelayPreset, relayPresetReady } from '../../dist/harness/preset.js';
 
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'AAAAGENT spaces 中文 '));
   t.after(() => rm(root, { recursive: true, force: true }));
   return root;
 }
+
+test('Harness presets install with usable private ACLs and preserve edited files', async t => {
+  const root = await fixture(t);
+  const location = { dshHome: root, projectRoot: root, nodeExecutable: process.execPath, managementDescriptor: join(root, 'management-session.json') };
+  await installWorkPreset(location); await installRelayPreset(location);
+  assert.equal(await workPresetReady(location), true);
+  assert.equal(await relayPresetReady(location), true);
+  await installWorkPreset(location); await installRelayPreset(location);
+  const file = join(root, '.agent-presets', 'desktop-pet-work-v1', 'agent.cordis.yml');
+  await writeFile(file, 'user-edited');
+  assert.equal(await workPresetReady(location), false);
+  await assert.rejects(installWorkPreset(location));
+  assert.equal(await readFile(file, 'utf8'), 'user-edited');
+});
 test('Windows containment handles backslashes, sibling prefixes and different drives', () => {
   if (process.platform !== 'win32') return;
   assert.equal(isOutside('C:\\pet', 'C:\\pet\\inside.txt'), false);
@@ -61,6 +77,23 @@ test('finance credentials save and reopen under the Windows private-file policy'
   await store.save(0, 'synthetic-id', 'synthetic-secret');
   assert.equal((await new FinanceCredentials(dir).read()).revision, 1);
 });
+test('private-file validation compares opened file identity without mixing Windows stat devices', async t => {
+  const dir = await fixture(t), first = join(dir, 'first.key'), other = join(dir, 'other.key');
+  await writeFile(first, 'synthetic-first'); await writeFile(other, 'synthetic-other');
+  restrictPrivatePathSync(first); restrictPrivatePathSync(other);
+  const handle = await open(first, 'r');
+  try {
+    const opened = await handle.stat();
+    assert.equal(isPrivateFileSync(first, opened), true);
+    assert.equal(isPrivateFileSync(first, await stat(first)), true);
+    assert.equal(isPrivateFileSync(other, opened), false);
+    assert.equal(isPrivateFileSync(first, { ...opened, dev: opened.dev + 1 }), false);
+    if (process.platform === 'win32') {
+      execFileSync('icacls.exe', [first, '/grant', '*S-1-1-0:R'], { windowsHide: true, stdio: 'pipe' });
+      assert.equal(isPrivateFileSync(first, opened), false);
+    }
+  } finally { await handle.close(); }
+});
 test('project index accepts real Windows paths and persists them, while rejecting traversal and streams', async t => {
   const dir = await fixture(t), file = join(dir, 'index.sqlite'), db = new SqliteProjectIndex(file);
   const saved = await db.save({ expectedVersion: 0, name: 'Windows project', abstract: '', detailRef: { rootPath: dir, entryFile: 'src/main.ts' } });
@@ -71,6 +104,13 @@ test('project index accepts real Windows paths and persists them, while rejectin
     await assert.rejects(reopened.save({ expectedVersion: 0, name: 'bad', abstract: '', detailRef: { rootPath: dir, entryFile } }));
   }
   assert.ok(saved.id); } finally { await reopened.close(); }
+});
+test('WeChat channel storage initializes and reopens a private Windows database', async t => {
+  const dir = await fixture(t), file = join(dir, 'channel.sqlite');
+  const store = new WeChatStore(file);
+  try { store.set('synthetic-state', { ready: true }); } finally { store.close(); }
+  const reopened = new WeChatStore(file);
+  try { assert.deepEqual(reopened.get('synthetic-state'), { ready: true }); } finally { reopened.close(); }
 });
 test('asset protocol serves UTF-8 files and refuses drive paths, ADS, traversal and junction escapes', async t => {
   const dir = await fixture(t), root = join(dir, 'desktop'), outside = join(dir, 'outside');

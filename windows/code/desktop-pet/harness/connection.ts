@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { isAbsolute } from 'node:path';
 
 export type HarnessConnectionState = 'ready' | 'unavailable' | 'authentication_required' | 'incompatible';
 export interface HarnessConnectionSnapshot {
@@ -57,7 +58,7 @@ export class HarnessConnection {
 
   /** I installs this native composition without delegation, and owns confirmation before calling. */
   async createWorkSession(sessionId: string, cwd: string): Promise<void> {
-    if (!nativeId(sessionId) || !cwd.startsWith('/') || /[\0\r\n]/.test(cwd)) throw new HarnessConnectionError('incompatible');
+    if (!nativeId(sessionId) || !isAbsolute(cwd) || /[\0\r\n]/.test(cwd)) throw new HarnessConnectionError('incompatible');
     const created = await this.call('session/create', { request: { sessionId, agentPreset: 'desktop-pet-work-v1', cwd } });
     if (created?.sessionId !== sessionId || created.agentPreset !== 'desktop-pet-work-v1') throw new HarnessConnectionError('incompatible');
     const title = 'Desktop pet work ' + sessionId.slice(-8);

@@ -13,9 +13,11 @@ import type { ManagementMemoryPort } from '../../contracts/management.js';
 import { ForwardReceipts } from '../../harness/receipts.js';
 import { HarnessForwarding } from '../../harness/forwarding.js';
 import { SqliteProjectIndex } from '../../projects/sqlite-project-index.js';
+import { restrictPrivatePathSync } from '../../core/platform-files.js';
 
 test('real HTTP, isolated SQLite and stdio MCP preserve one confirmation and immutable delivery', async t => {
-  const f = await fixture(t), root = f.c.projectRoot;
+  const cleanup: (() => Promise<void>)[] = [];
+  const f = await fixture({ after: fn => { cleanup.push(fn); } }), root = f.c.projectRoot;
   const settings = await ManagementSettingsStore.open(join(root, 'settings.json'), f.c);
   const runtime = new ManagementRuntime(f.c.sourceRevision), projects = new SqliteProjectIndex(join(root, 'project-index.sqlite'));
   const protectedFile = join(root, 'companion.sqlite'); await writeFile(protectedFile, 'Synthetic companion sentinel');
@@ -31,7 +33,6 @@ test('real HTTP, isolated SQLite and stdio MCP preserve one confirmation and imm
   const memory: ManagementMemoryPort = { characters: () => [], list() { throw Error('No companion access'); }, edit() { throw Error(); }, context() { throw Error(); }, prompt() { throw Error(); }, savePrompt() { throw Error(); } };
   const server = await startManagementServer({ uiRoot: root, settings, memory, projects, tasks,
     snapshot: () => ({ apiVersion: 1, runtime: runtime.identity(), modules: [], events: [], settings: settings.snapshot(), adapters: [], credentials: [], characters: [] }) });
-  t.after(async () => { await server.close(); await tasks.close(); await projects.close(); });
   const headers = { Authorization: 'Bearer ' + server.token, Origin: server.origin, 'Content-Type': 'application/json' };
   const post = (path: string, body: unknown) => fetch(server.origin + path, { method: 'POST', headers, body: JSON.stringify(body) });
   assert.equal((await fetch(server.origin + '/api/tasks')).status, 401);
@@ -42,9 +43,14 @@ test('real HTTP, isolated SQLite and stdio MCP preserve one confirmation and imm
   const prepared = await post('/api/tasks/prepare', { text: 'Original confirmed engineering task', target: { threadId, hostId: 'local' }, projectId: project.id, projectVersion: 1 });
   assert.equal(prepared.status, 200); const operation = await prepared.json();
   const descriptor = join(root, 'management-session.json');
-  await writeFile(descriptor, JSON.stringify({ url: server.origin + '/#token=' + server.token }), { mode: 0o600 });
+  await writeFile(descriptor, JSON.stringify({ version: 1, ...runtime.identity(), url: server.origin + '/#token=' + server.token }), { mode: 0o600 });
+  restrictPrivatePathSync(descriptor);
   const child = spawn(process.execPath, [resolve('tools/harness-relay-mcp.mjs'), descriptor], { stdio: ['pipe', 'pipe', 'pipe'] });
-  t.after(async () => { if (child.exitCode === null) { child.kill(); await once(child, 'exit'); } });
+  t.after(async () => {
+    if (child.exitCode === null && child.signalCode === null) { const exited = once(child, 'exit'); child.kill(); await exited; }
+    await server.close(); await tasks.close(); await projects.close();
+    for (const dispose of cleanup) await dispose();
+  });
   let buffer = '', sequence = 0;
   const pending = new Map<number, { resolve(value: any): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
   child.stdout.setEncoding('utf8'); child.stdout.on('data', data => { buffer += data; while (buffer.includes('\n')) { const end = buffer.indexOf('\n'), value = JSON.parse(buffer.slice(0, end)); buffer = buffer.slice(end + 1); const call = pending.get(value.id); if (call) { clearTimeout(call.timer); pending.delete(value.id); call.resolve(value); } } });

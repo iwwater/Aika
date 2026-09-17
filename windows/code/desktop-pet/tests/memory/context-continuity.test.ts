@@ -5,6 +5,19 @@ import { lifecycle, signal, replyMessage } from './lifecycle-fixture.js';
 import Database from 'better-sqlite3';
 import { assembleContext } from '../../memory/context.js';
 
+test('manual orphan evidence remains budgeted while unedited orphan output stays excluded',()=>{
+ const owned=scope('companion','current');
+ const recent=[{...message('orphan','unverified'),role:'assistant' as const},
+   {...message('manual','human edit'),role:'assistant' as const,origin:'manual' as const},message('current','hello')];
+ const reader={characterId:'companion' as const,contextRecords:()=>({characterId:'companion' as const,revision:1,recent,summaries:[],memories:[]}),assertContextCurrent(){}};
+ const options={prompts:{companion:'synthetic'},inputTokenBudget:100,maxRecentMessages:12,maxMemories:0,
+   countTokens:(c:{recent:readonly {text:string}[]})=>c.recent.reduce((n,m)=>n+m.text.length,0),relevance:()=>1};
+ const full=assembleContext(reader,owned,'hello',null,'2026-09-16T00:00:00Z',options);
+ assert.deepEqual(full.context.recent.map(m=>m.id),['manual','current']);assert.ok(full.omittedIds.includes('orphan'));
+ const tight=assembleContext(reader,owned,'hello',null,'2026-09-16T00:00:00Z',{...options,inputTokenBudget:5});
+ assert.deepEqual(tight.context.recent.map(m=>m.id),['current']);assert.ok(tight.omittedIds.includes('manual'));
+});
+
 test('failed uncertain hold preserves later complete naming conversation while older facts stay excluded',async t=>{
  const f=fixture();t.after(f.cleanup);let store=f.open(),port=lifecycle(store);
  const old=scope('companion','old'),hold=scope('companion','hold');

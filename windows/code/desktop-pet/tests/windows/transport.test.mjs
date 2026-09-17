@@ -5,7 +5,7 @@ import { BackendConnection } from '../../desktop/electron/transport.mjs';
 
 function session(t, options = {}) {
   const messages = [], states = [];
-  const transport = new BackendConnection({ onState: value => states.push(value), onMessage: (value, generation) => messages.push({ value, generation }), ...options });
+  const transport = new BackendConnection({ onState: value => states.push(value), onMessage: (value, generation) => messages.push({ value, generation }), shutdownTimeoutMs: 300, ...options });
   t.after(() => transport.close());
   return { transport, messages, states };
 }
@@ -43,4 +43,18 @@ test('startup timeout and oversized messages terminate stalled connections', asy
   const large = session(t, { limit: 128 });
   large.transport.start(process.execPath, ['-e', "process.stdout.write('x'.repeat(256));process.stdin.resume()"]);
   await until(() => large.transport.state === 'failed'); assert.equal(large.states.at(-1).reason, 'message-too-large');
+});
+test('close waits for delayed EOF cleanup and repeated close waits for the same child', async t => {
+  const s = session(t, { shutdownTimeoutMs: 4000 });
+  s.transport.start(process.execPath, ['-e', `
+    console.log(JSON.stringify({channel:'backend_ready'}));process.stdin.resume();
+    process.stdin.on('end',()=>setTimeout(()=>process.exit(0),2200));
+  `]);
+  await until(() => s.transport.state === 'ready');
+  const child = s.transport.child;
+  const first = s.transport.close(), repeated = s.transport.close();
+  assert.equal(child.exitCode, null);
+  await Promise.all([first, repeated]);
+  assert.equal(child.exitCode, 0);
+  assert.equal(s.transport.closing.size, 0);
 });

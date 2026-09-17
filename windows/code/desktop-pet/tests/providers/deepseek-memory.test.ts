@@ -77,7 +77,8 @@ test('Qwen default request still matches the frozen original numeric messages', 
 test('Qwen summary keeps numeric wire, non-thinking field and complete source coverage', async () => {
   const item = source('summary:raw', '用户喜欢猫');
   const h = harness(() => completion({ text: '用户喜欢猫', sourceVersions: [ref('s0')] }));
-  const result = await new QwenSummaryProvider(h.config, h.transport).summarize({ scope, sources: [item] }, signal());
+  const config = { ...h.config, endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', model: 'qwen-plus' };
+  const result = await new QwenSummaryProvider(config, h.transport).summarize({ scope, sources: [item] }, signal());
   assert.deepEqual(result, { scope, text: '用户喜欢猫', sourceVersions: [ref(item.id)] });
   const body = h.requests[0]!.body;
   assert.deepEqual(Object.keys(body).sort(), ['enable_thinking', 'messages', 'model', 'response_format', 'stream']);
