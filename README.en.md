@@ -7,6 +7,13 @@
   <p><a href="docs/PLATFORMS.md#english">Mac / Windows</a> · <a href="docs/SETUP.md">Setup</a> · <a href="docs/MEMORY.md#english">Memory and context</a> · <a href="docs/LIVE2D.md#english">Bring your own Live2D</a> · <a href="assets/original-design/README.md#english">Whale-girl artwork</a></p>
 </div>
 
+> [!IMPORTANT]
+> **We will release our own “Big Whale DeepSeek” Live2D model in two days, on September 19, 2026.**
+>
+> The demo uses a **purchased third-party stock Live2D model**. Its original license prohibits redistribution, so its model files, textures, expressions and motions are not included in this project.
+>
+> You can also choose a free Live2D model whose license permits your intended use and adapt it locally using the [integration guide](docs/LIVE2D.md#english). Please follow each model's usage and redistribution terms.
+
 ## Watch the demo
 
 https://github.com/user-attachments/assets/f499c069-4a13-4f79-b705-ce332d7b06f2
@@ -109,11 +116,7 @@ Compilation does not log in to WeChat, call models or open the microphone. Follo
 
 **Different Cubism Live2D models can be integrated with local adaptation.** Parameter IDs, expression files, motion ranges and physics differ between characters. Replacing an image or copying a single model file is not sufficient. See [Live2D integration](docs/LIVE2D.md#english).
 
-**The model shown in the demo is not distributed with this project.** The video uses a third-party, commercially available stock Live2D model whose original license prohibits redistribution. Its model files, textures, expressions and motions are therefore not included. Showing the character in the demo does not grant permission to extract or redistribute its assets.
-
-You can also choose a free Live2D model whose license permits your intended use and adapt it locally using the integration guide above. Free models still have their own usage and redistribution terms; please follow the original creator's license.
-
-**DeepSeek whale Live2D release plan (2026-09-17):** The project author plans to create a DeepSeek whale-themed Live2D model and release it in about two days. This is an estimated schedule; follow this repository for updates. The currently available [DeepSeek whale-girl design resources](assets/original-design/README.md#english) are still static artwork and separated layers, not a finished, rigged Live2D model ready to run.
+The currently available [DeepSeek whale-girl design resources](assets/original-design/README.md#english) are still static artwork and separated layers, not a finished, rigged Live2D model ready to run.
 
 ## Repository layout
 

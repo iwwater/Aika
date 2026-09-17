@@ -7,6 +7,13 @@
   <p><a href="docs/PLATFORMS.md">Mac / Windows</a> · <a href="docs/SETUP.md">开始使用</a> · <a href="docs/MEMORY.md">记忆与上下文</a> · <a href="docs/LIVE2D.md">接入自己的 Live2D</a> · <a href="assets/original-design/README.md">DeepSeek 大肥鱼设计稿</a></p>
 </div>
 
+> [!IMPORTANT]
+> **我们将在两天后（2026 年 9 月 19 日）发布自己的「大鲸鱼 DeepSeek」Live2D 模型。**
+>
+> 演示视频中的模型是**量贩式购买的第三方 Live2D 模型**，原作者的授权不允许二次转发，因此不随本项目提供模型、纹理、表情和动作文件。
+>
+> 大家也可以自行选择免费且授权允许使用的 Live2D 模型，按照 [接入说明](docs/LIVE2D.md) 在本地适配，并遵守各模型的使用与分发条款。
+
 ## 视频演示
 
 https://github.com/user-attachments/assets/f499c069-4a13-4f79-b705-ce332d7b06f2
@@ -109,11 +116,7 @@ npm run build
 
 **支持接入不同的 Cubism Live2D 模型，但需要本地适配。** 不同模型的参数 ID、表情文件、动作范围和物理设置不同，不能只替换一张图片或复制一个文件就获得全部动作。查看 [Live2D 接入说明](docs/LIVE2D.md)。
 
-**演示中的模型不随项目分发。** 视频使用的是第三方量贩 Live2D 模型，原作者的许可不允许二次转发，因此仓库不提供该模型及其纹理、表情和动作文件。演示视频中的展示不代表可以提取或转发模型资源。
-
-大家也可以自行选择免费且授权允许使用的 Live2D 模型，按照上面的接入说明在本地适配。免费模型仍有各自的使用与分发条款，请遵守原作者的许可。
-
-**DeepSeek 鲸鱼 Live2D 发布计划（2026-09-17）：** 项目作者计划制作自己的 DeepSeek 鲸鱼主题 Live2D，预计约两天后发布，具体以本仓库后续更新为准。当前提供的 [DeepSeek 大肥鱼设计稿与基础资源](assets/original-design/README.md) 仍是静态美术与拆层资源，并非已完成绑定、可直接运行的 Live2D 模型。
+当前提供的 [DeepSeek 大肥鱼设计稿与基础资源](assets/original-design/README.md) 仍是静态美术与拆层资源，并非已完成绑定、可直接运行的 Live2D 模型。
 
 ## 目录
 
