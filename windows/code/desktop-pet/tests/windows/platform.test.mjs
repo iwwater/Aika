@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, rm, mkdir, readFile, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, resolve, win32 } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { isOutside, isPrivateFileSync, restrictPrivatePathSync } from '../../dist/core/platform-files.js';
 import { assetResponse } from '../../desktop/electron/assets.mjs';
@@ -23,7 +23,31 @@ test('Windows containment handles backslashes, sibling prefixes and different dr
 });
 test('owned credentials work with Windows ACLs; a broad read grant is rejected without modifying contents', async t => {
   const dir = await fixture(t), file = join(dir, 'key with 中文.txt');
-  await writeFile(file, 'synthetic-key'); restrictPrivatePathSync(file);
+  await writeFile(file, 'synthetic-key');
+  if (process.platform === 'win32') {
+    // Only synthetic fixture metadata, never account names, SIDs, paths or contents.
+    const script = `
+      $ErrorActionPreference = 'Stop'
+      $env:PSModulePath = $PSHOME + '\\Modules'
+      $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+      $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+      $owner = (Get-Acl -LiteralPath $env:AAAAGENT_ACL_PROBE).GetOwner([Security.Principal.SecurityIdentifier])
+      [ordered]@{
+        ownerIsUser = ($owner.Value -eq $identity.User.Value)
+        ownerIsTokenOwner = ($owner.Value -eq $identity.Owner.Value)
+        ownerIsAdministrators = ($owner.Value -eq 'S-1-5-32-544')
+        elevated = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        powershellMajor = $PSVersionTable.PSVersion.Major
+      } | ConvertTo-Json -Compress
+    `;
+    let metadata;
+    try { metadata = JSON.parse(execFileSync(win32.join(process.env.SystemRoot || 'C:\\Windows', 'System32/WindowsPowerShell/v1.0/powershell.exe'),
+      ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
+      { encoding: 'utf8', windowsHide: true, timeout: 10000, stdio: 'pipe', env: { ...process.env, AAAAGENT_ACL_PROBE: file } })); }
+    catch { throw Error('Synthetic ACL metadata probe failed'); }
+    t.diagnostic('synthetic ACL fixture: ' + JSON.stringify(metadata));
+  }
+  restrictPrivatePathSync(file);
   assert.equal(isPrivateFileSync(file), true);
   if (process.platform === 'win32') {
     execFileSync('icacls.exe', [file, '/grant', '*S-1-1-0:R'], { windowsHide: true, stdio: 'pipe' });

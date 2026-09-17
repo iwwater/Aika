@@ -40,7 +40,14 @@ function windowsAcl(filename: string, action: 'check' | 'restrict'): void {
   try { execFileSync(win32.join(systemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
     ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(aclScript, 'utf16le').toString('base64')],
     { windowsHide: true, timeout: 10000, stdio: 'pipe', env: { ...process.env, AAAAGENT_ACL_PATH: resolve(filename), AAAAGENT_ACL_ACTION: action } }); }
-  catch { throw Error('Windows could not verify or restrict this owned file. Check its owner and access permissions.'); }
+  catch (error) {
+    // Expose only fixed failure categories, never subprocess output, paths or file contents.
+    const failure = error as { status?: number; code?: string };
+    const reason = failure.status === 2 ? 'owner_mismatch'
+      : failure.status === 3 ? 'broad_access'
+      : failure.code === 'ETIMEDOUT' ? 'timeout' : 'powershell_failure';
+    throw Error(`Windows could not verify or restrict this owned file (${reason}). Check its owner and access permissions.`);
+  }
 }
 /** Metadata only. No credential contents are read. Windows checks SID-based DACLs. */
 export function isPrivateFileSync(filename: string, opened?: Stats): boolean {
