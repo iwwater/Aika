@@ -1,6 +1,7 @@
 <div align="center">
   <img src="assets/original-design/whale-avatar.png" width="144" alt="AAAAGENT whale-girl character concept" />
   <h1>AAAAGENT</h1>
+  <p><strong><a href="https://www.bilibili.com/video/BV1cueG6sE85/">▶ Watch the full demo on Bilibili</a></strong></p>
   <p>A desktop companion that talks, remembers, and connects your ideas to working agents.</p>
   <p><a href="README.md">简体中文</a> · <strong>English</strong></p>
   <p><a href="docs/PLATFORMS.md#english">Mac / Windows</a> · <a href="docs/SETUP.md">Setup</a> · <a href="docs/MEMORY.md#english">Memory and context</a> · <a href="docs/LIVE2D.md#english">Bring your own Live2D</a> · <a href="assets/original-design/README.md#english">Whale-girl artwork</a></p>
@@ -10,20 +11,7 @@
 
 > **Noncommercial only · Attribution required.** All commercial use of original project material is prohibited. Credit AAAAGENT, its authors and [the source repository](https://github.com/phoiex/AAAAGENT) when using, citing, reproducing or adapting it. See [LICENSE](LICENSE).
 
-AAAAGENT is a desktop companion developed primarily for macOS, with a separate Windows development version, offering text and voice conversation, a WeChat entry point, and task forwarding. Describe a job, review the proposed task card, and confirm before it is sent to DeepSeek Harness or an existing Codex task.
-
-## Final demo · 1080p60
-
-**[▶ Open the video page: companionship, audiovisual emotion information, memory and tool collaboration](https://github.com/phoiex/AAAAGENT/releases/tag/demo-video-20260917)**
-
-Final version with corrected subtitles, approximately **9 minutes 21 seconds**. The original was split into two parts **without re-encoding**. Download and play them in order.
-
-| Video | Position in the full demo |
-| --- | --- |
-| [▶ Part 1 · 1080p60](https://github.com/phoiex/AAAAGENT/releases/download/demo-video-20260917/AAAAGENT-demo-1080p60-part-1.mp4) | 00:00–04:40 |
-| [▶ Part 2 · 1080p60](https://github.com/phoiex/AAAAGENT/releases/download/demo-video-20260917/AAAAGENT-demo-1080p60-part-2.mp4) | 04:40–end |
-
-All original HEVC video and AAC audio data are preserved. These are download links; use an HEVC-capable player if your browser cannot play the files.
+AAAAGENT is a desktop companion developed primarily for macOS, with a separate Windows development version, offering text and voice conversation, a WeChat entry point, and task forwarding. Describe a job, review the proposed task card, and confirm before it is sent to DeepSeek Harness or an existing Codex task. **[▶ Watch the full demo on Bilibili](https://www.bilibili.com/video/BV1cueG6sE85/)**
 
 ## Platforms and feedback
 

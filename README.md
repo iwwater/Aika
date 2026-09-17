@@ -1,6 +1,7 @@
 <div align="center">
   <img src="assets/original-design/whale-avatar.png" width="144" alt="AAAAGENT 鲸鱼娘角色设计" />
   <h1>AAAAGENT</h1>
+  <p><strong><a href="https://www.bilibili.com/video/BV1cueG6sE85/">▶ 观看完整演示 · 哔哩哔哩</a></strong></p>
   <p>会聊天、记得相处，也能把想法交给工作 Agent。</p>
   <p><strong>简体中文</strong> · <a href="README.en.md">English</a></p>
   <p><a href="docs/PLATFORMS.md">Mac / Windows</a> · <a href="docs/SETUP.md">开始使用</a> · <a href="docs/MEMORY.md">记忆与上下文</a> · <a href="docs/LIVE2D.md">接入自己的 Live2D</a> · <a href="assets/original-design/README.md">DeepSeek 大肥鱼设计稿</a></p>
@@ -10,20 +11,7 @@
 
 > **禁止商用 · 使用须署名**：本项目原创内容禁止任何形式的商业用途。使用、引用、转载或改编须注明 AAAAGENT、原作者及[项目来源](https://github.com/phoiex/AAAAGENT)。完整条款见 [LICENSE](LICENSE)。
 
-AAAAGENT 是一个以 macOS 为主要平台、同时提供 Windows 开发版的陪伴型桌面助手。你可以和它说话、用文字交流，也可以通过微信延续对话。需要完成工作时，它把需求整理成任务卡，交给你确认，再转给 DeepSeek Harness 或已有的 Codex 任务。
-
-## 最终演示视频 · 1080P60
-
-**[▶ 打开视频页面：情感陪伴、音视频情绪信息、长期记忆与工具协作](https://github.com/phoiex/AAAAGENT/releases/tag/demo-video-20260917)**
-
-字幕修正版，完整时长约 **9 分 21 秒**。原片无损分成两段，未重新压缩；请按顺序下载播放。
-
-| 视频 | 内容位置 |
-| --- | --- |
-| [▶ 第 1 段 · 1080P60](https://github.com/phoiex/AAAAGENT/releases/download/demo-video-20260917/AAAAGENT-demo-1080p60-part-1.mp4) | 00:00–04:40 |
-| [▶ 第 2 段 · 1080P60](https://github.com/phoiex/AAAAGENT/releases/download/demo-video-20260917/AAAAGENT-demo-1080p60-part-2.mp4) | 04:40–结尾 |
-
-原始 HEVC + AAC 音视频数据完整保留。GitHub 首页提供下载入口；浏览器无法播放时，使用兼容 HEVC 的播放器观看。
+AAAAGENT 是一个以 macOS 为主要平台、同时提供 Windows 开发版的陪伴型桌面助手。你可以和它说话、用文字交流，也可以通过微信延续对话。需要完成工作时，它把需求整理成任务卡，交给你确认，再转给 DeepSeek Harness 或已有的 Codex 任务。 **[▶ 在哔哩哔哩观看完整演示](https://www.bilibili.com/video/BV1cueG6sE85/)**
 
 ## 平台选择与反馈
 
