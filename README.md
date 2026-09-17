@@ -12,6 +12,19 @@
 
 AAAAGENT 是一个以 macOS 为主要平台、同时提供 Windows 开发版的陪伴型桌面助手。你可以和它说话、用文字交流，也可以通过微信延续对话。需要完成工作时，它把需求整理成任务卡，交给你确认，再转给 DeepSeek Harness 或已有的 Codex 任务。
 
+## 最终演示视频 · 1080P60
+
+**[▶ 打开视频页面：情感陪伴、音视频情绪信息、长期记忆与工具协作](https://github.com/phoiex/AAAAGENT/releases/tag/demo-video-20260917)**
+
+字幕修正版，完整时长约 **9 分 21 秒**。原片无损分成两段，未重新压缩；请按顺序下载播放。
+
+| 视频 | 内容位置 |
+| --- | --- |
+| [▶ 第 1 段 · 1080P60](https://github.com/phoiex/AAAAGENT/releases/download/demo-video-20260917/AAAAGENT-demo-1080p60-part-1.mp4) | 00:00–04:40 |
+| [▶ 第 2 段 · 1080P60](https://github.com/phoiex/AAAAGENT/releases/download/demo-video-20260917/AAAAGENT-demo-1080p60-part-2.mp4) | 04:40–结尾 |
+
+原始 HEVC + AAC 音视频数据完整保留。GitHub 首页提供下载入口；浏览器无法播放时，使用兼容 HEVC 的播放器观看。
+
 ## 平台选择与反馈
 
 **macOS 是目前功能最完善的版本，推荐优先体验。Windows 版持续完善中，如遇问题请及时在本仓库的 Issues 中反馈，我们会在对应 Issue 中跟进处理。**

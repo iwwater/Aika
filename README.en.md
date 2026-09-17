@@ -12,6 +12,19 @@
 
 AAAAGENT is a desktop companion developed primarily for macOS, with a separate Windows development version, offering text and voice conversation, a WeChat entry point, and task forwarding. Describe a job, review the proposed task card, and confirm before it is sent to DeepSeek Harness or an existing Codex task.
 
+## Final demo · 1080p60
+
+**[▶ Open the video page: companionship, audiovisual emotion information, memory and tool collaboration](https://github.com/phoiex/AAAAGENT/releases/tag/demo-video-20260917)**
+
+Final version with corrected subtitles, approximately **9 minutes 21 seconds**. The original was split into two parts **without re-encoding**. Download and play them in order.
+
+| Video | Position in the full demo |
+| --- | --- |
+| [▶ Part 1 · 1080p60](https://github.com/phoiex/AAAAGENT/releases/download/demo-video-20260917/AAAAGENT-demo-1080p60-part-1.mp4) | 00:00–04:40 |
+| [▶ Part 2 · 1080p60](https://github.com/phoiex/AAAAGENT/releases/download/demo-video-20260917/AAAAGENT-demo-1080p60-part-2.mp4) | 04:40–end |
+
+All original HEVC video and AAC audio data are preserved. These are download links; use an HEVC-capable player if your browser cannot play the files.
+
 ## Platforms and feedback
 
 **macOS is currently the most complete version and the recommended starting point. The Windows version is still being improved. If you encounter a problem, please report it in this repository's Issues; we will follow up in the corresponding issue.**
