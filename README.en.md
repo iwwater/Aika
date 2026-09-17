@@ -101,7 +101,11 @@ Compilation does not log in to WeChat, call models or open the microphone. Follo
 
 **Different Cubism Live2D models can be integrated with local adaptation.** Parameter IDs, expression files, motion ranges and physics differ between characters. Replacing an image or copying a single model file is not sufficient. See [Live2D integration](docs/LIVE2D.md#english).
 
-The existing third-party character, textures, expressions, motions, screenshots and recordings are excluded. [DeepSeek whale-girl design resources](assets/original-design/README.md#english) document the included project-produced artwork and its provenance. These are static artwork and separated layers; Cubism rigging and continuous-animation validation have not been completed.
+**The model shown in the demo is not distributed with this project.** The video uses a third-party, commercially available stock Live2D model whose original license prohibits redistribution. Its model files, textures, expressions and motions are therefore not included. Showing the character in the demo does not grant permission to extract or redistribute its assets.
+
+You can also choose a free Live2D model whose license permits your intended use and adapt it locally using the integration guide above. Free models still have their own usage and redistribution terms; please follow the original creator's license.
+
+**DeepSeek whale Live2D release plan (2026-09-17):** The project author plans to create a DeepSeek whale-themed Live2D model and release it in about two days. This is an estimated schedule; follow this repository for updates. The currently available [DeepSeek whale-girl design resources](assets/original-design/README.md#english) are still static artwork and separated layers, not a finished, rigged Live2D model ready to run.
 
 ## Repository layout
 
