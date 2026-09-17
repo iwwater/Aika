@@ -1,0 +1,7 @@
+### Result
+"{\"events\":[{\"kind\":\"start\"},{\"kind\":\"speechStart\"},{\"kind\":\"speechStart\"},{\"kind\":\"final\",\"text\":\"And so my fellow America.\"},{\"kind\":\"speechStart\"},{\"kind\":\"final\",\"text\":\"ASK NOT!\"},{\"kind\":\"speechStart\"},{\"kind\":\"final\",\"text\":\"What your country can do for you!\"},{\"kind\":\"final\",\"text\":\"Ask what you can do for your country.\"},{\"kind\":\"speechStart\"}],\"errorCount\":0,\"frames\":531,\"peak\":0.9999812841415405,\"maxProbability\":0.9999884963035583,\"probabilityFrames\":531}"
+### Ran Playwright code
+```js
+await (async (page) => { return await page.locator('#result').textContent(); }
+)(page);
+```

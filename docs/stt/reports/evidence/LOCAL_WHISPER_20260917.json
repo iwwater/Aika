@@ -1,0 +1,13 @@
+{
+  "timestamp": "2026-09-17T01:16:49.047Z",
+  "endpoint": "http://127.0.0.1:8080",
+  "probe": true,
+  "text": "And so my fellow Americans, ask not what your country can do for you, ask what you can do for your country.",
+  "elapsedMs": 888.2842,
+  "sample": "official samples/jfk.wav",
+  "productionClient": "src/services/voice/whisperClient.ts",
+  "transport": "real Node fetch",
+  "microphoneTest": "NOT RUN",
+  "tauriWebViewTest": "NOT RUN",
+  "japaneseTest": "NOT RUN"
+}

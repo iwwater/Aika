@@ -1,0 +1,39 @@
+﻿{"plannedHours":2,"targetId":26796,"activity":"requires human record","kind":"observation_started","pollSeconds":5,"time":"2026-09-17T09:57:41.5491318+09:00","manualClose":"unknown"}
+{"time":"2026-09-17T09:57:41.6911163+09:00","targetId":26796,"workingSetBytes":31158272,"kind":"process_present"}
+{"time":"2026-09-17T09:58:41.8881321+09:00","targetId":26796,"workingSetBytes":31969280,"kind":"process_present"}
+{"time":"2026-09-17T09:59:42.1002746+09:00","targetId":26796,"workingSetBytes":32739328,"kind":"process_present"}
+{"time":"2026-09-17T10:00:42.3232351+09:00","targetId":26796,"workingSetBytes":32735232,"kind":"process_present"}
+{"time":"2026-09-17T10:01:42.5096980+09:00","targetId":26796,"workingSetBytes":32743424,"kind":"process_present"}
+{"time":"2026-09-17T10:02:42.9315734+09:00","targetId":26796,"workingSetBytes":32800768,"kind":"process_present"}
+{"time":"2026-09-17T10:03:43.1192050+09:00","targetId":26796,"workingSetBytes":32878592,"kind":"process_present"}
+{"time":"2026-09-17T10:04:43.3079836+09:00","targetId":26796,"workingSetBytes":33300480,"kind":"process_present"}
+{"time":"2026-09-17T10:05:43.5582848+09:00","targetId":26796,"workingSetBytes":33464320,"kind":"process_present"}
+{"time":"2026-09-17T10:06:43.7573892+09:00","targetId":26796,"workingSetBytes":34996224,"kind":"process_present"}
+{"time":"2026-09-17T10:07:43.9836234+09:00","targetId":26796,"workingSetBytes":35053568,"kind":"process_present"}
+{"time":"2026-09-17T10:08:44.2591263+09:00","targetId":26796,"workingSetBytes":35053568,"kind":"process_present"}
+{"time":"2026-09-17T10:09:44.5271016+09:00","targetId":26796,"workingSetBytes":34992128,"kind":"process_present"}
+{"time":"2026-09-17T10:10:44.7571540+09:00","targetId":26796,"workingSetBytes":35004416,"kind":"process_present"}
+{"time":"2026-09-17T10:11:44.9687261+09:00","targetId":26796,"workingSetBytes":35016704,"kind":"process_present"}
+{"time":"2026-09-17T10:12:45.1915630+09:00","targetId":26796,"workingSetBytes":37142528,"kind":"process_present"}
+{"time":"2026-09-17T10:13:45.4127265+09:00","targetId":26796,"workingSetBytes":37130240,"kind":"process_present"}
+{"time":"2026-09-17T10:14:45.5980740+09:00","targetId":26796,"workingSetBytes":37105664,"kind":"process_present"}
+{"time":"2026-09-17T10:15:45.8135455+09:00","targetId":26796,"workingSetBytes":37105664,"kind":"process_present"}
+{"time":"2026-09-17T10:16:46.0079389+09:00","targetId":26796,"workingSetBytes":37093376,"kind":"process_present"}
+{"time":"2026-09-17T10:17:46.2513032+09:00","targetId":26796,"workingSetBytes":36392960,"kind":"process_present"}
+{"time":"2026-09-17T10:18:46.4960246+09:00","targetId":26796,"workingSetBytes":40775680,"kind":"process_present"}
+{"time":"2026-09-17T10:19:46.7003206+09:00","targetId":26796,"workingSetBytes":40914944,"kind":"process_present"}
+{"time":"2026-09-17T10:20:46.9142465+09:00","targetId":26796,"workingSetBytes":41140224,"kind":"process_present"}
+{"time":"2026-09-17T10:21:47.1131143+09:00","targetId":26796,"workingSetBytes":41144320,"kind":"process_present"}
+{"time":"2026-09-17T10:22:47.2997287+09:00","targetId":26796,"workingSetBytes":41156608,"kind":"process_present"}
+{"time":"2026-09-17T10:23:47.4945960+09:00","targetId":26796,"workingSetBytes":41144320,"kind":"process_present"}
+{"time":"2026-09-17T10:24:47.7414230+09:00","targetId":26796,"workingSetBytes":41123840,"kind":"process_present"}
+{"time":"2026-09-17T10:25:47.9760425+09:00","targetId":26796,"workingSetBytes":41123840,"kind":"process_present"}
+{"time":"2026-09-17T10:26:48.2076759+09:00","targetId":26796,"workingSetBytes":41123840,"kind":"process_present"}
+{"time":"2026-09-17T10:27:31.8109977+09:00","automaticRestart":false,"manualClose":"agent requested graceful close","reason":"Apply Silero v5 audio context fix","kind":"planned_maintenance_stop","targetId":26796}
+{"time":"2026-09-17T10:27:48.4378407+09:00","targetId":26796,"workingSetBytes":40595456,"kind":"process_present"}
+{"observedSeconds":1842.0189151999998,"activity":"requires human record","kind":"process_absent","automaticRestart":false,"time":"2026-09-17T10:28:23.5680470+09:00","manualClose":"unknown"}
+{"plannedHours":2,"targetId":25300,"activity":"requires human record","kind":"observation_started","pollSeconds":5,"time":"2026-09-17T10:29:31.6210318+09:00","manualClose":"unknown"}
+{"time":"2026-09-17T10:29:31.7360491+09:00","targetId":25300,"workingSetBytes":30384128,"kind":"process_present"}
+{"time":"2026-09-17T10:30:31.9507630+09:00","targetId":25300,"workingSetBytes":39546880,"kind":"process_present"}
+{"time":"2026-09-17T10:31:32.1600251+09:00","targetId":25300,"workingSetBytes":40095744,"kind":"process_present"}
+{"time":"2026-09-17T10:32:32.3750299+09:00","targetId":25300,"workingSetBytes":40083456,"kind":"process_present"}

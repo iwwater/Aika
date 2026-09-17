@@ -56,11 +56,14 @@ export function createSileroVad(sampleRate = 16_000): VoiceActivityModel {
   let session: OrtSession | null = null;
   let layout: StateLayout | null = null;
   let state: OrtTensor[] = [];
+  let audioContext = new Float32Array(0);
   let loading: Promise<void> | null = null;
 
   function resetState() {
     if (!layout || !ort) return;
     state = layout.inputs.map(() => zeros(ort!, layout!.shape));
+    // v5 的 ONNX 包装器在每帧前补上一帧末尾 64（16 kHz）/32（8 kHz）采样。
+    audioContext = new Float32Array(layout.kind === "v5" ? sampleRate / 250 : 0);
   }
 
   async function load() {
@@ -89,8 +92,11 @@ export function createSileroVad(sampleRate = 16_000): VoiceActivityModel {
       await ready();
       if (!ort || !session || !layout) return 0;
 
+      const input = new Float32Array(audioContext.length + frame.length);
+      input.set(audioContext);
+      input.set(frame, audioContext.length);
       const feeds: Record<string, OrtTensor> = {
-        input: new ort.Tensor("float32", frame, [1, frame.length]),
+        input: new ort.Tensor("float32", input, [1, input.length]),
         sr: new ort.Tensor("int64", BigInt64Array.from([BigInt(sampleRate)]), []),
       };
       layout.inputs.forEach((name, index) => {
@@ -98,6 +104,7 @@ export function createSileroVad(sampleRate = 16_000): VoiceActivityModel {
       });
 
       const result = await session.run(feeds);
+      if (audioContext.length) audioContext = input.slice(-audioContext.length);
       state = layout.outputs.map((name, index) => (result[name] as OrtTensor) ?? state[index]);
 
       const output = result.output as OrtTensor | undefined;
@@ -112,6 +119,7 @@ export function createSileroVad(sampleRate = 16_000): VoiceActivityModel {
     async dispose() {
       await session?.release().catch(() => undefined);
       session = null;
+      audioContext = new Float32Array(0);
       layout = null;
       state = [];
       loading = null;
