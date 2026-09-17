@@ -7,6 +7,12 @@
   <p><a href="docs/PLATFORMS.md#english">Mac / Windows</a> · <a href="docs/SETUP.md">Setup</a> · <a href="docs/MEMORY.md#english">Memory and context</a> · <a href="docs/LIVE2D.md#english">Bring your own Live2D</a> · <a href="assets/original-design/README.md#english">Whale-girl artwork</a></p>
 </div>
 
+## Watch the demo
+
+https://github.com/user-attachments/assets/f499c069-4a13-4f79-b705-ce332d7b06f2
+
+**Play the full demo above (about 9m 21s).** This is a 720p web playback version; [watch on Bilibili](https://www.bilibili.com/video/BV1cueG6sE85/) · [download the original-quality 1080p60 video](https://github.com/phoiex/AAAAGENT/releases/tag/demo-video-20260917).
+
 ---
 
 > **Noncommercial only · Attribution required.** All commercial use of original project material is prohibited. Credit AAAAGENT, its authors and [the source repository](https://github.com/phoiex/AAAAGENT) when using, citing, reproducing or adapting it. See [LICENSE](LICENSE).

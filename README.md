@@ -7,6 +7,12 @@
   <p><a href="docs/PLATFORMS.md">Mac / Windows</a> · <a href="docs/SETUP.md">开始使用</a> · <a href="docs/MEMORY.md">记忆与上下文</a> · <a href="docs/LIVE2D.md">接入自己的 Live2D</a> · <a href="assets/original-design/README.md">DeepSeek 大肥鱼设计稿</a></p>
 </div>
 
+## 视频演示
+
+https://github.com/user-attachments/assets/f499c069-4a13-4f79-b705-ce332d7b06f2
+
+**点击上方播放器即可观看完整演示（约 9 分 21 秒）。** 首页使用 720P 网页播放版；[哔哩哔哩观看](https://www.bilibili.com/video/BV1cueG6sE85/) · [1080P60 原画下载](https://github.com/phoiex/AAAAGENT/releases/tag/demo-video-20260917)。
+
 ---
 
 > **禁止商用 · 使用须署名**：本项目原创内容禁止任何形式的商业用途。使用、引用、转载或改编须注明 AAAAGENT、原作者及[项目来源](https://github.com/phoiex/AAAAGENT)。完整条款见 [LICENSE](LICENSE)。
