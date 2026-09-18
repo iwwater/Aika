@@ -10,7 +10,7 @@
 > [!IMPORTANT]
 > **我们将在两天后（2026 年 9 月 19 日）发布自己的「大鲸鱼 DeepSeek」Live2D 模型。**
 >
-> 演示视频中的模型是**量贩式购买的第三方 Live2D 模型**，原作者的授权不允许二次转发，因此不随本项目提供模型、纹理、表情和动作文件。
+> 目前使用、视频中展示的是**量贩式购买的第三方 Live2D 模型**（[B站搜索「Live2D量贩」](https://search.bilibili.com/all?vt=35099468&amp;keyword=live2d%E9%87%8F%E8%B4%A9&amp;search_source=1&amp;from_source=web_recommend_search)）。原作者的授权不允许二次转发，因此不随本项目提供模型、纹理、表情和动作文件。
 >
 > 大家也可以自行选择免费且授权允许使用的 Live2D 模型，按照 [接入说明](docs/LIVE2D.md) 在本地适配，并遵守各模型的使用与分发条款。
 

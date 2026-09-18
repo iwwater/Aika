@@ -10,7 +10,7 @@
 > [!IMPORTANT]
 > **We will release our own “Big Whale DeepSeek” Live2D model in two days, on September 19, 2026.**
 >
-> The demo uses a **purchased third-party stock Live2D model**. Its original license prohibits redistribution, so its model files, textures, expressions and motions are not included in this project.
+> The model currently used and shown in the demo is a **purchased third-party stock Live2D model** ([search stock Live2D models on Bilibili](https://search.bilibili.com/all?vt=35099468&amp;keyword=live2d%E9%87%8F%E8%B4%A9&amp;search_source=1&amp;from_source=web_recommend_search)). Its original license prohibits redistribution, so its model files, textures, expressions and motions are not included in this project.
 >
 > You can also choose a free Live2D model whose license permits your intended use and adapt it locally using the [integration guide](docs/LIVE2D.md#english). Please follow each model's usage and redistribution terms.
 
