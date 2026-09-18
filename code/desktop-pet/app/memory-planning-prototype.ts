@@ -108,8 +108,12 @@ export function compileMemoryPrototype(snapshot: PrototypeSnapshot, declaration:
     return source;
   };
   for (const source of input.sources) {
-    const node = nodeFor(source);
-    if (node.kind !== source.kind || !sameScope(scope, source.scope) || digest(node.parents) !== digest(source.sourceVersions ?? [])) return fail('input_graph_mismatch');
+    // Display-only historical assistant text may explain the conversation, but sourceFor
+    // still forbids it as evidence for any semantic action or derived fact.
+    const display = source.kind === 'transcript' && source.messageRole === 'assistant' && source.evidenceEligible === false;
+    const node = display ? graph.get(source.id) : nodeFor(source);
+    if (!node || node.version !== source.version || node.state !== 'active' || (display && node.eligible)
+      || node.kind !== source.kind || !sameScope(scope, source.scope) || digest(node.parents) !== digest(source.sourceVersions ?? [])) return fail('input_graph_mismatch');
   }
   const current = sourceFor(ref(allowed.get(input.currentMessageId) ?? fail('missing_current')));
   if (current.messageRole !== 'user') return fail('current_not_user');

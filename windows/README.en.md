@@ -110,3 +110,5 @@ assets/original-design/   Project-produced whale-girl fan artwork
 - Original project material is under the [Noncommercial and Attribution License](../LICENSE): **all commercial use is prohibited; use or citation requires credit to the project and authors, with a source link**. Third-party dependencies, SDKs and artwork retain their separate terms; see the [artwork notice](assets/original-design/README.md#english) and third-party notices in the source tree.
 
 When reporting an issue, provide a minimal reproduction without private data. Never attach credentials, a full conversation database or a login QR code to a public issue.
+
+**Memory → Import past chats** is now available in the source. See the [guide](docs/MEMORY.md#import-past-chats) for model costs and data handling. Synthetic regressions do not establish real Windows usage quality.

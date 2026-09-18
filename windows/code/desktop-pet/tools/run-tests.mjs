@@ -10,9 +10,11 @@ async function collect(dir, accepts) {
 }
 if (group === 'windows') await collect('tests/windows', name => name.endsWith('.test.mjs'));
 else if (group === 'release') {
-  await collect('dist/tests/memory', name => name === 'context-continuity.test.js' || /^dynamics.*\.test\.js$/.test(name));
+  await collect('dist/tests/memory', name => name === 'import-49.test.js' || name === 'context-continuity.test.js' || /^dynamics.*\.test\.js$/.test(name));
   await collect('dist/tests/providers', name => ['qwen-asr.test.js', 'minimax-tts.test.js', 'registered-voices.test.js'].includes(name));
   await collect('dist/tests/wechat', name => name === 'conversation.test.js');
+  await collect('dist/tests/integration', name => name === 'memory-import-49.test.js');
+  await collect('dist/tests/management', name => name === 'memory-import.test.js');
 } else if (group === 'default') {
   for (const dir of ['memory', 'providers']) await collect('dist/tests/' + dir, name => name.endsWith('.test.js'));
 } else throw Error('Unknown test group');

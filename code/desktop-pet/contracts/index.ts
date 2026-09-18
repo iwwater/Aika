@@ -220,3 +220,5 @@ export interface MediaStorePort {
   read(scope: TurnScope, asset: MediaAsset): Promise<Uint8Array>;
   releaseScope(scope: TurnScope): Promise<void>;
 }
+
+export * from './memory-import.js';

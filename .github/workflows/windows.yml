@@ -26,5 +26,7 @@ jobs:
       - run: npm rebuild better-sqlite3 esbuild
       - run: node node_modules/electron/install.js
       - run: npm run test:windows
+      # Collect release regressions even if the separate platform checks fail.
       - run: npm run test:release
+        if: success() || failure()
       # No credentials, private model/SDK, paid providers or device tests.

@@ -1,3 +1,6 @@
+import { homedir } from 'node:os';
+import { SqliteMemoryImportManagement } from '../memory/import-management.js';
+import { HistoricalMemoryTransport, historicalMemoryInputBytes, memoryImportConfiguration, observedImportEndpoint } from './memory-import.js';
 import { WakeManager } from './wake-manager.js';
 import { wechatTranscriber } from '../wechat/asr.js';
 import { wechatAudioFileSender } from '../wechat/output.js';
@@ -219,6 +222,7 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
   let wechat: WeChatService | undefined;
   let wake: WakeManager | undefined;
   let managementForget: StrictManagementForget | undefined;
+  let memoryImport: SqliteMemoryImportManagement | undefined;
   let desktopWork: import('../contracts/desktop-work.js').DesktopWorkPort | undefined;
   let management: Awaited<ReturnType<typeof startRuntimeManagement>> | undefined;
   const release = async () => { await lock.close(); await unlink(lockPath); };
@@ -336,10 +340,25 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
       managementForget=new StrictManagementForget(store,store.lifecycle,{inputTokenBudget:configuration.models.memory_turn.inputTokenLimit,
         countTokens:input=>buildMemorySemanticFormat(input,true).inputUpperBound+1024},
         (input,signal,action)=>strictProvider.planManagement(input,signal,{id:action.id,version:action.expectedVersion}));
+      const importConfiguration = memoryImportConfiguration(configuration);
+      try { memoryImport = new SqliteMemoryImportManagement({
+        filename: resolve(configuration.projectRoot,'.local/data/memory-import.sqlite'),
+        codexHome: resolve(homedir(),'.codex'), instanceId: runtime.instanceId, store,
+        configuration: importConfiguration,
+        countTokens: historicalMemoryInputBytes,
+        processor: { async plan(input,signal,settle) {
+          const importEndpoint = observedImportEndpoint(endpoint('memory_turn'),configuration.models.memory_turn,settle);
+          const provider = new StrictTrialMemoryProvider(store!,importEndpoint,
+            new HistoricalMemoryTransport(transport,importConfiguration),configuration.phaseId,
+            async () => {}, configuration.models.memory_turn.thinking);
+          return provider.plan(input,signal);
+        } },
+      });
+      } catch { process.stderr.write('Historical memory import unavailable; companion chat remains available.\n'); }
       management = await startRuntimeManagement(registeredConfiguration, configFile, settings, runtime,
         withStrictManagementForget(new SqliteManagementMemoryPort(store,memory),managementForget),presentation,
         pendingMemoryManagement(runtime.instanceId,memory,(scope,id)=>{const source=store!.inspect(scope,id);return source?.state==='active'&&source.message?.role==='user'?{text:source.text,createdAt:source.message.createdAt}:undefined;},
-          (scope,id,text)=>session!.retryPendingMemory(scope,id,text),()=>session!.pendingMemoryJobs().some(x=>x.queued+x.running>0)),wechat,wake);
+          (scope,id,text)=>session!.retryPendingMemory(scope,id,text),()=>session!.pendingMemoryJobs().some(x=>x.queued+x.running>0)),wechat,wake,memoryImport);
     }
     if (configuration.purpose === 'user-trial') {
       const classifier = new WorkIntentClassifier(endpoint('admission'), transport);
@@ -391,6 +410,7 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
   } catch (error) {
     managementForget?.close();
     await wake?.close(); await wechat?.close(); await management?.close(); await managementForget?.drain();
+    await memoryImport?.close();
     if (session) await session.close(); else store?.close();
     await release(); throw error;
   }

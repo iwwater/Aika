@@ -11,3 +11,5 @@ Windows 桌宠开发与本地运行入口。
 Windows 0.1.1 已实测 Codex app-server 和 DeepSeek Harness 的任务确认、发送与完成回执。模型、Cubism SDK 和服务凭据需自行配置。Mac 版本的代码与说明不受本次更新影响。
 
 本项目原创内容禁止商用；使用须署名 AAAAGENT、原作者及[项目来源](https://github.com/phoiex/AAAAGENT)。完整条款见 [LICENSE](../LICENSE)。
+
+新增 **记忆 → 导入旧聊天**，操作、模型费用与数据边界见[记忆说明](docs/MEMORY.md#导入旧聊天)。此功能的合成回归与真实 Windows 使用体验分开验证。

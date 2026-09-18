@@ -10,7 +10,7 @@
     "build": "tsc -p tsconfig.json && node tools/build-wechat.mjs",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test dist/tests/memory/*.test.js dist/tests/providers/*.test.js",
-    "test:release": "npm run build && node --test dist/tests/memory/context-continuity.test.js dist/tests/memory/dynamics*.test.js dist/tests/providers/qwen-asr.test.js dist/tests/providers/minimax-tts.test.js dist/tests/providers/registered-voices.test.js dist/tests/wechat/conversation.test.js",
+    "test:release": "npm run build && node --test dist/tests/memory/context-continuity.test.js dist/tests/memory/dynamics*.test.js dist/tests/providers/qwen-asr.test.js dist/tests/providers/minimax-tts.test.js dist/tests/providers/registered-voices.test.js dist/tests/wechat/conversation.test.js dist/tests/memory/import-49.test.js dist/tests/integration/memory-import-49.test.js dist/tests/management/memory-import.test.js",
     "build:wake": "node tools/build-wake.mjs",
     "build:desktop": "node desktop/build-web.mjs",
     "build:native": "zsh desktop/build-native.sh",

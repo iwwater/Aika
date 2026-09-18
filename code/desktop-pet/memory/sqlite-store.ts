@@ -15,6 +15,7 @@ import { MemoryRuleError, assertCharacter, bindScope, sameScope, timestamp } fro
 import { SqliteLifecycleState } from './sqlite-lifecycle-state.js';
 import { SqliteMemoryRecall } from './sqlite-recall.js';
 import { SqliteMemoryDynamics } from './sqlite-dynamics.js';
+import { SqliteImportedMemory } from './sqlite-imported-memory.js';
 import { asksCurrentEmployment, isEmploymentCandidate } from './retrieval.js';
 
 export const CONFIRMED_RETENTION: Readonly<RetentionPolicy> = Object.freeze({ transcriptQuotaScope: 'all_characters', transcriptMaxBytes: 300_000_000, transcriptDays: 30, deletedMemoryDays: 30 });
@@ -52,6 +53,7 @@ export class SqliteMemoryStore implements CompanionProfilePort {
   readonly pending:PendingMutations;
   readonly dynamics: SqliteMemoryDynamics;
   readonly recall: SqliteMemoryRecall;
+  readonly imports: SqliteImportedMemory;
   readonly filename: string;
   #closed = false;
 
@@ -127,6 +129,7 @@ export class SqliteMemoryStore implements CompanionProfilePort {
       this.lifecycle = new SqliteLifecycleState(this.#db, this);
       this.dynamics = new SqliteMemoryDynamics(this.#db, this);
       this.recall = new SqliteMemoryRecall(this.#db, this);
+      this.imports = new SqliteImportedMemory(this.#db, this);
       this.cleanup();
     } catch (error) { this.#db.close(); throw error; }
   }
@@ -333,7 +336,9 @@ export class SqliteMemoryStore implements CompanionProfilePort {
     for (const n of [recentLimit, memoryLimit, summaryLimit]) if (!Number.isSafeInteger(n) || n < 0) throw new Error('invalid_context_limit');
     if(purpose==='dialogue'&&this.pending.has(scope.characterId))return {characterId:scope.characterId,revision:this.revision(scope),recent:[],summaries:[],memories:[]};
     return this.#db.transaction(() => {
-      const recent = this.#db.prepare("SELECT * FROM memory_records WHERE character_id=? AND kind='transcript' AND state='active' AND evidence_eligible=1 ORDER BY logical_order DESC,rowid DESC LIMIT ?").all(scope.characterId, recentLimit) as RecordRow[];
+      const recent = this.#db.prepare(`SELECT r.* FROM memory_records r WHERE r.character_id=? AND r.kind='transcript' AND r.state='active' AND r.evidence_eligible=1
+        AND NOT EXISTS(SELECT 1 FROM memory_import_evidence i WHERE i.character_id=r.character_id AND i.record_id=r.id)
+        ORDER BY r.logical_order DESC,r.rowid DESC LIMIT ?`).all(scope.characterId, recentLimit) as RecordRow[];
       const summaries = this.#db.prepare("SELECT * FROM memory_records WHERE character_id=? AND kind='summary' AND state='active' AND evidence_eligible=1 ORDER BY logical_order DESC,rowid DESC LIMIT ?").all(scope.characterId, summaryLimit) as RecordRow[];
       return { characterId: scope.characterId, revision: this.revision(scope), recent: recent.reverse().map(decodeRecord).map(record => record.message!),
         summaries: summaries.map(decodeRecord), memories: purpose==='maintenance'?this.searchForMaintenance(scope,query,memoryLimit,'lexical'):this.search(scope, query, memoryLimit, 'lexical') };
@@ -348,6 +353,7 @@ export class SqliteMemoryStore implements CompanionProfilePort {
       const boundary=this.pending.contextBoundary(scope.characterId);
       if(boundary.afterOrder===null)return {characterId:scope.characterId,revision:this.revision(scope),recent:[],summaries:[],memories:[]};
       const rows=this.#db.prepare(`SELECT * FROM memory_records r WHERE character_id=? AND kind='transcript' AND state='active'
+        AND NOT EXISTS(SELECT 1 FROM memory_import_evidence i WHERE i.character_id=r.character_id AND i.record_id=r.id)
         AND logical_order>? AND COALESCE(origin,'')!='manual' AND
         ((message_role='user' AND evidence_eligible=1) OR
          (message_role='assistant' AND evidence_eligible=0 AND reason='display_only_assistant' AND id LIKE '%:assistant'
@@ -441,13 +447,17 @@ export class SqliteMemoryStore implements CompanionProfilePort {
     });
   }
 
-  transcriptBytes(): number { this.#open(); return (this.#db.prepare("SELECT coalesce(sum(transcript_bytes),0) AS bytes FROM memory_records WHERE kind='transcript'").get() as {bytes: number}).bytes; }
+  transcriptBytes(): number { this.#open(); return (this.#db.prepare(`SELECT coalesce(sum(r.transcript_bytes),0) AS bytes FROM memory_records r WHERE r.kind='transcript'
+    AND NOT EXISTS(SELECT 1 FROM memory_import_evidence i WHERE i.character_id=r.character_id AND i.record_id=r.id)`).get() as {bytes: number}).bytes; }
   #validateRetention(policy: RetentionPolicy): void {
     if (policy.transcriptQuotaScope !== 'all_characters' || !Number.isSafeInteger(policy.transcriptMaxBytes) || policy.transcriptMaxBytes <= 0 || policy.transcriptDays !== 30 || policy.deletedMemoryDays !== 30) throw new Error('unsupported_retention_policy');
   }
   #pruneTranscripts(now: string): {characterId: CharacterId; id: string}[] {
     const policy = JSON.parse((this.#db.prepare("SELECT value FROM app_settings WHERE key='retention'").get() as {value: string}).value) as RetentionPolicy;
-    const rows = this.#db.prepare("SELECT character_id,id,transcript_bytes,created_ms FROM memory_records WHERE kind='transcript' AND (transcript_bytes>0 OR message_role IS NOT NULL) ORDER BY created_ms,rowid").all() as {character_id: CharacterId; id: string; transcript_bytes: number; created_ms: number}[];
+    const rows = this.#db.prepare(`SELECT r.character_id,r.id,r.transcript_bytes,r.created_ms FROM memory_records r WHERE r.kind='transcript'
+      AND (r.transcript_bytes>0 OR r.message_role IS NOT NULL)
+      AND NOT EXISTS(SELECT 1 FROM memory_import_evidence i WHERE i.character_id=r.character_id AND i.record_id=r.id)
+      ORDER BY r.created_ms,r.rowid`).all() as {character_id: CharacterId; id: string; transcript_bytes: number; created_ms: number}[];
     let bytes = this.transcriptBytes(); const expired: {characterId: CharacterId; id: string}[] = [];
     const cutoff = timestamp(now) - policy.transcriptDays * DAY;
     const touched = new Set<CharacterId>();

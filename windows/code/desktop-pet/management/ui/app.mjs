@@ -1,4 +1,5 @@
 import {createBalancesView} from './balances-view.mjs';
+import {createMemoryImportView} from './memory-import-view.mjs';
 import {createWakeView} from './wake-view.mjs';
 import {createPendingMemoryView} from './pending-memory-view.mjs';
 import {ManagementClient,query,clone,rebase} from './api.mjs';
@@ -16,7 +17,7 @@ const app=document.getElementById('app'),client=new ManagementClient(token);
 const s={page:'overview',providerSlot:null,connection:'locked',error:'',message:'',snapshot:null,character:'companion',section:'dynamics',kind:'memory',query:'',recordState:'active',offset:0,pageData:null,selected:null,prompt:null,context:null,contextQuery:'',drafts:new Map(),prompts:new Map(),pending:new Set(),settingsDraft:null,settingsBase:null,settingsRevision:null,settingsConflict:false,settingsLatest:null,eventModule:'',eventKind:'',auto:false};
 const presentation=createPresentationView(client,render);
 const pendingMemory=createPendingMemoryView(client,render,()=>s);
-window.addEventListener('pagehide',()=>{balances.deactivate();presentation.dispose();memoryDynamics.dispose();projects.dispose();tasks.dispose();});
+window.addEventListener('pagehide',()=>{balances.deactivate();memoryImport.dispose();presentation.dispose();memoryDynamics.dispose();projects.dispose();tasks.dispose();});
 let authEpoch=0,snapshotSequence=0;const reads=new Map();
 const id=()=>crypto.randomUUID();
 const recordKey=r=>r.characterId+'/'+r.kind+'/'+r.id;
@@ -27,8 +28,9 @@ const projects=createProjectsView(client,render,()=>({connection:s.connection,in
 const tasks=createTasksView(client,render,()=>({connection:s.connection,instanceId:s.snapshot?.runtime.instanceId,authEpoch,onError:error}));
 const wechat=createWeChatView(client,render,()=>({page:s.page,connection:s.connection,instanceId:s.snapshot?.runtime.instanceId,authEpoch,onError:error}));
 const wake=createWakeView(client,render,()=>({page:s.page,connection:s.connection,instanceId:s.snapshot?.runtime.instanceId,authEpoch,onError:error}));
+const memoryImport=createMemoryImportView(client,render,()=>({page:s.page,section:s.section,connection:s.connection,instanceId:s.snapshot?.runtime.instanceId,authEpoch,onError:error}));
 const balances=createBalancesView(client,render,()=>s);
-const actions={balances,wake,memoryDynamics,s,render,currentDraft,selectPage,loadRecords,loadPrompt,loadContext,selectRecord,saveRecord,savePrompt,saveSettings,rollbackSettings,refreshSnapshot,editSetting,reviewSettings,reviewPrompt,reviewRecord};
+const actions={balances,wake,memoryImport,memoryDynamics,s,render,currentDraft,selectPage,loadRecords,loadPrompt,loadContext,selectRecord,saveRecord,savePrompt,saveSettings,rollbackSettings,refreshSnapshot,editSetting,reviewSettings,reviewPrompt,reviewRecord};
 function error(e){if(e.name==='AbortError')return;if(e.status===401||e.status===403){s.connection='locked';s.error='本机会话已失效，请从本机管理入口重新打开，或重新连接。未保存编辑仍保留。'}else{s.error=e.message;if(!e.status||e.status>=500)s.connection='offline'}render()}
 async function write(key,fn,role=null){const auth=authEpoch;if(s.pending.has(key))return;s.pending.add(key);s.error='';s.message='';render();try{await fn()}catch(e){if(auth===authEpoch&&(!role||role===s.character))error(e)}finally{s.pending.delete(key);render()}}
 async function read(kind,url,accept){const seq=(reads.get(kind)||0)+1;reads.set(kind,seq);const auth=authEpoch;s.pending.add(kind);render();try{const data=await client.request(url);if(reads.get(kind)!==seq||auth!==authEpoch)return;if(data.characterId!==s.character)throw Error('服务返回的角色与本次查询不一致，内容未显示。');accept(data)}catch(e){if(reads.get(kind)===seq&&auth===authEpoch)error(e)}finally{if(reads.get(kind)===seq){s.pending.delete(kind);render()}}}
@@ -38,7 +40,7 @@ async function refreshSnapshot(){if(!client.token)return;const seq=++snapshotSeq
   s.snapshot=snap;s.connection='online';s.error='';if(!s.settingsDraft){s.settingsDraft=clone(snap.settings.saved);s.settingsBase=clone(snap.settings.saved);s.settingsRevision=snap.settings.revision;}else if(s.settingsRevision!==snap.settings.revision)s.settingsConflict=true;s.settingsLatest=snap.settings;if(s.page==='memory')loadMemorySection();if(s.page==='projects')projects.refresh();if(s.page==='tasks')tasks.refresh();if(s.page==='wechat')wechat.refresh();
  }catch(e){if(seq===snapshotSequence&&auth===authEpoch)error(e)}finally{if(seq===snapshotSequence){s.pending.delete('snapshot');render()}}}
 function selectPage(page){if(page!=='overview')balances.deactivate();if(page!=='presentation')presentation.deactivate();s.page=page;s.error='';s.message='';render();if(page==='tasks')tasks.refresh();if(page==='projects')projects.refresh();if(page==='memory'){loadMemorySection();pendingMemory.load()}}
-function loadMemorySection(){if(!client.token)return;if(s.section==='records')loadRecords();else if(s.section==='prompt')loadPrompt();else if(s.section==='context')loadContext();else memoryDynamics.load(s.section)}
+function loadMemorySection(){if(!client.token)return;if(s.section==='records')loadRecords();else if(s.section==='prompt')loadPrompt();else if(s.section==='context')loadContext();else if(s.section==='import')memoryImport.refresh();else memoryDynamics.load(s.section)}
 function loadRecords(){const q={characterId:s.character,kind:s.kind,query:s.query,offset:s.offset,limit:25,state:s.recordState};return read('records',query('/api/records',q),data=>{if(data.records.some(r=>r.characterId!==s.character))throw Error('查询结果包含其他角色，已拒绝显示。');s.pageData=data;if(s.selected){const latest=data.records.find(r=>r.id===s.selected.id&&r.kind===s.selected.kind);const draft=currentDraft();if(latest&&draft){draft.latest=latest;if(latest.version!==draft.version)draft.conflict=true;}if(latest)s.selected=latest;}})}
 function loadPrompt(){return read('prompt',query('/api/prompt',{characterId:s.character}),data=>{s.prompt=data;let d=s.prompts.get(data.characterId);if(!d){d={text:data.text,original:data.text,version:data.revision,operationId:id(),conflict:false};s.prompts.set(data.characterId,d)}else if(d.version!==data.revision)d.conflict=true;d.latest=data;})}
 function loadContext(){return read('context',query('/api/context',{characterId:s.character,query:s.contextQuery}),data=>{if([...data.recent,...data.summaries,...data.memories].some(r=>r.characterId!==s.character))throw Error('上下文包含其他角色，已拒绝显示。');s.context=data})}
@@ -55,7 +57,7 @@ function acceptSettings(settings){s.snapshot.settings=settings;s.settingsLatest=
 function saveSettings(){if(s.settingsConflict||s.connection!=='online')return;return write('settings',async()=>{try{acceptSettings(await client.request('/api/settings',{method:'PUT',body:{expectedRevision:s.settingsRevision,settings:clone(s.settingsDraft)}}))}catch(e){if(e.status===409){s.settingsConflict=true;s.message='配置已在其他位置更新。草稿已保留，请核对差异后再保存。';await refreshSnapshot()}else throw e;}})}
 function rollbackSettings(targetRevision){if(s.connection!=='online'||s.settingsConflict)return;return write('settings',async()=>{try{acceptSettings(await client.request('/api/settings/rollback',{method:'POST',body:{expectedRevision:s.settingsRevision,targetRevision}}))}catch(e){if(e.status===409){s.settingsConflict=true;s.message='回滚前配置已变化，本次没有覆盖新版本。';await refreshSnapshot()}else throw e;}})}
 function connect(value){client.token=value.trim();try{sessionStorage.setItem(sessionKey,client.token)}catch{}authEpoch++;s.error='';refreshSnapshot()}
-function render(){captureView(app);balances.sync();pendingMemory.sync();wake.sync();memoryDynamics.sync();projects.sync();tasks.sync();wechat.sync();if(s.page!=='presentation'||s.connection!=='online')presentation.deactivate();
+function render(){captureView(app);balances.sync();pendingMemory.sync();memoryImport.sync();wake.sync();memoryDynamics.sync();projects.sync();tasks.sync();wechat.sync();if(s.page!=='presentation'||s.connection!=='online')presentation.deactivate();
  const pages=[['overview','运行总览'],['memory','记忆与对话'],['projects','项目索引'],['tasks','任务转发'],['wechat','微信连接'],['models','模型与声音'],['presentation','表情与动作'],['events','运行记录']];
  const sidebar=el('aside',{class:'sidebar'},el('div',{class:'brand'},'AAAAGENT',el('small',{},'运行控制台 · 本机')),el('nav',{class:'nav',role:'tablist','aria-label':'控制台页面'},pages.map(([key,label])=>button(label,()=>selectPage(key),{role:'tab','aria-selected':s.page===key,id:'nav-'+key}))),el('p',{class:'sidebar-note'},'检查当前运行状态，调整角色与模型设置。'));
  const connection=s.connection==='online'?badge('管理服务已连接','success'):s.connection==='offline'?badge('连接中断','error'):badge('等待本机授权','warning');

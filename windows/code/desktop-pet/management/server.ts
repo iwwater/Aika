@@ -1,3 +1,5 @@
+import type { MemoryImportManagement } from '../contracts/memory-import.js';
+import { memoryImportRoute } from './memory-import-routes.js';
 import type {BalanceManagement} from '../contracts/balances.js';
 import {balanceRoute} from './balance-routes.js';
 import type { WakeManagement } from '../contracts/wake.js';
@@ -19,7 +21,7 @@ import type { ProjectIndexPort } from '../contracts/projects.js';
 import { projectRoute } from './project-routes.js';
 import { taskRoute, type TaskManagement } from './task-routes.js';
 
-interface ServerOptions { balances?: BalanceManagement; wake?: WakeManagement; wechat?: WeChatManagement; uiRoot: string; memory: ManagementMemoryPort; settings: ManagementSettingsStore; snapshot(): ManagementSnapshot | Promise<ManagementSnapshot>; token?: string; presentation?: PresentationControls; presentationAssets?: ReadonlyMap<string, string>; pendingMemory?:PendingMemoryManagement; projects?: ProjectIndexPort; tasks?: TaskManagement }
+interface ServerOptions { memoryImport?: MemoryImportManagement; balances?: BalanceManagement; wake?: WakeManagement; wechat?: WeChatManagement; uiRoot: string; memory: ManagementMemoryPort; settings: ManagementSettingsStore; snapshot(): ManagementSnapshot | Promise<ManagementSnapshot>; token?: string; presentation?: PresentationControls; presentationAssets?: ReadonlyMap<string, string>; pendingMemory?:PendingMemoryManagement; projects?: ProjectIndexPort; tasks?: TaskManagement }
 const character = (value: unknown): CharacterId => { if (!isProductCharacter(value)) throw new ManagementError('invalid_request', '仅可访问当前陪伴角色。'); return value; };
 const integer = (value: unknown, fallback: number, min: number, max: number) => { const n = value === null || value === undefined ? fallback : Number(value); if (!Number.isSafeInteger(n) || n < min || n > max) throw new ManagementError('invalid_request', '数值范围无效。'); return n; };
 const str = (value: unknown, max = 20000): string => { if (typeof value !== 'string' || value.length > max || value.includes('\0')) throw new ManagementError('invalid_request', '文本字段无效。'); return value; };
@@ -50,7 +52,7 @@ export async function startManagementServer(options: ServerOptions) {
           const type = asset.endsWith('.png') ? 'image/png' : asset.endsWith('.json') ? 'application/json' : asset.endsWith('.js') ? 'text/javascript' : 'application/octet-stream';
           res.setHeader('Content-Type', type); res.end(req.method === 'HEAD' ? undefined : data); return;
         }
-        const names = new Map([['/balances-view.mjs','balances-view.mjs'],['/wake-view.mjs','wake-view.mjs'],['/wechat-view.mjs','wechat-view.mjs'],['/', 'index.html'], ['/index.html', 'index.html'], ['/app.mjs', 'app.mjs'], ['/pending-memory-view.mjs','pending-memory-view.mjs'], ['/api.mjs', 'api.mjs'], ['/projects-view.mjs', 'projects-view.mjs'], ['/tasks-view.mjs', 'tasks-view.mjs'], ['/dom.mjs', 'dom.mjs'], ['/views.mjs', 'views.mjs'], ['/style.css', 'style.css'], ['/presentation-view.mjs', 'presentation-view.mjs'], ['/memory-dynamics-view.mjs','memory-dynamics-view.mjs'], ['/presentation-preview.js', 'presentation-preview.js']]);
+        const names = new Map([['/memory-import-view.mjs','memory-import-view.mjs'],['/balances-view.mjs','balances-view.mjs'],['/wake-view.mjs','wake-view.mjs'],['/wechat-view.mjs','wechat-view.mjs'],['/', 'index.html'], ['/index.html', 'index.html'], ['/app.mjs', 'app.mjs'], ['/pending-memory-view.mjs','pending-memory-view.mjs'], ['/api.mjs', 'api.mjs'], ['/projects-view.mjs', 'projects-view.mjs'], ['/tasks-view.mjs', 'tasks-view.mjs'], ['/dom.mjs', 'dom.mjs'], ['/views.mjs', 'views.mjs'], ['/style.css', 'style.css'], ['/presentation-view.mjs', 'presentation-view.mjs'], ['/memory-dynamics-view.mjs','memory-dynamics-view.mjs'], ['/presentation-preview.js', 'presentation-preview.js']]);
         const name = names.get(url.pathname); if (!name) throw new ManagementError('not_found', '没有这个页面。');
         let data: Buffer; try { data = await readFile(resolve(options.uiRoot, name)); } catch { throw new ManagementError('unavailable', '管理页面文件尚未就绪。'); }
         res.setHeader('Content-Type', name.endsWith('.html') ? 'text/html; charset=utf-8' : name.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8'); res.end(req.method === 'HEAD' ? undefined : data); return;
@@ -59,6 +61,7 @@ export async function startManagementServer(options: ServerOptions) {
       if (expected.length !== provided.length || !timingSafeEqual(expected, provided)) throw new ManagementError('unauthorized', '请从本机管理入口重新打开此页面。');
       if (req.method !== 'GET' && req.headers.origin !== origin) throw new ManagementError('forbidden', '写入必须来自当前管理页面。');
       const q = url.searchParams;
+      if (await memoryImportRoute(req,url,options.memoryImport,()=>body(req),value=>json(res,200,value))) return;
       if(await balanceRoute(req,url,options.balances,()=>body(req),value=>json(res,200,value)))return;
       if (await taskRoute(req, url, options.tasks, () => body(req), value => json(res, 200, value))) return;
       if (await projectRoute(req, url, options.projects, () => body(req), value => json(res, 200, value))) return;

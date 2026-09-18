@@ -162,7 +162,7 @@ export class SqliteLifecycleState {
       };
       include(currentMessageId,true);
       for(const memory of this.store.searchForMaintenance(owned,text,options.maxMemories,'lexical'))include(memory.id,true);
-      const prior=[...graph.values()].filter(item=>readable(item)&&item.order<node.order).sort((a,b)=>b.order-a.order||a.id.localeCompare(b.id));
+      const prior=[...graph.values()].filter(item=>readable(item)&&item.order<node.order&&!this.store.imports.isEvidence(owned,item.id)).sort((a,b)=>b.order-a.order||a.id.localeCompare(b.id));
       for(const item of prior.filter(item=>item.kind==='transcript').slice(0,Math.max(0,options.maxRecentMessages-1)))include(item.id,false);
       for(const item of prior.filter(item=>item.kind==='summary').slice(0,options.summaryLimit))include(item.id,true);
       const ticket=Object.freeze({input:structuredClone(input()),epoch:this.#epoch(owned),textHash:hash(text)});
@@ -363,6 +363,7 @@ export class SqliteLifecycleState {
     const owned = bindScope(scope, scope.characterId);
     return this.db.transaction(() => {
       const rows = this.db.prepare(`SELECT r.* FROM memory_records r WHERE r.character_id=? AND r.kind='transcript' AND r.state='active' AND r.evidence_eligible=1
+        AND NOT EXISTS(SELECT 1 FROM memory_import_evidence i WHERE i.character_id=r.character_id AND i.record_id=r.id)
         AND NOT EXISTS(SELECT 1 FROM summary_coverage c JOIN memory_records s ON s.character_id=c.character_id AND s.id=c.summary_id
           WHERE c.character_id=r.character_id AND c.source_id=r.id AND c.source_version=r.version AND s.state='active') ORDER BY r.logical_order,r.rowid LIMIT ?`).all(owned.characterId, options.maxMessages) as RecordRow[];
       const unchanged = (reason: string): SummaryResult => ({ scope: owned, status: 'unchanged', summaryId: null, reason });

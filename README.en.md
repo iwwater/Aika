@@ -43,6 +43,8 @@ Companion conversation and work share an entry point without loading every proje
 
 **This is a source distribution.** It does not include credentials, private conversations or memory databases, WeChat login state, cloned-voice material, wake-model weights, third-party Live2D characters, or the Cubism SDK. The image above is project-produced fan artwork, **not a working Live2D model**.
 
+New: **Memory → Import past chats** imports explicitly selected local history with pause, deduplication and forgetting protection. Review model and cost settings before starting; see the [guide](docs/MEMORY.md#import-past-chats).
+
 ## Features
 
 The overview below primarily describes the macOS version. See the platform notes above for Windows limitations.

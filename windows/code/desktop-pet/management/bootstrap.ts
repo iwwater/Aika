@@ -1,3 +1,4 @@
+import type { MemoryImportManagement } from '../contracts/memory-import.js';
 import {ProviderBalances,readBalanceKey} from './balances.js';
 import {FinanceCredentials} from './balance-credentials.js';
 import {effectiveTrialConfiguration} from './settings.js';
@@ -28,7 +29,7 @@ import { harnessAccounting } from '../harness/accounting.js';
 import { EvaluationBudget } from '../core/evaluation-budget.js';
 
 export async function startRuntimeManagement(base: TrialConfiguration, configFile: string, settings: ManagementSettingsStore,
-  runtime: ManagementRuntime, memory: ManagementMemoryPort, presentation?: PresentationControls, pendingMemory?:PendingMemoryManagement, wechat?:WeChatManagement, wake?:WakeManagement) {
+  runtime: ManagementRuntime, memory: ManagementMemoryPort, presentation?: PresentationControls, pendingMemory?:PendingMemoryManagement, wechat?:WeChatManagement, wake?:WakeManagement, memoryImport?:MemoryImportManagement) {
   const effective=effectiveTrialConfiguration(base,settings.effective);
   const deepseek=Object.values(effective.models).find(m=>m.provider==='deepseek'&&new URL(m.endpoint).hostname==='api.deepseek.com');
   const balances=new ProviderBalances({credentials:new FinanceCredentials(base.projectRoot),deepseekKey:()=>readBalanceKey(deepseek?.credentialFile)});
@@ -56,7 +57,7 @@ export async function startRuntimeManagement(base: TrialConfiguration, configFil
     tasks = makeForwarding(receipts);
   } catch { process.stderr.write('Task relay unavailable; companion data unchanged.\n'); }
   let server: Awaited<ReturnType<typeof startManagementServer>>;
-  try { server = await startManagementServer({ balances, ...(wake?{wake}:{}), uiRoot: resolve(base.projectRoot, 'code/desktop-pet/management/ui'), settings, memory, ...(wechat?{wechat}:{}), ...(projects ? { projects } : {}), ...(tasks ? { tasks } : {}), ...(pendingMemory?{pendingMemory}:{}), ...(presentation ? { presentation, presentationAssets: await presentationAssetRoutes(base.projectRoot) } : {}),
+  try { server = await startManagementServer({ ...(memoryImport?{memoryImport}:{}), balances, ...(wake?{wake}:{}), uiRoot: resolve(base.projectRoot, 'code/desktop-pet/management/ui'), settings, memory, ...(wechat?{wechat}:{}), ...(projects ? { projects } : {}), ...(tasks ? { tasks } : {}), ...(pendingMemory?{pendingMemory}:{}), ...(presentation ? { presentation, presentationAssets: await presentationAssetRoutes(base.projectRoot) } : {}),
     snapshot: async () => ({ apiVersion: 1, balances:balances.snapshot(), accounting:await accountingSnapshot(base), runtime: runtime.identity(), modules: runtime.modules(), events: runtime.recentEvents(),
       settings: settings.snapshot(), adapters: availableAdapters(base, settings.registeredVoices), credentials: credentialRegistry(base).list(), characters: memory.characters() }) });
   } catch (error) { await tasks?.close(); await projects?.close(); throw error; }
@@ -66,7 +67,7 @@ export async function startRuntimeManagement(base: TrialConfiguration, configFil
   try {
     await writeFile(temporary, JSON.stringify(descriptor) + '\n', { mode: 0o600, flag: 'wx' });
     await rename(temporary, file);
-  } catch (error) { try { balances.close(); await server.close(); } finally { await tasks?.close(); await projects?.close(); } throw error; }
+  } catch (error) { try { balances.close(); await server.close(); await memoryImport?.close(); } finally { await tasks?.close(); await projects?.close(); } throw error; }
   finally { await unlink(temporary).catch(error => { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }); }
   tasks?.startUsageObservation();
   return { ...server, tasks, projects, receipts, createWorkChannel(directory: string) {
@@ -75,7 +76,7 @@ export async function startRuntimeManagement(base: TrialConfiguration, configFil
     const forwarding=makeForwarding(channelReceipts);forwarding.startUsageObservation();
     return {receipts:channelReceipts,forwarding,projects};
   }, async close() {
-    try { balances.close(); await server.close(); } finally { await tasks?.close(); await windowsCodex?.close(); await projects?.close(); }
+    try { balances.close(); await server.close(); await memoryImport?.close(); } finally { await tasks?.close(); await windowsCodex?.close(); await projects?.close(); }
     try { const current = JSON.parse(await readFile(file, 'utf8')); if (current.instanceId === runtime.instanceId) await unlink(file); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   } };

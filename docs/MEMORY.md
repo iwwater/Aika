@@ -76,6 +76,20 @@
 
 编辑不是直接篡改一段字符串。来源、摘要、缓存与旧版本可能有关联，系统会检查这些关联，防止删除过的内容从摘要或缓存重新出现。
 
+## 导入旧聊天
+
+在管理页选择 **记忆 → 导入旧聊天**，填写来源名称和本地绝对路径。支持指定 Codex 项目的用户主任务历史（含归档会话），或带说话人与日期的 JSONL / JSON 数组。普通聊天窗口里描述一个项目不会自动导入。
+
+```json
+{"role":"user","text":"那年我开始学水彩。","createdAt":"2020-05-01T10:00:00+08:00"}
+```
+
+每条需有 `role`（`user` / `assistant`）、`text` 和带时区的日期 `createdAt`；也接受 `speaker` 与 `timestamp` / `date`。开始前查看页面显示的模型、端点、输入/输出限额、超时与费用配置。**点击开始后，所选对话会发送到已配置的记忆模型服务，并可能产生费用**；本地源文件保持只读。
+
+整理从较新的内容向前进行，助手回复只作语境，不能单独证明用户事实；历史指令不会触发任务或语音。原日期保留，导入内容与当前最近对话分开；跨文件副本、JSON 格式和等价时区的重复记录会去重，已遗忘内容不会因再次导入相同来源而复活。
+
+任务可暂停，重启后保持暂停；模型或费用配置变化时，旧任务不能直接续跑，页面允许按当前配置显式新建任务，已处理记录继续去重。导入任务与来源证据是本地产品数据，升级时保留，不随普通近期聊天清理；请连同自己的其他数据妥善保管。自动检查使用合成数据，实际提炼质量与召回效果仍需自行核验。
+
 ## 代码入口
 
 | 位置 | 职责 |
@@ -127,6 +141,14 @@ Relevance currently uses inspectable lexical/phrase rules and a small number of 
 Optional video processing classifies up to three captured frames into seven categories: neutral, happy, sad, angry, fear, disgust and surprise. ASR is separate and authoritative for transcription. Audio emotion is included only for a valid returned annotation; a transcript alone is not proof of acoustic emotion recognition.
 
 Observations may be uncertain, missing or invalid. A numerical fallback of zero must not be described as an observed neutral state. Long-term emotional records retain source references.
+
+### Import past chats
+
+Open **Memory → Import past chats** in management and enter a source label and absolute local path. Choose a Codex project (user-started main tasks, including archived sessions) or a JSONL / JSON array export. Describing a project in ordinary chat does not start an import. Each export entry needs `role` (`user` / `assistant`), `text` and a dated `createdAt` with timezone; `speaker` and `timestamp` / `date` aliases are also accepted.
+
+Review the displayed model, endpoint, input/output limits, timeout and cost settings before starting. **Starting sends selected conversation content to your configured memory-model provider and may incur charges.** Source files remain read-only. Processing works backward from newer records, preserves original dates and keeps imported history outside current recent turns. Assistant replies provide context rather than evidence of user facts; old instructions never dispatch tasks or play speech. Copies, equivalent timestamps and JSON reformatting do not duplicate records or restore forgotten sources.
+
+Jobs can pause and remain paused after restart. A changed configuration requires explicitly starting a new job with the current settings; completed records still deduplicate. Import state and source evidence are persistent local product data, preserved across upgrades and separate from ordinary recent-chat cleanup. Keep them with your other personal data. Automated checks use synthetic content; extraction and recall quality still require your own verification.
 
 ### User control and evidence
 
