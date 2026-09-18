@@ -67,12 +67,13 @@ test('pending settings do not revoke ongoing permits; effective fees and origina
   await assert.rejects(authorizer.authorize(request, new AbortController().signal));
 });
 
-test('every published model choice validates with its own prices and capabilities; mismatched voice or fees are rejected', async t => {
+test('usable choices validate; MiniMax setup presets without registered voices and mismatched fees are rejected', async t => {
   const f = await fixture(t), original = defaultManagedSettings(f.c);
   for (const adapter of availableAdapters(f.c)) for (const slot of adapter.slots) for (const choice of adapter.choices ?? []) {
     const changed = structuredClone(original);
     changed.providers[slot] = { ...choice.configuration, credentialRef: original.providers[slot]!.credentialRef };
-    validateManagedSettings(changed, f.c);
+    if(adapter.id==='minimax-tts'&&!choice.voices?.length)assert.throws(()=>validateManagedSettings(changed,f.c),{code:'invalid_request'});
+    else validateManagedSettings(changed, f.c);
   }
   const adapter = availableAdapters(f.c).find(a => a.id === 'qwen-audio-tts')!;
   const changed = structuredClone(original);

@@ -7,8 +7,7 @@ import type { RegisteredVoiceStore } from '../providers/registered-voices.js';
 
 export const PROVIDER_SLOTS: readonly ProviderSlot[] = ['asr', 'dialogue', 'memory_turn', 'summary', 'perception', 'tts', 'admission'];
 const ADAPTERS: Record<ProviderSlot, string> = { asr:'qwen-asr', dialogue: 'qwen-dialogue', memory_turn: 'strict-deepseek', summary: 'qwen-summary', perception: 'qwen-visual-emotion', tts: 'qwen-tts-instruct', admission: 'semantic-admission' };
-export function defaultManagedSettings(base: TrialConfiguration): ManagedSettings {
-  const credentials = credentialRegistry(base);
+export function defaultManagedSettings(base: TrialConfiguration, credentials = credentialRegistry(base)): ManagedSettings {
   const providers = Object.fromEntries(PROVIDER_SLOTS.filter(slot=>base.models[slot]).map(slot => {
     const { credentialFile, ...model } = base.models[slot]!;
     return [slot, { ...model, adapterId: TEXT_SLOTS.includes(slot as never) && model.provider === 'deepseek' ? `deepseek-${slot}` : slot === 'perception' && !base.models.asr ? 'qwen-perception' : ADAPTERS[slot], credentialRef: credentials.ref(credentialFile, model.provider),
@@ -25,7 +24,7 @@ function keys(value: unknown, allowed: readonly string[], required = allowed): a
   const names = Object.keys(value); if (names.some(name => !allowed.includes(name)) || required.some(name => !names.includes(name))) invalid();
 }
 const text = (value: unknown, max = 160): value is string => typeof value === 'string' && value.trim().length > 0 && value.length <= max && !/[\u0000-\u001f]/.test(value);
-export function validateManagedSettings(value: unknown, base: TrialConfiguration, voices?: RegisteredVoiceStore, historical = false): ManagedSettings {
+export function validateManagedSettings(value: unknown, base: TrialConfiguration, voices?: RegisteredVoiceStore, historical = false, credentials = credentialRegistry(base), draftOnly = false): ManagedSettings {
   keys(value, ['providers', 'context']); keys(value.providers, PROVIDER_SLOTS, PROVIDER_SLOTS.filter(slot=>slot!=='asr' || (!historical && !!base.models.asr)));
   keys(value.context, ['maxRecentMessages', 'maxMemories', 'summaryLimit', 'summaryMinMessages', 'summaryMaxMessages', 'timeoutMs']);
   const limits = { maxRecentMessages: [1, 200], maxMemories: [1, 200], summaryLimit: [0, 50], summaryMinMessages: [2, 200], summaryMaxMessages: [2, 200], timeoutMs: [1000, 300000] };
@@ -43,7 +42,6 @@ export function validateManagedSettings(value: unknown, base: TrialConfiguration
       inputMicrosPerToken: 0.8, outputMicrosPerToken: 2, reservationMicros: 100000 };
     for (const adapter of availableAdapters(legacy, voices)) if (!adapters.some(a => a.id === adapter.id)) adapters.push(adapter);
   }
-  const credentials = credentialRegistry(base);
   for (const slot of PROVIDER_SLOTS) {
     if(slot==='asr' && value.providers.asr===undefined)continue;
     const p = value.providers[slot];
@@ -74,14 +72,14 @@ export function validateManagedSettings(value: unknown, base: TrialConfiguration
     if (slot === 'perception' && !/^qwen3\.5-omni-(flash|plus)(-\d{4}-\d{2}-\d{2})?$/.test(p.model)) invalid('视频情绪需要已支持的Qwen3.5-Omni型号。');
   }
   const settings = structuredClone(value) as unknown as ManagedSettings;
-  try { effectiveTrialConfiguration(base, settings); } catch { invalid('模型参数、调用预留或计费边界无效；额度不会自动扩大。'); }
+  try { effectiveTrialConfiguration(base, settings, credentials, draftOnly); } catch { invalid('模型参数、调用预留或计费边界无效；额度不会自动扩大。'); }
   return settings;
 }
-export function effectiveTrialConfiguration(base: TrialConfiguration, settings: ManagedSettings): TrialConfiguration {
-  const credentials = credentialRegistry(base);
+export function effectiveTrialConfiguration(base: TrialConfiguration, settings: ManagedSettings, credentials = credentialRegistry(base), draftOnly = false): TrialConfiguration {
   const models = Object.fromEntries(PROVIDER_SLOTS.filter(slot=>settings.providers[slot]).map(slot => {
     const { adapterId: _adapter, credentialRef, voice: _voice, language: _language, temperature: _temperature, ...model } = settings.providers[slot]!;
     return [slot, { ...model, credentialFile: credentials.file(credentialRef, model.provider) }];
   })) as TrialConfiguration['models'];
-  return validateTrialConfiguration({ ...base, models, memory: { ...base.memory, timeoutMs: settings.context.timeoutMs } });
+  const candidate = { ...base, models, memory: { ...base.memory, timeoutMs: settings.context.timeoutMs } };
+  return draftOnly ? candidate : validateTrialConfiguration(candidate);
 }

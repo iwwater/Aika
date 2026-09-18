@@ -4,7 +4,13 @@
 
 Windows 版使用 Electron 桌面窗口和独立 Node.js 后端，支持本地 Live2D 展示、透明置顶、拖动缩放、全身/半身切换、文字输入及网页控制台。源码入口是 **`windows/code/desktop-pet/`**。
 
-2026-09-17 在 Windows 11 x64 / Node 22.14.0 上重新验证，修复了文件身份校验、人工编辑记录的上下文保留和退出清理问题。完整结果见[本次验证](WINDOWS-VALIDATION.md#2026-09-17-windows-reproduction)。这是源码开发版，没有签名安装器；Windows Codex 任务转交仍不支持。
+2026-09-17 在 Windows 11 x64 / Node 22.14.0 上重新验证，修复了文件身份校验、人工编辑记录的上下文保留和退出清理问题。完整结果见[本次验证](WINDOWS-VALIDATION.md#2026-09-17-windows-reproduction)。这是源码开发版，没有签名安装器；Windows Codex app-server 接入见下文；本次自助配置更新没有重验 Windows 真机。
+
+## 本次自助配置更新 / Self-service setup
+
+完成后端编译后可先运行 `npm.cmd run configure-local` 打开本机网页，无需预先手写 Key/音色 JSON。网页支持 DeepSeek 与百炼 Key、模型预设、自己的参考音频和两次独立费用确认；先开通对应百炼模型，Key保存不等于可用。已有配置从运行控制台修改。完整步骤及英文见 [Setup](docs/SETUP.md)。本次没有恢复 Windows ACL/runner 身份修复或额外 Windows CI，既有失败仍保留；下文历史真机记录不作为本次更新的验收。
+
+After backend compilation, `npm.cmd run configure-local` opens local first-run setup without pre-existing keys, voice metadata or JSON. Enable the matching Bailian models before use. See [English setup](docs/SETUP.md#english). Historical Windows validation is version-specific; existing ACL/runner failures and the pause on additional Windows CI remain.
 
 ## 1. 准备环境和资源
 

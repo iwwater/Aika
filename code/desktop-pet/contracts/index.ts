@@ -222,3 +222,5 @@ export interface MediaStorePort {
 }
 
 export * from './memory-import.js';
+
+export type * from './self-setup.js';

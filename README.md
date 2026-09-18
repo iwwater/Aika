@@ -35,7 +35,7 @@ AAAAGENT 是一个以 macOS 为主要平台、同时提供 Windows 开发版的�
 | 平台 | 状态与入口 |
 | --- | --- |
 | **macOS** | 当前主要维护和使用的完整版本；源码在根目录 `code/desktop-pet/`。查看 [Mac 安装说明](docs/SETUP.md)。 |
-| **Windows** | 独立 Electron 开发版；源码在 `windows/code/desktop-pet/`。查看 [Windows 安装说明](windows/README-WINDOWS.md)。目前不支持 Windows Codex 任务转交，真实语音、微信与唤醒体验仍需逐项验证。 |
+| **Windows** | 独立 Electron 开发版；源码在 `windows/code/desktop-pet/`。查看 [Windows 安装说明](windows/README-WINDOWS.md)。已有独立 Codex app-server/Harness 适配；本次更新未重验 Windows，现有 ACL 问题保留。 |
 
 详情见 [平台差异与问题反馈](docs/PLATFORMS.md)。报告问题时请附系统版本、复现步骤和去除敏感信息的报错。两个目录分别安装依赖，勿混用配置或构建产物。
 
@@ -93,6 +93,8 @@ DeepSeek 负责文字对话及相关结构化处理；独立 ASR 负责忠实转
 公式、数据流、失败处理和代码入口见 [记忆与上下文](docs/MEMORY.md)。当前检索以可检查的关键词规则为主，不能把它理解成已实现通用语义向量检索。
 
 ## 开始使用
+
+**自助配置：** 编译后运行 `npm run configure-local`（Windows 用 `npm.cmd`），即可填写 DeepSeek/百炼 Key、选择已适配模型、上传自己的参考音频。百炼对应模型须先开通，Key保存不代表服务可用。Harness 与 Codex 必须另装、启动并完成登录或配置，缺失时不能向其转发任务。详见[安装与配置](docs/SETUP.md)。
 
 Mac 用户先阅读 [安装与配置](docs/SETUP.md)；Windows 用户请直接阅读 [Windows 安装说明](windows/README-WINDOWS.md)。下面命令针对根目录的 Mac 源码。这是需要本地配置的开发者版本，完整桌宠还需要你自行准备合法授权的 Live2D 模型及 SDK。
 

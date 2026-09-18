@@ -94,6 +94,8 @@ See [Memory and context](docs/MEMORY.md#english) for formulas and code reference
 
 ## Getting started
 
+**Self-service setup:** after building, run `npm run configure-local` (Windows: `npm.cmd`) to save DeepSeek/Bailian keys, choose adapted models and upload your own reference audio. Enable the relevant Bailian models first: saving a Key does not prove access. Harness and Codex must be installed, launched and authenticated separately; missing executors cannot receive tasks. See [setup](docs/SETUP.md#english).
+
 Mac users should read [Setup](docs/SETUP.md#english); Windows users should start with [Windows setup](windows/README-WINDOWS.md). The commands below target the root Mac source tree. This is a developer-oriented source package. A complete animated desktop setup requires your own authorized Live2D model and SDK.
 
 ```sh

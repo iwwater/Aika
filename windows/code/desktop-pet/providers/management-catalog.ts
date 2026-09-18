@@ -119,18 +119,17 @@ export function managementAdapterCatalog(base: TrialConfiguration, registeredVoi
   // I appends the selected voice only after its first formal synthesis succeeds.
   for (const [model, label, characterMicros] of [[MINIMAX_TTS_MODEL, 'MiniMax Turbo', 200], ['MiniMax/speech-2.8-hd', 'MiniMax HD', 350]] as const) {
     const compatible = registeredVoices.filter(voice => voice.provider === 'dashscope' && voice.endpoint === MINIMAX_TTS_ENDPOINT && voice.targetModel === model);
-    if (!compatible.length) continue;
     const configuration: Selection = { adapterId: 'minimax-tts', provider: 'dashscope', endpoint: MINIMAX_TTS_ENDPOINT,
       model, inputTokenLimit: 0, outputTokenLimit: 0, inputMicrosPerToken: 0, outputMicrosPerToken: 0,
-      characterMicros, reservationMicros: 2400 * characterMicros, voice: compatible[0]!.voiceId };
+      characterMicros, reservationMicros: 2400 * characterMicros, ...(compatible[0]?{voice:compatible[0].voiceId}:{}) };
     minimaxChoices.push({ label, configuration, voices: compatible.map(voice => ({ id: voice.voiceId, label: voice.label })) });
   }
   if (minimaxChoices.length) {
-    catalog.push({ id: 'minimax-tts', label: 'MiniMax 情绪语音', slots: ['tts'], provider: 'dashscope',
+    catalog.push({ id: 'minimax-tts', label: 'MiniMax 语音（百炼托管）', slots: ['tts'], provider: 'dashscope',
       endpoints: [MINIMAX_TTS_ENDPOINT], modelHint: minimaxChoices[0]!.configuration.model,
       models: minimaxChoices.map(choice => choice.configuration.model), choices: minimaxChoices,
       capabilities: { instructions: false, cloning: true, voice: true, language: false, temperature: false }, status: 'available',
-      note: '使用已登记的音色，按实际合成字符计费，Turbo每万字符2元，HD每万字符3.5元。不指定情绪参数，由模型根据文本生成语气；完整生成后播放。这里只显示已完成首次启用核验的音色。' });
+      note: '使用已登记的音色，按实际合成字符计费，Turbo每万字符2元，HD每万字符3.5元。不指定情绪参数，由模型根据文本生成语气；完整生成后播放。需要在百炼开通所选模型；保存Key不代表已开通。预设可先查看，完成音色复刻与首次正式启用后才可选择对应已登记音色。' });
   }
   return catalog;
 }

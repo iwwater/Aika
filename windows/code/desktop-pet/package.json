@@ -22,7 +22,9 @@
     "test:windows": "npm run build && node tools/run-tests.mjs windows",
     "test:stress": "npm run build && node --test --test-concurrency=1 tests/windows-stress.test.mjs",
     "test:windows:ui": "npm run build && npm run build:desktop && node tools/dev-desktop.mjs --smoke-test",
-    "refresh:runtime": "node tools/refresh-runtime.mjs"
+    "refresh:runtime": "node tools/refresh-runtime.mjs",
+    "configure-local": "node tools/configure-local.mjs",
+    "test:setup": "npm run build && node --test dist/tests/integration/self-setup-50.test.js dist/tests/management/self-setup.test.js dist/tests/management/voice-setup.test.js dist/tests/providers/voice-enrollment.test.js dist/tests/providers/registered-voices.test.js"
   },
   "devDependencies": {
     "@types/better-sqlite3": "9.6.0",

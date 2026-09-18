@@ -5,7 +5,14 @@ import {resolve,relative,dirname,isAbsolute} from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'../../..');
 const arg=process.argv[2];
-if(!arg)throw Error('Usage: node tools/configure-local.mjs /absolute/path/to/config.local.json [--activate]');
+if(!arg||arg==='--web'){
+  const {startFirstRunSetup}=await import('../dist/app/self-setup.js');
+  const service=await startFirstRunSetup(root);
+  console.log('Open the local setup page; keep this window open:\n'+service.url);
+  let closing=false;const close=()=>{if(closing)return;closing=true;void service.close().then(()=>process.exit(0),()=>process.exit(1));};
+  process.once('SIGINT',close);process.once('SIGTERM',close);
+  await new Promise(()=>{});
+}
 if(arg==='--activate-existing'){
   const directory=resolve(root,'.local/model-evaluation/trial/user-trial');
   const raw=await readFile(resolve(directory,'config.json'));

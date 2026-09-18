@@ -58,7 +58,9 @@ export interface ProviderAdapterInfo {
   status: 'available' | 'not_integrated';
   note: string;
 }
-export interface CredentialInfo { id: string; label: string; status: 'configured' | 'missing' | 'unavailable'; masked: string }
+export interface CredentialInfo {
+  readonly provider?: 'dashscope' | 'deepseek';
+  readonly managed?: boolean; id: string; label: string; status: 'configured' | 'missing' | 'unavailable'; masked: string }
 export interface RuntimeModule {
   id: string;
   label: string;

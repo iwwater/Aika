@@ -1,5 +1,8 @@
 > **Windows development version:** Start with [README-WINDOWS.md](README-WINDOWS.md) or double-click `Start-Windows.cmd`. The original macOS documentation below is retained as background.
 
+
+**Self-service setup:** after building, run `npm run configure-local` (Windows: `npm.cmd`) to save DeepSeek/Bailian keys, choose adapted models and upload your own reference audio. Enable the relevant Bailian models first: saving a Key does not prove access. Harness and Codex must be installed, launched and authenticated separately; missing executors cannot receive tasks. See [setup](docs/SETUP.md#english).
+
 <div align="center">
   <img src="assets/original-design/whale-avatar.png" width="144" alt="AAAAGENT whale-girl character concept" />
   <h1>AAAAGENT</h1>

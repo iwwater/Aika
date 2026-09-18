@@ -12,6 +12,14 @@ export class ManagementClient {
     if(!response.ok)throw new ApiError(data?.error?.message||'请求未完成。',response.status,data?.error?.code);
     return data;
   }
+  async requestAudio(path,{signal}={}) {
+    if(!path.startsWith('/api/self-setup/voice/sample?'))throw new ApiError('试听地址无效。');
+    let response;
+    try{response=await this.transport(path,{signal,method:'GET',redirect:'error',credentials:'omit',cache:'no-store',headers:{Authorization:`Bearer ${this.token}`,Accept:'audio/*'}});}catch(e){if(e.name==='AbortError')throw e;throw new ApiError('无法读取试听音频。');}
+    if(!response.ok)throw new ApiError('试听音频暂不可用。',response.status);
+    if(!/^audio\//i.test(response.headers.get('content-type')||''))throw new ApiError('试听音频格式无效。');
+    const blob=await response.blob();if(!blob.size||blob.size>20*1024*1024)throw new ApiError('试听音频大小无效。');return blob;
+  }
 }
 export function query(path, values) { return path+'?'+new URLSearchParams(values).toString(); }
 export const clone=value=>structuredClone(value);

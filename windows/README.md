@@ -1,5 +1,8 @@
 # AAAAGENT Windows 0.1.1
 
+
+**自助配置：** 编译后运行 `npm run configure-local`（Windows 用 `npm.cmd`），即可填写 DeepSeek/百炼 Key、选择已适配模型、上传自己的参考音频。百炼对应模型须先开通，Key保存不代表服务可用。Harness 与 Codex 必须另装、启动并完成登录或配置，缺失时不能向其转发任务。详见[安装与配置](docs/SETUP.md)。
+
 Windows 桌宠开发与本地运行入口。
 
 - [安装、配置和任务派发](README-WINDOWS.md)

@@ -1,3 +1,5 @@
+import type { SelfSetupManagement } from '../contracts/self-setup.js';
+import { selfSetupRoute } from './self-setup-routes.js';
 import type { MemoryImportManagement } from '../contracts/memory-import.js';
 import { memoryImportRoute } from './memory-import-routes.js';
 import type {BalanceManagement} from '../contracts/balances.js';
@@ -21,14 +23,15 @@ import type { ProjectIndexPort } from '../contracts/projects.js';
 import { projectRoute } from './project-routes.js';
 import { taskRoute, type TaskManagement } from './task-routes.js';
 
-interface ServerOptions { memoryImport?: MemoryImportManagement; balances?: BalanceManagement; wake?: WakeManagement; wechat?: WeChatManagement; uiRoot: string; memory: ManagementMemoryPort; settings: ManagementSettingsStore; snapshot(): ManagementSnapshot | Promise<ManagementSnapshot>; token?: string; presentation?: PresentationControls; presentationAssets?: ReadonlyMap<string, string>; pendingMemory?:PendingMemoryManagement; projects?: ProjectIndexPort; tasks?: TaskManagement }
+interface RuntimeServerOptions { mode?: 'runtime'; selfSetup?:SelfSetupManagement; memoryImport?: MemoryImportManagement; balances?: BalanceManagement; wake?: WakeManagement; wechat?: WeChatManagement; uiRoot: string; memory: ManagementMemoryPort; settings: ManagementSettingsStore; snapshot(): ManagementSnapshot | Promise<ManagementSnapshot>; token?: string; presentation?: PresentationControls; presentationAssets?: ReadonlyMap<string, string>; pendingMemory?:PendingMemoryManagement; projects?: ProjectIndexPort; tasks?: TaskManagement }
+type ServerOptions = RuntimeServerOptions | { mode:'setup'; selfSetup:SelfSetupManagement; uiRoot:string; token?:string; presentationAssets?:undefined };
 const character = (value: unknown): CharacterId => { if (!isProductCharacter(value)) throw new ManagementError('invalid_request', '仅可访问当前陪伴角色。'); return value; };
 const integer = (value: unknown, fallback: number, min: number, max: number) => { const n = value === null || value === undefined ? fallback : Number(value); if (!Number.isSafeInteger(n) || n < min || n > max) throw new ManagementError('invalid_request', '数值范围无效。'); return n; };
 const str = (value: unknown, max = 20000): string => { if (typeof value !== 'string' || value.length > max || value.includes('\0')) throw new ManagementError('invalid_request', '文本字段无效。'); return value; };
-async function body(req: IncomingMessage): Promise<Record<string, unknown>> {
+async function body(req: IncomingMessage, limit=256*1024): Promise<Record<string, unknown>> {
   if (!/^application\/json(?:\s*;|$)/i.test(req.headers['content-type'] ?? '')) throw new ManagementError('invalid_request', '请求需要JSON格式。');
   let bytes = 0; const chunks: Buffer[] = [];
-  for await (const part of req) { const buffer = Buffer.from(part); bytes += buffer.length; if (bytes > 256 * 1024) throw new ManagementError('invalid_request', '请求内容过大。'); chunks.push(buffer); }
+  for await (const part of req) { const buffer = Buffer.from(part); bytes += buffer.length; if (bytes > limit) throw new ManagementError('invalid_request', '请求内容过大。'); chunks.push(buffer); }
   try { const value: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8')); if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(); return value as Record<string, unknown>; }
   catch { throw new ManagementError('invalid_request', '请求格式无效。'); }
 }
@@ -39,7 +42,7 @@ export async function startManagementServer(options: ServerOptions) {
   const json = (res: ServerResponse, status: number, value: unknown) => { res.statusCode = status; res.setHeader('Content-Type', 'application/json; charset=utf-8'); res.end(JSON.stringify(value)); };
   const server = createServer({ requestTimeout: 10000, headersTimeout: 10000, keepAliveTimeout: 1000 }, (req, res) => {
     res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Referrer-Policy', 'no-referrer');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+    res.setHeader('Content-Security-Policy', "default-src 'self'; media-src 'self' blob:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
     void (async () => {
       if (req.headers.host !== new URL(origin).host || (req.headers.origin !== undefined && req.headers.origin !== origin)) throw new ManagementError('forbidden', '仅接受本机管理页面的同源请求。');
       const url = new URL(req.url ?? '/', origin);
@@ -52,7 +55,7 @@ export async function startManagementServer(options: ServerOptions) {
           const type = asset.endsWith('.png') ? 'image/png' : asset.endsWith('.json') ? 'application/json' : asset.endsWith('.js') ? 'text/javascript' : 'application/octet-stream';
           res.setHeader('Content-Type', type); res.end(req.method === 'HEAD' ? undefined : data); return;
         }
-        const names = new Map([['/memory-import-view.mjs','memory-import-view.mjs'],['/balances-view.mjs','balances-view.mjs'],['/wake-view.mjs','wake-view.mjs'],['/wechat-view.mjs','wechat-view.mjs'],['/', 'index.html'], ['/index.html', 'index.html'], ['/app.mjs', 'app.mjs'], ['/pending-memory-view.mjs','pending-memory-view.mjs'], ['/api.mjs', 'api.mjs'], ['/projects-view.mjs', 'projects-view.mjs'], ['/tasks-view.mjs', 'tasks-view.mjs'], ['/dom.mjs', 'dom.mjs'], ['/views.mjs', 'views.mjs'], ['/style.css', 'style.css'], ['/presentation-view.mjs', 'presentation-view.mjs'], ['/memory-dynamics-view.mjs','memory-dynamics-view.mjs'], ['/presentation-preview.js', 'presentation-preview.js']]);
+        const names = new Map([['/self-setup-view.mjs','self-setup-view.mjs'],['/memory-import-view.mjs','memory-import-view.mjs'],['/balances-view.mjs','balances-view.mjs'],['/wake-view.mjs','wake-view.mjs'],['/wechat-view.mjs','wechat-view.mjs'],['/', 'index.html'], ['/index.html', 'index.html'], ['/app.mjs', 'app.mjs'], ['/pending-memory-view.mjs','pending-memory-view.mjs'], ['/api.mjs', 'api.mjs'], ['/projects-view.mjs', 'projects-view.mjs'], ['/tasks-view.mjs', 'tasks-view.mjs'], ['/dom.mjs', 'dom.mjs'], ['/views.mjs', 'views.mjs'], ['/style.css', 'style.css'], ['/presentation-view.mjs', 'presentation-view.mjs'], ['/memory-dynamics-view.mjs','memory-dynamics-view.mjs'], ['/presentation-preview.js', 'presentation-preview.js']]);
         const name = names.get(url.pathname); if (!name) throw new ManagementError('not_found', '没有这个页面。');
         let data: Buffer; try { data = await readFile(resolve(options.uiRoot, name)); } catch { throw new ManagementError('unavailable', '管理页面文件尚未就绪。'); }
         res.setHeader('Content-Type', name.endsWith('.html') ? 'text/html; charset=utf-8' : name.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8'); res.end(req.method === 'HEAD' ? undefined : data); return;
@@ -60,6 +63,8 @@ export async function startManagementServer(options: ServerOptions) {
       const expected = Buffer.from('Bearer ' + token), provided = Buffer.from(req.headers.authorization ?? '');
       if (expected.length !== provided.length || !timingSafeEqual(expected, provided)) throw new ManagementError('unauthorized', '请从本机管理入口重新打开此页面。');
       if (req.method !== 'GET' && req.headers.origin !== origin) throw new ManagementError('forbidden', '写入必须来自当前管理页面。');
+      if(await selfSetupRoute(req,url,options.selfSetup,limit=>body(req,limit),value=>json(res,200,value),(bytes,mime)=>{res.setHeader('Content-Type',mime);res.end(bytes);}))return;
+      if(options.mode==='setup')throw new ManagementError('unavailable','当前为首次设置，桌宠尚未运行。');
       const q = url.searchParams;
       if (await memoryImportRoute(req,url,options.memoryImport,()=>body(req),value=>json(res,200,value))) return;
       if(await balanceRoute(req,url,options.balances,()=>body(req),value=>json(res,200,value)))return;
@@ -109,5 +114,5 @@ export async function startManagementServer(options: ServerOptions) {
   });
   await new Promise<void>((done, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', () => { const address = server.address(); if (!address || typeof address === 'string') { reject(new Error('No local address')); return; } origin = 'http://127.0.0.1:' + address.port; done(); }); });
   return { origin, token, url: origin + '/#token=' + token,
-    async close() { server.closeIdleConnections(); await new Promise<void>((done, reject) => server.close(error => error ? reject(error) : done())); await options.settings.drain(); } };
+    async close() { server.closeIdleConnections(); await new Promise<void>((done, reject) => server.close(error => error ? reject(error) : done())); if(options.mode!=='setup')await options.settings.drain(); } };
 }
