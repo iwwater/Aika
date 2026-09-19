@@ -7,7 +7,7 @@
 | 修改时间（北京时间） | 一句话说明 | 提交 |
 | --- | --- | --- |
 | 2026-09-19 19:15 | Mac版新增文字与近期对话的情绪推测，分别保存用户情绪、桌宠心情和消息快照，并提供网页查询。 | [14e0be5](https://github.com/phoiex/AAAAGENT/commit/14e0be53d88a4d09821e9cba6cef4703ab669093) |
-| 2026-09-19 14:12 | 补充人格提示词参考与 AI-Vtuber 致谢，说明官方拟人化优化仍在开发，现有提示词不变。 | [c49c0b8](https://github.com/phoiex/AAAAGENT/commit/c49c0b88d625c3b821334da073266f2a2f64d564) |
+| 2026-09-19 14:12 | 补充人格提示词参考与 AI-Vtuber 致谢；拟人化优化提示词尚未完成。 | [c49c0b8](https://github.com/phoiex/AAAAGENT/commit/c49c0b88d625c3b821334da073266f2a2f64d564) |
 | 2026-09-18 23:03 | 为 Mac 和 Windows 增加网页自助配置 Key、模型选择与参考音频音色设置。 | [7f24304](https://github.com/phoiex/AAAAGENT/commit/7f243042d228236c2c739b23af9edd825ac126a0) |
 | 2026-09-18 21:52 | 在首页模型公告中补充当前量贩式 Live2D 模型的来源说明。 | [622728d](https://github.com/phoiex/AAAAGENT/commit/622728dce651663e583faeee1eddfb918150176e) |
 | 2026-09-18 21:45 | 为 Mac 和 Windows 增加旧聊天导入与长期记忆整理入口。 | [b475707](https://github.com/phoiex/AAAAGENT/commit/b4757071af71d0194ac0ac91518a19b81a6ebb55) |
@@ -31,7 +31,7 @@ Each public repository update is listed newest first, with one sentence per chan
 | Time (UTC+8) | One-sentence summary | Commit |
 | --- | --- | --- |
 | 2026-09-19 19:15 | Added text and recent-dialogue emotion inference, separate user and companion states, frozen message snapshots and a web view on macOS. | [14e0be5](https://github.com/phoiex/AAAAGENT/commit/14e0be53d88a4d09821e9cba6cef4703ab669093) |
-| 2026-09-19 14:12 | Added persona-prompt references and AI-Vtuber credits, noting ongoing official improvements without changing the prompt. | [c49c0b8](https://github.com/phoiex/AAAAGENT/commit/c49c0b88d625c3b821334da073266f2a2f64d564) |
+| 2026-09-19 14:12 | Added persona-prompt references and AI-Vtuber credits; prompts for more natural conversation are not yet ready. | [c49c0b8](https://github.com/phoiex/AAAAGENT/commit/c49c0b88d625c3b821334da073266f2a2f64d564) |
 | 2026-09-18 23:03 | Added web-based key, model and reference-voice setup for Mac and Windows. | [7f24304](https://github.com/phoiex/AAAAGENT/commit/7f243042d228236c2c739b23af9edd825ac126a0) |
 | 2026-09-18 21:52 | Clarified the source of the current stock Live2D model beside the homepage announcement. | [622728d](https://github.com/phoiex/AAAAGENT/commit/622728dce651663e583faeee1eddfb918150176e) |
 | 2026-09-18 21:45 | Added past-chat import and long-term memory organization for Mac and Windows. | [b475707](https://github.com/phoiex/AAAAGENT/commit/b4757071af71d0194ac0ac91518a19b81a6ebb55) |

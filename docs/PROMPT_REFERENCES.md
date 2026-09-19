@@ -2,7 +2,7 @@
 
 [返回首页](../README.md) · [English](#english)
 
-**更完善的官方角色提示词和拟人化优化策略仍在开发中。** 本页整理社区项目、角色设计方法和语音提示词资料，供有需要的用户查阅和调整。
+**拟人化优化提示词尚未完成。** 本页整理社区项目、角色设计方法和语音提示词资料，供有需要的用户查阅和调整。
 
 ## 按自己的需要调整
 
@@ -34,7 +34,7 @@
 
 [Home](../README.en.md) · [简体中文](#提示词参考与致谢)
 
-**Improved official persona prompts and strategies for more natural conversation are still in development.** This page collects community projects, character-design methods and voice-prompting resources for users who want to customize their companion.
+**Prompts for more natural conversation are not yet ready.** This page collects community projects, character-design methods and voice-prompting resources for users who want to customize their companion.
 
 ### Customize according to your needs
 

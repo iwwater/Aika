@@ -5,7 +5,7 @@
 | Time | Change |
 | --- | --- |
 | 2026-09-19 19:15 | Added text and recent-dialogue emotion inference, separate user and companion states, frozen message snapshots and a web view on macOS. |
-| 2026-09-19 14:12 | Added persona-prompt references and AI-Vtuber credits, noting ongoing official improvements without changing the prompt. |
+| 2026-09-19 14:12 | Added persona-prompt references and AI-Vtuber credits; prompts for more natural conversation are not yet ready. |
 
 ## Planned development
 
@@ -84,7 +84,7 @@ Everyday questions should stay in conversation instead of creating engineering t
 
 ## Persona prompts and community references
 
-**Improved official persona prompts and strategies for more natural conversation are still in development.** The web console supports customizing the persona to suit your conversational preferences.
+**Prompts for more natural conversation are not yet ready.** The web console supports customizing the persona to suit your conversational preferences.
 
 If you want a different conversational style, personality or emotional response, explore community resources and adjust the prompt under **Memory and conversation → Character Prompt** in the web console, then try it in conversation. Our [references and acknowledgements](docs/PROMPT_REFERENCES.md#english) link to MaiBot, SillyTavern, ChatHaruhi, Hume, Alice_methodology, **[AI-Vtuber](https://github.com/Ikaros-521/AI-Vtuber)** and **[Open-LLM-VTuber](https://github.com/Open-LLM-VTuber/Open-LLM-VTuber)**. Thank you to their authors and contributors for sharing their work; the guide links to each original source.
 
