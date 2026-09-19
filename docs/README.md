@@ -1,6 +1,6 @@
 # Aika Next 文档入口
 
-日期：2026-09-19。状态：NEXT-00/01 已完成（AUTO_PASS），NEXT-02 起 NOT RUN。
+日期：2026-09-19。状态：NEXT-00/01/02 已完成（AUTO_PASS），NEXT-03 起 NOT RUN。
 
 用户使用 RPD 命名，本目录沿用 RPD，内容承担产品需求与路线图职责。
 

@@ -1,6 +1,6 @@
 # NEXT-02 · Aika 身份与配置
 
-状态：NOT RUN。需求：N06-R03。前置：NEXT-01。
+状态：AUTO_PASS（2026-09-19）。需求：N06-R03。前置：NEXT-01。产物与证据见 [验收报告](../reports/NEXT-02_ACCEPTANCE.md)；配置 API 在 `management/aika-profile.ts`，命名空间在 `core/next-namespace.ts`。
 
 ## 边界与接口
 

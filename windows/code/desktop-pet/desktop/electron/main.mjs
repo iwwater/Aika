@@ -6,6 +6,7 @@ import { BackendConnection } from './transport.mjs';
 import { fitDisplay } from './layout.mjs';
 import { assetResponse } from './assets.mjs';
 import { managementUrl } from '../../tools/management-url.mjs';
+import { nextUserDataDir } from '../../core/next-namespace.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const option = name => { const i = process.argv.indexOf(name); return i < 0 ? undefined : process.argv[i + 1]; };
@@ -16,7 +17,7 @@ const preview = process.argv.includes('--preview');
 const inspect = process.argv.includes('--inspect');
 const smoke = process.argv.includes('--smoke-test');
 app.setName('AAAAGENT');
-app.setPath('userData', resolve(app.getPath('appData'), 'AAAAGENT', smoke ? 'smoke-test' : preview ? 'preview' : 'desktop'));
+app.setPath('userData', nextUserDataDir(app.getPath('appData'), smoke ? 'smoke-test' : preview ? 'preview' : 'desktop'));
 if (!app.requestSingleInstanceLock({ root, preview })) { app.quit(); process.exit(0); }
 protocol.registerSchemesAsPrivileged([{ scheme: 'pet', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
 let win, ready = false, voiceRequested = false, wakeRequested = false, panelOpen = false, beforeResize;
