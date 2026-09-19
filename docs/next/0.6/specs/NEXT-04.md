@@ -1,6 +1,6 @@
 # NEXT-04 · 文本主链与上游 Memory 保真
 
-状态：NOT RUN。需求：N06-R05。前置：NEXT-03。
+状态：AUTO_PASS（2026-09-20）。需求：N06-R05。前置：NEXT-03。产物与证据见 [验收报告](../reports/NEXT-04_ACCEPTANCE.md)；TurnPort 适配在 `core/turn-port.ts`。
 
 ## 边界与接口
 
