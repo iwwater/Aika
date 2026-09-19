@@ -1,3 +1,15 @@
+## Changelog
+
+[View all updates](CHANGELOG.md#english) · Times: UTC+8
+
+| Time | Change |
+| --- | --- |
+| 2026-09-19 14:24 | Added a top-of-page changelog and bilingual history with timestamps and one-sentence summaries of every public update. |
+| 2026-09-19 14:12 | Added persona-prompt references and AI-Vtuber credits, noting ongoing official improvements without changing the prompt. |
+| 2026-09-18 23:03 | Added web-based key, model and reference-voice setup for Mac and Windows. |
+
+---
+
 <div align="center">
   <img src="assets/original-design/whale-avatar.png" width="144" alt="AAAAGENT whale-girl character concept" />
   <h1>AAAAGENT</h1>
@@ -35,13 +47,13 @@ AAAAGENT is a desktop companion developed primarily for macOS, with a separate W
 | Platform | Status and entry point |
 | --- | --- |
 | **macOS** | The primary version, with source in the root `code/desktop-pet/`. See [Mac setup](docs/SETUP.md#english). |
-| **Windows** | A separate Electron development version in `windows/code/desktop-pet/`. See [Windows setup](windows/README-WINDOWS.md). Windows Codex task forwarding is not supported; real speech, WeChat and wake-word behavior still need device-level validation. |
+| **Windows** | A separate Electron development version in `windows/code/desktop-pet/`. See [Windows setup](windows/README-WINDOWS.md). Includes a Codex app-server adapter and separate Harness configuration; see the Windows guide for setup and known issues. |
 
 See [platform differences and issue reporting](docs/PLATFORMS.md#english). Include your OS version, reproduction steps and sanitized errors. Install dependencies separately for each platform; do not mix configuration or build outputs.
 
 Companion conversation and work share an entry point without loading every project's engineering history into personal memory. Recent turns preserve continuity; long-term memories provide relevant recollections; project references locate work-specific context when needed.
 
-**This is a source distribution.** It does not include credentials, private conversations or memory databases, WeChat login state, cloned-voice material, wake-model weights, third-party Live2D characters, or the Cubism SDK. The image above is project-produced fan artwork, **not a working Live2D model**.
+**This is a source distribution.** It does not include credentials, private conversations or memory databases, WeChat login state, cloned-voice material, wake-model weights, third-party Live2D characters, or the Cubism SDK. The image above is project-produced fan artwork; Live2D rigging is still in progress.
 
 New: **Memory → Import past chats** imports explicitly selected local history with pause, deduplication and forgetting protection. Review model and cost settings before starting; see the [guide](docs/MEMORY.md#import-past-chats).
 
@@ -55,7 +67,7 @@ The overview below primarily describes the macOS version. See the platform notes
 | Local wake detection | Opt-in keyword detection, wake-word removal, and silence-based recording completion. Compatible local weights must be supplied separately. |
 | Emotion-aware responses | Limited classification of video frames; audio emotion is used only when the ASR returns a valid annotation. Missing evidence remains missing. |
 | Speech and animation | TTS playback drives lip sync; thinking, work and interaction states feed character presentation. Available motions depend on the model. |
-| WeChat | Text and voice input; configurable text or audio-file replies. Native voice bubbles are not a reliable supported output path. |
+| WeChat | Text and voice input; configurable text or audio-file replies. Native voice bubbles are currently unreliable. |
 | Agent forwarding | Harness for appropriate smaller search/organization jobs, Codex for planning and engineering. Explicit executor choices are preserved and dispatch requires confirmation. |
 | Web management | Persona prompts, stored memories, recall traces, context settings, speech configuration, presentation presets, and connection status. |
 
@@ -63,9 +75,9 @@ Everyday questions should stay in conversation instead of creating engineering t
 
 ## Persona prompts and community references
 
-**Improved official persona prompts and strategies for more natural conversation are still in development.** The current default prompt remains unchanged, and conversational naturalness still needs improvement. This documentation update does not replace saved user personas.
+**Improved official persona prompts and strategies for more natural conversation are still in development.** The web console supports customizing the persona to suit your conversational preferences.
 
-If you want a different conversational style, personality or emotional response, explore community resources and adjust the prompt under **Memory and conversation → Character Prompt** in the web console, then try it in conversation. Our [references and acknowledgements](docs/PROMPT_REFERENCES.md#english) link to MaiBot, SillyTavern, ChatHaruhi, Hume, Alice_methodology, **[AI-Vtuber](https://github.com/Ikaros-521/AI-Vtuber)** and **[Open-LLM-VTuber](https://github.com/Open-LLM-VTuber/Open-LLM-VTuber)**. Thank you to their authors and contributors for sharing their work. Inclusion is a reference, not a claim of integration or validated results in AAAAGENT.
+If you want a different conversational style, personality or emotional response, explore community resources and adjust the prompt under **Memory and conversation → Character Prompt** in the web console, then try it in conversation. Our [references and acknowledgements](docs/PROMPT_REFERENCES.md#english) link to MaiBot, SillyTavern, ChatHaruhi, Hume, Alice_methodology, **[AI-Vtuber](https://github.com/Ikaros-521/AI-Vtuber)** and **[Open-LLM-VTuber](https://github.com/Open-LLM-VTuber/Open-LLM-VTuber)**. Thank you to their authors and contributors for sharing their work; the guide links to each original source.
 
 ## Architecture
 
@@ -92,11 +104,11 @@ DeepSeek handles text dialogue and structured processing. Dedicated ASR supplies
 
 1. **Recent conversation comes first.** Within the input budget, the assembler selects a contiguous suffix of complete turns before adding summaries and relevant long-term memory.
 2. **Maintenance runs in the background.** Ordinary memory-processing failures should not block subsequent chat. Forgetting and correction requests have separate privacy safeguards.
-3. **Emotion keeps its provenance.** Valid emotional observations can influence responses and memory recall alongside importance and activation; a score is not a substitute for facts.
+3. **Emotion keeps its provenance.** Emotional observations retain their sources and can influence responses and recall alongside importance and activation.
 4. **Project details are retrieved on demand.** Project names, short abstracts and references stay separate from full task bodies, receipts and execution history.
 5. **Users can inspect and edit.** The web interface exposes source records, edits, selected recall parameters, actual recall traces and failed processing items.
 
-See [Memory and context](docs/MEMORY.md#english) for formulas and code references. Current retrieval uses inspectable lexical rules; it is not a general semantic vector-search implementation.
+See [Memory and context](docs/MEMORY.md#english) for formulas and code references. Current retrieval uses keyword and phrase matching.
 
 ## Getting started
 
@@ -126,7 +138,7 @@ Compilation does not log in to WeChat, call models or open the microphone. Follo
 
 **Different Cubism Live2D models can be integrated with local adaptation.** Parameter IDs, expression files, motion ranges and physics differ between characters. Replacing an image or copying a single model file is not sufficient. See [Live2D integration](docs/LIVE2D.md#english).
 
-The currently available [DeepSeek whale-girl design resources](assets/original-design/README.md#english) are still static artwork and separated layers, not a finished, rigged Live2D model ready to run.
+The currently available [DeepSeek whale-girl design resources](assets/original-design/README.md#english) contain static artwork and separated layers; Live2D rigging is still in progress.
 
 ## Repository layout
 
@@ -141,7 +153,7 @@ assets/original-design/   Project-produced whale-girl fan artwork
 
 ## Privacy and current limits
 
-- Conversations, memories, project references and settings are stored locally. Selected cloud services still receive the text, audio or images needed for their calls: this is not a fully offline product.
+- Conversations, memories, project references and settings are stored locally. Selected cloud services still receive the text, audio or images needed for their calls.
 - Publish only this clean release directory. Do not add private runtime directories, databases, credentials, token-bearing links, server configurations or conversation logs.
 - Wake detection is opt-in and local; it does not continuously call a cloud recognizer. ASR, dialogue and TTS after wake-up may incur charges.
 - macOS is currently the most complete version. The Windows port includes source-author validation reports, which were not independently repeated on Windows during this publication. Linux desktop behavior is not validated. Phone delivery, voices and new model animations require device testing.

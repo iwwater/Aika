@@ -8,7 +8,7 @@ Windows 版使用 Electron 桌面窗口和独立 Node.js 后端，支持本地 L
 
 ## 本次自助配置更新 / Self-service setup
 
-完成后端编译后可先运行 `npm.cmd run configure-local` 打开本机网页，无需预先手写 Key/音色 JSON。网页支持 DeepSeek 与百炼 Key、模型预设、自己的参考音频和两次独立费用确认；先开通对应百炼模型，Key保存不等于可用。已有配置从运行控制台修改。完整步骤及英文见 [Setup](docs/SETUP.md)。本次没有恢复 Windows ACL/runner 身份修复或额外 Windows CI，既有失败仍保留；下文历史真机记录不作为本次更新的验收。
+完成后端编译后可先运行 `npm.cmd run configure-local` 打开本机网页，无需预先手写 Key/音色 JSON。网页支持 DeepSeek 与百炼 Key、模型预设、自己的参考音频和两次独立费用确认；先开通对应百炼模型并确认账户余额，再保存 Key。已有配置从运行控制台修改。完整步骤及英文见 [Setup](docs/SETUP.md)。Windows ACL/runner 身份问题仍待修复，下文保留对应版本的真机记录。
 
 After backend compilation, `npm.cmd run configure-local` opens local first-run setup without pre-existing keys, voice metadata or JSON. Enable the matching Bailian models before use. See [English setup](docs/SETUP.md#english). Historical Windows validation is version-specific; existing ACL/runner failures and the pause on additional Windows CI remain.
 
@@ -128,7 +128,7 @@ npm.cmd run test:windows:ui
 npm.cmd run doctor
 ```
 
-UI 检查需要实际模型与 SDK，其他测试使用合成数据。`doctor` 只检查本地文件存在性，不代表设备、账号或云服务已通过验证。
+UI 检查需要实际模型与 SDK，其他测试使用合成数据。`doctor` 检查本地文件是否齐备；账号、云服务和设备请在配置后试用。
 
 | 现象 | 处理方式 |
 | --- | --- |
@@ -143,9 +143,9 @@ UI 检查需要实际模型与 SDK，其他测试使用合成数据。`doctor` �
 ## 可用范围
 
 - 本次验证覆盖 Windows 原生依赖、模型渲染、隔离的 preload、真实云端文字回复与 TTS 音频生成、窗口布局、ACL 及本地数据库读写。
-- 实体麦克风/摄像头、云端 ASR、扬声器实际效果、唤醒准确率、微信登录投递需单独验收。测试通过不代表这些能力全部可用。
+- 实体麦克风/摄像头、云端 ASR、扬声器实际效果、唤醒准确率、微信登录投递需单独验收。
 - 唤醒模型需另放在 `windows/.local/data/wake-models/` 并通过指纹校验；默认不开启持续监听。
-- Windows Codex 与原生 Harness 均已实测“准备任务 → 确认 → 接收 → 完成回执”。测试使用隔离目录中的简单文字任务；不等于所有工具、审批和复杂工程任务都已验证。Harness 默认服务目录仍是 `%APPDATA%/DeepSeek Harness`，新安装可按上文指定。
+- Windows Codex 与原生 Harness 均已实测“准备任务 → 确认 → 接收 → 完成回执”。实测范围为隔离目录中的简单文字任务。Harness 默认服务目录仍是 `%APPDATA%/DeepSeek Harness`，新安装可按上文指定。
 - Windows ARM64 未验证。后端使用系统 Node 的 ABI，不能用 Electron ABI 的 SQLite 文件替代。
 
 修改入口：界面见 `desktop/main.mjs`、`desktop/style.css`；渲染见 `desktop/cubism-renderer.mjs`；窗口及权限见 `desktop/electron/main.mjs`；通信及退出见 `desktop/electron/transport.mjs`。

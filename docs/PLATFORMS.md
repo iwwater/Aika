@@ -11,22 +11,22 @@
 | 源码 | `code/desktop-pet/` | `windows/code/desktop-pet/` |
 | 安装说明 | [Mac 安装与配置](SETUP.md) | [Windows 安装与配置](../windows/README-WINDOWS.md) |
 | 桌面宿主 | Swift / AppKit / WebKit | Electron |
-| 使用定位 | 当前功能最完整的主版本 | 可继续开发和反馈的移植版本，不是签名安装器 |
-| Codex 任务转交 | 按本机服务配置接入 | 当前 Mac IPC 适配器不支持 Windows，不能把任务转交当作已可用 |
+| 使用定位 | 当前功能最完整的主版本 | 源码移植版，可继续开发和反馈 |
+| Codex 任务转交 | 按本机服务配置接入 | 通过 Windows Codex app-server 适配接入，详见 Windows 安装说明 |
 | Live2D / SDK | 使用者本地自备并适配 | 使用者本地自备并适配 |
 | 账号与运行数据 | 使用自己的配置与凭据 | 使用自己的配置与凭据；不能直接沿用 Mac 的绝对路径及激活指纹 |
 
-不要把 `windows/` 内容覆盖到根目录，两个版本分别保留自己的依赖锁文件、构建和启动方式。仓库中的鲸鱼娘设计稿是静态美术与基础分层资源，不是已绑定的 Live2D 模型。
+不要把 `windows/` 内容覆盖到根目录，两个版本分别保留自己的依赖锁文件、构建和启动方式。仓库中的鲸鱼娘资源包含静态设计稿与基础分层，模型绑定仍在制作中。
 
 ## Windows 当前边界
 
-Windows 包提供 Electron 宿主、窗口交互、本地预览、平台路径及权限适配。开发预览中的回复是独立离线后端的回显，不等于真实模型聊天；真实服务需按说明另行配置。
+Windows 包提供 Electron 宿主、窗口交互、本地预览、平台路径及权限适配。离线预览会回显输入；接入真实模型需要按安装说明配置服务。
 
-移植作者随包提供了 [Windows 验证记录](../windows/WINDOWS-VALIDATION.md) 与 [离线压力测试记录](../windows/WINDOWS-STRESS-RESULTS.md)。这些是来源方报告，本次发布没有重新进行 Windows 真机或实体设备验收。通过离线测试不表示麦克风、摄像头、云端 ASR/TTS、微信投递、唤醒准确率和 Harness 实际派发都已通过。
+移植作者随包提供了 [Windows 验证记录](../windows/WINDOWS-VALIDATION.md) 与 [离线压力测试记录](../windows/WINDOWS-STRESS-RESULTS.md)。麦克风、摄像头、云端 ASR/TTS、微信接收和唤醒效果请在自己的设备试用。
 
-本次发布准备在 macOS / Node 24.19 环境隔离复核了 Windows 源码：后端编译通过，平台测试组 11/11、发布组 115/115、合成压力组 5/5 通过。测试中的 Windows 专属 ACL、跨盘等分支未在这台 Mac 上执行；未启动 Electron 或调用设备、云服务，因此不是 Windows 真机复验。
+本次发布准备在 macOS / Node 24.19 环境隔离复核了 Windows 源码：后端编译通过，平台测试组 11/11、发布组 115/115、合成压力组 5/5 通过。测试中的 Windows 专属 ACL、跨盘等分支未在这台 Mac 上执行；Electron、设备与云服务另需在 Windows 上检查。
 
-原较广测试库仍有 4 项已知失败，Mac 安装文档和 Windows 验证说明中都有记录；没有把它们删除或写成全通过。
+原较广测试库仍有 4 项已知失败，Mac 安装文档和 Windows 验证说明中都有记录。
 
 ## 怎样反馈问题
 
@@ -47,10 +47,10 @@ Windows 包提供 Electron 宿主、窗口交互、本地预览、平台路径�
 
 Use the root `code/desktop-pet/` for macOS, or `windows/code/desktop-pet/` for the separate Electron Windows version. Follow [Mac setup](SETUP.md#english) or [Windows setup](../windows/README-WINDOWS.md). Do not overwrite one tree with the other or share their dependency/build directories.
 
-The Windows port includes an Electron host and platform-specific path, permission and window handling. Its offline preview echoes input; this is not authenticated model chat. Bring your own authorized Live2D rig, SDK, credentials and configuration. The supplied character artwork is not a rigged model.
+The Windows port includes an Electron host and platform-specific path, permission and window handling. Its offline preview echoes input; configure a provider for model chat. Bring your own authorized Live2D rig, SDK, credentials and configuration. The supplied character artwork contains static images and layers, with rigging still in progress.
 
-Windows Codex task forwarding remains unsupported by the current Mac IPC adapter. Physical audio/video, cloud speech, WeChat delivery, wake accuracy and real Harness dispatch require separate validation. Mac paths and activation fingerprints cannot be reused unchanged on Windows.
+Windows Codex forwarding uses its app-server adapter; follow the Windows setup guide. Physical audio/video, cloud speech, WeChat delivery, wake accuracy and real Harness dispatch require separate validation. Mac paths and activation fingerprints cannot be reused unchanged on Windows.
 
-The [Windows validation](../windows/WINDOWS-VALIDATION.md) and [stress-test notes](../windows/WINDOWS-STRESS-RESULTS.md) are reports supplied by the port's author, not Windows tests independently repeated during this publication. During release preparation, the Windows source was checked in isolation on macOS with Node 24.19: backend build passed, as did 11 platform-group tests, 115 release tests and five synthetic stress tests. Windows-only ACL and cross-drive branches were not exercised on this Mac. Electron, devices and cloud services were not started. Four known failures in the broader inherited test suite remain documented.
+The [Windows validation](../windows/WINDOWS-VALIDATION.md) and [stress-test notes](../windows/WINDOWS-STRESS-RESULTS.md) were supplied by the port's author. During release preparation, the Windows source was checked in isolation on macOS with Node 24.19: backend build passed, as did 11 platform-group tests, 115 release tests and five synthetic stress tests. Windows-only ACL and cross-drive branches were not exercised on this Mac. Electron, devices and cloud services were not started. Four known failures in the broader inherited test suite remain documented.
 
 To report a problem, open **Issues → New issue** and include OS/CPU/Node versions, platform directory and commit, reproduction steps, expected/actual behavior and sanitized logs. For voice issues, distinguish capture, transcription, generation and playback. Never attach credentials, login QR codes, sessions, personal databases, private chats or non-redistributable model assets. We will investigate and follow up in the issue.

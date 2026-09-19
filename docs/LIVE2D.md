@@ -4,9 +4,9 @@
 
 ## 支持范围
 
-项目通过 Cubism Web 渲染管线接入 **Cubism 的 `.model3.json` / `.moc3` 模型**。可以适配不同角色，而不是只能使用演示中的一个角色。具体兼容性取决于模型导出版本、你安装的 Cubism SDK、纹理规格以及本地适配结果。
+项目通过 Cubism Web 渲染管线接入 **Cubism 的 `.model3.json` / `.moc3` 模型**。支持在本地适配不同角色。具体兼容性取决于模型导出版本、你安装的 Cubism SDK、纹理规格以及本地适配结果。
 
-当前不是任意模型拖入即用，也不提供已验证的 Cubism 2 `.model.json` / `.moc` 兼容路径。角色人格切换与 Live2D 资源热切换不是同一件事；后者不要按已经实现的能力理解。
+接入模型需要配置参数和资源路径。Cubism 2 `.model.json` / `.moc` 及模型包热切换暂不支持。
 
 **仓库不包含现用第三方 Live2D 模型。** 不附其网格、纹理、物理、表情、动作、可编辑工程、截图或录屏。也不附 Cubism SDK；请从 [Live2D 官方下载页](https://www.live2d.com/en/sdk/download/web/) 获取并遵守其条款。
 
@@ -24,11 +24,11 @@
 
 从 `code/desktop-pet/` 运行 `node tools/configure-model.mjs` 可依据已经放入的真实模型文件生成禁用的预设目录及资源指纹；它拒绝覆盖已有目录。之后仍需自行填写模型映射、预设并验证。
 
-公开包中的占位配置只用于说明结构，不包含原模型的预设资产，也不代表有可显示的角色。
+请根据占位配置的结构填写自己的模型资源与预设。
 
 ## 为什么不只是换文件
 
-旧角色可能使用自定义头部参数，另一角色则使用 `ParamAngleX`、`ParamAngleY`、`ParamAngleZ`。发布包把头部与嘴形名称集中在 `desktop/config/parameter-map.json`；嘴型、表情开关和动作曲线仍需逐项核对。新模型缺少某个参数时，应调整映射与动作范围，而不是强行写入同名值。
+旧角色可能使用自定义头部参数，另一角色则使用 `ParamAngleX`、`ParamAngleY`、`ParamAngleZ`。发布包把头部与嘴形名称集中在 `desktop/config/parameter-map.json`；嘴型、表情开关和动作曲线仍需逐项核对。新模型缺少某个参数时，应调整映射与动作范围。
 
 本项目源码中的渲染适配器仍保留部分历史命名和模型假设。接入新角色时，重点核对：
 
@@ -39,13 +39,13 @@
 - 特定角色专用的外观开关。不要把旧角色的隐藏部件或水印控制照搬到新模型。
 - 画布裁切、全身/半身构图、透明混合与纹理尺寸。
 
-至少检查：连续说话后正确闭口、按键打断立即停止口型、思考/工作状态结束回到中性、不同表情不互相残留、缺失参数有明确错误而不是静默失败。新模型必须单独验证，旧模型通过不等于新模型通过。
+至少检查：连续说话后正确闭口、按键打断立即停止口型、思考/工作状态结束回到中性、不同表情不互相残留、缺失参数时给出明确提示。每个新模型都需要检查这些项目。
 
 ## DeepSeek 大肥鱼设计稿
 
-[项目设计稿目录](../assets/original-design/README.md) 包含静态整稿、透明立绘、头像与基础分层 PSD。它们可作为后续美术制作的输入，但**不包含已完成绑定的 Live2D 模型**。
+[项目设计稿目录](../assets/original-design/README.md) 包含静态整稿、透明立绘、头像与基础分层 PSD。可用于后续 Live2D 制作。
 
-仍需补齐遮挡区域、制作网格和变形器、绑定参数、导出运行模型并检查连续动作。不能把静态眨眼/张嘴图层预览称作已完成的 Live2D 动画。
+仍需补齐遮挡区域、制作网格和变形器、绑定参数、导出运行模型并检查连续动作。
 
 ## 代码入口
 
@@ -58,7 +58,7 @@
 
 ## English
 
-The renderer integrates **Cubism `.model3.json` / `.moc3` models**. Different characters can be adapted locally, subject to export-version compatibility, the installed SDK, texture requirements and parameter mappings. This is not a universal drag-and-drop importer. Cubism 2 exports and dynamic switching between arbitrary model packages are not claimed as validated features.
+The renderer integrates **Cubism `.model3.json` / `.moc3` models**. Different characters can be adapted locally, subject to export-version compatibility, the installed SDK, texture requirements and parameter mappings. Each model requires local configuration. Cubism 2 exports and model-package hot switching are currently unsupported.
 
 The existing third-party character and all its textures, expressions, motions, editable files, screenshots and recordings are excluded. The Cubism SDK is also excluded; obtain it from the [official download page](https://www.live2d.com/en/sdk/download/web/) under its own terms.
 
@@ -72,6 +72,6 @@ The existing third-party character and all its textures, expressions, motions, e
 
 With your actual model under `desktop/assets/local-model/` and its entry named `pet.model3.json`, run `node tools/configure-model.mjs` from `code/desktop-pet/` to create a disabled catalog with its resource fingerprint. Existing catalogs are preserved. Local mapping and preset work is still required.
 
-Some historical model assumptions remain in the adapter. In particular, inspect required physics and Idle motion files, custom parameter names, appearance switches, framing and texture sizes. Do not copy character-specific visibility or watermark controls into another model. A successful test on one character does not validate another.
+Some historical model assumptions remain in the adapter. In particular, inspect required physics and Idle motion files, custom parameter names, appearance switches, framing and texture sizes. Do not copy character-specific visibility or watermark controls into another model. Check each newly integrated character.
 
-The [DeepSeek whale-girl artwork](../assets/original-design/README.md#english) is a concept and layer-preparation package. It is **not a rigged Live2D model**. Occlusion completion, meshes, deformers, parameter rigging, export and continuous-motion checks remain necessary. The code links above identify the adaptation points.
+The [DeepSeek whale-girl artwork](../assets/original-design/README.md#english) is a concept and layer-preparation package. Occlusion completion, meshes, deformers, parameter rigging, export and continuous-motion checks remain necessary. The code links above identify the adaptation points.

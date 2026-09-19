@@ -19,7 +19,7 @@ AAAAGENT is a macOS-focused desktop companion with text and voice conversation, 
 
 Companion conversation and work share an entry point without loading every project's engineering history into personal memory. Recent turns preserve continuity; long-term memories provide relevant recollections; project references locate work-specific context when needed.
 
-**This is a source distribution.** It does not include credentials, private conversations or memory databases, WeChat login state, cloned-voice material, wake-model weights, third-party Live2D characters, or the Cubism SDK. The image above is project-produced fan artwork, **not a working Live2D model**.
+**This is a source distribution.** It does not include credentials, private conversations or memory databases, WeChat login state, cloned-voice material, wake-model weights, third-party Live2D characters, or the Cubism SDK. The image above is project-produced fan artwork; Live2D rigging is still in progress.
 
 ## Features
 
@@ -29,7 +29,7 @@ Companion conversation and work share an entry point without loading every proje
 | Local wake detection | Opt-in keyword detection, wake-word removal, and silence-based recording completion. Compatible local weights must be supplied separately. |
 | Emotion-aware responses | Limited classification of video frames; audio emotion is used only when the ASR returns a valid annotation. Missing evidence remains missing. |
 | Speech and animation | TTS playback drives lip sync; thinking, work and interaction states feed character presentation. Available motions depend on the model. |
-| WeChat | Text and voice input; configurable text or audio-file replies. Native voice bubbles are not a reliable supported output path. |
+| WeChat | Text and voice input; configurable text or audio-file replies. Native voice bubbles are currently unreliable. |
 | Agent forwarding | Harness for appropriate smaller search/organization jobs, Codex for planning and engineering. Explicit executor choices are preserved and dispatch requires confirmation. |
 | Web management | Persona prompts, stored memories, recall traces, context settings, speech configuration, presentation presets, and connection status. |
 
@@ -60,11 +60,11 @@ DeepSeek handles text dialogue and structured processing. Dedicated ASR supplies
 
 1. **Recent conversation comes first.** Within the input budget, the assembler selects a contiguous suffix of complete turns before adding summaries and relevant long-term memory.
 2. **Maintenance runs in the background.** Ordinary memory-processing failures should not block subsequent chat. Forgetting and correction requests have separate privacy safeguards.
-3. **Emotion keeps its provenance.** Valid emotional observations can influence responses and memory recall alongside importance and activation; a score is not a substitute for facts.
+3. **Emotion keeps its provenance.** Emotional observations retain their sources and can influence responses and recall alongside importance and activation.
 4. **Project details are retrieved on demand.** Project names, short abstracts and references stay separate from full task bodies, receipts and execution history.
 5. **Users can inspect and edit.** The web interface exposes source records, edits, selected recall parameters, actual recall traces and failed processing items.
 
-See [Memory and context](docs/MEMORY.md#english) for formulas and code references. Current retrieval uses inspectable lexical rules; it is not a general semantic vector-search implementation.
+See [Memory and context](docs/MEMORY.md#english) for formulas and code references. Current retrieval uses keyword and phrase matching.
 
 ## Getting started
 
@@ -106,7 +106,7 @@ assets/original-design/   Project-produced whale-girl fan artwork
 
 ## Privacy and current limits
 
-- Conversations, memories, project references and settings are stored locally. Selected cloud services still receive the text, audio or images needed for their calls: this is not a fully offline product.
+- Conversations, memories, project references and settings are stored locally. Selected cloud services still receive the text, audio or images needed for their calls.
 - Publish only this clean release directory. Do not add private runtime directories, databases, credentials, token-bearing links, server configurations or conversation logs.
 - Wake detection is opt-in and local; it does not continuously call a cloud recognizer. ASR, dialogue and TTS after wake-up may incur charges.
 - Desktop development targets macOS. No validated Windows or Linux desktop experience is claimed. Phone delivery, voices and new model animations require device testing.

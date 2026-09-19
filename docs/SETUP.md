@@ -18,13 +18,13 @@ Windows PowerShell 使用 `npm.cmd`；系统和桌面构建要求见 [Windows �
 
 ## Key、模型和自己的参考音频
 
-- 文本对话及相关文字处理使用 **DeepSeek** Key。ASR、多模态和 **百炼托管 MiniMax** 使用 **阿里云百炼** Key；这里没有 MiniMax 官方直连 Key/provider。
-- 先在[百炼控制台](https://bailian.console.aliyun.com/)开通要使用的模型，再按[官方说明获取 Key](https://help.aliyun.com/zh/model-studio/get-api-key)。**Key 保存成功只表示本机已保存，不表示模型已开通、余额充足或调用已经验证。** DeepSeek Key 在[官方控制台](https://platform.deepseek.com/api_keys)管理。
+- 文本对话及相关文字处理使用 **DeepSeek** Key。ASR、多模态和 **百炼托管 MiniMax** 使用 **阿里云百炼** Key。
+- 先在[百炼控制台](https://bailian.console.aliyun.com/)开通要使用的模型，再按[官方说明获取 Key](https://help.aliyun.com/zh/model-studio/get-api-key)。**调用前请确认模型已开通、账户余额充足，再保存 Key 并试用。** DeepSeek Key 在[官方控制台](https://platform.deepseek.com/api_keys)管理。
 - 在本机页显式保存 Key。密钥放在项目外按安装目录区分的受限文件中，网页只得到引用和状态，不回显原值。每次保存生成新条目，旧条目及旧音色绑定保留；在各模型模块手动选择对应凭据，再保存设置。选择下拉框本身不发送请求。
 - 可以使用已适配的系统音色，也可上传自己有权使用的参考 MP3/M4A/WAV：10 秒至 5 分钟、最多 20 MB。网页在本机转换为单声道 PCM WAV，服务端独立核验格式和时长。上传先保存在本地；只有之后明确确认创建才发到百炼流程。系统音色不要求复刻。
-- MiniMax Turbo 与 HD 始终显示为可配置型号。参考音频上传不是音色注册成功：先准备方案，再确认创建，成功后可手动试听，再单独确认首次正式启用；完整合成成功后才登记为可选音色。新登记不会自动替换当前音色。
+- MiniMax Turbo 与 HD 始终显示为可配置型号。音色设置分为准备方案、确认创建、试听和首次正式启用；完整合成成功后登记为可选音色。新登记不会自动替换当前音色。
 
-页面分别显示两次费用确认。按[百炼 MiniMax 文档](https://help.aliyun.com/zh/model-studio/minimax-synchronous-speech-synthesis-api)，Turbo 每万计费字符 2 元，HD 3.5 元；复刻试听按字符计费，克隆音色首次正式合成另收一次 9.9 元。以调用时供应商规则和账单为准。本地保守估算沿共用账本记录，不冒称实时余额；默认不设累计上限，不恢复旧实验次数限制。没有勾选本次费用确认时不会发起对应云请求。
+页面分别显示两次费用确认。按[百炼 MiniMax 文档](https://help.aliyun.com/zh/model-studio/minimax-synchronous-speech-synthesis-api)，Turbo 每万计费字符 2 元，HD 3.5 元；复刻试听按字符计费，克隆音色首次正式合成另收一次 9.9 元。以调用时供应商规则和账单为准。共用账本记录本地费用估算，默认不设累计上限。没有勾选本次费用确认时不会发起对应云请求。
 
 403 或 2038 的明确零费拒绝会提示检查开通、认证或权限，处理后可点击“准备重试”，再单独确认费用。结果未知、断线或取消不会自动重发；样音下载失败也不重新复刻。旧失败记录保留。复刻格式及权限要求见[官方复刻文档](https://help.aliyun.com/zh/model-studio/voice-clone-design-http-api)。
 
@@ -48,7 +48,7 @@ node dist/app/trial-launcher.js
 
 启用命令会重新核对文件指纹与凭据权限，本身不启动模型请求或设备；后续启动应用并使用对话、识别、TTS 等能力可能计费。运行中的模型设置保存后，需要按原入口重启才生效。已有 Key、音色、聊天、记忆、Prompt、微信状态和历史账不因更新重置。
 
-有既有成功注册资料的用户仍可沿用 `node tools/configure-local.mjs /absolute/path/to/config.local.json --activate` 和 `config/providers.example.json`。该兼容入口不会凭占位音色 ID伪造成功。不要通过删除自己的数据来绕过配置冲突。
+有既有成功注册资料的用户仍可沿用 `node tools/configure-local.mjs /absolute/path/to/config.local.json --activate` 和 `config/providers.example.json`。该入口需要有效的音色注册资料；配置冲突时请按报错检查资料。
 
 个人运行数据在本版本根目录的 `.local/` 下；外部受限 Key 文件和这些数据都不应进入 Git。设置进程异常退出后，仅在确认本机锁对应的进程已结束且身份匹配时回收锁；活跃/复用 PID或无法核对的锁会拒绝覆盖。
 
@@ -56,17 +56,17 @@ node dist/app/trial-launcher.js
 
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)和 [Codex](https://openai.com/codex/for-work/)是独立程序。请分别安装、启动、登录或配置所需账户，再检查桌宠中的连接状态。缺少某一个执行器时，对应任务转发不可用，不影响本机设置入口。项目只提供连接适配，不携带它们的安装包、账号或订阅。
 
-Mac Harness 沿用本机服务与预设连接，源码登记协议为 0.1.5-rc.1；不能把官网任意新版本当作已经兼容。Mac Codex 连接还会核对受支持的桌面 App 构建和本机状态；**只装 Codex CLI 不等于桌面连接已建立**。Windows 保留现有官方 `codex app-server --stdio` 适配和 Harness 单独配置流程，具体版本、目录和登录步骤以[平台说明](../windows/README-WINDOWS.md)为准。不会为了让连接显示成功而取消协议或版本检查。
+Mac Harness 使用本机服务与预设连接，当前适配协议为 0.1.5-rc.1。Mac Codex 连接需要受支持的桌面 App 构建和本机状态，安装后请检查连接状态。Windows 保留现有官方 `codex app-server --stdio` 适配和 Harness 单独配置流程，具体版本、目录和登录步骤以[平台说明](../windows/README-WINDOWS.md)为准。
 
-任务发送前仍需核对完整卡片并确认；微信需要使用自己的账号连接。微信语音回复采用音频文件，接口接受不等于手机显示或播放已验收。
+任务发送前仍需核对完整卡片并确认；微信需要使用自己的账号连接。微信语音回复采用音频文件，请在手机上确认接收和播放效果。
 
 ## 验证与干净发布
 
-本次新流程先用合成音频、合成凭据和本机 HTTP检查，真实云调用、用户素材、设备和播放均未用于开发验收。可运行 `npm run test:setup` 检查首配与音色流程；`npm run test:release` 是已有独立发布检查组。测试通过、安装后入口可用、真实账号可调用及实际听感是不同证据层。
+`npm run test:setup` 使用合成音频、测试凭据和本机 HTTP 检查首次配置与音色流程；`npm run test:release` 检查已有发布功能。完成配置后，可用自己的账号和设备试用。
 
-Windows 的既有 ACL/runner 身份问题仍保留，本次未恢复专项修复或额外 Windows CI；Mac 上编译 Windows 源码不能证明 Windows 运行通过。其他旧测试问题以版本对应记录为准，不宣称全库绿色。
+Windows 的 ACL/runner 身份问题仍待修复，其他已知问题见版本对应的验证记录。
 
-发布前在干净副本运行 `python3 tools/check-release.py`。排除 `node_modules`、构建产物、`.local/`、数据库、密钥、参考/样音、模型和 SDK，保留第三方许可。不要复制私有工程 Git 历史。检查器只识别结构和已知模式，不能替代素材授权核查。
+发布前在干净副本运行 `python3 tools/check-release.py`。排除 `node_modules`、构建产物、`.local/`、数据库、密钥、参考/样音、模型和 SDK，保留第三方许可。不要复制私有工程 Git 历史。检查器检查目录结构和已知敏感信息模式，素材许可需另行核对。
 
 <a id="english"></a>
 
@@ -76,7 +76,7 @@ Windows 的既有 ACL/runner 身份问题仍保留，本次未恢复专项修复
 
 From this version's `code/desktop-pet/`, run `npm ci`, `npm run build`, then `npm run configure-local`. Use `npm.cmd` in Windows PowerShell. Keep the terminal open and visit its local URL; the URL contains a session token and must remain private. Opening setup performs no provider request, account login or device access. Existing installations use the running console's model/voice page. A full desktop still requires your own licensed Live2D model, Cubism SDK and native/Electron build; follow the [platform instructions](../windows/README-WINDOWS.md) on Windows.
 
-Text dialogue uses **DeepSeek**. ASR, multimodal models and **DashScope-hosted MiniMax** use an **Alibaba Bailian Key**, not a native MiniMax Key. First enable the relevant models in [Bailian](https://bailian.console.aliyun.com/) and obtain a Key using the [official guide](https://help.aliyun.com/zh/model-studio/get-api-key). Saving a Key only stores it locally; it does not establish model access, balance or a successful API call. [DeepSeek keys](https://platform.deepseek.com/api_keys) are configured separately.
+Text dialogue uses **DeepSeek**. ASR, multimodal models and **DashScope-hosted MiniMax** use an **Alibaba Bailian Key**. First enable the relevant models in [Bailian](https://bailian.console.aliyun.com/) and obtain a Key using the [official guide](https://help.aliyun.com/zh/model-studio/get-api-key). Before trying the service, confirm model access and sufficient account balance, then save the Key. [DeepSeek keys](https://platform.deepseek.com/api_keys) are configured separately.
 
 Save keys explicitly in the local form. Restricted per-install files remain outside the repository; responses contain references/status, never key values. New saves preserve old entries and voice bindings. Manually select the intended credential for each model and save; selection alone makes no network request. Existing runtime settings take effect after restart.
 
@@ -90,10 +90,10 @@ Configure your own model using [Live2D integration](LIVE2D.md#english). On Mac b
 
 ### Install external executors separately
 
-Install, launch and sign into/configure [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) and [Codex](https://openai.com/codex/for-work/) separately. Neither engine, account nor subscription is bundled. If an executor is absent, its task-forwarding path is unavailable. Check connection compatibility before dispatch. Mac retains the registered Harness protocol and supported desktop-App checks: installing the Codex CLI alone does not establish the Mac App connection. Windows retains its official app-server adapter and platform-specific Harness setup. Existing protocol/version guards and task confirmation remain enforced.
+Install, launch and sign into/configure [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) and [Codex](https://openai.com/codex/for-work/) separately. Neither engine, account nor subscription is bundled. If an executor is absent, its task-forwarding path is unavailable. Check connection compatibility before dispatch. Mac uses the registered Harness protocol and requires a supported Codex desktop App; check its connection status after installation. Windows retains its official app-server adapter and platform-specific Harness setup. Existing protocol/version guards and task confirmation remain enforced.
 
 ### Evidence and publication
 
-`npm run test:setup` uses synthetic keys/audio and controlled HTTP. It is not proof of live provider access, voice quality or installed-device behavior. Existing Windows ACL/runner-identity failures remain unresolved; this update does not resume their repair or extra Windows CI. Compiling Windows code on a Mac is not Windows runtime validation.
+`npm run test:setup` uses synthetic keys/audio and local HTTP. After setup, try the service with your own account and devices. The known Windows ACL/runner-identity issue is still awaiting a fix.
 
 Keep `.local/`, external key files, databases, reference/sample audio, dependencies, builds, private models and SDKs out of Git. Use `python3 tools/check-release.py` on a clean release copy and preserve licensing. No credentials, private history, cloned voice material or external executor installations are bundled.
