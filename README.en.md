@@ -56,7 +56,7 @@ AAAAGENT is a desktop companion developed primarily for macOS, with a separate W
 | Platform | Status and entry point |
 | --- | --- |
 | **macOS** | The primary version, with source in the root `code/desktop-pet/`. See [Mac setup](docs/SETUP.md#english). |
-| **Windows** | A separate Electron development version in `windows/code/desktop-pet/`. See [Windows setup](windows/README-WINDOWS.md). Includes a Codex app-server adapter and separate Harness configuration; see the Windows guide for setup and known issues. |
+| **Windows** | A separate Electron development version in `windows/code/desktop-pet/`. See [Windows setup](windows/README-WINDOWS.md). Version 0.1.2 includes emotion states, message snapshots and web queries, with Windows regressions for chat import, self-service setup and task dispatch. See the [dated validation](windows/WINDOWS-VALIDATION.md#2026-09-19-windows-update). |
 
 See [platform differences and issue reporting](docs/PLATFORMS.md#english). Include your OS version, reproduction steps and sanitized errors. Install dependencies separately for each platform; do not mix configuration or build outputs.
 
@@ -68,7 +68,7 @@ New: **Memory → Import past chats** imports explicitly selected local history 
 
 ## Features
 
-The overview below primarily describes the macOS version. The new emotion states, message snapshots and emotion page have not yet been ported to or validated on Windows; its current source is unchanged in this update.
+The overview below primarily describes the macOS version. Windows 0.1.2 now includes emotion states, message snapshots and the emotion page; see [Windows memory documentation](windows/docs/MEMORY.md#english) for usage and data boundaries.
 
 | Capability | What the code provides |
 | --- | --- |
@@ -165,7 +165,7 @@ assets/original-design/   Project-produced whale-girl fan artwork
 - Conversations, memories, project references and settings are stored locally. Selected cloud services still receive the text, audio or images needed for their calls.
 - Publish only this clean release directory. Do not add private runtime directories, databases, credentials, token-bearing links, server configurations or conversation logs.
 - Wake detection is opt-in and local; it does not continuously call a cloud recognizer. ASR, dialogue and TTS after wake-up may incur charges.
-- macOS is currently the most complete version. The Windows port includes source-author validation reports, which were not independently repeated on Windows during this publication. Linux desktop behavior is not validated. Phone delivery, voices and new model animations require device testing.
+- macOS is currently the most complete version. Windows 0.1.2 has a [dated local validation report](windows/WINDOWS-VALIDATION.md#2026-09-19-windows-update), separating automated regressions, real-service checks and untested devices. Linux desktop behavior is not validated. Phone delivery, voices and new model animations require device testing.
 - Original project material is under the [Noncommercial and Attribution License](LICENSE): **all commercial use is prohibited; use or citation requires credit to the project and authors, with a source link**. Third-party dependencies, SDKs and artwork retain their separate terms; see the [artwork notice](assets/original-design/README.md#english) and third-party notices in the source tree.
 
 When reporting an issue, provide a minimal reproduction without private data. Never attach credentials, a full conversation database or a login QR code to a public issue.
