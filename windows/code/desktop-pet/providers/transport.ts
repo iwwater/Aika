@@ -42,9 +42,15 @@ export class ProviderRequestFailure extends Error {
   }
 }
 
+export interface ProviderRequestOptions {
+  /** Replaces the default Authorization/Content-Type headers wholesale (e.g. x-goog-api-key for Gemini). */
+  headers?: Record<string, string>;
+  /** Suppresses the automatic top-level `model` field (the Gemini URL carries it). */
+  omitModel?: boolean;
+}
 export class ProviderTransport {
   constructor(private readonly fetcher: typeof fetch = fetch) {}
-  async request(config: EndpointConfig, scope: TurnScope, operation: ProviderOperation, body: JsonRecord, signal: AbortSignal, textCharacters?: number, audioSeconds?: number): Promise<JsonRecord> {
+  async request(config: EndpointConfig, scope: TurnScope, operation: ProviderOperation, body: JsonRecord, signal: AbortSignal, textCharacters?: number, audioSeconds?: number, opts?: ProviderRequestOptions): Promise<JsonRecord> {
     checkAbort(signal);
     const endpoint = new URL(config.endpoint);
     if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash || !config.model) throw new Error('Explicit HTTPS provider endpoint and model required');
@@ -56,7 +62,8 @@ export class ProviderTransport {
       responseBodyComplete:false,responseBodyUtf8Bytes:null,causeCode:null,abortReasonName:null};
     try {
       checkAbort(signal);
-      const response = await this.fetcher(config.endpoint, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, model: config.model }), signal, redirect: 'error' });
+      const headers = opts?.headers ?? { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+      const response = await this.fetcher(config.endpoint, { method: 'POST', headers, body: JSON.stringify(opts?.omitModel ? body : { ...body, model: config.model }), signal, redirect: 'error' });
       trace.headersMs = Math.round(performance.now() - started); trace.httpStatus = response.status;
       outcome.requestId = response.headers.get('x-request-id');
       trace.requestId = outcome.requestId && /^[A-Za-z0-9_-]{1,128}$/.test(outcome.requestId) ? outcome.requestId : null;

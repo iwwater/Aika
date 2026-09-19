@@ -1,6 +1,6 @@
 # NEXT-03 · 多 Provider 适配
 
-状态：NOT RUN。需求：N06-R04。前置：NEXT-01、02。
+状态：AUTO_PASS（2026-09-19；03-F 真实回放 BLOCKED 已登记）。需求：N06-R04。前置：NEXT-01、02。产物与证据见 [验收报告](../reports/NEXT-03_ACCEPTANCE.md)；适配器在 `providers/aika-dialogue.ts`。
 
 ## 边界与接口
 

@@ -33,6 +33,9 @@
 | L-MEM-STORE | `aika-crossplatform/src/services/memory/memoryStore.conformance.test.ts` | `c58e8dfb92f48fbb4540629fe7c337bfa92bfad7` | TS | 记忆存储契约参考 |
 | L-CTX-ASM | `aika-crossplatform/src/services/context/contextAssembler.test.ts` | `ecc75841b9f61123d230c0b8dec62190b48a9953` | TS | 上下文装配/预算参考 |
 | L-CTX-DOMAIN | `aika-crossplatform/src/domain/context.test.ts` | `a2cf977f37aefdf35bb6143618d8af381beed8b8` | TS | 上下文领域规则参考 |
+| L-PROV-CONF | `aika-crossplatform/src/services/runtime/provider.conformance.ts` | `9e4e7769a9765d0724ed24e334a0d28d9628690b` | TS | Provider 契约场景定义（累计增量/唯一终包/取消/坏流），NEXT-03 按上游端口重写 |
+| L-PROV-CONF-TEST | `aika-crossplatform/src/services/runtime/provider.conformance.test.ts` | `5489011b2dc8e13d0b882dff0a096c58c545741d` | TS | 上述场景的原测试（多字节文本 fixture 来源） |
+| L-PROV-CLIENT | `aika-crossplatform/src/services/providerClient.test.ts` | `820234f28752c5b3665bf9b2bf24938fb5356612` | TS | providerClient 协议行为参考 |
 
 ## 3. 上游测试来源（commit `565cd80` 基线内，blob hash）
 

@@ -7,7 +7,7 @@
 | [NEXT-00](specs/NEXT-00.md) | 上游引入、Windows 基线、源码映射 | 无 | AUTO_PASS（2026-09-19） |
 | [NEXT-01](specs/NEXT-01.md) | 测试语料与契约 harness | 00 | AUTO_PASS（2026-09-19） |
 | [NEXT-02](specs/NEXT-02.md) | Aika 静态身份与配置 | 01 | AUTO_PASS（2026-09-19） |
-| [NEXT-03](specs/NEXT-03.md) | Provider 适配 | 01、02 | NOT RUN |
+| [NEXT-03](specs/NEXT-03.md) | Provider 适配 | 01、02 | AUTO_PASS（2026-09-19；真实回放 BLOCKED 已登记） |
 | [NEXT-04](specs/NEXT-04.md) | 文字主链与 Memory 兼容 | 03 | NOT RUN |
 | [NEXT-05](specs/NEXT-05.md) | 最小 Chat Timeline | 04 | NOT RUN |
 | [NEXT-06](specs/NEXT-06.md) | 基础语音与自动回放 | 04、05 | NOT RUN |
