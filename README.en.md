@@ -4,7 +4,7 @@
   <p><strong><a href="https://www.bilibili.com/video/BV1cueG6sE85/">▶ Watch the full demo on Bilibili</a></strong></p>
   <p>A desktop companion that talks, remembers, and connects your ideas to working agents.</p>
   <p><a href="README.md">简体中文</a> · <strong>English</strong></p>
-  <p><a href="docs/PLATFORMS.md#english">Mac / Windows</a> · <a href="docs/SETUP.md">Setup</a> · <a href="docs/MEMORY.md#english">Memory and context</a> · <a href="docs/LIVE2D.md#english">Bring your own Live2D</a> · <a href="assets/original-design/README.md#english">Whale-girl artwork</a></p>
+  <p><a href="docs/PLATFORMS.md#english">Mac / Windows</a> · <a href="docs/SETUP.md">Setup</a> · <a href="docs/MEMORY.md#english">Memory and context</a> · <a href="docs/PROMPT_REFERENCES.md#english">Prompt references</a> · <a href="docs/LIVE2D.md#english">Bring your own Live2D</a> · <a href="assets/original-design/README.md#english">Whale-girl artwork</a></p>
 </div>
 
 > [!IMPORTANT]
@@ -60,6 +60,12 @@ The overview below primarily describes the macOS version. See the platform notes
 | Web management | Persona prompts, stored memories, recall traces, context settings, speech configuration, presentation presets, and connection status. |
 
 Everyday questions should stay in conversation instead of creating engineering tasks. Task requests can be supplemented, confirmed or cancelled by voice. A normal progress query selects the most recently arranged task; listing everything requires an explicit request.
+
+## Persona prompts and community references
+
+**Improved official persona prompts and strategies for more natural conversation are still in development.** The current default prompt remains unchanged, and conversational naturalness still needs improvement. This documentation update does not replace saved user personas.
+
+If you want a different conversational style, personality or emotional response, explore community resources and adjust the prompt under **Memory and conversation → Character Prompt** in the web console, then try it in conversation. Our [references and acknowledgements](docs/PROMPT_REFERENCES.md#english) link to MaiBot, SillyTavern, ChatHaruhi, Hume, Alice_methodology, **[AI-Vtuber](https://github.com/Ikaros-521/AI-Vtuber)** and **[Open-LLM-VTuber](https://github.com/Open-LLM-VTuber/Open-LLM-VTuber)**. Thank you to their authors and contributors for sharing their work. Inclusion is a reference, not a claim of integration or validated results in AAAAGENT.
 
 ## Architecture
 

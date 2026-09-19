@@ -4,7 +4,7 @@
   <p><strong><a href="https://www.bilibili.com/video/BV1cueG6sE85/">▶ 观看完整演示 · 哔哩哔哩</a></strong></p>
   <p>会聊天、记得相处，也能把想法交给工作 Agent。</p>
   <p><strong>简体中文</strong> · <a href="README.en.md">English</a></p>
-  <p><a href="docs/PLATFORMS.md">Mac / Windows</a> · <a href="docs/SETUP.md">开始使用</a> · <a href="docs/MEMORY.md">记忆与上下文</a> · <a href="docs/LIVE2D.md">接入自己的 Live2D</a> · <a href="assets/original-design/README.md">DeepSeek 大肥鱼设计稿</a></p>
+  <p><a href="docs/PLATFORMS.md">Mac / Windows</a> · <a href="docs/SETUP.md">开始使用</a> · <a href="docs/MEMORY.md">记忆与上下文</a> · <a href="docs/PROMPT_REFERENCES.md">提示词与社区参考</a> · <a href="docs/LIVE2D.md">接入自己的 Live2D</a> · <a href="assets/original-design/README.md">DeepSeek 大肥鱼设计稿</a></p>
 </div>
 
 > [!IMPORTANT]
@@ -60,6 +60,12 @@ AAAAGENT 是一个以 macOS 为主要平台、同时提供 Windows 开发版的�
 | 网页管理 | 查看和修改角色 Prompt、记忆、召回记录、上下文设置、语音配置、表现预设及连接状态。 |
 
 日常对话不应为了“现在几点”之类的问题创建工程任务。工作流也保留语音补充、确认和取消入口；“查询任务进度”默认看最近安排的任务，明确说“所有任务”才展开全部。
+
+## 人格提示词与社区参考
+
+**更完善的官方角色提示词和拟人化优化策略仍在开发中。** 当前默认提示词保持不变，聊天自然度仍有改进空间；本次文档更新不替换用户保存的人设。
+
+如果你希望调整说话风格、角色性格或情绪回应，可以按需查阅、搜索社区方案，在网页管理页的 **记忆与对话 → 角色设定 Prompt** 中自行调整并试聊。我们整理了 [提示词参考与致谢](docs/PROMPT_REFERENCES.md)，包括 MaiBot、SillyTavern、ChatHaruhi、Hume、Alice_methodology，以及 **[AI-Vtuber](https://github.com/Ikaros-521/AI-Vtuber)** 和 **[Open-LLM-VTuber](https://github.com/Open-LLM-VTuber/Open-LLM-VTuber)**。感谢原作者与贡献者的公开分享；各项均附原始链接，列为参考不代表已集成或效果经过本项目验证。
 
 ## 它怎样工作
 
