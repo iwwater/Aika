@@ -4,7 +4,6 @@
 
 | Time | Change |
 | --- | --- |
-| 2026-09-19 14:24 | Added a top-of-page changelog and bilingual history with timestamps and one-sentence summaries of every public update. |
 | 2026-09-19 14:12 | Added persona-prompt references and AI-Vtuber credits, noting ongoing official improvements without changing the prompt. |
 | 2026-09-18 23:03 | Added web-based key, model and reference-voice setup for Mac and Windows. |
 
