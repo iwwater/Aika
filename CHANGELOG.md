@@ -6,6 +6,7 @@
 
 | 修改时间（北京时间） | 一句话说明 | 提交 |
 | --- | --- | --- |
+| 2026-09-19 19:58 | 修复 Windows 管理员进程的默认文件所有者误判，Windows 专项和发布回归在 GitHub Actions 通过。 | [0ec5193](https://github.com/phoiex/AAAAGENT/commit/0ec5193661a9b6510579d64d22ef1cee8cae1e98) |
 | 2026-09-19 19:52 | Windows 0.1.2 同步独立情绪状态与网页查询，完成旧聊天导入、自助配置和任务转交回归，并更新 Windows 文档。 | [63de75e](https://github.com/phoiex/AAAAGENT/commit/63de75e3a42ae80b2365941d9274ea1847a11443) |
 | 2026-09-19 19:15 | Mac版新增文字与近期对话的情绪推测，分别保存用户情绪、桌宠心情和消息快照，并提供网页查询。 | [14e0be5](https://github.com/phoiex/AAAAGENT/commit/14e0be53d88a4d09821e9cba6cef4703ab669093) |
 | 2026-09-19 14:12 | 补充人格提示词参考与 AI-Vtuber 致谢；拟人化优化提示词尚未完成。 | [c49c0b8](https://github.com/phoiex/AAAAGENT/commit/c49c0b88d625c3b821334da073266f2a2f64d564) |
@@ -31,6 +32,7 @@ Each public repository update is listed newest first, with one sentence per chan
 
 | Time (UTC+8) | One-sentence summary | Commit |
 | --- | --- | --- |
+| 2026-09-19 19:58 | Fixed default file-owner checks for elevated Windows processes; Windows and release suites pass on GitHub Actions. | [0ec5193](https://github.com/phoiex/AAAAGENT/commit/0ec5193661a9b6510579d64d22ef1cee8cae1e98) |
 | 2026-09-19 19:52 | Released Windows 0.1.2 with emotion state and web queries, Windows regressions for chat import, self-service setup and task dispatch, and updated documentation. | [63de75e](https://github.com/phoiex/AAAAGENT/commit/63de75e3a42ae80b2365941d9274ea1847a11443) |
 | 2026-09-19 19:15 | Added text and recent-dialogue emotion inference, separate user and companion states, frozen message snapshots and a web view on macOS. | [14e0be5](https://github.com/phoiex/AAAAGENT/commit/14e0be53d88a4d09821e9cba6cef4703ab669093) |
 | 2026-09-19 14:12 | Added persona-prompt references and AI-Vtuber credits; prompts for more natural conversation are not yet ready. | [c49c0b8](https://github.com/phoiex/AAAAGENT/commit/c49c0b88d625c3b821334da073266f2a2f64d564) |
