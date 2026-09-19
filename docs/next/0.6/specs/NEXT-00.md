@@ -1,6 +1,6 @@
 # NEXT-00 · 上游引入与 Windows 基线
 
-状态：NOT RUN。需求：N06-R01。前置：文档种子分支已建立。
+状态：AUTO_PASS（2026-09-19）。需求：N06-R01。前置：文档种子分支已建立。产物与证据见 [BASELINE](../BASELINE.md)、[SOURCE_MAP](../SOURCE_MAP.md)、[验收报告](../reports/NEXT-00_ACCEPTANCE.md)。
 
 ## 目标与边界
 
