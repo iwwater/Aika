@@ -4,8 +4,18 @@
 
 | Time | Change |
 | --- | --- |
+| 2026-09-19 19:15 | Added text and recent-dialogue emotion inference, separate user and companion states, frozen message snapshots and a web view on macOS. |
 | 2026-09-19 14:12 | Added persona-prompt references and AI-Vtuber credits, noting ongoing official improvements without changing the prompt. |
-| 2026-09-18 23:03 | Added web-based key, model and reference-voice setup for Mac and Windows. |
+
+## Planned development
+
+Local model integration is being planned:
+
+| Capability | Planned approach | Status |
+| --- | --- | --- |
+| Dialogue | Local dialogue models through Ollama | Planned |
+| Speech synthesis | Local speech synthesis with GPT-SoVITS | Planned |
+| Emotion recognition | Small Qwen-Omni family models for local audio/video emotion recognition | Planned |
 
 ---
 
@@ -58,13 +68,13 @@ New: **Memory → Import past chats** imports explicitly selected local history 
 
 ## Features
 
-The overview below primarily describes the macOS version. See the platform notes above for Windows limitations.
+The overview below primarily describes the macOS version. The new emotion states, message snapshots and emotion page have not yet been ported to or validated on Windows; its current source is unchanged in this update.
 
 | Capability | What the code provides |
 | --- | --- |
 | Voice conversation | Push-to-talk, live level feedback, interruption by new input, and separate transcription and dialogue services. |
 | Local wake detection | Opt-in keyword detection, wake-word removal, and silence-based recording completion. Compatible local weights must be supplied separately. |
-| Emotion-aware responses | Limited classification of video frames; audio emotion is used only when the ASR returns a valid annotation. Missing evidence remains missing. |
+| Emotion-aware responses | Text and recent dialogue inform separate user and companion states, alongside available audio/video observations; message snapshots and sources are visible in the web console. Unknown intensity remains empty. |
 | Speech and animation | TTS playback drives lip sync; thinking, work and interaction states feed character presentation. Available motions depend on the model. |
 | WeChat | Text and voice input; configurable text or audio-file replies. Native voice bubbles are currently unreliable. |
 | Agent forwarding | Harness for appropriate smaller search/organization jobs, Codex for planning and engineering. Explicit executor choices are preserved and dispatch requires confirmation. |
@@ -103,7 +113,7 @@ DeepSeek handles text dialogue and structured processing. Dedicated ASR supplies
 
 1. **Recent conversation comes first.** Within the input budget, the assembler selects a contiguous suffix of complete turns before adding summaries and relevant long-term memory.
 2. **Maintenance runs in the background.** Ordinary memory-processing failures should not block subsequent chat. Forgetting and correction requests have separate privacy safeguards.
-3. **Emotion keeps its provenance.** Emotional observations retain their sources and can influence responses and recall alongside importance and activation.
+3. **Emotion keeps its provenance.** Each message freezes its observation and the separate user/companion states at that time. Recent turns and relevant memories take priority; emotion provides supporting context. See **Memory → Current emotion**. The existing long-term memory formula is unchanged.
 4. **Project details are retrieved on demand.** Project names, short abstracts and references stay separate from full task bodies, receipts and execution history.
 5. **Users can inspect and edit.** The web interface exposes source records, edits, selected recall parameters, actual recall traces and failed processing items.
 

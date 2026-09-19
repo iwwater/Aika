@@ -18,6 +18,8 @@
 
 不要把 `windows/` 内容覆盖到根目录，两个版本分别保留自己的依赖锁文件、构建和启动方式。仓库中的鲸鱼娘资源包含静态设计稿与基础分层，模型绑定仍在制作中。
 
+本次情绪更新仅进入 Mac 源码：文字/近期对话推测、独立用户与桌宠状态、消息快照和网页查询。Windows 尚待移植与验证，现有 Windows 源码保持。
+
 ## Windows 当前边界
 
 Windows 包提供 Electron 宿主、窗口交互、本地预览、平台路径及权限适配。离线预览会回显输入；接入真实模型需要按安装说明配置服务。
@@ -42,6 +44,8 @@ Windows 包提供 Electron 宿主、窗口交互、本地预览、平台路径�
 <a id="english"></a>
 
 ## English
+
+The emotion update is included in the Mac source only: text/recent-dialogue inference, independent user and companion states, message snapshots and a web view. Windows porting and validation remain pending; its current source is unchanged.
 
 **macOS is currently the most complete version. Windows is still being improved. Please report problems through this repository's Issues, where we will follow up.**
 
