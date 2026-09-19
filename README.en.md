@@ -4,6 +4,7 @@
 
 | Time | Change |
 | --- | --- |
+| 2026-09-19 19:52 | Released Windows 0.1.2 with emotion state and web queries, Windows regressions for chat import, self-service setup and task dispatch, and updated documentation. |
 | 2026-09-19 19:15 | Added text and recent-dialogue emotion inference, separate user and companion states, frozen message snapshots and a web view on macOS. |
 | 2026-09-19 14:12 | Added persona-prompt references and AI-Vtuber credits; prompts for more natural conversation are not yet ready. |
 
