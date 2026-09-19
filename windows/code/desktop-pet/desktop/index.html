@@ -1,0 +1,17 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'self' pet:; script-src 'self' pet: 'wasm-unsafe-eval'; style-src 'self' pet:; img-src 'self' pet: blob:; connect-src 'self' pet: blob:; media-src blob:; worker-src blob:"><title>AAAAGENT</title><link rel="stylesheet" href="style.css"></head><body>
+<main id="pet"><div id="character"><canvas id="model" aria-label="AAAAGENT桌宠，点击聊天，拖动移动"></canvas><span id="thinking-indicator" role="status" aria-live="polite" hidden><span class="thinking-orbit" aria-hidden="true"><span>✦</span></span><span>想一想…</span></span><span id="loading">AAAAGENT正在过来…</span></div><button id="work-badge" type="button" aria-live="polite" aria-controls="work-card" aria-expanded="false" hidden></button><button id="invitation" hidden></button><button id="model-resize" type="button" aria-label="拖动调整模型大小；方向键也可调整" data-resizing="false"></button><div id="capture-feedback" hidden aria-label="语音输入状态"><span id="capture-connecting" role="status">正在连接语音</span><span id="capture-wave" hidden><svg viewBox="0 0 160 24" role="img" aria-label="实时输入音量"><path id="capture-wave-path" d=""></path></svg></span></div><button id="open" aria-label="打开对话" aria-controls="drawer" aria-expanded="false">聊一会儿</button></main>
+<section id="drawer" hidden aria-label="对话面板">
+ <header><div class="panel-title"><span class="presence-dot" aria-hidden="true"></span><strong>青梅竹马</strong></div><button id="management" type="button" title="打开网页控制台" aria-label="打开网页控制台">控制台</button><div id="display-controls" role="group" aria-label="展示模式"><button id="view-full" type="button" aria-pressed="true">全身</button><button id="view-half" type="button" aria-pressed="false">半身</button></div><button id="close" aria-label="收起对话">×</button></header>
+ <p id="management-notice" role="status" hidden></p>
+ <p id="status" role="status">正在连接…</p>
+ <section id="conversation" aria-label="对话与任务内容" tabindex="0">
+ <div id="reply" role="log" aria-live="polite" aria-label="聊天记录与开场"></div>
+ <section id="work-card" aria-label="工程转交与回执" hidden></section>
+ </section>
+ <section id="work-actions" aria-label="任务操作" hidden></section>
+ <form id="form"><label class="sr-only" for="text">想说的话</label><textarea id="text" rows="1" autocomplete="off" placeholder="想说些什么…"></textarea><button type="submit" id="send" aria-label="发送">↑</button></form>
+ <footer><button id="voice">开始语音</button><button id="stop" hidden>停止</button><span id="hint">语音使用麦克风与摄像头</span><button id="quit" aria-label="退出桌宠">退出</button></footer>
+ <div id="hotkey-settings"><span>输入框外按住发言 · <b id="hotkey-value">未绑定</b></span><button id="hotkey-bind" type="button">设置按键</button><button id="hotkey-clear" type="button">清除</button><span class="input-tip">Enter 发送 · Shift + Enter 换行</span></div>
+</section>
+<dialog id="work-records-dialog" aria-labelledby="work-records-title"><header><h2 id="work-records-title">工程记录</h2><button id="work-records-close" type="button" aria-label="关闭工程记录">×</button></header><div id="work-records-content" tabindex="0" aria-label="任务问答与执行详情"></div></dialog>
+<script src="vendor/cubism/Core/live2dcubismcore.min.js"></script><script type="module" src="build/renderer.js"></script></body></html>

@@ -1,0 +1,49 @@
+AAAAGENT 非商业使用及署名许可 1.0
+AAAAGENT Noncommercial and Attribution License 1.0
+
+Copyright (c) 2026 AAAAGENT 项目作者及各自贡献者。
+Copyright (c) 2026 the AAAAGENT authors and respective contributors.
+项目 / Project: https://github.com/phoiex/AAAAGENT
+
+中文正文
+
+1. 适用范围
+本许可仅适用于本项目作者有权许可、且未另附许可的原创代码、文档及其他原创内容。第三方代码、依赖、模型、SDK、商标、角色、设计参考、音频和视频中的第三方素材，分别遵循各自权利人的许可与权利要求。本许可不变更第三方许可，不授予作者无权授予的权利，也不撤销已单独授予的许可。
+
+2. 允许的非商业使用
+在遵守全部条件的前提下，允许为非商业目的查看、运行、复制、研究、修改、引用及分发适用内容。分发原作或修改版本时，应附带本许可，保留原有版权、作者、来源及第三方声明；其中包含的本项目原创内容仍受本许可约束。
+
+3. 禁止任何形式的商业用途
+不授予任何商业使用权。禁止直接或间接为商业目的使用适用内容，包括但不限于售卖、付费托管、订阅服务、商业产品或服务集成、商业宣传及引流、企业商业运营或内部业务使用，以及其他以营利、商业收益或商业优势为目的的使用。免费提供、改名、二次包装或修改代码，不会免除本限制。不得从本许可推断存在商业授权。
+
+4. 使用、引用与署名
+使用、引用、转载、改编或分发适用内容时，必须注明“AAAAGENT”、保留原作者及相关贡献者署名，并提供项目链接 https://github.com/phoiex/AAAAGENT 。
+在对外提供的应用、网页、演示、视频、文章、论文或衍生作品中，应在关于页面、说明、片尾、引用或参考文献等合理且可见的位置标注来源和本许可；修改过的内容须说明已作修改。仅本地个人使用时，保留随内容提供的版权及来源说明即可，无须公开个人使用行为。
+不得删除或隐藏原有版权、来源和许可声明；不得暗示原作者为你的修改、作品或活动背书。第三方素材还必须满足其各自独立的署名要求。
+建议引用格式：AAAAGENT，phoiex 及项目贡献者，https://github.com/phoiex/AAAAGENT，注明使用的版本或提交及访问日期。
+
+5. 保留权利与保证范围
+除本许可明确授予的非商业权利外，其他权利均保留。项目按现状提供，在适用法律允许的范围内不提供保证；作者和贡献者在法律允许的范围内不对使用或无法使用本项目导致的损失承担责任。本许可不限制适用法律明确允许、无须获得许可的使用。
+
+本项目属于限制商业使用的源码公开项目，本许可不是 MIT、Apache 或 OSI 批准的开源许可。中英文如有差异，以中文正文为准。
+
+English translation
+
+1. Scope
+This license covers only original code, documentation and other original material that the project authors have the right to license and that carries no separate license. Third-party code, dependencies, models, SDKs, trademarks, characters, artwork references and third-party material appearing in audio or video retain their respective licenses and rights. This license does not change third-party terms, grant rights the authors do not own, or revoke permissions separately granted.
+
+2. Permitted noncommercial use
+You may view, run, copy, study, modify, quote and redistribute covered material solely for noncommercial purposes, subject to all conditions below. Copies and modified versions must include this license and retain copyright, authorship, source and third-party notices. Covered original material within a derivative remains subject to this license.
+
+3. All commercial use is prohibited
+No commercial rights are granted. Direct or indirect commercial use is prohibited, including sale, paid hosting, subscriptions, integration into commercial products or services, commercial promotion or lead generation, commercial business operations or internal business use, and other uses intended for profit, commercial benefit or commercial advantage. Providing something for free, renaming it, repackaging it or modifying the code does not remove this restriction. No commercial permission may be inferred from this license.
+
+4. Attribution for use and citation
+When using, quoting, reproducing, adapting or redistributing covered material, identify the project as AAAAGENT, retain the original authors' and relevant contributors' attribution, and provide https://github.com/phoiex/AAAAGENT .
+For publicly provided applications, websites, demonstrations, videos, articles, papers or derivative works, credit the source and license in a reasonably visible place such as an About page, description, credits, citation or references. Identify modifications. For private local personal use, retaining the supplied copyright and source notices is sufficient; you do not have to disclose your private use.
+Do not remove or obscure copyright, source or license notices, and do not imply endorsement. Third-party materials also require their own attribution. Suggested citation: AAAAGENT, phoiex and project contributors, https://github.com/phoiex/AAAAGENT, including the version or commit and access date.
+
+5. Reserved rights and warranty
+All rights not expressly granted are reserved. The project is provided as is, without warranties to the extent permitted by applicable law. Authors and contributors disclaim liability to the extent permitted by law. Uses that applicable law permits without a license remain unaffected.
+
+This is a noncommercial source-available project. This custom license is not MIT, Apache or an OSI-approved open-source license. The Chinese text controls if the translations differ.

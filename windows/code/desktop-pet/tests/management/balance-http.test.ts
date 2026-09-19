@@ -1,0 +1,20 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {join} from 'node:path';
+import {fixture} from './helpers.js';
+import {FinanceCredentials} from '../../management/balance-credentials.js';
+import {ProviderBalances} from '../../management/balances.js';
+import {ManagementSettingsStore} from '../../management/settings-store.js';
+import {startManagementServer} from '../../management/server.js';
+import type {ManagementMemoryPort,ManagementSnapshot} from '../../contracts/management.js';
+test('actual HTTP balance/config routes require auth and origin; never return submitted secrets or block snapshot',async t=>{
+ const f=await fixture(t);let calls=0;const balances=new ProviderBalances({credentials:new FinanceCredentials(f.c.projectRoot),deepseekKey:async()=>null,fetch:async()=>{calls++;return new Response(JSON.stringify({Success:true,Data:{Currency:'CNY',AvailableCashAmount:'13.00'}}));}});
+ const settings=await ManagementSettingsStore.open(join(f.c.projectRoot,'settings.json'),f.c),server=await startManagementServer({uiRoot:'management/ui',settings,balances,memory:{} as ManagementMemoryPort,snapshot:()=>({balances:balances.snapshot()}) as ManagementSnapshot});t.after(async()=>{balances.close();await server.close();});
+ const path=server.origin+'/api/balances/aliyun-credentials',body=JSON.stringify({expectedRevision:0,accessKeyId:'synthetic-key-id',accessKeySecret:'synthetic-private-secret'}),headers={Authorization:'Bearer '+server.token,Origin:server.origin,'Content-Type':'application/json'};
+ assert.equal((await fetch(path,{method:'PUT',body,headers:{'Content-Type':'application/json'}})).status,401);
+ assert.equal((await fetch(path,{method:'PUT',body,headers:{...headers,Origin:'https://foreign.invalid'}})).status,403);assert.equal(calls,0);
+ const result=await fetch(path,{method:'PUT',body,headers});assert.equal(result.status,200);const text=await result.text();assert.ok(!text.includes('synthetic-'));assert.equal(result.headers.get('cache-control'),'no-store');await balances.settled();assert.equal(calls,1);
+ for(let i=0;i<6;i++)assert.equal((await fetch(server.origin+'/api/snapshot',{headers})).status,200);assert.equal(calls,1);
+ assert.equal((await fetch(path,{headers})).status,404);
+ const bad=await fetch(path,{method:'PUT',headers,body:JSON.stringify({expectedRevision:1,accessKeyId:'bad\nprivate',accessKeySecret:'private'})});assert.equal(bad.status,400);assert.ok(!(await bad.text()).includes('private'));
+});
