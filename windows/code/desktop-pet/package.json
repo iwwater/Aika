@@ -10,6 +10,8 @@
     "build": "tsc -p tsconfig.json && node tools/build-wechat.mjs",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node tools/run-tests.mjs",
+    "test:next": "npm run build && node tools/run-tests.mjs next",
+    "test:next:real": "npm run build && node tools/run-tests.mjs next-real",
     "test:release": "npm run build && node tools/run-tests.mjs release",
     "build:wake": "node tools/build-wake.mjs",
     "build:desktop": "node desktop/build-web.mjs && node desktop/build-presentation-preview.mjs",

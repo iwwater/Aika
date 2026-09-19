@@ -17,6 +17,22 @@ else if (group === 'release') {
   await collect('dist/tests/management', name => name === 'memory-import.test.js');
 } else if (group === 'default') {
   for (const dir of ['memory', 'providers']) await collect('dist/tests/' + dir, name => name.endsWith('.test.js'));
+} else if (group === 'next') {
+  await collect('dist/tests/next', name => name.endsWith('.test.js'));
+  if (!paths.length) {
+    console.error('NEXT contract tests missing after build; refusing a passWithNoTests run.');
+    process.exit(2);
+  }
+} else if (group === 'next-real') {
+  if (process.env.PET_NEXT_REAL !== '1') {
+    console.error('NEXT-REAL BLOCKED: real-service replay requires PET_NEXT_REAL=1 plus authorized credentials and recorded fixtures. Fixture tests (npm run test:next) do not substitute for real replay.');
+    process.exit(2);
+  }
+  await collect('dist/tests/next/real', name => name.endsWith('.test.js')).catch(() => {});
+  if (!paths.length) {
+    console.error('NEXT-REAL BLOCKED: no real replay cases are registered yet (see docs/next/0.6/CORPUS_MANIFEST.md).');
+    process.exit(2);
+  }
 } else throw Error('Unknown test group');
 const child = spawn(process.execPath, ['--test', ...paths], { stdio: 'inherit', windowsHide: true });
 child.on('error', error => { console.error(error.message); process.exitCode = 1; });

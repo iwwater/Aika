@@ -1,6 +1,6 @@
 # NEXT-01 · 行为语料与契约测试基座
 
-状态：NOT RUN。需求：N06-R02。前置：NEXT-00 源码映射与基线通过。
+状态：AUTO_PASS（2026-09-19）。需求：N06-R02。前置：NEXT-00 源码映射与基线通过。产物与证据见 [CORPUS_MANIFEST](../CORPUS_MANIFEST.md)、[CONTRACT_MAP](../CONTRACT_MAP.md)、[验收报告](../reports/NEXT-01_ACCEPTANCE.md)。
 
 ## 边界与接口
 
