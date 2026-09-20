@@ -3,11 +3,14 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { ManagementError } from '../contracts/management.js';
+import { ManagementError, type ProviderSlot } from '../contracts/management.js';
 import { DEFAULT_CHARACTER_PROMPTS } from '../companion/prompts.js';
 import { COMPANION_ID } from '../contracts/character.js';
 import type { TurnScope } from '../contracts/index.js';
 import type { SqliteMemoryStore } from '../memory/sqlite-store.js';
+
+/** The seven configurable provider slots; mirrored from the management contract (kept local to avoid a settings.ts cycle). */
+const PROVIDER_SLOTS: readonly ProviderSlot[] = ['asr', 'dialogue', 'memory_turn', 'summary', 'perception', 'tts', 'admission'];
 
 export interface AikaProfile {
   readonly schemaVersion: 1;
@@ -19,6 +22,8 @@ export interface AikaProfile {
 export interface AikaProviderConfig {
   readonly id: string;
   readonly protocol: 'openai-compatible' | 'gemini';
+  /** Optional slot binding; when present the composition root routes the named slot through this provider. */
+  readonly slot?: ProviderSlot;
   readonly endpoint: string;
   readonly model: string;
   /** Reference into the credential store; the secret itself never enters this JSON. */
@@ -64,6 +69,7 @@ function providerProblem(value: unknown): string | null {
   const raw = value as Record<string, unknown>;
   if (typeof raw.id !== 'string' || !raw.id.trim()) return 'id 不能为空';
   if (raw.protocol !== 'openai-compatible' && raw.protocol !== 'gemini') return 'protocol 只接受 openai-compatible 或 gemini';
+  if ('slot' in raw && raw.slot !== undefined && (typeof raw.slot !== 'string' || !PROVIDER_SLOTS.includes(raw.slot as ProviderSlot))) return 'slot 必须是七个供应商槽之一';
   if (typeof raw.endpoint !== 'string' || !/^https:\/\//.test(raw.endpoint)) return 'endpoint 必须是 https URL';
   if (typeof raw.model !== 'string' || !raw.model.trim()) return 'model 不能为空';
   if (typeof raw.credentialRef !== 'string' || !raw.credentialRef.trim()) return 'credentialRef 不能为空';
@@ -98,6 +104,8 @@ export class AikaProfileStore {
     return new AikaProfileStore(file, state);
   }
   revision(): number { return this.state?.revision ?? 0; }
+  /** No held resources; kept for symmetry with the other stores. */
+  close(): void {}
   /** Validates stored bytes on read; a foreign schemaVersion fails loudly here instead of at conversation time. */
   loadProfile(): AikaProfile {
     if (!this.state) return defaultAikaProfile();

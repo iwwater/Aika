@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve } from 'node:path';
 import { isQwenAudioTtsModel } from '../providers/qwen-audio-tts.js';
+import { isAllowedEndpoint } from '../providers/slot-registry.js';
 
 export const TRIAL_CONFIG_VERSION = 1;
 export type TrialOperation = 'asr' | 'dialogue' | 'memory_turn' | 'summary' | 'perception' | 'tts' | 'admission';
@@ -116,13 +117,11 @@ export function validateTrialConfiguration(value: unknown): TrialConfiguration {
     if (!m) return fail('实际模型未配置。');
     if (typeof m.model !== 'string' || !m.model.trim() || !positive(m.reservationMicros) || (!unlimited&&m.reservationMicros > (c.purpose === 'user-trial' ? c.limitMicros! : c.phaseLimitMicros))) fail('实际模型或调用预留未配置。');
     if (typeof m.credentialFile !== 'string' || !isAbsolute(m.credentialFile) || within(c.projectRoot, m.credentialFile)) fail('凭据须使用项目外的受限文件。');
-    const expected = m.provider === 'deepseek' ? 'https://api.deepseek.com/chat/completions'
-      : m.provider === 'dashscope' ? operation === 'tts' ? isQwenAudioTtsModel(m.model)
-        ? 'https://dashscope.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer'
-        : 'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation'
-        : 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions' : null;
-    if (!expected || m.endpoint !== expected) fail('模型服务地址不在已登记供应商范围。');
-    if (operation === 'memory_turn' && m.provider !== 'deepseek') fail('试用严格语义记忆须明确配置DeepSeek，不回退旧维护器。');
+    // Endpoint may be any HTTPS origin or an explicit loopback HTTP; the key never reaches a redirected
+    // other host. This removes the per-supplier endpoint white-list so a custom endpoint is accepted.
+    if (!isAllowedEndpoint(m.endpoint)) fail('模型服务地址必须是 HTTPS 或显式回环 HTTP，不能交给重定向后的其他主机。');
+    // Memory no longer requires a specific vendor: the strict plan-parsing, source validation and commit
+    // semantics are preserved in the strict memory provider; only the model-call adapter is swapped.
     if (['asr', 'perception', 'tts'].includes(operation) && m.provider !== 'dashscope') fail('感知和语音需要已登记的DashScope配置。');
     if (['dialogue', 'summary', 'admission'].includes(operation) && m.provider === 'deepseek'
       && (m.model !== 'deepseek-flash' || m.inputMicrosPerToken !== 2 || m.outputMicrosPerToken !== 8

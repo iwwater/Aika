@@ -28,16 +28,22 @@ test('saved settings remain pending until reopen, reject stale writers and suppo
   const afterRollback = await ManagementSettingsStore.open(file, f.c); assert.deepEqual(afterRollback.effective, original.saved);
 });
 
-test('unknown models, forged tariffs, credentials and unsupported parameters cannot bypass registration', async t => {
+test('custom models accepted on allowed endpoints; capability and credential boundaries still enforced', async t => {
   const f = await fixture(t), original = defaultManagedSettings(f.c);
+  // Semantic change (FIX61-01): a model name not present in any catalog is now accepted on a supported
+  // HTTPS endpoint with a valid credential ref. The old "unknown model rejected" boundary is replaced by
+  // capability + budget boundaries below.
+  const custom = structuredClone(original);
+  custom.providers.dialogue.model = 'my-custom-model-2026';
+  custom.providers.dialogue.endpoint = 'https://my-llm.example.com/v1/chat/completions';
+  validateManagedSettings(custom, f.c);
   for (const mutate of [
-    (v: typeof original) => { v.providers.dialogue.model = 'unknown-cheap-model'; },
-    (v: typeof original) => { v.providers.dialogue.outputMicrosPerToken = 0.0001; },
     (v: typeof original) => { v.providers.dialogue.credentialRef = '/etc/passwd'; },
-    (v: typeof original) => { v.providers.dialogue.endpoint = 'https://attacker.invalid'; },
+    (v: typeof original) => { v.providers.dialogue.endpoint = 'http://attacker.invalid'; },
+    (v: typeof original) => { v.providers.dialogue.inputMicrosPerToken = -1; },
     (v: typeof original) => { v.providers.summary.temperature = 1; },
     (v: typeof original) => { v.providers.tts.inputTokenLimit = -1; },
-    (v: typeof original) => { delete v.providers.memory_turn.thinking; },
+    (v: typeof original) => { v.providers.dialogue.thinking = 'high'; },
   ]) {
     const value = structuredClone(original); mutate(value);
     assert.throws(() => validateManagedSettings(value, f.c), { code: 'invalid_request' });
@@ -78,9 +84,15 @@ test('usable choices validate; MiniMax setup presets without registered voices a
   const adapter = availableAdapters(f.c).find(a => a.id === 'qwen-audio-tts')!;
   const changed = structuredClone(original);
   changed.providers.tts = { ...adapter.choices![0]!.configuration, credentialRef: original.providers.tts.credentialRef };
-  for (const patch of [{ voice: 'Cherry' }, { language: 'Chinese' }, { reservationMicros: 100000 }, { characterMicros: 80 }]) {
+  // Semantic change (FIX61-01): billing fields are now user-controlled, so a lowered reservation or
+  // character tariff is accepted at the management boundary; only capability mismatches are rejected.
+  for (const patch of [{ voice: 'Cherry' }, { language: 'Chinese' }]) {
     const forged = structuredClone(changed); Object.assign(forged.providers.tts, patch);
     assert.throws(() => validateManagedSettings(forged, f.c), { code: 'invalid_request' });
+  }
+  for (const patch of [{ reservationMicros: 100000 }, { characterMicros: 80 }]) {
+    const forged = structuredClone(changed); Object.assign(forged.providers.tts, patch);
+    validateManagedSettings(forged, f.c);
   }
 });
 

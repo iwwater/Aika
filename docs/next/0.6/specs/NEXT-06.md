@@ -1,6 +1,6 @@
 # NEXT-06 · 基础语音与无人值守回放
 
-状态：NOT RUN。需求：N06-R07。前置：NEXT-04、05；真实路径按 NEXT-00 盘点。
+状态：AUTO_PASS（2026-09-20；06-A/B/C/D/G PASS，06-E/06-F 真实回放同日经用户授权恢复并通过，见报告 §6）。需求：N06-R07。前置：NEXT-04、05；真实路径按 NEXT-00 盘点。证据见 [验收报告](../reports/NEXT-06_ACCEPTANCE.md)；桥接在 `core/speech-bridge.ts`。
 
 ## 边界与接口
 

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import{readFile,writeFile}from'node:fs/promises';
+import{readFile,writeFile,rm}from'node:fs/promises';
+import{existsSync}from'node:fs';
 import{createHash}from'node:crypto';
 import{fixture}from'../management/helpers.js';
 import{validateTrialConfiguration,readActiveTrialConfiguration}from'../../app/trial-config.js';
@@ -15,7 +16,7 @@ test('unlimited is explicit, rejects disguised finite limits and keeps nonfinanc
  const f=await fixture(t),candidate={...f.c,budgetMode:'unlimited',limitMicros:null};
  assert.equal(validateTrialConfiguration(candidate).limitMicros,null);
  assert.doesNotThrow(()=>validateTrialConfiguration({...candidate,reviewedUnknownCosts:[{operationId:'historical',auditFile:'/old-project/audit.json'}]}),'historical financial audit metadata cannot gate unlimited mode');
- for(const bad of [{...candidate,budgetMode:undefined},{...candidate,limitMicros:60000000},{...candidate,purpose:'smoke-text'},{...candidate,memory:{...candidate.memory,mode:'legacy'}},{...candidate,models:{...candidate.models,dialogue:{...candidate.models.dialogue,endpoint:'https://unknown.invalid'}}}])assert.throws(()=>validateTrialConfiguration(bad));
+ for(const bad of [{...candidate,budgetMode:undefined},{...candidate,limitMicros:60000000},{...candidate,purpose:'smoke-text'},{...candidate,memory:{...candidate.memory,mode:'legacy'}},{...candidate,models:{...candidate.models,dialogue:{...candidate.models.dialogue,endpoint:'http://unknown.invalid'}}}])assert.throws(()=>validateTrialConfiguration(bad),'custom HTTPS endpoints are allowed, but a non-loopback HTTP host is still rejected');
  assert.doesNotThrow(()=>validateTrialConfiguration({...candidate,models:{...candidate.models,memory_turn:{...candidate.models.memory_turn,reservationMicros:1}}}),'estimate sufficiency is not a financial gate in unlimited mode');
  assert.throws(()=>validateTrialConfiguration({...f.c,models:{...f.c.models,memory_turn:{...f.c.models.memory_turn,reservationMicros:1}}}),'bounded historical modes retain their constraints');
 });
@@ -44,4 +45,26 @@ test('unlimited ledger ignores financial scopes/headroom but rejects duplicate o
  await assert.rejects(ledger.reserve('job','synthetic',1),/already reserved/);await assert.rejects(ledger.reserve('bad','synthetic',NaN),/Invalid call reservation/);
  await ledger.settle('job',100000000);assert.equal((await ledger.snapshot()).blocked,false);
  await assert.rejects(new EvaluationBudget(file,f.c.budgetBatchId,60000000).reserve('legacy','synthetic',1),/mismatch/);
+});
+
+test('unlimited authorizes without a budget ledger yet still enforces stop, cancel and config consistency',async t=>{
+ const f=await fixture(t),config=validateTrialConfiguration({...f.c,budgetMode:'unlimited',limitMicros:null});
+ const bytes=JSON.stringify(config);await writeFile(f.configFile,bytes);await writeFile(f.activationFile,JSON.stringify({version:1,product:'companion-v1',phaseId:config.phaseId,status:'active',configSha256:createHash('sha256').update(bytes).digest('hex')}));
+ // No budget ledger file exists; unlimited must not depend on it (FIX61-01 01-C).
+ await rm(config.budgetFile,{force:true});
+ const authorizer=new TrialAuthorizer(config,f.configFile,f.activationFile),scope={characterId:'companion' as const,sessionId:'test',turnId:'test',generation:1};
+ const request={operation:'memory_turn' as const,scope,model:config.models.memory_turn.model,endpoint:config.models.memory_turn.endpoint};
+ const permit=await authorizer.authorize(request,new AbortController().signal);
+ await permit.settle({status:'success',requestId:'synthetic',usage:{prompt_tokens:10,completion_tokens:10}});
+ assert.equal(existsSync(config.budgetFile),false,'unlimited call with no ledger must not create one');
+ // A cancelled signal is still rejected (FIX61-01 01-C keeps cancellation).
+ const fresh=new TrialAuthorizer(config,f.configFile,f.activationFile),controller=new AbortController();controller.abort();
+ await assert.rejects(fresh.authorize(request,controller.signal),/abort/i);
+ // A changed configuration file is still rejected (endpoint/config consistency preserved); this must run
+ // before the stop below because it rewrites the config file out of sync with the activation.
+ await writeFile(f.configFile,JSON.stringify({...config,phaseId:'local-trial-other'}));
+ await assert.rejects(new TrialAuthorizer(config,f.configFile,f.activationFile).authorize(request,new AbortController().signal),/配置已变化|configuration changed/);
+ // An explicit stop remains effective (FIX61-01 01-C keeps start-stop).
+ await authorizer.stop('explicit_user_stop');
+ await assert.rejects(authorizer.authorize(request,new AbortController().signal),/stopped/);
 });

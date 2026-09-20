@@ -1,6 +1,6 @@
 # NEXT-09 · 版本末尾人工验收
 
-状态：NOT RUN。需求：N06-R10。前置：NEXT-08 AUTO_PASS。
+状态：MANUAL_PENDING（2026-09-20 候选就绪，待用户验收）。需求：N06-R10。前置：NEXT-08 AUTO_PASS（已达成）。用户操作清单见 [USER_ACCEPTANCE](../USER_ACCEPTANCE.md)。
 
 ## 边界
 

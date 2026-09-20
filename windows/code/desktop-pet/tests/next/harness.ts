@@ -123,3 +123,20 @@ export async function tempStore(prefix = 'next-contract-'): Promise<TempStore> {
   const dir = await mkdtemp(join(tmpdir(), prefix));
   return { filename: resolve(dir, 'companion.sqlite'), cleanup: () => rm(dir, { recursive: true, force: true }) };
 }
+
+/** Minimal text-mode DialoguePorts: only the dialogue provider behaves; everything else refuses. */
+export function offlinePorts(reply: (request: DialogueRequest) => Promise<DialogueReply>): DialoguePorts {
+  return {
+    outputMode: 'text',
+    perception: { perceive: async () => { throw new Error('unused'); } },
+    dialogue: { reply },
+    tts: { synthesize: async () => { throw new Error('unused'); } },
+    playback: { play: async () => {}, stop: async () => {} },
+    memory: {
+      context: async scope => ({ scope, characterPrompt: '', recent: [], summary: '', memories: [], perception: null, inputTokenBudget: 100 }),
+      append: async () => {},
+      maintain: async () => []
+    },
+    mediaStore: { put: async () => { throw new Error('unused'); }, read: async () => { throw new Error('unused'); }, releaseScope: async () => {} }
+  };
+}

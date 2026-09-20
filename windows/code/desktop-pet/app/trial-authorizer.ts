@@ -99,21 +99,41 @@ export class TrialAuthorizer implements CallAuthorizer {
       if (characters === null || model.characterMicros === undefined) throw new Error('Trial TTS requires its actual character bound');
       reservation = Math.max(reservation, Math.ceil(characters * model.characterMicros));
     }
+    // Ledger availability is captured here and reused by settle: unlimited mode records accounting
+    // only when a valid ledger is already present, so a missing ledger never blocks the call.
+    let ledgerAvailable = false;
     await this.serialized(async () => {
       signal.throwIfAborted();
       if (this.halted) throw new Error('Trial is stopped');
+      if (this.configuration.budgetMode === 'unlimited') {
+        // Unlimited mode has no price/budget-ledger dependency: a missing or malformed ledger is
+        // tolerated, but an existing valid ledger is still used for accounting. Stop/cancel, endpoint
+        // and config consistency are enforced above this block.
+        try {
+          const state = JSON.parse(await readFile(this.configuration.budgetFile, 'utf8'));
+          if (state.batchId === this.configuration.budgetBatchId && state.limitMicros === null && Array.isArray(state.entries)) {
+            ledgerAvailable = true;
+            await this.budget.reserve(id, request.model, reservation, undefined, 0);
+          }
+        } catch { ledgerAvailable = false; }
+        return;
+      }
       // A missing original ledger must not silently create an empty account under an existing allowance.
       const state = JSON.parse(await readFile(this.configuration.budgetFile, 'utf8'));
       if (state.batchId !== this.configuration.budgetBatchId || state.limitMicros !== this.configuration.limitMicros || !Array.isArray(state.entries)) throw new Error('Original shared trial ledger is unavailable');
+      ledgerAvailable = true;
       if (this.configuration.purpose !== 'user-trial') await assertReviewedUnknownCosts(state.entries, this.configuration);
       if (this.configuration.purpose !== 'user-trial' && state.entries.filter((entry: { operationId: string }) => entry.operationId.startsWith(`${prefix}${operation}:`)).length >= (this.configuration.operationLimits[operation] ?? 0)) throw new Error('Trial operation call limit reached');
       await this.budget.reserve(id, request.model, reservation, this.configuration.purpose === 'user-trial' ? undefined : { operationIdPrefix: prefix,
         limitMicros: this.configuration.phaseLimitMicros, maxCalls: this.configuration.maxCalls },
-        this.configuration.budgetMode!=='unlimited'&&this.configuration.purpose==='user-trial'&&['memory_turn','summary'].includes(operation)
+        this.configuration.purpose==='user-trial'&&['memory_turn','summary'].includes(operation)
           ? ['admission','dialogue','tts','perception','asr'].reduce((total,slot)=>total+(this.configuration.models[slot as TrialOperation]?.reservationMicros??0),0):0);
     });
     return { settle: outcome => this.serialized(async () => {
       const actual = estimateTrialMicros(model, operation, outcome);
+      // Unlimited mode keeps no ledger when none is present; an unknown cost stays null and is never
+      // fabricated as zero. Bounded mode still records and enforces its reservations.
+      if (!ledgerAvailable) return;
       await this.budget.settle(id, actual);
       if (this.configuration.budgetMode!=='unlimited'&&(actual !== null && actual > reservation || (this.configuration.purpose === 'smoke-text' && (actual === null || outcome.status !== 'success'))))
         await this.stop(actual === null ? 'unknown_cost' : actual > reservation ? 'reservation_exceeded' : 'provider_failure');

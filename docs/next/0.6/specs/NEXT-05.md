@@ -1,6 +1,6 @@
 # NEXT-05 · 最小 Chat Timeline
 
-状态：NOT RUN。需求：N06-R06。前置：NEXT-04。
+状态：AUTO_PASS（2026-09-20）。需求：N06-R06。前置：NEXT-04。产物与证据见 [验收报告](../reports/NEXT-05_ACCEPTANCE.md)；实现为 `management/aika-timeline.ts`。
 
 ## 边界与接口
 

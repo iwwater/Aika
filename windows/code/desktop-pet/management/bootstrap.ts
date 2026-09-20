@@ -22,6 +22,7 @@ import { startManagementServer } from './server.js';
 import type {PendingMemoryManagement} from './pending-memory.js';
 import {accountingSnapshot} from './accounting.js';
 import { SqliteProjectIndex } from '../projects/sqlite-project-index.js';
+import { restrictPrivatePathSync } from '../core/platform-files.js';
 import { homedir } from 'node:os';
 import { HarnessForwarding } from '../harness/forwarding.js';
 import { ForwardReceipts } from '../harness/receipts.js';
@@ -77,6 +78,8 @@ export async function startRuntimeManagement(base: TrialConfiguration, configFil
   try {
     await writeFile(temporary, JSON.stringify(descriptor) + '\n', { mode: 0o600, flag: 'wx' });
     await rename(temporary, file);
+    // The console-open path rejects session files without private ACLs; mode 0o600 is a no-op on Windows.
+    restrictPrivatePathSync(file);
   } catch (error) { try { balances.close(); await selfSetup.close(); await server.close(); await memoryImport?.close(); } finally { await tasks?.close(); await projects?.close(); } throw error; }
   finally { await unlink(temporary).catch(error => { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }); }
   tasks?.startUsageObservation();

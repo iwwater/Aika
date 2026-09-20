@@ -17,7 +17,7 @@
 | N01-ASR-EDGE | ASR 乱序/空结果/取消 | Legacy `L-SPEECH-IN`；`tests/providers/qwen-asr.test.ts`@565cd80 | 乱序段按序合并、空结果不生成用户消息、取消丢弃待发输入 | Legacy 语料=行为参考；上游=模拟 | NEXT-06 |
 | N01-TTS-EDGE | TTS 分句/乱序/停止/失败 | Legacy `L-SPEECH-QUEUE`、`L-SPEECH-OUT`；`tests/providers/minimax-tts.test.ts`@565cd80 | 句序不受合成完成顺序影响；停止不伪报交付；失败可见 | 同上 | NEXT-06 |
 | N01-E2E-TEXT | 完整文本一条 | `npm run test:windows:ui`（preview 后端往返，NEXT-00 已跑通） | 渲染就绪→文本提交→回复可见→干净退出 | 模拟（离线后端） | NEXT-08 收口 |
-| N01-E2E-VOICE | 完整语音一条 | Legacy `L-VOICE-INT` 语料 + whisper 工具链 | 录音→转写→回复；非静音非空 | **BLOCKED**：E: 盘缺失（见 §4） | NEXT-06 恢复、NEXT-08 收口 |
+| N01-E2E-VOICE | 完整语音一条 | Legacy `L-VOICE-INT` 语料 + whisper 工具链 | 录音→转写→回复；非静音非空 | **PASS**（2026-09-20 真实 ASR/TTS 回放通过，见 §4 与 NEXT-06 报告 §6；麦克风现场输入留 NEXT-09） | NEXT-06 已收口 |
 
 无“以后随便补”的空范围：每项要么有可运行来源，要么明确标注缺口与责任 SPEC（N01-TL-CRUD、N01-E2E-VOICE）。
 
@@ -49,13 +49,13 @@
 
 ## 4. 真实服务回放登记（真实/模拟分离，AC 01-D）
 
-入口：`npm run test:next:real`。已实测两种阻断分支均 exit 2 并打印明确 BLOCKED（无 `PET_NEXT_REAL` 时；有开关但无用例时）。缺真实服务绝不 fallback 到 fake 报 PASS。
+入口：`npm run test:next:real`。已实测两种阻断分支均 exit 2 并打印明确 BLOCKED（无 `PET_NEXT_REAL` 时；有开关但无用例时）。2026-09-20 起三项真实回放均已配置并在本机跑通（5/5）；缺凭据/工具链的机器仍按 BLOCKED 分支退出，不 fallback 到 fake。
 
 | caseId | 内容 | 样本与参数 | 现状 |
 | --- | --- | --- | --- |
-| N01-REAL-LLM | 固定正常问答 + 多轮各≥1 条，真实返回非空、结构合法、终态唯一、多轮上下文进入请求 | 样本自 Legacy 固定文本挑选，登记于 NEXT-03 落地时；回答不做精确相等断言 | **BLOCKED**（无已验证凭据；本机旧 `aika-crossplatform/.env` 存在但未读、有效性未知，需用户确认授权） |
-| N01-REAL-ASR | ≥1 条非静音录音真实识别 + 静音负例 | whisper.cpp b5130（官方包 SHA256 `f9ec6c52a2e949b62ab51fa21d0d497958f9e41c3010c157c4e42932d5316f3c`）+ ggml-base.bin（SHA256 `60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe`）+ `samples/jfk.wav`，参数 language=auto/temperature=0（历史证据：Legacy `docs/stt/reports/LOCAL_WHISPER_SETUP_20260917.md`） | **BLOCKED**：`E:/Work/toolchains/whisper-b5130` 所在盘当前不存在。恢复步骤：重新下载上述官方资产（hash 复核）或用户提供原目录 |
-| N01-REAL-TTS | 固定文本→真实合成→音频可解码且时长>0 | 上游仅付费云 TTS（qwen/minimax）；候选免费路径：Windows SAPI、sherpa-onnx TTS（未验证，不做承诺） | **BLOCKED**：NEXT-06 择路；无可导出音频的后端只能证明接口调用，不算数 |
+| N01-REAL-LLM | 固定正常问答 + 多轮各≥1 条，真实返回非空、结构合法、终态唯一、多轮上下文进入请求 | DeepSeek `deepseek-flash`（OpenAI-compatible；`https://api.deepseek.com/chat/completions`）；`tests/next/real/realLlm.test.ts`；凭据仅存 gitignored `.next-real.local.json`（旧库 .env 同源，用户 2026-09-20 批准复用） | **PASS**（2026-09-20，5/5 之一；单轮终态唯一 + 两轮「北斗七号」上下文探针） |
+| N01-REAL-ASR | ≥1 条非静音录音真实识别 + 静音负例 | whisper.cpp b5130 工具链已恢复于 `F:/AIVoice/toolchains/whisper-b5130`（zip SHA256 `f9ec6c52…`、模型 `60ed5bc3…` 与登记一致）；jfk.wav SHA256 `59dfb9a4acb36fe2a2affc14bacbee2920ff435cb13cc314a08c13f66ba7860e`，参数 language=auto/temperature=0/no_context=true；静音参考 SHA256 `20eaebffe1816e0ffa6f7f854f5ef4ea80d5349faaf0ce1fec1b713e7fde58fa`；`tests/next/real/realAsr.test.ts` | **PASS**（2026-09-20；冻结转写逐字命中，静音→`[BLANK_AUDIO]`→清洗为空→0 提交） |
+| N01-REAL-TTS | 固定文本→真实合成→音频可解码且时长>0 | Windows SAPI（免费本地，无凭据无网络）：固定文本「你好，我是Aika，今天天气不错。」+ 音色 `Microsoft Huihui Desktop`（zh-CN）→ 16kHz/16-bit/mono PCM WAV 138,286 字节，`durationMs=4320`；生产适配 `providers/sapi-tts.ts`；`tests/next/real/realTts.test.ts` | **PASS**（2026-09-20；qwen/minimax 云 TTS 保留为后续可选项，未授权未实测） |
 
 ## 5. 环境与命令（AC 01-C/01-E 实测）
 

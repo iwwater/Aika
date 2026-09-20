@@ -1,6 +1,6 @@
 # NEXT-07 · 最小操作 UI
 
-状态：NOT RUN。需求：N06-R08。前置：NEXT-02～06。
+状态：AUTO_PASS（2026-09-20）。需求：N06-R08。前置：NEXT-02～06。证据见 [验收报告](../reports/NEXT-07_ACCEPTANCE.md)；presenter 在 `management/aika-console.ts`，路由在 `management/aika-routes.ts`。
 
 ## 边界与接口
 

@@ -9,6 +9,7 @@ import { TurnController } from './turn-controller.js';
 
 export type TurnEnd = 'completed' | 'cancelled' | 'failed';
 export type TurnPortEvent =
+  | { readonly scope: TurnScope; readonly sequence: number; readonly type: 'accepted'; readonly text: string }
   | { readonly scope: TurnScope; readonly sequence: number; readonly type: 'reply'; readonly text: string }
   | { readonly type: 'terminal'; readonly scope: TurnScope; readonly sequence: number; readonly status: TurnEnd; readonly replyText?: string; readonly errorCode?: string };
 
@@ -39,6 +40,7 @@ export class NextTurnPort {
     if (!submission.text.trim()) throw new Error('Text must not be empty');
     const turn = this.controller.begin('text', submission.text);
     const scope = turn.input.scope;
+    this.#emit(scope, { type: 'accepted', text: submission.text });
     void this.pipeline.run(turn.input, turn.signal).then(outcome => {
       if (outcome.status === 'replied' || outcome.status === 'played') {
         const replyText = this.lastReply.get(scope.turnId);

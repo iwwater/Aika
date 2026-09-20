@@ -166,6 +166,24 @@ for (const harness of [harnessFor('openai-compatible'), harnessFor('gemini')]) {
     }
   });
 
+  test(`[${harness.name}] selected memories are included in the provider input exactly once`, async () => {
+    const fixture = harness.happy();
+    const base = dialogueRequest();
+    const memories: DialogueContext['memories'] = [
+      { origin: 'conversation', characterId: base.scope.characterId, id: 'mem-1', version: 1, text: '去年夏天我们去了海边', sourceIds: [] },
+      { origin: 'manual', characterId: base.scope.characterId, id: 'mem-2', version: 2, text: '她不喜欢下雨天', sourceIds: ['mem-1'] }
+    ];
+    const request: DialogueRequest = { ...base, context: { ...base.context, memories } };
+    const reply = await fixture.provider.reply(request, new AbortController().signal);
+    assert.equal(reply.text, FULL_TEXT);
+    assert.equal(fixture.calls.length, 1);
+    const call = fixture.calls[0]!;
+    const serialized = String(call.init.body);
+    assert.ok(serialized.includes('去年夏天我们去了海边'), 'first memory text reaches the provider');
+    assert.ok(serialized.includes('她不喜欢下雨天'), 'second memory text reaches the provider');
+    assert.equal((serialized.match(/相关记忆/g) ?? []).length, 1, 'the memory block appears exactly once');
+  });
+
   test(`[${harness.name}] non-2xx maps to a clear provider error without leaking the key`, async () => {
     const fixture = harness.broken();
     await assert.rejects(

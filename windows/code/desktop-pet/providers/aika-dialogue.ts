@@ -24,6 +24,14 @@ function historyMessages(request: DialogueRequest): { role: 'user' | 'assistant'
   return history;
 }
 
+/** Selected memories ride once in the provider input; empty selection injects nothing so the legacy happy path is unchanged. */
+function memoryContext(request: DialogueRequest): string | null {
+  const memories = request.context.memories;
+  if (!memories || memories.length === 0) return null;
+  const lines = memories.map(memory => `- ${memory.text}`).join('\n');
+  return `相关记忆：\n${lines}`;
+}
+
 function replyFor(request: DialogueRequest, text: string): DialogueReply {
   return { scope: request.scope, text, expression: { ...NEUTRAL_EXPRESSION } };
 }
@@ -32,7 +40,12 @@ function replyFor(request: DialogueRequest, text: string): DialogueReply {
 export class OpenAiCompatibleDialogueProvider implements DialogueProvider {
   constructor(private readonly transport: ProviderTransport, private readonly config: EndpointConfig, private readonly systemPrompt: string) {}
   async reply(request: DialogueRequest, signal: AbortSignal): Promise<DialogueReply> {
-    const messages = [{ role: 'system' as const, content: this.systemPrompt }, ...historyMessages(request)];
+    const memoryBlock = memoryContext(request);
+    const messages = [
+      { role: 'system' as const, content: this.systemPrompt },
+      ...(memoryBlock ? [{ role: 'system' as const, content: memoryBlock }] : []),
+      ...historyMessages(request)
+    ];
     const result = await this.transport.request(this.config, request.scope, 'dialogue', { messages, stream: true }, signal);
     const text = string(object(result).text).trim();
     if (!text) throw new Error('Provider returned an empty reply');
@@ -51,7 +64,8 @@ export class GeminiDialogueProvider implements DialogueProvider {
       if (last && last.role === role) last.parts.push({ text: message.content });
       else contents.push({ role, parts: [{ text: message.content }] });
     }
-    const body: JsonRecord = { contents, systemInstruction: { parts: [{ text: this.systemPrompt }] } };
+    const memoryBlock = memoryContext(request);
+    const body: JsonRecord = { contents, systemInstruction: { parts: [{ text: this.systemPrompt }, ...(memoryBlock ? [{ text: memoryBlock }] : [])] } };
     const result = await this.transport.request(this.config, request.scope, 'dialogue', body, signal, undefined, undefined, {
       omitModel: true,
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': this.config.apiKey() }

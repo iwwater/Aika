@@ -7,7 +7,7 @@ export class BackendConnection {
   state = 'disconnected';
   child = null;
   closing = new Set();
-  constructor({ onState, onMessage, timeoutMs = 15000, shutdownTimeoutMs = 10000, limit = 64 * 1024 * 1024 }) {
+  constructor({ onState, onMessage, timeoutMs = 60000, shutdownTimeoutMs = 10000, limit = 64 * 1024 * 1024 }) {
     Object.assign(this, { onState, onMessage, timeoutMs, shutdownTimeoutMs, limit });
   }
   start(executable, args, env = process.env) {

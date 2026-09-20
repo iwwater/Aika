@@ -17,7 +17,7 @@
 | `AikaProfile` 静态角色 | 上游角色 prompt 硬编码在 `companion/prompts.ts`；注入点为 `ContextOptions.prompts`（memory/context.ts）| ⚠ 无 profile 存储；NEXT-02 以 settings-store+prompts 注入实现，不复制第二份 Prompt |
 | Context 预算/纠正/遗忘 | `assembleContext`+`ContextOptions{countTokens,relevance,inputTokenBudget,…}`；`SqliteMemoryPort`+dynamics/lifecycle 组 | 证明：`tests/next/memory.contract.test.ts`（abort 边界、共享 recent 流特征化）+ 上游 release 组 |
 | 「会话隔离」 | ⚠ 上游 recent 为陪伴者共享历史流，不按 sessionId 分区；会话隔离指轮次状态隔离（TurnController 实例/scope 过滤） | 设计语义收窄记录于此：Timeline 分页按 sessionId 查询（NEXT-05），Memory 层不新增分区，避免与上游 recent 重复注入（RPD §2） |
-| `ChatEvent`/`TimelinePort` | **上游缺口**（无持久化 Timeline；仅 `desktop/chat-log.ts` 会话内日志） | NEXT-05 以最小独立表实现，先 RED 契约用例 |
+| `ChatEvent`/`TimelinePort` | 已实现：`management/aika-timeline.ts`（`AikaTimelineStore`：独立 SQLite 表、eventId 幂等/冲突、稳定 sort_key 分页、redact tombstone；`AikaTimelineRecorder`：订阅 TurnPort accepted/reply/terminal，≤3 次有界重试） | 证明：`tests/next/aikaTimeline.test.ts`（05-A～05-F） |
 | `AsrSegment`（segmentId/index 聚合） | 上游 `CapturePort/CapturedInput`（media/capture.ts:5-14）整段捕获，无段模型 | ⚠ NEXT-06 在输入侧薄适配段语义；STT segmentId 不当 turnId（上游 generation 才是） |
 | `SpeechInputPort/SpeechOutputPort/SpeakRequest` | `CapturePort`、`PlaybackPort.play/stop`+`PlaybackEvent`（contracts/index.ts:191-198）、`desktop/playback-controller.ts` | 打断=TurnPort.cancel+playback.stop 的组合已有 generation 过滤；句序/交付状态语义归 NEXT-06 |
 | `MediaAsset` 临时媒体 | `MediaAsset{temporary:true}`+`MediaStorePort.releaseScope`（contracts/index.ts:28,222） | 证明：pipeline 各终态 `released` 断言（成功/失败/取消均释放） |

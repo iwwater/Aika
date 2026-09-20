@@ -46,3 +46,4 @@ id_ed25519*
 *.7z
 **/management/ui/presentation-preview.js
 **/node_modules/
+.next-real.local.json
