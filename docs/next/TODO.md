@@ -54,9 +54,15 @@
 | --- | --- | --- |
 | R-TODO-14 | **【后续优化·待办】控制台可查看每个对话轮次的 Trace**（记忆对话排查的核心工具）：①**延迟分解**——排队、上下文装配/记忆检索、LLM 首 token、LLM 完成、TTS、播放各段耗时与总延迟；②**完整输入**——用户原文 + 实际送进 LLM 的**全部内容**（system prompt/身份、Soul、对话历史、记忆检索命中、感知结果），即「模型到底看到了什么」；③**输出**——回复全文与 token usage；④**未来工具调用**——调用名、参数、结果、耗时（预留字段） | **【后续优化·待办】**（用户指示：以后优化，待办）。当前不占用近期排期。保留完整设计要点与盘点备查：<br>Ⓐ 后端已具备基础：`integrated-calls.jsonl`（0600）已按次记录账单，`memory_turn_outcomes` 已持久化每轮记忆结果，`/api/balances` 已具备管理端展示模式；<br>Ⓑ 缺口：缺乏按轮聚合视图，完整 wire 输入/输出未落盘，缺少各阶段详细耗时打点；<br>Ⓒ 最薄集成方案：Next 侧通过 TraceAuthorizer 装饰器捕获调用，在 `reply()` 处记录有界环形 JSONL（0600），提供脱敏开关与控制台 `/api/trace/turns` 路由；<br>归属建议：**后续优化·待办（暂不排期）** |
 
-## 7. 归属建议汇总（待用户逐条确认）
+## 7. 工程效能与测试分层治理（模块化测试与集成门禁）
 
-- **建议并入 0.6**（在对应 SPEC 内扩展，不新增版本）：R-TODO-01/02（NEXT-03+07）；R-TODO-05/06/08（NEXT-07）；R-TODO-11 的设备选择与语音不可用诊断（NEXT-09 缺陷闭环）。
+| ID | 需求 | 设计要点与建议归属 |
+| --- | --- | --- |
+| R-TODO-17 | **测试按模块解耦分组与分层执行规范**：将测试套件拆分为独立模块组（TTS、STT/ASR、LLM/对话、Memory 记忆、Desktop/表现层等）。**开发单个模块时严格分开单跑测试**，避免无关模块干扰；**向用户提交交付/合并集成前，才进行全量回归更新测试** | **工程落地要点（2026-09-20 用户明确纪律）**：<br>① **现状痛点**：当前 `tools/run-tests.mjs` 仅有粗粒度分组（`default` 一把梭运行所有 memory + providers 测试），开发某一个具体模块（如仅改 TTS 或仅改 LLM）时全量跑极慢且容易受其他未配置凭据/未就绪模块干扰；<br>② **模块测试分组拆解**：<br>　• **TTS 模块组**（`npm run test:tts`）：专属运行 `minimax-tts.test.js`、`qwen-audio-tts.test.js`、`registered-voices.test.js`、`voice-enrollment.test.js`、`tts-download.test.js`；<br>　• **STT/ASR 模块组**（`npm run test:stt` / `test:asr`）：专属运行 `qwen-asr.test.js`、`media/capture.test.js` 等音频转写测试；<br>　• **LLM/对话模块组**（`npm run test:llm`）：专属运行 `aika-dialogue.test.js`、`dialogue-thinking.test.js`、`text-protocol.test.js`、`adapters.test.js` 等；<br>　• **Memory 记忆模块组**（`npm run test:memory`）：专属运行 `sqlite-store`、`memory-lifecycle`、`recall`、`dynamics` 等记忆套件；<br>　• **Live2D/表现模块组**（`npm run test:desktop`）：专属运行窗口、渲染与参数映射测试；<br>③ **双层执行工作流纪律**：<br>　• **单模块开发/调试阶段**：严禁每次全量跑，只跑对应模块的专注测试套件（实现快速反馈、高内聚、零噪音）；<br>　• **版本交付集成前阶段**：在正式向用户交付、合并功能或版本验收前，强制执行一次全量回归测试套件（`npm test` / `test:release` / `test:next`），确保全链路完整无回归后再交工。归属建议：**工程工作流治理项，立即生效执行** |
+
+## 8. 归属建议汇总（待用户逐条确认）
+
+- **建议并入 0.6**（在对应 SPEC 内扩展，不新增版本）：R-TODO-01/02（NEXT-03+07）；R-TODO-05/06/08（NEXT-07）；R-TODO-11 的设备选择与语音不可用诊断（NEXT-09 缺陷闭环）；**R-TODO-17 测试分组与分层执行纪律（即刻生效遵守）**。
 - **【后续优化·待办】（按用户明确指示标记，当前不排期）**：
   - **R-TODO-03**：本地模型一键安装器（后续优化）；
   - **R-TODO-04**：极简 Key 配置面（后续优化）；
@@ -70,15 +76,16 @@
 - **R-TODO-10 握手重构**：作为 NEXT-09 验收发现项修复（缺陷闭环），或归 0.7——待用户确认。
 - 0.6 已冻结的 AC 与验收门槛不因此降低；新增能力一律先写失败测试再实现。
 
-## 8. 关联现状指针
+## 9. 关联现状指针
 
 - Provider 配置存储：`management/aika-profile.ts`（NEXT-02，AUTO_PASS）
 - 对话适配器与协议选择：`providers/aika-dialogue.ts`（NEXT-03，AUTO_PASS；真实回放 BLOCKED 待凭据）
 - 数据目录：`%APPDATA%/AikaNext/<mode>`（NEXT-02 已接线并实测）
 - 模型/换肤流程：`windows/docs/LIVE2D.md`；NEXT-00 已实操验证（Natori 示例模型）
+- 测试入口与脚本：`tools/run-tests.mjs`，`package.json`
 - 本文件由用户 2026-09-20 口述需求整理；未经确认不自动升级为 SPEC。
 
-## 9. 验收发现缺陷（BACKLOG——用户规则：不立刻修的一律登记于此）
+## 10. 验收发现缺陷（BACKLOG——用户规则：不立刻修的一律登记于此）
 
 | ID | 现象 | 初步分析与修复方向 |
 | --- | --- | --- |
