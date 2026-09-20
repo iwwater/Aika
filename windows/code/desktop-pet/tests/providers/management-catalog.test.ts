@@ -59,11 +59,19 @@ test('all six registered baselines retain tariffs and limits without reading or 
     Object.defineProperty(model, 'extraPrivateData', { enumerable: true, get() { throw new Error('Unexpected field read'); } });
   }
   const catalog = managementAdapterCatalog(base);
-  assert.equal(catalog.length, 8); assert.equal(new Set(catalog.map(adapter => adapter.id)).size, 8);
-  for (const adapter of catalog.filter(adapter => !['qwen-audio-tts', 'minimax-tts'].includes(adapter.id))) {
+  // Semantic change (FIX61-01): the catalog now also publishes capability-only OPEN adapters. They carry no
+  // reviewed choice and no tariff, so the reviewed-baseline assertions below apply only to the seven
+  // reviewed adapters (six slot baselines plus the two extra speech adapters minus the overlap).
+  const reviewed = catalog.filter(adapter => !adapter.open);
+  assert.equal(reviewed.length, 8); assert.equal(new Set(catalog.map(adapter => adapter.id)).size, catalog.length);
+  for (const adapter of reviewed.filter(adapter => !['qwen-audio-tts', 'minimax-tts'].includes(adapter.id))) {
     const slot = adapter.slots[0]!, original = base.models[slot]!, first = adapter.choices![0]!.configuration;
     for (const field of ['model', 'provider', 'endpoint', 'inputTokenLimit', 'outputTokenLimit',
       'inputMicrosPerToken', 'outputMicrosPerToken', 'reservationMicros'] as const) assert.equal(first[field], original[field]);
+  }
+  for (const adapter of catalog.filter(adapter => adapter.open)) {
+    assert.equal(adapter.choices, undefined, `${adapter.id} must not present a reviewed tariff as a preset`);
+    assert.equal(adapter.models.length, 0, `${adapter.id} accepts any model, so it lists none`);
   }
   assert.doesNotMatch(JSON.stringify(catalog), /credential|nonexistent-catalog-test|extraPrivateData/);
 });
@@ -79,7 +87,7 @@ test('catalog is detached from the baseline and fresh between calls, including n
 
 test('six existing adapter choices pass trial bounds and keep model/price/reservation as one configuration', () => {
   const base = fixture();
-  for (const adapter of managementAdapterCatalog(base).filter(adapter => adapter.id !== 'qwen-audio-tts')) {
+  for (const adapter of managementAdapterCatalog(base).filter(adapter => adapter.id !== 'qwen-audio-tts' && !adapter.open)) {
     assert.equal(new Set(adapter.models).size, adapter.models.length);
     const slot = adapter.slots[0]!;
     for (const choice of adapter.choices!) {
@@ -203,7 +211,9 @@ test('Plus page selection reaches the real factory and singular-instruction tran
   assert.equal(effective.models.tts.characterMicros, 140);
   assert.equal(effective.models.tts.reservationMicros, 400000);
   assert.equal(estimateTrialMicros(effective.models.tts, 'tts', { status: 'success', usage: { characters: 4 }, requestId: null }), 560);
-  assert.deepEqual(effective.models.perception, base.models.perception);
+  // The perception baseline is unchanged apart from the newly explicit wire protocol (FIX61-01).
+  const { protocol: _perceptionProtocol, ...perceptionWithoutProtocol } = effective.models.perception!;
+  assert.deepEqual(perceptionWithoutProtocol, base.models.perception);
   assert.equal(effective.limitMicros, base.limitMicros); assert.deepEqual(effective.operationLimits, base.operationLimits);
   assert.throws(() => validateManagedSettings({ ...selected, providers: { ...selected.providers, tts: { ...selected.providers.tts, voice: 'longanlingxi' } } }, base), /音色/);
   const store = new MemoryMediaStore(); let posts = 0;

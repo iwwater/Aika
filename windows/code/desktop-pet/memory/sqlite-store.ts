@@ -150,6 +150,13 @@ export class SqliteMemoryStore implements CompanionProfilePort {
     });
   }
 
+  /**
+   * FIX61-06: the knowledge library adds its own tables to THIS companion database. It is deliberately
+   * the same connection and the same file — a knowledge library must never become a second application
+   * database with its own runtime, and it must share one transaction/revocation boundary.
+   */
+  rawDatabaseForKnowledge(): Database.Database { this.#open(); return this.#db; }
+
   get closed(): boolean { return this.#closed; }
   now(): string { const value = this.#clock(); timestamp(value); return value; }
   #open(): void { if (this.#closed) throw new Error('memory_store_closed'); }

@@ -1,25 +1,60 @@
 import { InteractionMotion } from './interaction-motion.mjs';
+import { strokePlan } from './pointer-router.ts';
 import { normalizePresentationIntent } from '../contracts/presentation.ts';
 import { ModelFeather } from './model-feather.mjs';
-import presetCatalog from './assets/local-model/presets.json';
-import parameterMap from './config/parameter-map.json';
 // Application adapter over the official SDK; SDK owns deformation, physics, blending and WebGL rendering.
 import { CubismFramework } from './vendor/cubism/Framework/src/live2dcubismframework.ts';
 import { CubismUserModel } from './vendor/cubism/Framework/src/model/cubismusermodel.ts';
+import { CubismMoc } from './vendor/cubism/Framework/src/model/cubismmoc.ts';
 import { CubismModelSettingJson } from './vendor/cubism/Framework/src/cubismmodelsettingjson.ts';
 import { CubismMatrix44 } from './vendor/cubism/Framework/src/math/cubismmatrix44.ts';
 import { CubismEyeBlink } from './vendor/cubism/Framework/src/effect/cubismeyeblink.ts';
 import { CubismExpressionMotionManager } from './vendor/cubism/Framework/src/motion/cubismexpressionmotionmanager.ts';
+import { CubismMotionManager } from './vendor/cubism/Framework/src/motion/cubismmotionmanager.ts';
 import { CubismShaderManager_WebGL } from './vendor/cubism/Framework/src/rendering/cubismshader_webgl.ts';
 
 
-const presets = new Map(presetCatalog.items.map(item => [item.id, item]));
-const automaticItems = presetCatalog.items.filter(item => item.availability === 'automatic');
-const faces = new Map(automaticItems.flatMap(item => (item.emotions ?? []).map(key => [key, item])));
-const gestures = new Map(automaticItems.flatMap(item => (item.gestures ?? []).map(key => [key, item])));
-const headParameters = [parameterMap.headYaw, parameterMap.headPitch, parameterMap.headRoll];
-const interactionParameters = [...headParameters, 'ParamBodyAngleX', 'ParamEyeBallX', 'ParamEyeBallY'];
 const webglOwners = new Set();
+const EMPTY_PARAMETERS = Object.freeze({ headYaw: 'ParamAngleX', headPitch: 'ParamAngleY', headRoll: 'ParamAngleZ', mouthForm: 'ParamMouthForm' });
+
+/**
+ * FIX61-05: every model-dependent table belongs to a skin, not to the module.
+ *
+ * The catalog, the procedural parameter mapping and the derived lookup maps used to be module-level
+ * imports of one hard-coded asset directory, so changing `assetBase` could never change the rig's
+ * presets or parameters. A SkinBinding is built from one registry manifest plus that rig's own
+ * model3 manifest, and a renderer holds exactly one at a time.
+ */
+export class SkinBinding {
+  constructor(manifest) {
+    if (!manifest || typeof manifest !== 'object') throw new Error('模型包清单不可用');
+    const catalog = manifest.catalog;
+    if (!catalog || catalog.schemaVersion !== 1 || !Array.isArray(catalog.items) || !catalog.items.length) throw new Error('模型包缺少可用的预设目录');
+    if (typeof manifest.skinId !== 'string' || !manifest.skinId || catalog.modelId !== manifest.skinId) throw new Error('模型包标识与预设目录不一致');
+    this.skinId = manifest.skinId;
+    this.label = typeof manifest.label === 'string' && manifest.label ? manifest.label : manifest.skinId;
+    this.revision = Number.isSafeInteger(manifest.revision) && manifest.revision >= 0 ? manifest.revision : 0;
+    this.assetFingerprint = typeof manifest.assetFingerprint === 'string' ? manifest.assetFingerprint : '';
+    this.catalog = catalog;
+    this.modelEntry = typeof manifest.modelEntry === 'string' && manifest.modelEntry ? manifest.modelEntry : 'pet.model3.json';
+    this.parameters = Object.freeze({ ...EMPTY_PARAMETERS, ...(manifest.parameters ?? {}) });
+    this.capabilities = Object.freeze({ textures: 0, expressions: 0, motions: 0, presets: 'authored', automaticPresets: 0, mocVersion: 0, ...(manifest.capabilities ?? {}) });
+    this.presets = new Map(catalog.items.map(item => [item.id, item]));
+    this.automaticItems = catalog.items.filter(item => item.availability === 'automatic');
+    this.faces = new Map(this.automaticItems.flatMap(item => (item.emotions ?? []).map(key => [key, item])));
+    this.gestures = new Map(this.automaticItems.flatMap(item => (item.gestures ?? []).map(key => [key, item])));
+    // The interaction parameter list is derived from this rig's own mapping, never from a shared file.
+    this.interactionParameters = Object.freeze([this.parameters.headYaw, this.parameters.headPitch, this.parameters.headRoll, 'ParamBodyAngleX', 'ParamEyeBallX', 'ParamEyeBallY']);
+  }
+  /** An instance-level catalog is copied before it leaves the binding; no caller mutates the shared map. */
+  catalogSnapshot() { return structuredClone(this.catalog); }
+  parameterOverrides() { const declared = this.parameters.parameterOverrides; return declared && typeof declared === 'object' ? Object.entries(declared) : []; }
+  automaticExpressions() { return new Set(this.automaticItems.map(item => item.expressionName)); }
+  appearanceExpressions() { return new Set(this.catalog.items.filter(item => item.category === 'appearance').map(item => item.expressionName)); }
+}
+
+/** The skin shipped inside the application, used until a registry manifest arrives. */
+export const BUILT_IN_SKIN_ID = 'local-model';
 export class JellyfishRenderer extends CubismUserModel {
   constructor(canvas, report = () => {}, options = {}) {
     super(); this.canvas = canvas; this.report = report; this.options = options;
@@ -28,11 +63,32 @@ export class JellyfishRenderer extends CubismUserModel {
     this.interaction = new InteractionMotion(); this.elapsed = 0; this.gestureManager = new CubismExpressionMotionManager(); this.previewManager = new CubismExpressionMotionManager(); this.framing = 'full';
     // No policy yet means no automatic animation, including before backend ready.
     this.automaticIds = new Set(); this.policyRevision = -1; this.previewValues = new Map();
+    // FIX61-05: the active skin. Until a registry manifest arrives the built-in pack is bound from
+    // the local preset catalog so a fresh install still renders and previews.
+    this.skin = null; this.activeRevision = -1; this.generation = 0;
+    this.releaseCounts = { textures: 0, renderers: 0, models: 0, listeners: 0 };
+  }
+  /** Bind one skin manifest. Called before load(), or by a switch to prepare a candidate. */
+  bindSkin(manifest) { const binding = manifest instanceof SkinBinding ? manifest : new SkinBinding(manifest); this.skin = binding; return binding; }
+  /** The built-in manifest, used when no registry is reachable. */
+  async builtInManifest() {
+    if (this.builtIn) return this.builtIn;
+    const base = new URL(this.options.assetBase ?? 'assets/local-model/', location.href);
+    const read = async path => { const r = await fetch(new URL(path, base)); if (!r.ok && r.status !== 0) throw new Error(`模型文件加载失败：${path}`); return r.arrayBuffer(); };
+    const [catalogBuffer, mapping] = await Promise.all([
+      read('presets.json').then(buffer => JSON.parse(new TextDecoder().decode(buffer))),
+      read('parameter-map.json').then(buffer => JSON.parse(new TextDecoder().decode(buffer))).catch(() => EMPTY_PARAMETERS),
+    ]);
+    this.builtIn = new SkinBinding({ schemaVersion: 1, skinId: catalogBuffer.modelId ?? BUILT_IN_SKIN_ID, label: '内建模型',
+      modelEntry: 'pet.model3.json', modelFingerprint: catalogBuffer.modelFingerprint, assetFingerprint: catalogBuffer.modelFingerprint,
+      parameters: mapping, catalog: catalogBuffer, capabilities: { presets: 'authored', automaticPresets: catalogBuffer.items.filter(item => item.availability === 'automatic').length }, revision: 0 });
+    return this.builtIn;
   }
   async load() {
     this.gl = this.canvas.getContext('webgl', { alpha: true, premultipliedAlpha: true, antialias: true });
     if (!this.gl) throw new Error('这个窗口无法启用 WebGL');
     this.syncViewport();
+    this.skin ??= await this.builtInManifest();
     const base = new URL(this.options.assetBase ?? 'assets/local-model/', location.href);
     const read = async path => { const r = await fetch(new URL(path, base)); if (!r.ok && r.status !== 0) throw new Error(`模型文件加载失败：${path}`); return r.arrayBuffer(); };
     await this.loadRig(read);
@@ -47,11 +103,40 @@ export class JellyfishRenderer extends CubismUserModel {
     }
     this._modelMatrix.setHeight(1.9); this._modelMatrix.setPosition(0, 0);
     this.syncViewport(true);
-    this.report({ type: 'model-loaded', parameters: this._model.getParameterCount(), drawables: this._model.getDrawableCount(), expressions: this.expressions.size, textures: this.textures.length, canvas: [this._model.getCanvasWidth(), this._model.getCanvasHeight()], maxTextureSize: this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE), runtime: 'Cubism5-r.5' });
+    this.activeRevision = this.skin.revision;
+    this.report({ type: 'model-loaded', skinId: this.skin.skinId, parameters: this._model.getParameterCount(), drawables: this._model.getDrawableCount(), expressions: this.expressions.size, textures: this.textures.length, canvas: [this._model.getCanvasWidth(), this._model.getCanvasHeight()], maxTextureSize: this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE), runtime: 'Cubism5-r.5' });
     this.ready = true; this.last = performance.now();
   }
+  /** The model entry name of the bound skin; a switch never changes it because the registry serves it. */
+  get modelEntry() { return this.skin?.modelEntry ?? 'pet.model3.json'; }
+  /**
+   * FIX61-05 05-C: release the GPU and SDK resources the CURRENT skin owns, leaving the instance able
+   * to load another one. Every allocation the previous load made is accounted exactly once, which is
+   * what keeps repeated switching from leaking WebGL textures, shader managers and Core models.
+   */
+  releaseSkinResources() {
+    const counts = this.releaseCounts;
+    if (this.gl) for (const tex of this.textures) { this.gl.deleteTexture(tex); counts.textures++; }
+    this.textures = [];
+    if (!this._model) { this._renderer = null; this.expressions?.clear(); return counts; }
+    // The SDK's release() frees the renderer, the moc, every loaded expression/physics/pose and the
+    // model itself in one authoritative pass. Doing anything more here would double-free those same
+    // buffers; doing less would leak them. Nothing here is skipped when there are no textures.
+    if (this._renderer) { this.release(); counts.renderers++; counts.models++; }
+    else { this.release(); counts.models++; }
+    this._renderer = null; this._model = null;
+    // The SDK's release() also nulls the animation managers, but those belong to the instance, not to
+    // one skin: they are re-created here so the next skin stays animatable. This is the difference
+    // between releasing a skin's resources and destroying the renderer object. The model matrix is
+    // rebuilt by loadModel() from the next rig's own canvas size, so it is not restored here.
+    this._motionManager ??= new CubismMotionManager();
+    this._expressionManager ??= new CubismExpressionMotionManager();
+    this.expressions?.clear();
+    this.expressionValues?.clear();
+    return counts;
+  }
   // Shared by the real WebGL loader and silent tests of the actual Cubism rig.
-  async loadRig(readAsset) {
+  async loadRig(readAsset, binding = this.skin) {
     CubismFramework.startUp({ logFunction: message => this.report({ type: 'sdk', message }), loggingLevel: 3 }); CubismFramework.initialize();
     const buffers = new Map();
     const read = async path => {
@@ -59,29 +144,63 @@ export class JellyfishRenderer extends CubismUserModel {
       if (!buffers.has(path)) buffers.set(path, await readAsset(path));
       return buffers.get(path);
     };
-    const settingsBuffer = await read('pet.model3.json');
+    // FIX61-05: the binding decides both the entry file and the expected fingerprint. Two different
+    // packs therefore verify against their own bytes instead of one module-level catalog.
+    const skin = binding ?? this.skin;
+    if (!skin) throw new Error('模型包尚未绑定');
+    // A switch is a generation. Every candidate load claims one, and only the newest generation that
+    // is still live may touch the active binding: an A→B→A sequence where the first A finishes late
+    // must not overwrite the final choice.
+    const generation = ++this.generation;
+    const stale = () => generation !== this.generation || this.disposed;
+    const entry = skin.modelEntry;
+    const settingsBuffer = await read(entry);
     const refs = JSON.parse(new TextDecoder().decode(settingsBuffer)).FileReferences;
-    const paths = [...new Set(['pet.model3.json', refs.Moc, refs.Physics, ...refs.Expressions.map(e => e.File), ...Object.values(refs.Motions).flat().map(m => m.File)])].sort();
+    // A rig legitimately ships no expressions (Hiyori, for one). Treat a missing group as empty
+    // rather than crashing: "no authored expressions" is a capability, not a broken pack.
+    const expressionFiles = Array.isArray(refs.Expressions) ? refs.Expressions : [];
+    const paths = [...new Set([entry, refs.Moc, refs.Physics, ...expressionFiles.map(e => e.File), ...Object.values(refs.Motions ?? {}).flat().map(m => m.File)].filter(Boolean))].sort();
     const hash = async buffer => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', buffer)), byte => byte.toString(16).padStart(2, '0')).join('');
-    let binding = '';
-    for (const path of paths) binding += path + '\0' + await hash(await read(path)) + '\n';
-    const fingerprint = await hash(new TextEncoder().encode(binding));
-    if (fingerprint !== presetCatalog.modelFingerprint) throw new Error('模型与预设目录版本不一致');
+    let digestInput = '';
+    for (const path of paths) digestInput += path + '\0' + await hash(await read(path)) + '\n';
+    const fingerprint = await hash(new TextEncoder().encode(digestInput));
+    if (fingerprint !== skin.catalog.modelFingerprint) throw new Error('模型与预设目录版本不一致');
+    // The candidate must prove it can be built by the Core BEFORE anything releases what is on
+    // screen. A hash proves provenance, not buildability: a byte-flipped moc can still hash to the
+    // bytes its shipped catalog names, so the model is actually parsed first on a throwaway state.
     this.settings = new CubismModelSettingJson(settingsBuffer, settingsBuffer.byteLength);
-    this.loadModel(await read(this.settings.getModelFileName()), true);
+    const candidateMocName = this.settings.getModelFileName();
+    const candidateMoc = await read(candidateMocName);
+    {
+      // A standalone Moc probe leaves the live model untouched: it proves the candidate is buildable
+      // without disturbing what is currently on screen, and it releases its own Core memory.
+      const moc = CubismMoc.create(candidateMoc, true);
+      if (!moc) throw new Error('Cubism 未能解析模型');
+      try {
+        const probe = moc.createModel();
+        if (!probe) throw new Error('Cubism 未能解析模型');
+        try { if (!probe.getParameterCount()) throw new Error('模型 moc 文件不可用，Live2D 运行库无法建立可用的参数表。'); }
+        finally { moc.deleteModel(probe); }
+      } finally { moc.release(); }
+    }
+    if (stale()) throw new Error('模型切换已被更新的选择取代');
+    // Verified: only now does this generation release the outgoing model, textures and renderer,
+    // then rebuild from the candidate the probe already proved loadable.
+    this.releaseSkinResources();
+    this.loadModel(candidateMoc, true);
     if (!this._model) throw new Error('Cubism 未能解析模型');
     const physics = await read(this.settings.getPhysicsFileName()); this.loadPhysics(physics, physics.byteLength);
     this.blink = CubismEyeBlink.create(this.settings);
     this.parameterIndices = new Map(Array.from(this._model.getModel().parameters.ids, (id, i) => [id, i]));
-    // Optional, model-specific switches belong in the ignored local mapping.
-    this.parameterOverrides = new Map(Object.entries(parameterMap.parameterOverrides ?? {}));
+    // Optional, model-specific switches belong to this skin's own mapping.
+    this.parameterOverrides = new Map(skin.parameterOverrides());
     for (const [id, value] of this.parameterOverrides) {
       const index = this.parameterIndices.get(id), parameters = this._model.getModel().parameters;
       if (index === undefined || !Number.isFinite(value) || value < parameters.minimumValues[index] || value > parameters.maximumValues[index])
         throw new Error('Local parameter override is outside the model range');
     }
-    const supported = new Set(automaticItems.map(item => item.expressionName));
-    const appearance = new Set(presetCatalog.items.filter(item => item.category === 'appearance').map(item => item.expressionName));
+    const supported = skin.automaticExpressions();
+    const appearance = skin.appearanceExpressions();
     for (let i = 0; i < this.settings.getExpressionCount(); i++) {
       const name = this.settings.getExpressionName(i), b = await read(this.settings.getExpressionFileName(i));
       this.expressions.set(name, this.loadExpression(b, b.byteLength, name));
@@ -96,11 +215,16 @@ export class JellyfishRenderer extends CubismUserModel {
     }
     const motion = await read(this.settings.getMotionFileName('Idle', 0)); this.idle = this.loadMotion(motion, motion.byteLength, 'Idle'); this.idle.setLoop(true); this.idle.setEffectIds([], []);
     this.motionParameters = new Set(JSON.parse(new TextDecoder().decode(motion)).Curves.filter(c => c.Target === 'Parameter').map(c => c.Id));
-    this.runtimeParameters = new Set([...this.expressionParameters, ...this.motionParameters, ...interactionParameters, 'ParamBodyAngleX', 'ParamEyeLOpen', 'ParamEyeROpen', parameterMap.mouthForm, 'ParamMouthOpenY']);
+    this.runtimeParameters = new Set([...this.expressionParameters, ...this.motionParameters, ...skin.interactionParameters, 'ParamBodyAngleX', 'ParamEyeLOpen', 'ParamEyeROpen', skin.parameters.mouthForm, 'ParamMouthOpenY']);
     for (const id of this.runtimeParameters) { if (!this.parameterIndices.has(id)) throw new Error('动作引用了模型不存在的参数'); this.previewParameters.add(id); this.appearanceParameters.delete(id); }
     for (const [id, value] of this.parameterOverrides) this.set(id, value);
     this._model.update();
     this.defaults = Array.from(this._model.getModel().parameters.values);
+    // Commit atomically, and only if this generation is still the newest one. A switch that started
+    // earlier but finishes after a newer switch won must drop its own work instead of resurrecting a
+    // superseded binding: the final user choice always stands.
+    if (stale()) { this.releaseSkinResources(); throw new Error('模型切换已被更新的选择取代'); }
+    this.skin = skin; this.activeRevision = skin.revision;
   }
   set(name, value) { const m = this._model; const id = CubismFramework.getIdManager().getId(name); const i = m.getParameterIndex(id); if (i >= 0 && i < m.getParameterCount()) m.setParameterValueByIndex(i, value); }
   get(name) { return this._model.getParameterValueById(CubismFramework.getIdManager().getId(name)); }
@@ -108,17 +232,17 @@ export class JellyfishRenderer extends CubismUserModel {
     // The host sends this sentinel at a backend-generation boundary. Other
     // foreign model IDs must not silently reset the monotonic revision guard.
     if (policy?.modelId === 'disconnected') this.policyRevision = -1;
-    if (policy?.modelId !== presetCatalog.modelId) { this.policyValid = false; this.automaticIds.clear(); this.interaction.release(); this.clearAutomatic(); return false; }
+    if (policy?.modelId !== this.skin?.skinId) { this.policyValid = false; this.automaticIds.clear(); this.interaction.release(); this.clearAutomatic(); return false; }
     if (!Number.isSafeInteger(policy.revision) || policy.revision < 0 || policy.revision < this.policyRevision) return false;
-    if (!Array.isArray(policy.enabledIds) || policy.enabledIds.some(id => presets.get(id)?.availability !== 'automatic')) { this.policyValid = false; this.automaticIds.clear(); this.interaction.release(); this.clearAutomatic(); return false; }
+    if (!Array.isArray(policy.enabledIds) || policy.enabledIds.some(id => this.skin.presets.get(id)?.availability !== 'automatic')) { this.policyValid = false; this.automaticIds.clear(); this.interaction.release(); this.clearAutomatic(); return false; }
     const next = new Set(policy.enabledIds);
     if (this.policyValid && policy.revision === this.policyRevision) return next.size === this.automaticIds.size && [...next].every(id => this.automaticIds.has(id));
     this.policyValid = true; this.policyRevision = policy.revision; this.automaticIds = next;
     if (!['proc-head', 'proc-body', 'proc-blink'].some(id => next.has(id))) this.interaction.release();
     if (!this.previewMode) {
       let released = false;
-      if (this.faceKey && !automaticItems.some(item => item.expressionName === this.faceKey && next.has(item.id))) { this._expressionManager.stopAllMotions(); this.faceKey = ''; released = true; }
-      if (this.gestureKey && !automaticItems.some(item => item.expressionName === this.gestureKey && next.has(item.id))) { this.gestureManager.stopAllMotions(); this.gestureKey = ''; released = true; }
+      if (this.faceKey && !this.skin.automaticItems.some(item => item.expressionName === this.faceKey && next.has(item.id))) { this._expressionManager.stopAllMotions(); this.faceKey = ''; released = true; }
+      if (this.gestureKey && !this.skin.automaticItems.some(item => item.expressionName === this.gestureKey && next.has(item.id))) { this.gestureManager.stopAllMotions(); this.gestureKey = ''; released = true; }
       if (released) this.expressionValues.clear();
       if (!next.has('motion-idle-0')) this._motionManager.stopAllMotions();
     }
@@ -136,12 +260,38 @@ export class JellyfishRenderer extends CubismUserModel {
   beginAttention() {
     if (this.ready && !this.previewMode && this.policyValid && ['proc-head', 'proc-body', 'proc-blink'].some(id => this.automaticIds.has(id))) this.interaction.start(performance.now());
   }
+  /**
+   * FIX61-04: a left tap strokes the character. This is pure local presentation — it sends no command,
+   * writes no Memory and calls no model. It reports whether the model can actually move and why not, so
+   * a model without the interaction parameters stays safe instead of throwing.
+   */
+  strokeCapabilities() {
+    const has = name => { try { return this._model ? this.get(name) !== undefined : false; } catch { return false; } };
+    return {
+      head: this.ready && has(this.skin?.parameters.headPitch ?? EMPTY_PARAMETERS.headPitch),
+      body: this.ready && has('ParamBodyAngleX'),
+      blink: this.ready && has('ParamEyeLOpen'),
+      reducedMotion: globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+    };
+  }
+  stroke() {
+    const capabilities = this.strokeCapabilities();
+    const plan = strokePlan(capabilities);
+    // Honor the same automatic-action policy the pointer already respects: a disabled head/body action
+    // means no stroke movement, matching what "动作开关" promises the user.
+    const allowed = id => this.previewMode || (this.policyValid && this.automaticIds.has(id));
+    this.applicable = plan.applicable && (allowed('proc-head') || allowed('proc-body'));
+    if (!this.applicable) return { applicable: false, reason: plan.reason || '自动动作当前已关闭，抚摸不产生动作。', values: plan.values };
+    this._strokeUntil = performance.now() + 900;
+    this.interaction.start(performance.now());
+    return { applicable: true, reason: '', values: plan.values };
+  }
   reset({ preserveAttention = false } = {}) {
     if (!preserveAttention) this.interaction.release();
     this.clearAutomatic();
     if (this.previewMode) { this.stopPreview(); return; }
     // Release transient controls only; clothing/accessory state is not a turn.
-    if (this._model && this.defaults) for (const id of this.runtimeParameters) if (!interactionParameters.includes(id)) this.set(id, this.defaults[this.parameterIndices.get(id)]);
+    if (this._model && this.defaults) for (const id of this.runtimeParameters) if (!this.skin.interactionParameters.includes(id)) this.set(id, this.defaults[this.parameterIndices.get(id)]);
   }
   enterPreview() {
     if (this.previewMode) return;
@@ -150,7 +300,7 @@ export class JellyfishRenderer extends CubismUserModel {
     for (const id of this.previewParameters) this.previewValues.set(id, this.get(id));
   }
   selectPreset(id) {
-    const item = presets.get(id);
+    const item = this.skin?.presets.get(id);
     if (!this._model || !item?.previewable || item.availability === 'unavailable') throw new Error('这个预设暂时不能预览');
     this.enterPreview(); this.previewManager.stopAllMotions(); this._motionManager.stopAllMotions(); this.previewSelection = item;
     if (item.expressionName) this.previewManager.startMotion(this.expressions.get(item.expressionName), false);
@@ -184,13 +334,13 @@ export class JellyfishRenderer extends CubismUserModel {
     if (enabled('proc-blink')) this.blink.updateParameters(this._model, delta);
     const rawExpression = workActive ? {emotion:'neutral',intensity:0,delivery:'',gesture:null} : view.invitation && view.state === 'idle' ? { emotion: 'neutral', intensity: 0, delivery: '', gesture: view.invitation.gesture } : view.expression;
     const expression = normalizePresentationIntent(rawExpression);
-    const faceItem = faces.get(expression.emotion), gestureItem = gestures.get(expression.gesture);
+    const faceItem = this.skin.faces.get(expression.emotion), gestureItem = this.skin.gestures.get(expression.gesture);
     let face = '', gesture = '';
     if (!this.previewMode) {
       if (Object.hasOwn(expression, 'presetId')) {
         // A present null/unknown/disabled ID is explicitly neutral. It must not
         // fall back to the TTS emotion or the legacy gesture on the same reply.
-        const item = presets.get(expression.presetId);
+        const item = this.skin.presets.get(expression.presetId);
         if (item?.availability === 'automatic' && enabled(item.id)) {
           if (item.category === 'expression') face = item.expressionName;
           if (item.category === 'pose') gesture = item.expressionName;
@@ -211,7 +361,7 @@ export class JellyfishRenderer extends CubismUserModel {
     const movement = this.interaction.sample({ now, delta, elapsed: this.elapsed, state: this.previewMode ? 'idle' : interactionState,
       head: enabled('proc-head')||workActive, body: enabled('proc-body')||workActive, blink: enabled('proc-blink')||workActive, work:workActive, reducedMotion:globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches===true });
     if (enabled('proc-head') || workActive) {
-      this.set(parameterMap.headYaw, movement.yaw); this.set(parameterMap.headPitch, movement.pitch); this.set(parameterMap.headRoll, movement.roll);
+      this.set(this.skin.parameters.headYaw, movement.yaw); this.set(this.skin.parameters.headPitch, movement.pitch); this.set(this.skin.parameters.headRoll, movement.roll);
       this.set('ParamEyeBallX', movement.gazeX); this.set('ParamEyeBallY', movement.gazeY);
     }
     if (workActive || enabled('proc-blink') && !this.previewMode) {
@@ -223,7 +373,7 @@ export class JellyfishRenderer extends CubismUserModel {
     if (enabled('proc-body') || workActive) this.set('ParamBodyAngleX', this.get('ParamBodyAngleX') + movement.body);
     if (this.previewMode) this.blendParameters(this.previewParameters, this.previewValues, delta);
     // This asset's MouthForm2 is a smile shape; only MouthOpenY receives output amplitude.
-    this.set(parameterMap.mouthForm, face === '星星眼' ? .7 : face === '脸红' ? .25 : 0);
+    this.set(this.skin.parameters.mouthForm, face === '星星眼' ? .7 : face === '脸红' ? .25 : 0);
     this.set('ParamMouthOpenY', active ? Math.min(1, Math.sqrt(view.mouth) * 1.9) : 0);
     for (const [id, value] of this.parameterOverrides) this.set(id, value);
     this._model.update();

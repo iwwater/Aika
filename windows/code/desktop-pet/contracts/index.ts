@@ -22,6 +22,12 @@ export interface TurnInput {
   readonly clientRequestId?: string;
   /** Set by the backend only after consuming a current local KWS hit. */
   readonly wakeKeyword?: string;
+  /**
+   * FIX61-08: the already-verified transcript produced by the live streaming recognizer for this
+   * input session. When present the voice entry uses it as the authoritative user text and the
+   * batch transcription provider is not called for this turn.
+   */
+  readonly transcript?: string;
 }
 export interface Scoped { readonly scope: TurnScope }
 export interface Timed { readonly at: string }
@@ -84,7 +90,17 @@ export interface ConversationMessage {
   readonly createdAt: string;
 }
 export interface DialogueContext extends Scoped {
+  /**
+   * FIX61-09: the frozen prefix this turn pinned. Absent means the turn runs in the dynamic mode where
+   * identity, summary, knowledge, memories and recent history are assembled per request.
+   */
+  readonly prefix?: import('./prefix.js').DialoguePrefix;
   readonly emotionBackground?: import('./emotion-state.js').EmotionBackground;
+  /**
+   * FIX61-06: the bounded knowledge selection for this turn. Absent means "no knowledge library is
+   * selected", which is distinct from "a selected library contributed no block". Reference data only.
+   */
+  readonly knowledge?: import('./knowledge.js').KnowledgeSelection;
   readonly characterPrompt: string;
   readonly recent: readonly ConversationMessage[];
   readonly summary: string;
@@ -211,7 +227,9 @@ export type DesktopCommand =
 export type DesktopEvent =
   | { readonly type: 'turn'; readonly input: TurnInput }
   /** Actual recognized voice text, emitted only after perception and current-scope validation. */
-  | { readonly type: 'transcript'; readonly scope: TurnScope; readonly text: string }
+  | { readonly type: 'transcript'; readonly scope: TurnScope; readonly text: string;
+    /** FIX61-08: live replacement text of the in-progress utterance; display only, never persisted. */
+    readonly interim?: boolean }
   | { readonly type: 'presentation'; readonly presentation: PetPresentation }
   | { readonly type: 'reply'; readonly reply: DialogueReply }
   | { readonly type: 'playback'; readonly playback: PlaybackEvent }

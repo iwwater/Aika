@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { ManagedCredentialStore, managedCredentialId } from './credential-store.js';
 import { realpathSync, statSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
-import type { CredentialInfo } from '../contracts/management.js';
+import { isProviderId, type CredentialInfo } from '../contracts/management.js';
 import type { TrialConfiguration } from '../app/trial-config.js';
 
 /** References identify existing restricted files. Listing never opens key contents. */
@@ -20,7 +20,8 @@ export function credentialRegistry(configuration: TrialConfiguration, managed = 
     file(ref: string, provider: string): string {
       const entry = entries.get(ref) ?? all().get(ref);
       // Revision-zero first-run history retains its missing placeholder; it is never offered as a newly saved key.
-      if(!entry&&(provider==='deepseek'||provider==='dashscope')){const placeholder=resolve(managed.directory,'unconfigured-'+provider+'.key');if(ref===managedCredentialId(placeholder,provider))return placeholder;}
+      // FIX61-01: any registered provider identity keeps its own placeholder, not just the two presets.
+      if(!entry&&isProviderId(provider)){const placeholder=resolve(managed.directory,'unconfigured-'+provider+'.key');if(ref===managedCredentialId(placeholder,provider))return placeholder;}
       if (!entry || entry.provider !== provider) throw new Error('Unknown credential reference'); return entry.file;
     },
     list(): CredentialInfo[] {
@@ -30,7 +31,8 @@ export function credentialRegistry(configuration: TrialConfiguration, managed = 
           const actual = realpathSync(entry.file), info = statSync(actual), local = relative(realpathSync(configuration.projectRoot), actual);
           if (isAbsolute(entry.file) && isOutside(realpathSync(configuration.projectRoot), actual) && isPrivateFileSync(actual,info)) status = 'configured';
         } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') status = 'missing'; }
-        return { id, provider:entry.provider as 'dashscope'|'deepseek', managed:!entries.has(id), label: (entry.provider === 'dashscope' ? '百炼凭据' : 'DeepSeek凭据') + ' · ' + id.slice(-6), status, masked: '••••••••' };
+        const labels: Record<string, string> = { dashscope: '百炼凭据', deepseek: 'DeepSeek凭据' };
+        return { id, provider:entry.provider, managed:!entries.has(id), label: (labels[entry.provider] ?? entry.provider + ' 凭据') + ' · ' + id.slice(-6), status, masked: '••••••••' };
       });
     },
   };

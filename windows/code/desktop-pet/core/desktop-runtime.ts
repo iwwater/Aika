@@ -1,10 +1,17 @@
 import { userFacingError } from './user-facing-error.js';
 import type { CapturePort, CapturedInput, DesktopCommand, DesktopEvent, TurnInput, TurnScope } from '../contracts/index.js';
 import { DialoguePipeline, type DialoguePorts } from './dialogue-pipeline.js';
+import type { LiveVoiceTurn } from './live-voice-turn.js';
 import { TurnController } from './turn-controller.js';
 
-type Active = { input: TurnInput; signal: AbortSignal; ready?: Promise<void>; finishing: boolean };
-export interface RuntimePorts extends DialoguePorts { capture: CapturePort; onForegroundIdle?(): void }
+type Active = { input: TurnInput; signal: AbortSignal; ready?: Promise<void>; finishing: boolean; live?: LiveVoiceTurn | undefined };
+/**
+ * FIX61-08 live voice leg. When present, one authorized voice turn opens a streaming recognizer
+ * session and the release commits the verified transcript instead of transcribing the whole clip
+ * again. A construction failure falls back to the batch capture path for that turn only.
+ */
+export interface LiveVoiceFactory { open(scope: TurnScope): LiveVoiceTurn }
+export interface RuntimePorts extends DialoguePorts { capture: CapturePort; liveVoice?: LiveVoiceFactory; onForegroundIdle?(): void }
 /** Serializes short UI commands; device permission and model waits never block cancellation. */
 export class DesktopRuntime {
   private readonly controller = new TurnController();
@@ -35,6 +42,7 @@ export class DesktopRuntime {
     this.ports.work?.onInput();
     this.controller.cancel();
     this.presentation();
+    if (active?.live) void active.live.cancel().catch(() => {});
     const scope = active?.input.scope ?? this.cleanupPending;
     const emotionScope=scope??this.lastEmotionScope;
     if(emotionScope)this.ports.emotion?.cancel(emotionScope);
@@ -88,8 +96,17 @@ export class DesktopRuntime {
             try {
               await active.ready;
               if (this.active !== active || active.signal.aborted) return;
+              // The live leg runs first: the release flush and the bounded final result happen while
+              // the capture is still draining, and the verified transcript rides on the turn input.
+              const live = active.live?.release(active.signal);
               const captured = await this.ports.capture.finish(active.input.scope);
               if (this.active !== active || active.signal.aborted) { await this.ports.mediaStore.releaseScope(active.input.scope); return; }
+              const spoken = live ? await live : undefined;
+              if (this.active !== active || active.signal.aborted) { await this.ports.mediaStore.releaseScope(active.input.scope); return; }
+              if (spoken?.type === 'finished') {
+                this.run({ ...active, input: Object.freeze({ ...active.input, transcript: spoken.transcript }) }, captured);
+                return;
+              }
               this.run(active, captured);
             } catch (error) { await this.fail(active, error); }
           })());
@@ -106,6 +123,13 @@ export class DesktopRuntime {
           this.ports.work?.beginInput?.(input.scope, command.workBinding);
           this.emit({ type: 'turn', input }); this.presentation();
           if (turn.input.kind === 'text') { this.run(active); return; }
+          const live = this.ports.liveVoice;
+          if (live) {
+            // The live recognizer streams the same authorized capture; a failure here is reported and
+            // the turn continues on the batch path instead of losing the user's speech.
+            try { active.live = live.open(input.scope); await active.live.start(); }
+            catch (error) { active.live = undefined; this.emit({ type: 'error', scope: input.scope, message: userFacingError(error) }); }
+          }
           active.ready = this.ports.capture.start(turn.input.scope, turn.signal);
           this.track(active.ready.catch(error => this.fail(active, error)));
           return;

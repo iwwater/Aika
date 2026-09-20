@@ -117,7 +117,10 @@ test('actual trial backend process publishes its local page, applies saved confi
   };
   const first = await start();
   const initial = first.messages();
-  assert.equal(initial[0].channel, 'backend_ready');
+  // FIX61-03: startup progress records now precede backend_ready on stdout; ready is still present.
+  assert.equal(initial.at(-1)?.channel, 'backend_ready');
+  assert.ok(initial.slice(0, -1).every(m => m.channel === 'backend_startup'),
+    'only startup progress may precede backend_ready: ' + JSON.stringify(initial.map(m => m.channel)));
   assert.equal(initial.find(m => m.channel === 'presentation_policy').policy.enabledIds.length, 13);
   const presentationResponse = await fetch(first.url.origin + '/api/presentation', { headers: first.headers });
   const presentation = await presentationResponse.json() as { catalog: { modelId: string }; policy: { revision: number } };

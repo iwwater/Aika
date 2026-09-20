@@ -8,10 +8,45 @@ import { DesktopRuntime } from '../core/desktop-runtime.js';
 import { RoleMaintenanceQueue } from '../core/maintenance-queue.js';
 import { RoleMemoryLifecycleQueue } from '../core/memory-lifecycle-queue.js';
 import type { BackgroundMemoryPort, MemoryPendingObservation, MemoryTurnPort, SummaryPort, ForegroundMemoryRequest } from '../contracts/memory-lifecycle.js';
+import { join } from 'node:path';
 import { DesktopDeviceBridge } from './desktop-device-bridge.js';
+
+import { LiveVoiceTurn } from '../core/live-voice-turn.js';
+import { userFacingError } from '../core/user-facing-error.js';
+import type { SherpaStreamingAsr } from '../providers/sherpa-streaming-asr.js';
+
+/**
+ * FIX61-08: the local streaming model package. Any compatible sherpa-onnx streaming transducer works;
+ * the four paths are configuration, so no model name is whitelisted. `PET_STREAMING_ASR_DIR` (or the
+ * conventional .local/data directory) points at the package; without it the voice turn stays on the
+ * batch path instead of failing the session.
+ */
+export function streamingAsrConfiguration(environment: NodeJS.ProcessEnv = process.env): {
+  encoder: string; decoder: string; joiner: string; tokens: string } | undefined {
+  const directory = environment.PET_STREAMING_ASR_DIR?.trim();
+  if (!directory) return undefined;
+  return { encoder: join(directory, 'encoder.onnx'), decoder: join(directory, 'decoder.onnx'),
+    joiner: join(directory, 'joiner.onnx'), tokens: join(directory, 'tokens.txt') };
+}
+
+/**
+ * A missing or unloadable local model must not take the whole session down: the voice turn then runs
+ * on the batch path. Construction failures stay silent here — the batch transcript is real speech,
+ * so the user loses only the partials, never their turn.
+ */
+function safeRecognizer(create?: () => SherpaStreamingAsr): SherpaStreamingAsr | undefined {
+  if (!create) return undefined;
+  try { return create(); }
+  catch { return undefined; }
+}
 
 export interface PersistentMemoryPort extends MemoryPort { maintenanceInput(scope: TurnScope, text: string): MemoryMaintenanceInput }
 export interface BackendPorts extends Omit<DialoguePorts, 'playback' | 'memory' | 'memoryLifecycle' | 'backgroundMemory'> {
+  /**
+   * FIX61-08: the local streaming recognizer factory. When absent (or when it cannot open) the voice
+   * turn keeps the batch path and the pipeline transcribes the whole clip — never both.
+   */
+  createStreamingAsr?: () => import('../providers/sherpa-streaming-asr.js').SherpaStreamingAsr;
   memory: PersistentMemoryPort;
   createEmotion?: () => import('../contracts/emotion-state.js').EmotionTurnPort;
   companionProfile?: CompanionProfilePort;
@@ -89,6 +124,8 @@ export function parseDesktopCommand(value: unknown): DesktopCommand {
 /** Trusted Node-side session. The shell only sends commands and device responses. */
 export class BackendSession {
   private readonly devices: DesktopDeviceBridge;
+  /** The live turn that currently owns the frame sink; the device bridge routes accepted frames here. */
+  private liveVoice: LiveVoiceTurn | undefined;
   private readonly maintenance: RoleMaintenanceQueue | RoleMemoryLifecycleQueue;
   private readonly runtime: DesktopRuntime;
   private work?: DesktopWorkPort;
@@ -96,6 +133,7 @@ export class BackendSession {
   notifyWork(notice: WorkStatusNotice) { this.workSpeech.notify(notice); }
   attachWork(work: DesktopWorkPort) { this.work = work; this.runtime.attachWork(work); }
   private readonly profile: CompanionProfilePort | undefined;
+  private readonly streamingAsr: SherpaStreamingAsr | undefined;
   private readonly consumeWakeHit: BackendPorts['consumeWakeHit'];
   constructor(ports: BackendPorts, private readonly send: (message: BackendToDesktop) => void, private readonly closeStore: () => void, reportBackgroundFailure: (scope: TurnScope, kind: 'memory' | 'summary') => void = () => {}) {
     this.profile = ports.companionProfile;
@@ -107,8 +145,11 @@ export class BackendSession {
     const lifecyclePort = ports.backgroundMemory ?? ports.lifecycleMemory;
     const lifecycle = lifecyclePort ? new RoleMemoryLifecycleQueue(lifecyclePort, (scope, _error, kind) => reportBackgroundFailure(scope, kind ?? 'summary')) : undefined;
     this.maintenance = lifecycle ?? new RoleMaintenanceQueue(ports.memory, (scope, text) => ports.memory.maintenanceInput(scope, text), scope => reportBackgroundFailure(scope, 'memory'));
-    const { backgroundMemory: _background, isMemoryIndependent, classifyMemoryRequest, createEmotion, ...runtimePorts } = ports;
+    const { backgroundMemory: _background, isMemoryIndependent, classifyMemoryRequest, createEmotion, createStreamingAsr, ...runtimePorts } = ports;
     const emotion=createEmotion?.()??ports.emotion;
+    // One recognizer process for the whole session; the live leg reuses it across authorized turns.
+    this.streamingAsr = ports.outputMode === 'text' ? undefined : safeRecognizer(createStreamingAsr);
+    const streamingAsr = this.streamingAsr;
     this.runtime = new DesktopRuntime({ ...runtimePorts, ...(emotion?{emotion}:{}), ...(lifecycle ? { memoryLifecycle: lifecycle } : {}),
       ...(ports.backgroundMemory && lifecycle ? { backgroundMemory: {
         isIndependent: async (scope: TurnScope, text: string, signal: AbortSignal) => {
@@ -122,7 +163,18 @@ export class BackendSession {
         beginPendingMutation:lifecycle.beginPendingMutation.bind(lifecycle),
         enqueueTurn: lifecycle.enqueueTurn.bind(lifecycle), foregroundContext: lifecycle.foregroundContext.bind(lifecycle),
         appendForegroundAssistant: lifecycle.appendForegroundAssistant.bind(lifecycle), assertContextCurrent: lifecycle.assertContextCurrent.bind(lifecycle),
-      } } : {}), onInputRoute: (scope, route) => send({ channel: 'input_route', scope, route }), onForegroundIdle: () => this.workSpeech.flush(), capture: ports.outputMode==='text'?{start:async()=>{throw Error('Text channel cannot capture');},finish:async()=>{throw Error('Text channel cannot capture');},stop:async()=>{}}:this.devices.capture, playback: ports.outputMode==='text'?{play:async()=>{throw Error('Text channel cannot play');},stop:async()=>{}}:this.devices.playback }, event => send({ channel: 'event', event }), (scope, text) => {
+      } } : {}), onInputRoute: (scope, route) => send({ channel: 'input_route', scope, route }), onForegroundIdle: () => this.workSpeech.flush(),
+      ...(streamingAsr ? { liveVoice: { open: (voiceScope: TurnScope) => {
+        const turn = new LiveVoiceTurn(voiceScope, { asr: streamingAsr,
+          // Live partial text is display only; it is never written to Memory or the Timeline.
+          onInterim: (target: TurnScope, text: string) => send({ channel: 'event', event: { type: 'transcript', scope: target, text, interim: true } }),
+          onError: (target: TurnScope, error: unknown) => send({ channel: 'event', event: { type: 'error', scope: target, message: userFacingError(error) } }) });
+        this.liveVoice = turn;
+        // The renderer pushes frames through the bridge; binding this turn's sink here means the
+        // bridge acknowledgement is exactly "the recognizer accepted this frame" (real backpressure).
+        this.devices.openVoiceCapture(voiceScope.turnId, voiceScope, turn);
+        return turn;
+      } } } : {}), capture: ports.outputMode==='text'?{start:async()=>{throw Error('Text channel cannot capture');},finish:async()=>{throw Error('Text channel cannot capture');},stop:async()=>{}}:this.devices.capture, playback: ports.outputMode==='text'?{play:async()=>{throw Error('Text channel cannot play');},stop:async()=>{}}:this.devices.playback }, event => send({ channel: 'event', event }), (scope, text) => {
       if (this.maintenance instanceof RoleMemoryLifecycleQueue) this.maintenance.afterConversationSaved(scope);
       else this.maintenance.enqueue(scope, text);
     });
@@ -172,6 +224,7 @@ export class BackendSession {
   async close(): Promise<void> {
     // EOF means no more device acknowledgements are possible. Reject waits before cleanup.
     this.devices.close();
+    await this.streamingAsr?.close().catch(() => {});
     await this.workSpeech.close();
     try { await this.runtime.close(); } catch { /* Device teardown belongs to the closing native shell. */ }
     await this.work?.close();

@@ -4,9 +4,22 @@ import type { CharacterId } from './index.js';
 /** Local management HTTP API v1. No credential contents or private filesystem paths. */
 export const MANAGEMENT_API_VERSION = 1 as const;
 export type ProviderSlot = 'asr' | 'dialogue' | 'memory_turn' | 'summary' | 'perception' | 'tts' | 'admission';
+/** Wire protocol actually implemented for a slot. A custom model on a supported protocol is accepted. */
+export type ProviderProtocol = 'openai-compatible' | 'gemini';
+/** Free-form provider identity. Presets are 'dashscope' and 'deepseek'; custom endpoints may use any id. */
+export type ProviderId = string;
+/** Provider identity accepted by the credential registry and the settings boundary. */
+export const PROVIDER_ID = /^[a-z0-9][a-z0-9_-]{1,31}$/;
+export const isProviderId = (value: unknown): value is ProviderId => typeof value === 'string' && PROVIDER_ID.test(value);
 export interface ProviderSelection {
   adapterId: string;
-  provider: 'dashscope' | 'deepseek';
+  /**
+   * The configured wire protocol; the adapter is instantiated from this, not from the model name.
+   * Optional only so a settings file written before FIX61-01 still loads: validateManagedSettings
+   * normalizes an absent value to the adapter's declared protocol before the value is used anywhere.
+   */
+  protocol?: ProviderProtocol;
+  provider: ProviderId;
   model: string;
   endpoint: string;
   credentialRef: string;
@@ -57,9 +70,15 @@ export interface ProviderAdapterInfo {
   capabilities: { instructions: boolean; cloning: boolean; voice: boolean; language: boolean; temperature: boolean };
   status: 'available' | 'not_integrated';
   note: string;
+  /**
+   * True for the capability-only adapters that serve any model on their protocol. An open adapter
+   * declares no model white-list and accepts any registered provider id; reviewed adapters keep
+   * their exact preset and provider binding.
+   */
+  open?: true;
 }
 export interface CredentialInfo {
-  readonly provider?: 'dashscope' | 'deepseek';
+  readonly provider?: ProviderId;
   readonly managed?: boolean; id: string; label: string; status: 'configured' | 'missing' | 'unavailable'; masked: string }
 export interface RuntimeModule {
   id: string;

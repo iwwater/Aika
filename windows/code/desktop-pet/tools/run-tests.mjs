@@ -23,6 +23,16 @@ else if (group === 'release') {
     console.error('NEXT contract tests missing after build; refusing a passWithNoTests run.');
     process.exit(2);
   }
+} else if (group === 'next61') {
+  // FIX61-10: the repair-round suite. Explicit discovery of the compiled next61 cases; a missing or empty
+  // collection exits non-zero instead of quietly reporting success with no tests.
+  await collect('dist/tests/next61', name => name.endsWith('.test.js'));
+  // MJS cases are not compiled by tsc, so the repair-round suite also runs the sources directly.
+  await collect('tests/next61', name => name.endsWith('.test.mjs'));
+  if (!paths.length) {
+    console.error('FIX61 test cases missing after build; refusing a passWithNoTests run.');
+    process.exit(2);
+  }
 } else if (group === 'next-real') {
   if (process.env.PET_NEXT_REAL !== '1') {
     console.error('NEXT-REAL BLOCKED: real-service replay requires PET_NEXT_REAL=1 plus authorized credentials and recorded fixtures. Fixture tests (npm run test:next) do not substitute for real replay.');

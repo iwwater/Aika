@@ -9,6 +9,12 @@ export interface ContextReader {
   assertContextCurrent(scope: TurnScope, revision: number): void;
 }
 export interface ContextOptions {
+  /**
+   * FIX61-06: the bounded knowledge selection for this turn. It is assembled like every other part of
+   * the context — it must fit the same input budget and it is dropped (with a visible count) rather
+   * than silently overrunning the prefix. Its revocation revision is asserted with the rest.
+   */
+  readonly knowledge?: import('../contracts/knowledge.js').KnowledgeSelection | null;
   readonly messageEmotions?: readonly import('../contracts/emotion-state.js').EmotionMessageSnapshot[];
   readonly emotionBackground?: import('../contracts/emotion-state.js').EmotionBackground;
   readonly memoryTieBreak?: (a:MemoryReference,b:MemoryReference)=>number;
@@ -90,6 +96,16 @@ export function assembleContext(ledger: ContextReader, scope: TurnScope, text: s
   for (const { memory, score } of candidates) {
     if (score <= 0 || context.memories.length >= options.maxMemories) { omittedIds.push(memory.id); continue; }
     consider(memory.id, { ...context, memories: [...context.memories, memory] });
+  }
+  // Knowledge is reference data with traceable sources; it is selected last so dialogue, summaries and
+  // memories keep their precedence, and it is never re-ranked by the current query (that is 0.7).
+  if (options.knowledge && options.knowledge.blocks.length) {
+    const candidate = { ...context, knowledge: options.knowledge };
+    const tokens = count(candidate);
+    // Truncating knowledge mid-block would break its source locator, so an over-budget selection is
+    // reported as fully omitted instead of being partially delivered.
+    if (tokens <= options.inputTokenBudget) { context = candidate; countedInputTokens = tokens; }
+    else omittedIds.push(...options.knowledge.blocks.map(block => `knowledge:${block.documentId}:${block.ordinal}`));
   }
   if(options.messageEmotions?.length){
     const metadata=new Map(options.messageEmotions.map(m=>[m.message.id,m]));

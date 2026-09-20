@@ -83,19 +83,57 @@ export class DesktopConnectionState {
   state: 'connecting' | 'ready' | 'failed' | 'disconnected' = 'disconnected';
   reason = '';
   canRetry = false;
+  /** FIX61-03: last backend_startup report of the current attempt, for the shell to render. */
+  phase: 'starting' | 'verifying' | 'initializing' | 'ready' | null = null;
+  sequence = 0;
+  completed = 0;
+  total: number | null = null;
+  elapsedMs: number | null = null;
   get connected(): boolean { return this.state === 'ready'; }
   get active(): boolean { return ['connecting', 'ready'].includes(this.state); }
   current(generation: number): boolean { return generation === this.generation && this.active; }
-  update(value: { generation: number; state: string; reason?: string; canRetry?: boolean }): boolean {
+  update(value: { generation: number; state: string; reason?: string; canRetry?: boolean;
+    phase?: string; sequence?: number; completed?: number; total?: number; elapsedMs?: number }): boolean {
     if (!Number.isSafeInteger(value.generation) || value.generation < 1) return false;
     if (value.state === 'connecting') {
-      if (value.generation <= this.generation) return false;
+      if (value.generation < this.generation) return false;
+      // Same-generation records are live startup progress from the current attempt. They may
+      // refresh the visible phase but can never revive a failed, cancelled or ready attempt.
+      if (value.generation === this.generation && !this.active) return false;
     } else if (!this.current(value.generation) || !['failed', 'disconnected'].includes(value.state)) return false;
+    // Decide merge-vs-fresh BEFORE the generation advances; every terminal state clears progress.
+    const sameAttempt = value.state === 'connecting' && value.generation === this.generation;
     this.generation = value.generation; this.state = value.state as typeof this.state;
-    this.reason = value.reason ?? ''; this.canRetry = value.canRetry ?? this.canRetry; return true;
+    this.reason = value.reason ?? ''; this.canRetry = value.canRetry ?? this.canRetry;
+    // Startup progress belongs to the visible attempt only; every terminal state clears it.
+    if (value.state === 'connecting') {
+      const known = ['starting', 'verifying', 'initializing', 'ready'].includes(String(value.phase));
+      const next = (current: number | null, raw: number | undefined): number | null =>
+        Number.isSafeInteger(raw) && raw! >= 0 ? raw! : current;
+      if (sameAttempt) {
+        // Live progress of the visible attempt: refresh only the fields the record carries.
+        if (known) this.phase = value.phase as typeof this.phase;
+        this.sequence = next(this.sequence, value.sequence) ?? this.sequence;
+        this.completed = next(this.completed, value.completed) ?? this.completed;
+        this.total = next(this.total, value.total);
+        this.elapsedMs = next(this.elapsedMs, value.elapsedMs);
+      } else {
+        // A new attempt starts with exactly what the shell reported.
+        this.phase = known ? value.phase as typeof this.phase : null;
+        this.sequence = next(0, value.sequence) ?? 0;
+        this.completed = next(0, value.completed) ?? 0;
+        this.total = next(null, value.total);
+        this.elapsedMs = next(null, value.elapsedMs);
+      }
+    } else {
+      this.phase = null; this.sequence = 0; this.completed = 0; this.total = null; this.elapsedMs = null;
+    }
+    return true;
   }
   ready(generation: number): boolean {
     if (!this.current(generation) || this.state !== 'connecting') return false;
-    this.state = 'ready'; this.reason = ''; return true;
+    this.state = 'ready'; this.reason = '';
+    this.phase = null; this.sequence = 0; this.completed = 0; this.total = null; this.elapsedMs = null;
+    return true;
   }
 }

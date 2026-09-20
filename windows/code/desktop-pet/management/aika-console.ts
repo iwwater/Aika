@@ -1,8 +1,10 @@
 // Aika console presenter: pure UI logic for the management panel. It only consumes ports
-// (profile/provider config, TurnPort, timeline queries); it never calls models or touches Memory.
+// (profile/provider config, model discovery, TurnPort, timeline queries); it never calls models,
+// never holds a key and never touches Memory.
 import type { TurnScope } from '../contracts/index.js';
 import type { TurnPortEvent } from '../core/turn-port.js';
 import type { AikaProfile, AikaProviderConfig } from './aika-profile.js';
+import type { DiscoveryItemView, DiscoveryView } from './aika-routes.js';
 
 export interface AikaConsolePorts {
   profile: {
@@ -11,6 +13,15 @@ export interface AikaConsolePorts {
   };
   timeline: {
     list(query: { sessionId: string; cursor?: string; limit: number }): Promise<{ items: AikaChatEvent[]; nextCursor?: string }>;
+  };
+  /**
+   * FIX61-02. The presenter only ever receives the model list and the source it came from; the model a
+   * slot actually uses is edited on the settings draft, not here.
+   */
+  discovery: {
+    load(): Promise<DiscoveryView | null>;
+    saveSource(expectedRevision: number, source: { protocol: 'openai-compatible' | 'gemini'; endpoint: string; modelsEndpoint?: string | null; credentialRef?: string | null }): Promise<DiscoveryView | null>;
+    discover(source: { protocol: 'openai-compatible' | 'gemini'; endpoint: string; modelsEndpoint?: string | null; credentialRef?: string | null }): Promise<readonly DiscoveryItemView[]>;
   };
   turn: {
     submit(text: string): Promise<TurnScope>;
@@ -42,6 +53,17 @@ export interface AikaConsoleState {
   readonly voiceStatus: 'unavailable' | 'ready';
   readonly timeline: readonly AikaChatEvent[];
   readonly timelineCursor: string | null;
+  readonly discoverySource: { protocol: 'openai-compatible' | 'gemini'; endpoint: string; modelsEndpoint: string | null; credentialRef: string | null } | null;
+  readonly discoveryRevision: number;
+  readonly discoveryItems: readonly DiscoveryItemView[];
+  readonly discoveryCheckedAt: string | null;
+  readonly discoveryTruncated: boolean;
+  readonly discoveryStale: boolean;
+  readonly discoveryNote: string | null;
+  readonly discoveryError: string | null;
+  readonly discovering: boolean;
+  /** Per-slot model names typed by hand. They are ordinary form values; no discovery is required. */
+  readonly manualModels: Readonly<Record<string, string>>;
 }
 
 export class AikaConsolePresenter {
@@ -54,6 +76,17 @@ export class AikaConsolePresenter {
   #lastError: string | null = null;
   #timeline: AikaChatEvent[] = [];
   #timelineCursor: string | null = null;
+  #discoveryGeneration = 0;
+  #discoverySource: AikaConsoleState['discoverySource'] = null;
+  #discoveryRevision = 0;
+  #discoveryItems: readonly DiscoveryItemView[] = [];
+  #discoveryCheckedAt: string | null = null;
+  #discoveryTruncated = false;
+  #discoveryStale = true;
+  #discoveryNote: string | null = null;
+  #discoveryError: string | null = null;
+  #discovering = false;
+  #manualModels: Record<string, string> = {};
   #unsubscribe: (() => void) | undefined;
   #disposed = false;
 
@@ -70,7 +103,17 @@ export class AikaConsolePresenter {
       lastError: this.#lastError,
       voiceStatus: this.ports.voice.available() ? 'ready' : 'unavailable',
       timeline: [...this.#timeline],
-      timelineCursor: this.#timelineCursor
+      timelineCursor: this.#timelineCursor,
+      discoverySource: this.#discoverySource,
+      discoveryRevision: this.#discoveryRevision,
+      discoveryItems: [...this.#discoveryItems],
+      discoveryCheckedAt: this.#discoveryCheckedAt,
+      discoveryTruncated: this.#discoveryTruncated,
+      discoveryStale: this.#discoveryStale,
+      discoveryNote: this.#discoveryNote,
+      discoveryError: this.#discoveryError,
+      discovering: this.#discovering,
+      manualModels: { ...this.#manualModels }
     };
   }
 
@@ -94,6 +137,51 @@ export class AikaConsolePresenter {
       throw error;
     }
   }
+
+  /** Reads the cached discovery state. Failure is visible but leaves the previous list intact. */
+  async loadDiscovery(): Promise<void> {
+    const generation = ++this.#discoveryGeneration;
+    const loaded = await this.ports.discovery.load();
+    if (generation !== this.#discoveryGeneration) return;
+    this.#adopt(loaded);
+    this.#discoveryError = null;
+  }
+
+  /** Records the endpoint/protocol/credential the user wants to list models from. No model is chosen here. */
+  async saveDiscoverySource(source: { protocol: 'openai-compatible' | 'gemini'; endpoint: string; modelsEndpoint?: string | null; credentialRef?: string | null }): Promise<void> {
+    const generation = ++this.#discoveryGeneration;
+    const saved = await this.ports.discovery.saveSource(this.#discoveryRevision, source);
+    if (generation !== this.#discoveryGeneration) return;
+    this.#adopt(saved);
+    this.#discoveryError = null;
+  }
+
+  /**
+   * Asks the backend to list models. A superseded or slow answer never replaces a newer one; a failure is
+   * recorded for the user and the previously discovered list stays selectable.
+   */
+  async loadDiscoveryModels(source: { protocol: 'openai-compatible' | 'gemini'; endpoint: string; modelsEndpoint?: string | null; credentialRef?: string | null }): Promise<void> {
+    const generation = ++this.#discoveryGeneration;
+    this.#discovering = true;
+    this.#discoveryError = null;
+    try {
+      const items = await this.ports.discovery.discover(source);
+      if (generation !== this.#discoveryGeneration) return;
+      this.#discoveryItems = objects(items);
+      this.#discoverySource = { protocol: source.protocol, endpoint: source.endpoint, modelsEndpoint: source.modelsEndpoint ?? null, credentialRef: source.credentialRef ?? null };
+      this.#discoveryStale = false;
+      this.#discoveryCheckedAt = new Date().toISOString();
+    } catch (error) {
+      if (generation !== this.#discoveryGeneration) return;
+      this.#discoveryError = error instanceof Error ? error.message : String(error);
+      throw error;
+    } finally {
+      if (generation === this.#discoveryGeneration) this.#discovering = false;
+    }
+  }
+
+  /** A hand-typed model name is an ordinary form value: it never depends on a successful discovery. */
+  setManualModel(slot: string, model: string): void { this.#manualModels = { ...this.#manualModels, [slot]: model }; }
 
   /** Exactly one submit per call; concurrent sends are refused until the turn reaches a terminal state. */
   async sendText(text: string): Promise<TurnScope> {
@@ -157,4 +245,30 @@ export class AikaConsolePresenter {
     this.#unsubscribe?.();
     this.#unsubscribe = undefined;
   }
+
+  #adopt(page: DiscoveryView | null): void {
+    if (!page) return;
+    this.#discoverySource = { protocol: page.protocol, endpoint: page.endpoint, modelsEndpoint: page.modelsEndpoint, credentialRef: page.credentialRef };
+    this.#discoveryRevision = page.revision;
+    this.#discoveryItems = objects(page.items);
+    this.#discoveryCheckedAt = page.checkedAt;
+    this.#discoveryTruncated = page.truncated;
+    this.#discoveryStale = page.stale;
+    this.#discoveryNote = page.note;
+  }
+}
+
+/** Ids are data, not markup; anything that is not a plain identifier is dropped rather than rendered. */
+function objects(items: readonly DiscoveryItemView[] | undefined): readonly DiscoveryItemView[] {
+  if (!Array.isArray(items)) return [];
+  const seen = new Set<string>();
+  const result: DiscoveryItemView[] = [];
+  for (const item of items) {
+    if (!item || typeof item.id !== 'string' || !item.id || item.id.length > 200 || /[\u0000-\u001f\u007f]/.test(item.id) || seen.has(item.id)) continue;
+    seen.add(item.id);
+    const methods = Array.isArray(item.capabilities?.methods) ? item.capabilities.methods.filter((method: string) => typeof method === 'string' && method.length <= 40) : [];
+    result.push({ id: item.id, label: typeof item.label === 'string' && item.label ? item.label : item.id,
+      capabilities: { methods, evidence: item.capabilities?.evidence === 'declared' && methods.length ? 'declared' : 'unknown' } });
+  }
+  return result;
 }

@@ -51,4 +51,6 @@ export class ManagementSettingsStore {
     this.tail = run.catch(() => {}); return run;
   }
   async drain(): Promise<void> { await this.tail; }
+  /** FIX61-10: a test or a closing runtime releases its tail here; a live server keeps writing. */
+  close(): Promise<void> { return this.drain(); }
 }

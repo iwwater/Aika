@@ -15,6 +15,8 @@ import { WorkIntentClassifier } from '../providers/work-intent.js';
 import { QwenAsrProvider } from '../providers/qwen-asr.js';
 import { QwenVisualEmotionProvider, VISUAL_EMOTION_PROMPT } from '../providers/qwen-visual-emotion.js';
 import { SplitPerceptionProvider } from '../providers/split-perception.js';
+import { SherpaStreamingAsr } from '../providers/sherpa-streaming-asr.js';
+import { streamingAsrConfiguration } from './backend-session.js';
 import { StrictManagementForget, withStrictManagementForget } from './management-forget.js';
 import { assertCompanionDataConfiguration } from './companion-data.js';
 import { isOutside, isPrivateFileSync } from '../core/platform-files.js';
@@ -58,6 +60,12 @@ import { prototypeSnapshot } from './memory-planning-prototype.js';
 import { runMemorySemanticAttempt, type SemanticAttemptEvent } from './memory-semantic-adapter.js';
 import { buildMemorySemanticFormat } from './memory-semantic-format.js';
 import { TrialAdmission } from './trial-admission.js';
+import { AikaProfileStore, applyAikaProfile } from '../management/aika-profile.js';
+import { AikaTimelineStore } from '../management/aika-timeline.js';
+import { KnowledgeLibraryStore } from '../memory/knowledge-library.js';
+import { knowledgeManagement } from '../management/knowledge-routes.js';
+import { MicrophonePreferenceStore } from '../media/microphone-test.js';
+// Health is derived from the runtime's own observations, so no extra probe is started here.
 
 /** Keep production trial calls within the reviewed text bounds without truncating user content or replies. */
 export class TrialTransport extends ProviderTransport {
@@ -205,9 +213,23 @@ export function keyReader(filename: string, configuration: TrialConfiguration, c
 export async function startTrialBackend(environment: NodeJS.ProcessEnv = process.env): Promise<void> {
   const configFile = environment.PET_TRIAL_CONFIG, activationFile = environment.PET_TRIAL_ACTIVATION;
   if (!configFile || !activationFile || !isAbsolute(configFile) || !isAbsolute(activationFile)) throw new Error('Explicit trial configuration required');
+  // FIX61-03: typed backend_startup progress ahead of backend_ready, so the shell renews its stall
+  // window on real work instead of blind waiting. Only counters and the frozen phase names go on
+  // stdout — never paths, credential material or diagnostics. The phase set mirrors the shell's
+  // STARTUP_PHASES (desktop/electron/transport.mjs); this plain-protocol backend cannot import it.
+  const STARTUP_PHASES = ['starting', 'verifying', 'initializing', 'ready'] as const;
+  type StartupPhase = (typeof STARTUP_PHASES)[number];
+  let startupSequence = 0;
+  const emitStartup = (phase: StartupPhase, completed: number, total = 4) => {
+    if (!STARTUP_PHASES.includes(phase)) throw new Error('Unknown startup phase');
+    process.stdout.write(JSON.stringify({ channel: 'backend_startup', sequence: ++startupSequence,
+      phase, completed, total, elapsedMs: Math.round(process.uptime() * 1000) }) + '\n');
+  };
   const registeredConfiguration = await readActiveTrialConfiguration(configFile, activationFile);
+  emitStartup('verifying', 1);
   if (registeredConfiguration.purpose === 'user-trial') assertCompanionDataConfiguration(registeredConfiguration);
   await verifyTrialRuntime(registeredConfiguration);
+  emitStartup('initializing', 2);
   const voices = await RegisteredVoiceStore.open(resolve(registeredConfiguration.projectRoot, '.local/data/registered-voices.json'));
   const settings = await ManagementSettingsStore.open(resolve(dirname(configFile), 'management-settings.json'), registeredConfiguration, voices);
   const configuration = effectiveTrialConfiguration(registeredConfiguration, settings.effective);
@@ -273,8 +295,17 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
       }
     }
     const strictProvider=new StrictTrialMemoryProvider(store, endpoint('memory_turn'), transport, configuration.phaseId, evidence, configuration.models.memory_turn.thinking);
+    // FIX61-06: the knowledge library lives in the SAME companion database and reaches the turn only
+    // through the context assembly, so switching a library is visible to the next turn immediately.
+    const knowledgeStore = await KnowledgeLibraryStore.open(store, resolve(configuration.projectRoot, '.local/data/knowledge'));
+    const knowledge = knowledgeManagement(knowledgeStore);
+    // The active library is read fresh per turn; the port never caches a selection across a switch.
+    // A library read failure must never take the whole conversation store down with it.
+    const knowledgeSelection = async () => {
+      try { return await knowledgeStore.selection(); } catch { return null; }
+    };
     const memory = new ObservedTrialMemory(store, {
-      context: { inputTokenBudget: configuration.models.dialogue.inputTokenLimit, maxRecentMessages: settings.effective.context.maxRecentMessages, maxMemories: settings.effective.context.maxMemories,
+      context: { knowledge: knowledgeSelection, inputTokenBudget: configuration.models.dialogue.inputTokenLimit, maxRecentMessages: settings.effective.context.maxRecentMessages, maxMemories: settings.effective.context.maxMemories,
         summaryLimit: settings.effective.context.summaryLimit, countTokens: contextInputUpperBound, relevance: () => 1 },
       turn: { inputTokenBudget: configuration.models.memory_turn.inputTokenLimit,
         countTokens: input => buildMemorySemanticFormat(input,true).inputUpperBound, maxSupplementaryPlans: 1,
@@ -294,6 +325,7 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
       });
     const presentation = await PresentationSettingsStore.open(resolve(configuration.projectRoot, '.local/data/presentation-settings.json'),
       await readPresentationCatalog(configuration.projectRoot), policy => process.stdout.write(JSON.stringify({ channel: 'presentation_policy', policy }) + '\n'));
+    const streamingModels = streamingAsrConfiguration();
     const sessionPorts: BackendPorts = { memory, backgroundMemory: memory, mediaStore,
       createEmotion:()=>new EmotionTurns(store!.emotion,store!),
       consumeWakeHit: hit => wake?.consumeHit(hit),
@@ -305,6 +337,10 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
           new QwenVisualEmotionProvider(endpoint('perception'), mediaStore, transport), { visualTimeoutMs: 1500 })
         : new QwenPerceptionProvider({ ...endpoint('perception'), cueLifetimeMs: 5 * 60_000 }, mediaStore, transport),
       tts: createTrialTtsProvider(settings.effective.providers.tts, endpoint('tts'), mediaStore, transport, voices),
+      // FIX61-08: the local streaming recognizer is optional. When its model package is configured the
+      // voice turn streams partials and commits the verified transcript; otherwise the batch ASR above
+      // still transcribes the whole clip after release.
+      ...(streamingModels ? { createStreamingAsr: () => new SherpaStreamingAsr(streamingModels) } : {}),
     };
     session = new BackendSession(sessionPorts, message => {
       runtime.observeDesktop(message);
@@ -316,6 +352,7 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
       void diagnostic({ type: 'background_failure', scope, kind }).catch(() => {});
     });
     process.stdout.write(JSON.stringify({ channel: 'presentation_policy', policy: presentation.snapshot() }) + '\n');
+    emitStartup('initializing', 3);
     runtime.observeMemoryQueue(() => session!.pendingMemoryJobs());
     if (configuration.purpose === 'user-trial') {
       try {
@@ -357,10 +394,16 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
         } },
       });
       } catch { process.stderr.write('Historical memory import unavailable; companion chat remains available.\n'); }
+      const aikaProfile = await AikaProfileStore.open(resolve(configuration.projectRoot, '.local/data/aika-profile.json'));
+      const aikaTimeline = await AikaTimelineStore.open(resolve(configuration.projectRoot, '.local/data/aika-timeline.sqlite'));
+      // The console reads and writes the same profile the composition root applies; nothing is duplicated.
       management = await startRuntimeManagement(registeredConfiguration, configFile, settings, runtime,
         withStrictManagementForget(new SqliteManagementMemoryPort(store,memory),managementForget),presentation,
         pendingMemoryManagement(runtime.instanceId,memory,(scope,id)=>{const source=store!.inspect(scope,id);return source?.state==='active'&&source.message?.role==='user'?{text:source.text,createdAt:source.message.createdAt}:undefined;},
-          (scope,id,text)=>session!.retryPendingMemory(scope,id,text),()=>session!.pendingMemoryJobs().some(x=>x.queued+x.running>0)),wechat,wake,memoryImport,store.emotion);
+          (scope,id,text)=>session!.retryPendingMemory(scope,id,text),()=>session!.pendingMemoryJobs().some(x=>x.queued+x.running>0)),wechat,wake,memoryImport,store.emotion,
+        { store: aikaProfile, timeline: aikaTimeline }, knowledge,
+        // The preference is per-machine app data; the console only reads and writes it.
+        await MicrophonePreferenceStore.open(resolve(configuration.projectRoot, '.local/data/microphone.json')));
     }
     if (configuration.purpose === 'user-trial') {
       const classifier = new WorkIntentClassifier(endpoint('admission'), transport);
@@ -383,6 +426,7 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
       }
     }
     await wechat?.restore().catch(()=>{process.stderr.write('WeChat restore deferred; use connection page.\n');});
+    emitStartup('initializing', 4);
     const cleanupTimer = setInterval(() => { try { store!.cleanup(); } catch { process.stderr.write('Local memory cleanup did not complete\n'); } }, 60_000);
     cleanupTimer.unref();
     const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });

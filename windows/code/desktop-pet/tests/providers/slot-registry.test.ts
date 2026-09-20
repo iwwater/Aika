@@ -58,3 +58,26 @@ test('isAllowedEndpoint validates scheme and host', () => {
   assert.equal(isAllowedEndpoint('not-a-url'), false);
   assert.equal(isAllowedEndpoint(''), false);
 });
+
+test('ProviderRegistry.resolve serves all seven slots over openai-compatible and the five gemini allows', () => {
+  const slots: readonly ('asr' | 'dialogue' | 'memory_turn' | 'summary' | 'perception' | 'tts' | 'admission')[] =
+    ['asr', 'dialogue', 'memory_turn', 'summary', 'perception', 'tts', 'admission'];
+  for (const slot of slots) {
+    // Each slot is checked against the capabilities it actually requires: the ASR slot needs the audio
+    // capability, the TTS slot needs a voice, and the text slots ride the plain text capability set.
+    const extras = slot === 'asr' ? { audioMicrosPerSecond: 1 }
+      : slot === 'tts' ? { characterMicros: 80, voice: 'Cherry' }
+      : {};
+    const caps: SlotCapabilities = slot === 'asr' ? { ...textCaps, audio: true } : textCaps;
+    const openai = ProviderRegistry.resolve(slot, { ...base, adapterId: `openai-${slot}`, ...extras }, caps);
+    assert.equal(openai.model, base.model, `openai-compatible serves ${slot}`);
+    assert.equal(openai.endpoint, base.endpoint);
+  }
+  for (const slot of ['dialogue', 'memory_turn', 'summary', 'admission', 'perception'] as const) {
+    const gemini = ProviderRegistry.resolve(slot, { ...base, adapterId: `gemini-${slot}`, protocol: 'gemini', provider: 'gemini' }, textCaps);
+    assert.equal(gemini.protocol, 'gemini', `gemini serves ${slot}`);
+  }
+  assert.throws(() => ProviderRegistry.resolve('asr', { ...base, adapterId: 'gemini-asr', protocol: 'gemini', provider: 'gemini' }, { temperature: false, voice: false, language: false, audio: true }),
+    (e: unknown) => e instanceof ManagementError && e.code === 'invalid_request', 'gemini cannot serve asr');
+});
+

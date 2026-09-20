@@ -5,6 +5,8 @@ import type { RegisteredVoice } from './registered-voices.js';
 import { MINIMAX_TTS_MODEL, MINIMAX_TTS_ENDPOINT } from './minimax-tts.js';
 
 type Selection = Omit<ProviderSelection, 'credentialRef'>;
+/** Every reviewed preset rides the OpenAI-compatible wire (Bearer auth, model in body); Gemini is the alternative. */
+const WIRE = 'openai-compatible' as const;
 type Choice = NonNullable<ProviderAdapterInfo['choices']>[number];
 const chatEndpoint = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';
 const ttsEndpoint = 'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation';
@@ -20,14 +22,14 @@ const identities: Record<ProviderSlot, [string, string]> = {
 // Sources and limitations: .local/runtime-console-01/REVIEW.md.
 // These are complete model selections, not labels to overlay on another model's prices.
 function chat(adapterId: string, flash: boolean): Selection {
-  return { adapterId, provider: 'dashscope', endpoint: chatEndpoint,
+  return { adapterId, protocol: WIRE, provider: 'dashscope', endpoint: chatEndpoint,
     model: flash ? 'qwen-flash-2025-07-28' : 'qwen-plus-2025-12-01',
     inputTokenLimit: 32_768, outputTokenLimit: 32_768,
     inputMicrosPerToken: flash ? 0.15 : 0.8, outputMicrosPerToken: flash ? 1.5 : 2,
     reservationMicros: flash ? 60_000 : 100_000 };
 }
 function omni(plus: boolean, visual = false): Selection {
-  return { adapterId: visual ? identities.perception[0] : 'qwen-perception', provider: 'dashscope', endpoint: chatEndpoint,
+  return { adapterId: visual ? identities.perception[0] : 'qwen-perception', protocol: WIRE, provider: 'dashscope', endpoint: chatEndpoint,
     model: `qwen3.5-omni-${plus ? 'plus' : 'flash'}-2026-03-15`,
     inputTokenLimit: 196_608, outputTokenLimit: 65_536,
     // Separate visual-only rates; historical combined input retains its audio upper rate.
@@ -35,7 +37,7 @@ function omni(plus: boolean, visual = false): Selection {
     reservationMicros: visual ? Math.ceil(196_608 * (plus ? 7 : 2.2) + 65_536 * (plus ? 40 : 13.3)) : (plus ? 13_100_000 : 4_500_000) };
 }
 function speech(model: string): Selection {
-  return { adapterId: identities.tts[0], provider: 'dashscope', endpoint: ttsEndpoint, model,
+  return { adapterId: identities.tts[0], protocol: WIRE, provider: 'dashscope', endpoint: ttsEndpoint, model,
     inputTokenLimit: 0, outputTokenLimit: 0, inputMicrosPerToken: 0, outputMicrosPerToken: 0,
     characterMicros: 80, reservationMicros: 100_000, voice: 'Cherry', language: 'Chinese' };
 }
@@ -45,7 +47,7 @@ function voices(): NonNullable<Choice['voices']> {
 
 /** Explicit projection: never serialize credentialFile or other private config fields. */
 function baseline(slot: ProviderSlot, model: TrialModel): Selection {
-  return { adapterId: identities[slot][0], provider: model.provider, endpoint: model.endpoint, model: model.model,
+  return { adapterId: identities[slot][0], protocol: model.protocol ?? WIRE, provider: model.provider, endpoint: model.endpoint, model: model.model,
     inputTokenLimit: model.inputTokenLimit, outputTokenLimit: model.outputTokenLimit,
     inputMicrosPerToken: model.inputMicrosPerToken, outputMicrosPerToken: model.outputMicrosPerToken,
     reservationMicros: model.reservationMicros,
@@ -88,7 +90,7 @@ export function managementAdapterCatalog(base: TrialConfiguration, registeredVoi
         language: slot === 'tts', temperature: slot === 'dialogue' },
       status: 'available', note: `官方资料核对：${deepseek || slot === 'memory_turn' ? '2026-09-12' : '2026-09-10'}。${specific} 适配器已接入；账户可用性、音质与真实耗时未在本包调用验证。` };
   });
-  const qwenAudio: Selection = { adapterId: 'qwen-audio-tts', provider: 'dashscope',
+  const qwenAudio: Selection = { adapterId: 'qwen-audio-tts', protocol: WIRE, provider: 'dashscope',
     model: 'qwen-audio-3.0-tts-flash',
     endpoint: 'https://dashscope.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer',
     inputTokenLimit: 0, outputTokenLimit: 0, inputMicrosPerToken: 0, outputMicrosPerToken: 0,
@@ -119,11 +121,40 @@ export function managementAdapterCatalog(base: TrialConfiguration, registeredVoi
   // I appends the selected voice only after its first formal synthesis succeeds.
   for (const [model, label, characterMicros] of [[MINIMAX_TTS_MODEL, 'MiniMax Turbo', 200], ['MiniMax/speech-2.8-hd', 'MiniMax HD', 350]] as const) {
     const compatible = registeredVoices.filter(voice => voice.provider === 'dashscope' && voice.endpoint === MINIMAX_TTS_ENDPOINT && voice.targetModel === model);
-    const configuration: Selection = { adapterId: 'minimax-tts', provider: 'dashscope', endpoint: MINIMAX_TTS_ENDPOINT,
+    const configuration: Selection = { adapterId: 'minimax-tts', protocol: WIRE, provider: 'dashscope', endpoint: MINIMAX_TTS_ENDPOINT,
       model, inputTokenLimit: 0, outputTokenLimit: 0, inputMicrosPerToken: 0, outputMicrosPerToken: 0,
       characterMicros, reservationMicros: 2400 * characterMicros, ...(compatible[0]?{voice:compatible[0].voiceId}:{}) };
     minimaxChoices.push({ label, configuration, voices: compatible.map(voice => ({ id: voice.voiceId, label: voice.label })) });
   }
+  // FIX61-01: capability-only adapters. They declare a protocol and the capabilities the production
+  // composition root actually implements; they carry no model white-list and no reviewed tariff, so any
+  // registered model on that protocol is accepted. Prices for a custom model stay user-supplied and
+  // unknown costs are reported as unknown rather than as zero.
+  catalog.push({ id: 'openai-compatible-text', label: '自定义文本（OpenAI 兼容）', slots: ['dialogue', 'memory_turn', 'summary', 'admission'],
+    provider: 'dashscope', endpoints: [], modelHint: '', models: [], open: true,
+    capabilities: { instructions: false, cloning: false, voice: false, language: false, temperature: true },
+    status: 'available',
+    note: '按 OpenAI 兼容协议接入任意自填模型：模型名、服务地址、用量上界与费用口径均由配置决定，本适配器不按型号白名单拦截。记忆槽仍使用严格语义解析、来源校验和原子提交，只替换模型调用。' });
+  catalog.push({ id: 'openai-compatible-perception', label: '自定义图像感知（OpenAI 兼容）', slots: ['perception'],
+    provider: 'dashscope', endpoints: [], modelHint: '', models: [], open: true,
+    capabilities: { instructions: false, cloning: false, voice: false, language: false, temperature: false },
+    status: 'available',
+    note: '按 OpenAI 兼容协议接入自填的多模态模型，用于本轮画面判断；音频转写仍由独立 ASR 槽处理。' });
+  catalog.push({ id: 'openai-compatible-asr', label: '自定义语音转写（OpenAI 兼容）', slots: ['asr'],
+    provider: 'dashscope', endpoints: [], modelHint: '', models: [], open: true,
+    capabilities: { instructions: false, cloning: false, voice: false, language: false, temperature: false },
+    status: 'available',
+    note: '按 OpenAI 兼容的音频输入协议接入自填转写模型；需要填写每音频秒费率。本适配器为整段批处理，实时逐块转写由本地流式识别路径提供。' });
+  catalog.push({ id: 'openai-compatible-tts', label: '自定义语音合成（OpenAI 兼容）', slots: ['tts'],
+    provider: 'dashscope', endpoints: [], modelHint: '', models: [], open: true,
+    capabilities: { instructions: true, cloning: false, voice: true, language: true, temperature: false },
+    status: 'available',
+    note: '按 OpenAI 兼容的语音合成协议接入自填模型；音色 ID 与每计费字符费率由配置决定。需要所选服务真实支持该音色。' });
+  catalog.push({ id: 'gemini-text', label: '自定义文本（Gemini）', slots: ['dialogue', 'memory_turn', 'summary', 'admission', 'perception'],
+    provider: 'gemini', endpoints: [], modelHint: '', models: [], open: true,
+    capabilities: { instructions: false, cloning: false, voice: false, language: false, temperature: true },
+    status: 'available',
+    note: '按 Gemini generateContent 协议接入自填模型：模型名进入请求 URL，密钥使用 x-goog-api-key。本版本 Gemini 协议不提供音频转写与语音合成。' });
   if (minimaxChoices.length) {
     catalog.push({ id: 'minimax-tts', label: 'MiniMax 语音（百炼托管）', slots: ['tts'], provider: 'dashscope',
       endpoints: [MINIMAX_TTS_ENDPOINT], modelHint: minimaxChoices[0]!.configuration.model,

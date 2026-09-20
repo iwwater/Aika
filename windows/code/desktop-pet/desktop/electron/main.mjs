@@ -78,10 +78,17 @@ ipcMain.on('pet:shell', (event, value) => {
       } break;
     case 'set_hotkey': if (validHotkey(value.code)) { prefs.hotkey = value.code; savePreferences(); deliver('hotkeyConfig', { code: prefs.hotkey }); } break;
     case 'reconnect': if (['failed', 'disconnected'].includes(connection.state)) start(); break;
+    // FIX61-03: a visible startup can be cancelled; EOF first, then the shutdown timeout.
+    case 'cancel_startup': if (connection.state === 'connecting') void connection.cancel(); break;
     case 'disconnect': if (value.generation === connection.generation) connection.close(); break;
     case 'open_management':
       if (preview) { deliver('managementResult', { ok: false }); break; }
-      void managementUrl(process.env.PET_TRIAL_CONFIG).then(url => shell.openExternal(url)).then(() => deliver('managementResult', { ok: true })).catch(() => deliver('managementResult', { ok: false })); break;
+      // FIX61-04: a panel entry may name a console section. Only a same-origin console path is accepted;
+      // an absolute URL from the renderer is refused rather than handed to the shell.
+      if (value.path !== undefined && (typeof value.path !== 'string' || !/^\/[A-Za-z0-9._~\-/?#=&%]*$/.test(value.path))) { deliver('managementResult', { ok: false }); break; }
+      void managementUrl(process.env.PET_TRIAL_CONFIG)
+        .then(url => shell.openExternal(value.path && value.path !== '/' ? new URL(value.path, url).href : url))
+        .then(() => deliver('managementResult', { ok: true })).catch(() => deliver('managementResult', { ok: false })); break;
     case 'quit': app.quit(); break;
   }
 });

@@ -3,7 +3,12 @@ import { assembleContext, type ContextOptions, type ContextSnapshot } from './co
 import { bindScope, sameScope } from './scope.js';
 import { SqliteMemoryStore } from './sqlite-store.js';
 
-export interface SqliteContextOptions extends Omit<ContextOptions, 'prompts'> { readonly summaryLimit: number }
+export interface SqliteContextOptions extends Omit<ContextOptions, 'prompts' | 'knowledge'> { readonly summaryLimit: number;
+  /**
+   * FIX61-06: the active knowledge library, read fresh on every turn so a switch or a document removal
+   * is visible immediately. Absent means no library is selected.
+   */
+  readonly knowledge?: () => import('../contracts/knowledge.js').KnowledgeSelection | null | Promise<import('../contracts/knowledge.js').KnowledgeSelection | null> }
 export function checkAbort(signal: AbortSignal): void { if (signal.aborted) throw signal.reason ?? new Error('memory_cancelled'); }
 export async function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   checkAbort(signal);
@@ -19,9 +24,15 @@ export class SqliteMemoryPort implements MemoryPort {
   constructor(readonly store: SqliteMemoryStore, private readonly options: SqliteContextOptions, private readonly provider?: MemoryMaintenanceProvider) {}
   async append(scope: TurnScope, messages: readonly ConversationMessage[]): Promise<void> { this.store.append(scope, messages); }
   async context(scope: TurnScope, text: string, perception: PerceptionResult | null, signal: AbortSignal): Promise<DialogueContext> {
-    return this.createContext(scope, text, perception, signal).context;
+    return (await this.contextSnapshot(scope, text, perception, signal)).context;
   }
-  protected createContext(scope: TurnScope, text: string, perception: PerceptionResult | null, signal: AbortSignal, excludePersonal=false): ContextSnapshot {
+  /** Same assembly as context(), with the snapshot metadata the knowledge/privacy paths need. */
+  async contextSnapshot(scope: TurnScope, text: string, perception: PerceptionResult | null, signal: AbortSignal, excludePersonal = false): Promise<ContextSnapshot> {
+    const knowledge = this.options.knowledge ? await this.options.knowledge() : null;
+    checkAbort(signal);
+    return this.createContext(scope, text, perception, signal, excludePersonal, knowledge ?? null);
+  }
+  protected createContext(scope: TurnScope, text: string, perception: PerceptionResult | null, signal: AbortSignal, excludePersonal=false, knowledge: import('../contracts/knowledge.js').KnowledgeSelection | null = null): ContextSnapshot {
     checkAbort(signal); const owned = bindScope(scope, scope.characterId);
     if (perception && !sameScope(owned, perception.scope)) throw new Error('perception_scope_mismatch');
     if (perception) {
@@ -38,6 +49,8 @@ export class SqliteMemoryPort implements MemoryPort {
     }, assertContextCurrent: (requested, revision) => this.store.assertContextCurrent(requested, revision) }, owned, text, privacyExcluded?null:perception, this.store.now(), {
       ...this.options, ...(!privacyExcluded?{emotionBackground:this.store.emotion.background(owned),messageEmotions:data.recent.flatMap(m=>{const value=this.store.emotion.message(owned,m.id);return value?[value]:[]})}:{}),
       memoryTieBreak:(a,b)=>candidates.findIndex(x=>x.source.id===a.id)-candidates.findIndex(x=>x.source.id===b.id), maxMemories:Math.min(6,this.options.maxMemories), relevance:memory=>scores.get(memory.id)??0, prompts: { [owned.characterId]: this.store.prompt(owned) },
+      // A privacy exclusion drops knowledge too: an excluded turn must not carry reference text either.
+      knowledge: privacyExcluded ? null : knowledge,
     });
     checkAbort(signal); return {...snapshot,privacyExcluded,recall:{candidates,policyRevision,evaluatedAt,dataRevision:data.revision}};
   }

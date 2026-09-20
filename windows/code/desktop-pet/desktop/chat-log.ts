@@ -42,6 +42,12 @@ export class DesktopChatLog {
     if (!row) return;
     row.text = '语音未发送'; row.status = 'failed'; this.voices.delete(role); this.revision++;
   }
+  /** FIX61-08: live replacement text of the in-progress voice row; never finalizes the turn. */
+  interim(scope: TurnScope, text: string): void {
+    const row = this.voices.get(scope.characterId);
+    if (!row?.scope || !scopeEquals(row.scope, scope)) return;
+    row.text = text; row.transcribed = true; row.status = 'sent'; this.revision++;
+  }
   transcript(scope: TurnScope, text: string): void {
     const row = this.voices.get(scope.characterId);
     if (!row?.scope || row.scope.sessionId !== scope.sessionId || row.scope.turnId !== scope.turnId || row.scope.generation !== scope.generation) return;

@@ -28,6 +28,14 @@ export interface BrowserCaptureOptions {
   readonly onDiagnostic?: (event:CaptureDiagnostic)=>void;
   /** First real PCM (including zero), then about20Hz. Never after finish/stop/abort. No samples or persistence. */
   readonly onLevel?: (event:CaptureLevel)=>void;
+  /**
+   * FIX61-08 live leg: receives every mono block the worklet flushes, in recording order and before
+   * finish, so 100 ms framing and the ASR bridge happen while the user is still speaking. The sink
+   * must not retain the array; the driver keeps ownership of its own copy for the WAV.
+   */
+  readonly voiceSink?: (block:Float32Array)=>void;
+  /** Reported once when the live sink stops accepting audio (backpressure or failure). */
+  readonly onVoiceSinkError?: (error:unknown)=>void;
 }
 
 /** Devices are acquired only for this explicit voice turn, never during idle/text input. */
@@ -120,6 +128,12 @@ export class BrowserCaptureDriver implements CaptureDriver {
             if(event.data.samples){
               samples+=event.data.samples.length;
               if(samples>this.options.maxBufferedSamples){event.data.samples.fill(0);failure=new CaptureError({code:'capture_finish_failed',stage:'capture_finish'});stop();return;}
+              // Live leg first: the same mono PCM the WAV copy uses, never a second capture.
+              // Forwarding stays on through the finish drain so the tail frame is never lost, and stops
+              // with acceptFrames as soon as the flush completes or the turn is stopped.
+              if(this.options.voiceSink&&acceptFrames&&!stopped){
+                try{this.options.voiceSink(event.data.samples);}catch(error){this.options.onVoiceSinkError?.(error);}
+              }
               blocks.push(event.data.samples);
             }
             const level=event.data.level;

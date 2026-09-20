@@ -8,11 +8,13 @@ import { toDeviceFailure, deviceFailureMessage } from '../media/capture-errors.t
 import { PressToTalk, validVoiceKey } from './press-to-talk.ts';
 import { DesktopChatLog } from './chat-log.ts';
 import { DesktopViewState, DesktopConnectionState, scopeEquals } from './view-state.ts';
+import { CharacterPointerRouter, PANEL_ENTRIES } from './pointer-router.ts';
 import { JellyfishRenderer } from './cubism-renderer.mjs';
 import { BrowserPlaybackDriver } from '../media/browser-playback.ts';
 import { DesktopPlaybackController } from './playback-controller.ts';
 import { BrowserCaptureDriver } from '../media/browser-capture.ts';
 import { DESKTOP_BRIDGE_VERSION } from '../contracts/desktop-bridge.ts';
+import { PcmFrameAggregator } from '../media/voice-input-session.ts';
 const $ = id => document.getElementById(id);
 const native = (name, value) => window.desktopHost ? window.desktopHost.postMessage(name, value) : window.webkit?.messageHandlers[name]?.postMessage(value);
 const report = value => native('diagnostic', value);
@@ -53,6 +55,7 @@ function applyPresentationPolicy(){
   if(presentationPolicy)report({type:'presentation-policy',modelId:policy.modelId,revision:policy.revision,enabledCount:policy.enabledIds.length,applied:applied===true});
 }
 let renderer, capturing, captureAllowed = false, voicePhase = 'idle';
+const pcmFrames=new PcmFrameAggregator();
 let voiceRequestId = null, invitationPending = false, voiceRequestAt = 0, inputEventTiming=null;
 function timedVoiceInput(at,source,run){const previous=inputEventTiming;inputEventTiming={at,source};try{return run();}finally{inputEventTiming=previous;}}
 let introduction = null, introductionEpoch = 0, introductionFramePending = false;
@@ -112,12 +115,29 @@ $('hotkey-clear').onclick = () => { bindingKey = false; hotkeyConfig(null); $('h
 const reconnect = document.createElement('button'); reconnect.id = 'reconnect'; reconnect.type = 'button'; reconnect.textContent = '重新连接'; reconnect.hidden = true;
 $('status').after(reconnect);
 reconnect.onclick = () => { if (connection.canRetry && !connection.active) { reconnect.disabled = true; native('shell', { type: 'reconnect' }); } };
-const connectionText = () => ({ connecting: '正在连接对话服务…', disconnected: '对话服务已断开', failed: connection.reason === 'version' ? '对话服务版本不一致，请退出后重新启动' : '对话服务连接失败' }[connection.state]);
+// FIX61-03: startup stays cancelable and its phase is visible while the backend is launching.
+const startupCancel = document.createElement('button'); startupCancel.id = 'startup-cancel'; startupCancel.type = 'button'; startupCancel.textContent = '取消启动'; startupCancel.hidden = true;
+reconnect.after(startupCancel);
+startupCancel.onclick = () => { if (connection.state === 'connecting') { startupCancel.disabled = true; native('shell', { type: 'cancel_startup' }); } };
+const PHASE_LABELS = { starting: '正在启动', verifying: '正在校验', initializing: '正在装配', ready: '即将就绪' };
+const connectionText = () => {
+  if (connection.state === 'connecting' && connection.phase) {
+    const progress = connection.total !== null ? ` ${connection.completed}/${connection.total}` : '';
+    const elapsed = connection.elapsedMs !== null ? ` · ${Math.round(connection.elapsedMs / 1000)} 秒` : '';
+    return `${PHASE_LABELS[connection.phase] ?? '正在启动'}对话服务${progress}${elapsed}`;
+  }
+  if (connection.state === 'connecting') return '正在连接对话服务…';
+  if (connection.state === 'disconnected') return '对话服务已断开';
+  // Startup failures name their reason so a visible wait is distinguishable from a broken install.
+  const startupReason = { ready_timeout: '对话服务启动超时', stalled: '对话服务启动停滞，无进展', launch: '对话服务无法启动', exit: '对话服务启动后退出' }[connection.reason];
+  if (connection.state === 'failed') return startupReason ?? '对话服务连接失败';
+  return undefined;
+};
 const features = { type: 'features', secureContext: isSecureContext, mediaDevices: !!navigator.mediaDevices?.getUserMedia, audioWorklet: typeof AudioWorkletNode !== 'undefined', userAgent: navigator.userAgent, origin: location.origin };
 report(features);
 function renderUI() {
   wake.observe({busy:!!capturing||voicePhase!=='idle'||awaitingTextTurn||awaitingTranscript||['listening','thinking','speaking'].includes(view.state)||workSpeechView.state==='speaking',playing:playback.busy});
-  const uiKey = JSON.stringify([wakeUI.phase,wakeUI.detail,awaitingTextTurn, awaitingTranscript, work.expanded,work.state?.sourceInput?.draftId,workSpeechView.state, voicePhase, chat.revision, view.reply, view.error, view.state, view.characterId, view.invitation?.id, view.invitation?.text, connection.state, connection.reason, connection.canRetry, introduction?.id, introduction?.text]);
+  const uiKey = JSON.stringify([wakeUI.phase,wakeUI.detail,awaitingTextTurn, awaitingTranscript, work.expanded,work.state?.sourceInput?.draftId,workSpeechView.state, voicePhase, chat.revision, view.reply, view.error, view.state, view.characterId, view.invitation?.id, view.invitation?.text, connection.state, connection.reason, connection.canRetry, connection.phase, connection.sequence, connection.completed, connection.total, connection.elapsedMs, introduction?.id, introduction?.text]);
   if (uiKey === lastUI) return;
   lastUI = uiKey;
   const rows = chat.rows(view.characterId).map(row => {
@@ -149,6 +169,9 @@ function renderUI() {
   $('status').textContent = connectionText() || view.error || (workSpeechView.state==='speaking'?'正在播报任务状态…':'') || (awaitingTranscript ? '正在转写…' : '') || (voicePhase === 'preparing' ? '正在准备麦克风…' : '') || ({ idle: wakeLabels[wakeUI.phase]||(wakeUI.phase==='error'?'唤醒已停止，请在网页重新开启':'我在这里'), listening: voicePhase === 'recording' ? '正在听你说 · 再点一次结束' : '正在准备麦克风…', thinking: '正在想怎么回应你…', speaking: '正在说话…', error: '这一轮没有完成' }[view.state]);
   $('thinking-indicator').hidden = !connection.connected || !!view.error || awaitingTranscript || !(awaitingTextTurn || view.state === 'thinking');
   reconnect.hidden = connection.active || !connection.canRetry; reconnect.disabled = connection.active;
+  // The cancel entry exists only while a startup is still in flight and not yet answered by the user.
+  startupCancel.hidden = connection.state !== 'connecting' || startupCancel.disabled;
+  if (connection.state !== 'connecting') startupCancel.disabled = false;
   $('invitation').disabled = !connection.connected;
   $('voice').textContent = voicePhase === 'preparing' ? '取消准备' : voicePhase === 'recording' ? '说完了' : '开始语音';
   $('stop').hidden = (view.state === 'idle' || view.state === 'error')&&!workNotice;
@@ -212,6 +235,46 @@ function fitComposer() {
   const input = $('text'); input.style.height = 'auto';
   input.style.height = `${Math.min(120, Math.max(24, input.scrollHeight || 24))}px`;
 }
+// FIX61-04: the function panel is its own view, separate from the chat drawer. It shares no state with
+// the conversation, so opening it never clears a draft, an active turn or the reading position.
+let functionPanelOpen = false;
+const FUNCTION_CAPABILITIES = { skin: false, microphone: false };
+function functionPanel(open) {
+  if (functionPanelOpen === open) return;
+  functionPanelOpen = open;
+  const panelView = $('function-panel');
+  panelView.hidden = !open;
+  panelView.inert = !open;
+  if (open) {
+    $('function-notice').textContent = '';
+    $('function-entries').focus?.({ preventScroll: true });
+  }
+}
+function openConsole(target) {
+  // The console is a local page served by this same backend. Only a same-origin path is passed; the
+  // shell resolves it against the management origin and refuses anything else.
+  native('shell', { type: 'open_management', path: target });
+}
+function renderFunctionPanel() {
+  const entries = $('function-entries');
+  entries.replaceChildren(...PANEL_ENTRIES.map(entry => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.id = `function-${entry.id}`;
+    button.textContent = entry.label;
+    const wired = entry.kind !== 'view' || FUNCTION_CAPABILITIES[entry.target];
+    button.disabled = !wired;
+    if (entry.note) button.title = wired ? entry.note : `${entry.note}（已在开发计划中，尚未接通）`;
+    button.addEventListener('click', () => {
+      if (entry.kind === 'shell' && entry.action === 'open_chat') { functionPanel(false); panel(true); return; }
+      if (entry.kind === 'shell' && entry.action === 'open_management') { openConsole('/'); return; }
+      if (entry.kind === 'console') { openConsole(entry.target); return; }
+      // A view entry whose feature is not wired yet says so instead of doing nothing silently.
+      if (!wired) { $('function-notice').textContent = `${entry.label}：${entry.note ?? ''}（尚未接通）`; return; }
+    });
+    return button;
+  }));
+}
 const playback = new DesktopPlaybackController(new BrowserPlaybackDriver(), scope => view.accepts(scope)||workSpeechView.accepts(scope), (requestId, event) => {
   const workOutput=workSpeechView.accepts(event.scope);
   (workOutput?workSpeechView:view).receive({type:'playback',playback:event});
@@ -232,7 +295,27 @@ function stopCapture(scope) {
   if (!scope || capturing && scopeEquals(capturing.scope, scope)) voicePhase = 'idle';
   if (!capturing || scope && !scopeEquals(capturing.scope, scope)) return;
   const active = capturing; capturing = null; captureFeedback.stop(active.feedbackToken);active.controller.abort(); active.session?.stop();
+  voiceFrames.reset();
   report({ type: 'capture-stopped' });
+}
+/**
+ * FIX61-08 live audio: the backend asks for the frame it already captured for this input session, and
+ * the renderer answers with exactly that PCM16 payload. Frames are keyed by index so a request for an
+ * index this renderer never captured is refused rather than answered with the wrong audio.
+ */
+const voiceFrames={sessions:new Map(),reset(){this.sessions.clear();},
+  add(sessionId,index,pcm){let frames=this.sessions.get(sessionId);if(!frames)this.sessions.set(sessionId,frames=new Map());
+    frames.set(index,pcm);while(frames.size>240){const oldest=frames.keys().next().value;frames.delete(oldest);}},
+  take(sessionId,index){const frames=this.sessions.get(sessionId);const pcm=frames?.get(index);if(pcm)frames.delete(index);return pcm;}};
+function answerVoiceFrame(message,generation){
+  const pcm=voiceFrames.take(message.inputSessionId,message.index);
+  // While the user has not spoken yet the backend asks for a frame that does not exist. That is
+  // normal: answer with an empty frame so the backend asks again instead of failing the capture.
+  if(!pcm||pcm.length!==message.sampleCount*2){
+    send({channel:'voice_chunk',requestId:message.requestId,inputSessionId:message.inputSessionId,generation:message.generation,
+      index:message.index,sampleRate:message.sampleRate,sampleCount:0,pcm:''},generation);return;}
+  send({channel:'voice_chunk',requestId:message.requestId,inputSessionId:message.inputSessionId,generation:message.generation,
+    index:message.index,sampleRate:message.sampleRate,sampleCount:message.sampleCount,pcm:base64(new Uint8Array(pcm.buffer,pcm.byteOffset,pcm.byteLength))},generation);
 }
 function command(cmd,{wakeInput=false}={}) {
   const commandEnteredAt=performance.now();
@@ -338,11 +421,11 @@ async function receive(message, generation) {
     // Work presentation may reset before a late ASR event; input identity is independent.
     const accepted = e.type==='transcript' ? scopeEquals(inputScope,e.scope) : view.receive(e);
     if(accepted&&e.type==='turn')inputScope=e.input.scope;
-    if(accepted&&e.type==='transcript')awaitingTranscript=false;
+    if(accepted&&e.type==='transcript'&&!e.interim)awaitingTranscript=false;
     if(accepted&&e.type==='error'){captureFeedback.stop();inputScope=null;awaitingTranscript=false;}
     if (accepted && ['turn', 'error'].includes(e.type)) awaitingTextTurn = false;
     if (accepted && e.type === 'turn') { if (e.input.kind === 'text') chat.acknowledge(e.input.scope, true); else chat.bindVoice(e.input.scope); }
-    if (accepted && e.type === 'transcript') chat.transcript(e.scope, e.text);
+    if (accepted && e.type === 'transcript') { if (e.interim) chat.interim(e.scope, e.text); else chat.transcript(e.scope, e.text); }
     if (accepted && e.type === 'reply' && scopeEquals(companionRoute,e.reply.scope)) chat.reply(e.reply.scope, e.reply.text);
     if (accepted && e.type === 'error') { hold.clear(); voiceRequestId = null; invitationPending = false; chat.cancelVoice(view.characterId); chat.failPending(view.characterId); $('text').value = chat.draft(view.characterId); }
     if (accepted && (e.type === 'error' || e.type === 'presentation' && e.presentation.state === 'error')) { captureFeedback.stop();void stopPlayback(); stopCapture(); renderer?.reset(); }
@@ -363,13 +446,19 @@ async function receive(message, generation) {
       await playback.play(message.requestId, message.tts, bytes);
       return;
     }
+    if (message.channel === 'voice_frame') { answerVoiceFrame(message, generation); return; }
     if (message.channel === 'capture_start') {
       if (!captureAllowed || !view.accepts(message.scope)) throw new Error('录音仅能由当前主动语音轮次打开');
       const fromWake=wakeRequestId!==null&&wakeRequestId===voiceRequestId;
       if(fromWake&&!wake.pendingCapture){if(capturing?.wake&&capturing.session&&scopeEquals(capturing.scope,message.scope)){send({channel:'ack',requestId:message.requestId},generation);return;}throw new Error('唤醒录音已取消');}
       stopCapture(); voicePhase = 'preparing';
-      const active = { scope: message.scope, controller: new AbortController(),feedbackToken:captureFeedbackToken,wake:fromWake }; capturing = active;
-      const driver = new BrowserCaptureDriver({ workletModuleUrl: new URL('./recorder-worklet.js', import.meta.url), cameraWidth: 640, jpegQuality: .8, maxBufferedSamples: 12000000,onLevel:level=>{if(capturing===active&&!active.controller.signal.aborted)captureFeedback.level(active.feedbackToken,level);}, onDiagnostic: event => {
+      const active = { scope: message.scope, controller: new AbortController(),feedbackToken:captureFeedbackToken,wake:fromWake,frameIndex:0 }; capturing = active;
+      pcmFrames.reset();voiceFrames.reset();
+      const driver = new BrowserCaptureDriver({ workletModuleUrl: new URL('./recorder-worklet.js', import.meta.url), cameraWidth: 640, jpegQuality: .8, maxBufferedSamples: 12000000,
+        // Live leg: every 2048-sample flush is framed here and kept for the backend's frame requests.
+        voiceSink:block=>{for(const frame of pcmFrames.push(block)){voiceFrames.add(message.scope.turnId,active.frameIndex++,frame);}},
+        onVoiceSinkError:()=>{if(capturing===active)report({type:'voice-sink-error'});},
+        onLevel:level=>{if(capturing===active&&!active.controller.signal.aborted)captureFeedback.level(active.feedbackToken,level);}, onDiagnostic: event => {
         if(capturing===active){if(event.phase==='stopped')captureFeedback.stop(active.feedbackToken);report({type:'capture-timing',...event,requestElapsedMs:Math.max(0,performance.now()-voiceRequestAt)});}
       } });
       const opening=active.wake?Promise.resolve(wake.takeCapture()):driver.open(active.controller.signal);renderUI();
@@ -401,6 +490,8 @@ async function receive(message, generation) {
 }
 window.petBridge = { receive, connectionChanged, hotkeyConfig, hotkeyEvent, displayConfig: display.receive, managementResult };
 window.desktopHost?.subscribe((method, ...args) => window.petBridge[method]?.(...args));
+$('function-close').onclick = () => functionPanel(false);
+renderFunctionPanel();
 $('open').onclick = () => panel(true); $('close').onclick = () => panel(false); $('quit').onclick = () => { wake.disconnect();captureFeedback.stop();void stopPlayback(); stopCapture(); native('shell', { type: 'quit' }); };
 $('text').oninput = () => { clearWorkSpeech();workSpeechBlocked=true;interactionFocusEpoch++; work.input(!!displayedWorkBinding()); chat.setDraft(view.characterId, $('text').value); fitComposer(); };
 $('text').oncompositionstart = () => { composing = true; };
@@ -419,11 +510,24 @@ $('text').onfocus = () => report({ type: 'input-focus', active: document.activeE
 $('voice').onclick = () => timedVoiceInput(performance.now(),'voice-button',()=>command({ type: voicePhase !== 'idle' ? 'finish_voice' : 'start_voice' }));
 $('stop').onclick = () => command({ type: 'cancel' });
 $('invitation').onclick = () => { if (view.invitation) { const id = view.invitation.id; view.invitation = null; panel(true); command({ type: 'click_invitation', invitationId: id }); } };
-let pointer;
-$('character').onpointerdown = e => { pointer = { x: e.screenX, y: e.screenY, moved: false }; e.currentTarget.setPointerCapture(e.pointerId); };
-$('character').onpointermove = e => { if (!pointer) return; const dx = e.screenX - pointer.x, dy = e.screenY - pointer.y; if (Math.abs(dx) + Math.abs(dy) > 3 || pointer.moved) { pointer.moved = true; native('shell', { type: 'drag', dx, dy }); pointer.x = e.screenX; pointer.y = e.screenY; } };
-$('character').onpointercancel = $('character').onlostpointercapture = () => { pointer = null; };
-$('character').onpointerup = () => { if (pointer && !pointer.moved) panel(!panelOpen); pointer = null; };
+// FIX61-04: left short tap strokes locally, left drag moves the window, right button opens the function
+// panel. The routing decision lives in pointer-router.ts so the same production object is unit-tested.
+// A stroke never sends a command, never writes Memory and never calls the model.
+const pointerRouter = new CharacterPointerRouter({
+  panel: open => panel(open),
+  panelOpen: () => panelOpen,
+  drag: (dx, dy) => native('shell', { type: 'drag', dx, dy }),
+  stroke: at => {
+    // Respect the display toggle and reduced-motion; a model without those parameters reports why.
+    const plan = renderer?.stroke ? renderer.stroke(at) : null;
+    if (plan && plan.applicable === false) report({ type: 'stroke-inert', reason: plan.reason });
+  }
+});
+$('character').onpointerdown = e => { pointerRouter.pointerDown(e); e.currentTarget.setPointerCapture(e.pointerId); };
+$('character').onpointermove = e => pointerRouter.pointerMove(e);
+$('character').onpointercancel = $('character').onlostpointercapture = e => pointerRouter.pointerCancel(e);
+$('character').onpointerup = e => pointerRouter.pointerUp(e);
+$('character').oncontextmenu = e => { e.preventDefault(); pointerRouter.contextMenu(e); };
 const editing = target => ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName) || target?.isContentEditable || ['view-full', 'view-half', 'model-resize', 'management'].includes(target?.id);
 document.addEventListener('keydown', e => {
   const receivedAt=performance.now();
@@ -432,7 +536,11 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && display.cancel(e)) return;
   if (bindingKey || composing || e.isComposing || e.keyCode === 229) return;
   if (!editing(e.target) && !e.metaKey && !e.ctrlKey && !e.altKey && timedVoiceInput(receivedAt,'keyboard',()=>hold.down(e.code,e.repeat))) { e.preventDefault(); e.stopPropagation(); return; }
-  if (e.key === 'Escape') { if (playback.busy || capturing || voicePhase !== 'idle' || view.scope) command({ type: 'cancel' }); else panel(false); }
+  if (e.key === 'Escape') {
+    // Topmost first: the function panel is a peer view, so Escape closes it before the chat drawer.
+    if (functionPanelOpen) { e.preventDefault(); functionPanel(false); return; }
+    if (playback.busy || capturing || voicePhase !== 'idle' || view.scope) command({ type: 'cancel' }); else panel(false);
+  }
 }, true);
 document.addEventListener('keyup', e => { if (hold.up(e.code)) { e.preventDefault(); e.stopPropagation(); } }, true);
 document.addEventListener('focusin', e => { if (editing(e.target)) hold.cancel(); });

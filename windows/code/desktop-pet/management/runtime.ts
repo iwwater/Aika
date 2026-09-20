@@ -5,6 +5,7 @@ import type { CharacterId } from '../contracts/index.js';
 import type { BackendToDesktop } from '../contracts/desktop-bridge.js';
 import type { MemoryPendingSnapshot } from '../contracts/memory-lifecycle.js';
 import type { ManagementSnapshot, RuntimeEvent, RuntimeModule, ProviderSlot } from '../contracts/management.js';
+import { ModuleHealthRegistry, evidenceFromCall } from '../core/health-snapshot.js';
 
 const descriptions: Record<ProviderSlot, string> = { asr:'语音转写', dialogue: '前台对话', memory_turn: '严格记忆维护', summary: '对话摘要', perception: '视频情绪', tts: '语音合成', admission: '记忆请求识别' };
 function localRefusal(error: unknown): string {
@@ -28,8 +29,13 @@ export class ManagementRuntime {
   private events: RuntimeEvent[] = [];
   private states = new Map<string, RuntimeModule>();
   private pendingReader: () => readonly MemoryPendingSnapshot[] = () => [];
+  /** FIX61-07: health is derived from real observations, never from a timer or a paid probe. */
+  readonly health: ModuleHealthRegistry;
   observeMemoryQueue(reader: () => readonly MemoryPendingSnapshot[]): void { this.pendingReader = reader; }
-  constructor(readonly sourceRevision: string, private readonly failureSink?: (diagnostic: {event: RuntimeEvent; stage: 'provider_request'; httpStatus: number | null; requestId: string | null}) => Promise<void>) {
+  constructor(readonly sourceRevision: string, private readonly failureSink?: (diagnostic: {event: RuntimeEvent; stage: 'provider_request'; httpStatus: number | null; requestId: string | null}) => Promise<void>,
+    /** FIX61-07: the config revision health observations are tied to. Absent means revision 0. */
+    configRevision = 0) {
+    this.health = new ModuleHealthRegistry(configRevision);
     for (const [id, label] of Object.entries(descriptions)) this.states.set(id, { id, label, providerSlot: id as ProviderSlot, status: 'unknown',
       detail: '适配器已加载；本次运行尚无真实调用结果。', activeJobs: 0, calls: 0, lastElapsedMs: null, lastError: null, lastObservedAt: null });
     for (const [id, label, status, detail] of [
@@ -66,6 +72,9 @@ export class ManagementRuntime {
     try {
       const result = await work(markSent); state.lastElapsedMs = Math.round(performance.now() - start); state.lastError = null;
       state.status = 'ready'; state.detail = '本进程最近一次供应商请求返回成功；不等于语义或物理设备验收。';
+      // FIX61-07: only a request that was actually SENT and SUCCEEDED is operational evidence. A local
+      // refusal (nothing sent) never turns the light green.
+      this.health.observe(slot, { module: slot, evidence: evidenceFromCall({ sent, success: true }), reasonCode: null, repairAction: null });
       this.record(slot, 'completed', characterId, '实际请求完成', state.lastElapsedMs); return result;
     } catch (error) {
       state.lastElapsedMs = Math.round(performance.now() - start); state.status = signal.aborted ? 'unknown' : sent ? 'error' : 'unavailable';
@@ -73,6 +82,12 @@ export class ManagementRuntime {
         ? `${descriptions[slot]}请求返回 HTTP ${error.status}${error.requestId ? `（请求编号 ${error.requestId}）` : ''}。${slot === 'tts' ? '此请求未取得可播放音频。' : '请求未完成。'}`
         : '请求失败；请检查模型、凭据状态、配置与费用边界。' : localRefusal(error);
       state.detail = signal.aborted ? '请求已取消；不能据此判断供应商是否可用。' : state.lastError!;
+      // A cancelled call is not evidence in either direction; a sent-but-failed call proves reachability
+      // only, which is exactly the distinction the health snapshot needs to keep.
+      if (!signal.aborted) {
+        this.health.observe(slot, { module: slot, evidence: evidenceFromCall({ sent, success: false }), reasonCode: state.status === 'unavailable' ? 'provider_invalid' : 'call_failed',
+          repairAction: state.status === 'unavailable' ? '请在配置页核对地址、模型与凭据后重试。' : '请检查服务状态、模型权限与用量后重试。' });
+      }
       this.record(slot, signal.aborted ? 'cancelled' : sent ? 'failed' : 'state', characterId, state.detail, state.lastElapsedMs);
       if (slot === 'tts' && !signal.aborted && this.failureSink) {
         const event = { ...this.events[0]! };

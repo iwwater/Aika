@@ -1,9 +1,11 @@
 import type { CredentialInfo, ManagedSettings, ProviderAdapterInfo, SettingsSnapshot } from './management.js';
 export const SELF_SETUP_VERSION = '0.2.0' as const;
-export type SetupProvider = 'deepseek' | 'dashscope';
+/** FIX61-01: the presets plus any custom provider identity registered for a custom endpoint. */
+export type SetupProvider = 'deepseek' | 'dashscope' | (string & {});
 export type SetupVoiceModel = 'MiniMax/speech-2.8-turbo' | 'MiniMax/speech-2.8-hd';
 export interface SetupIdentity { readonly instanceId:string }
 export interface SetupCredential extends CredentialInfo { readonly provider:SetupProvider; readonly managed:boolean }
+export interface SavedCredential { readonly credentialRef:string; readonly revision:number; readonly provider:SetupProvider }
 export interface SetupReference { readonly id:string; readonly format:'wav'|'mp3'|'m4a'; readonly bytes:number; readonly sha256:string; readonly durationMs:number; readonly createdAt:string }
 /** Only local safe metadata. Never serialize provider responses, signed URLs or filesystem paths. */
 export interface SetupVoiceOperation {
@@ -31,7 +33,7 @@ export interface PrepareSetupVoice extends SetupIdentity { readonly referenceId:
 export interface ConfirmSetupVoice extends SetupIdentity { readonly operationId:string; readonly expectedRevision:number; readonly costConsent:true }
 export interface SelfSetupManagement {
   snapshot():SelfSetupSnapshot|Promise<SelfSetupSnapshot>;
-  saveCredential(input:SaveSetupCredential):Promise<{credentialRef:string;revision:number;provider:SetupProvider}>;
+  saveCredential(input:SaveSetupCredential):Promise<SavedCredential>;
   saveSettings(input:SetupIdentity&{expectedRevision:number;settings:ManagedSettings}):Promise<SettingsSnapshot>;
   uploadReference(input:UploadSetupReference,signal:AbortSignal):Promise<SetupReference>;
   prepareVoice(input:PrepareSetupVoice,signal:AbortSignal):Promise<SetupVoiceOperation>;

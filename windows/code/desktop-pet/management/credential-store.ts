@@ -3,9 +3,10 @@ import { createHash, randomUUID } from 'node:crypto';
 import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir, hostname } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
-import { ManagementError } from '../contracts/management.js';
+import { ManagementError, isProviderId } from '../contracts/management.js';
 
-export type ManagedCredentialProvider = 'dashscope' | 'deepseek';
+/** FIX61-01: any registered provider identity may own a credential; presets stay dashscope/deepseek. */
+export type ManagedCredentialProvider = string;
 export interface ManagedCredentialEntry { readonly id:string; readonly provider:ManagedCredentialProvider; readonly file:string; readonly createdAt:string; readonly operationId:string }
 interface StoredEntry { id:string; provider:ManagedCredentialProvider; name:string; createdAt:string; operationId:string }
 interface State { version:1; revision:number; entries:StoredEntry[] }
@@ -62,7 +63,7 @@ export class ManagedCredentialStore {
       if(value.version!==1||!Number.isSafeInteger(value.revision)||value.revision<0||!Array.isArray(value.entries)||value.entries.length!==value.revision||value.entries.length>1000)throw new Error();
       const ids=new Set<string>(),operations=new Set<string>();
       for(const x of value.entries){
-        if(!x||!['dashscope','deepseek'].includes(x.provider)||!/^credential-[a-f0-9-]{36}\.key$/.test(x.name)||x.id!==managedCredentialId(join(this.directory,x.name),x.provider)||ids.has(x.id)||operations.has(x.operationId)||!/^[a-zA-Z0-9_-]{8,100}$/.test(x.operationId)||!Number.isFinite(Date.parse(x.createdAt)))throw new Error();
+        if(!x||!isProviderId(x.provider)||!/^credential-[a-f0-9-]{36}\.key$/.test(x.name)||x.id!==managedCredentialId(join(this.directory,x.name),x.provider)||ids.has(x.id)||operations.has(x.operationId)||!/^[a-zA-Z0-9_-]{8,100}$/.test(x.operationId)||!Number.isFinite(Date.parse(x.createdAt)))throw new Error();
         ids.add(x.id);operations.add(x.operationId);
       }
       return value;
@@ -78,7 +79,7 @@ export class ManagedCredentialStore {
     assertOwned(this.directory,true);
   }
   save(input:{provider:ManagedCredentialProvider;key:string;expectedRevision:number;operationId:string}):{revision:number;credentialRef:string;provider:ManagedCredentialProvider} {
-    if(!['dashscope','deepseek'].includes(input.provider)||typeof input.key!=='string'||!/^sk-[A-Za-z0-9_-]{8,4090}$/.test(input.key)||!Number.isSafeInteger(input.expectedRevision)||input.expectedRevision<0||!/^[a-zA-Z0-9_-]{8,100}$/.test(input.operationId))fail('invalid_request','请选择对应服务商并填写完整 API Key。');
+    if(!isProviderId(input.provider)||typeof input.key!=='string'||!/^sk-[A-Za-z0-9_-]{8,4090}$/.test(input.key)||!Number.isSafeInteger(input.expectedRevision)||input.expectedRevision<0||!/^[a-zA-Z0-9_-]{8,100}$/.test(input.operationId))fail('invalid_request','请选择对应服务商并填写完整 API Key。');
     this.ensureDirectory();const release=acquireSetupLock(join(this.directory,'write.lock'),'credentials:'+this.projectRoot);
     let created:string|undefined,temporary:string|undefined;
     try {

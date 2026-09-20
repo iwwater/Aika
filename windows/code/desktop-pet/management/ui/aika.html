@@ -1,0 +1,56 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Aika · 模型与身份</title><link rel="stylesheet" href="./style.css"></head><body><main class="main">
+<h1>Aika · 身份与模型</h1>
+<p id="aika-status" class="subtle">身份、服务地址、API Key 引用与七个功能槽的模型都在这里配置。</p>
+<p id="aika-error" class="notice error" role="alert"></p>
+<p id="aika-message" class="notice success" role="status"></p>
+
+<section class="card">
+<h2>身份</h2>
+<label class="field" for="aika-display-name"><span>显示名称</span><input id="aika-display-name" type="text" autocomplete="off"></label>
+<label class="field" for="aika-system-prompt"><span>角色设定</span><textarea id="aika-system-prompt" rows="8"></textarea></label>
+<small id="aika-profile-revision"></small>
+<details><summary>兼容配置（旧版供应商数组）</summary>
+<label class="field" for="aika-providers"><span>providers JSON</span><textarea id="aika-providers" rows="6"></textarea></label>
+</details>
+<div class="actions"><button id="aika-save" type="button" class="primary">保存身份配置</button></div>
+</section>
+
+<small id="aika-settings-revision"></small>
+
+<section class="card">
+<h2>端点与凭据</h2>
+<p class="subtle">在这里填写服务地址与协议，并从本机已保存的凭据里选择一条；密钥正文不会进入这一页。获取列表只读取该端点的 models 资源，不代表这些型号都能完成推理。</p>
+<label class="field" for="aika-protocol"><span>协议</span><select id="aika-protocol"><option value="openai-compatible">OpenAI 兼容</option><option value="gemini">Gemini</option></select></label>
+<label class="field" for="aika-endpoint"><span>服务地址（推理端点）</span><input id="aika-endpoint" type="text" autocomplete="off" spellcheck="false"></label>
+<label class="field" for="aika-models-endpoint"><span>模型列表地址（可选）</span><input id="aika-models-endpoint" type="text" autocomplete="off" spellcheck="false"></label>
+<label class="field" for="aika-credential"><span>API Key 引用</span><select id="aika-credential"><option value="">请选择已保存的凭据</option></select></label>
+<div class="actions"><button id="aika-fetch-models" type="button" class="primary">获取模型列表</button></div>
+<small id="aika-discovery-checked"></small>
+<p id="aika-discovery-note" class="subtle"></p>
+</section>
+
+<section class="card">
+<h2>型号</h2>
+<label class="field" for="aika-model-search"><span>搜索型号</span><input id="aika-model-search" type="text" autocomplete="off"></label>
+<ul id="aika-discovery-list" class="record-list"></ul>
+<p id="aika-discovery-empty" class="empty"></p>
+</section>
+
+<section class="card">
+<h2>七个功能槽的模型</h2>
+<p class="subtle">这里编辑的就是运行配置里的槽位绑定（与「模型与声音」页同一份配置）。可以直接手工填写型号名，不必先成功获取列表。</p>
+<ul id="aika-slots"></ul>
+<small id="aika-slots-revision"></small>
+<div class="actions"><button id="aika-save-models" type="button" class="primary">保存模型配置（重启后生效）</button></div>
+</section>
+
+<section class="card">
+<h2>对话记录</h2>
+<label class="field" for="aika-session"><span>会话</span><input id="aika-session" type="text" value="default" autocomplete="off"></label>
+<ul id="aika-timeline" class="record-list"></ul>
+<div class="actions"><button id="aika-refresh-timeline" type="button">刷新</button><button id="aika-more" type="button">读取更多</button></div>
+</section>
+
+<output id="result" hidden></output>
+</main>
+<script type="module" src="./aika-view.mjs"></script></body></html>

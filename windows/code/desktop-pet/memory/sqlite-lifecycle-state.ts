@@ -302,6 +302,14 @@ export class SqliteLifecycleState {
         const actual=this.store.inspect(scope,ref.id);if(!actual||actual.state!=='active'||actual.version!==ref.version)throw new MemoryRuleError('stale_context');
         if(!sources.some(s=>s.id===ref.id&&s.version===ref.version))sources.push({...ref});
       }}
+      // FIX61-09: a frozen prefix pins its own evidence. Those versions join the ordinary source set, so
+      // the existing assertContextCurrent path revokes the prefix after a correction, a forget or an edit
+      // without a second validation mechanism and without removing the original check.
+      for(const source of context.prefix?.sources??[]){
+        const actual=this.store.inspect(scope,source.id);
+        if(!actual||actual.state!=='active'||actual.version!==source.version)throw new MemoryRuleError('stale_context');
+        if(!sources.some(item=>item.id===source.id&&item.version===source.version))sources.push({...source});
+      }
       const candidate=this.#currents.get(scopeKey(scope));
       const identity=candidate&&sameScope(candidate.scope,scope)?candidate:undefined;
       const record=identity?this.store.inspect(scope,identity.id):null;

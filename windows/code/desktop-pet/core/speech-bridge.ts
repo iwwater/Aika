@@ -1,7 +1,9 @@
 // Next speech bridge: SpeechInputPort/SpeechOutputPort as thin adapters over the upstream turn
-// authority. ASR segments aggregate into exactly one TurnInput; reply sentences synth and play in
-// strict sentence order regardless of completion order; interruption cancels turn and audio in one
-// entry; synthesis/playback failures are observable and never claimed as delivered audio.
+// authority. FIX61-08 adds the live leg: interim partials replace each other in the UI and are never
+// written to memory, final segments only accumulate, and stop() submits exactly one voice turn.
+// Reply sentences synth and play in strict sentence order regardless of completion order;
+// interruption cancels turn and audio in one entry; synthesis/playback failures are observable and
+// never claimed as delivered audio.
 import { sameScope } from './turn-controller.js';
 import type { PlaybackEvent, PlaybackPort, TtsProvider, TtsRequest, TtsResult, TurnScope } from '../contracts/index.js';
 import type { NextTurnPort } from './turn-port.js';
@@ -13,9 +15,13 @@ export interface AsrSegment {
   readonly text: string;
   readonly audioEndMs: number;
   readonly timeSource: 'audio' | 'estimated';
+  /** Monotonic revision of this segment's live text. Partial text is a replacement, never a concat. */
+  readonly revision?: number;
 }
 
 export interface SpeechInputHandlers {
+  /** Live partial text for the current segment; display only, never persisted. */
+  onInterim?(segment: AsrSegment): void;
   onSegmentFinal?(segment: AsrSegment): void;
   onTurnReady?(scope: TurnScope, text: string): void;
   onError?(error: unknown): void;
@@ -24,14 +30,43 @@ export interface SpeechInputHandlers {
 /** Aggregates ASR segments of one utterance; stop() submits at most once per input session. */
 export class NextSpeechInput {
   readonly #segments = new Map<string, AsrSegment>();
+  readonly #revisions = new Map<string, number>();
+  /** The live partial per segment; replaced by newer revisions and dropped by finals. */
+  readonly #partials = new Map<string, AsrSegment>();
+  #inputSessionId: string | undefined;
   #submitted = false;
 
   constructor(private readonly submit: (text: string) => Promise<TurnScope>, private readonly handlers: SpeechInputHandlers = {}) {}
 
-  feed(segment: AsrSegment): void {
-    if (this.#submitted || this.#segments.has(segment.segmentId)) return;
+  /** Live partial text. Revisions are monotonic; an older revision is ignored, never merged. */
+  interim(segment: AsrSegment): void {
+    if (this.#submitted || !this.#accept(segment)) return;
+    const revision = segment.revision ?? (this.#revisions.get(segment.segmentId) ?? 0) + 1;
+    if (revision <= (this.#revisions.get(segment.segmentId) ?? 0)) return;
+    this.#revisions.set(segment.segmentId, revision);
+    if (this.#segments.has(segment.segmentId)) return; // a final segment is immutable
+    this.#partials.set(segment.segmentId, segment);
+    this.handlers.onInterim?.(segment);
+  }
+
+  /** Accumulates the final text of one segment. It never triggers the dialogue by itself. */
+  final(segment: AsrSegment): void {
+    if (this.#submitted || !this.#accept(segment)) return;
+    if (this.#segments.has(segment.segmentId)) return;
+    const revision = segment.revision ?? (this.#revisions.get(segment.segmentId) ?? 0) + 1;
+    this.#revisions.set(segment.segmentId, revision);
+    this.#partials.delete(segment.segmentId);
     this.#segments.set(segment.segmentId, segment);
     this.handlers.onSegmentFinal?.(segment);
+  }
+
+  /** Historical single-shot entry: an explicit final segment. */
+  feed(segment: AsrSegment): void { this.final(segment); }
+
+  /** The live text of the whole utterance: finals in audio order plus the current partial tail. */
+  liveText(): string {
+    const ordered = [...this.#segments.values(), ...this.#partials.values()].sort((a, b) => a.index - b.index);
+    return ordered.map(segment => segment.text.trim()).filter(Boolean).join('');
   }
 
   /** Ends the utterance: merge by audio order and submit once. Empty inputs never submit. */
@@ -39,7 +74,7 @@ export class NextSpeechInput {
     if (this.#submitted) return;
     this.#submitted = true;
     const ordered = [...this.#segments.values()].filter(segment => segment.text.trim().length > 0).sort((a, b) => a.index - b.index);
-    this.#segments.clear();
+    this.#segments.clear(); this.#partials.clear();
     const text = ordered.map(segment => segment.text.trim()).join('');
     if (!text) return;
     try {
@@ -53,13 +88,22 @@ export class NextSpeechInput {
   /** Opens the next utterance; late segments of the previous one are dropped. */
   startNewInput(): void {
     this.#submitted = false;
-    this.#segments.clear();
+    this.#segments.clear(); this.#partials.clear(); this.#revisions.clear();
   }
 
   /** Discards pending input without submitting. */
   cancel(): void {
-    this.#segments.clear();
+    this.#segments.clear(); this.#partials.clear(); this.#revisions.clear();
     this.#submitted = true;
+  }
+
+  /** One recognizer session owns the input; a different session invalidates the previous one. */
+  #accept(segment: AsrSegment): boolean {
+    if (this.#inputSessionId === undefined) { this.#inputSessionId = segment.inputSessionId; return true; }
+    if (this.#inputSessionId === segment.inputSessionId) return true;
+    this.startNewInput();
+    this.#inputSessionId = segment.inputSessionId;
+    return true;
   }
 }
 

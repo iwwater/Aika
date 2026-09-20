@@ -352,6 +352,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKSc
                 deliver("hotkeyConfig", ["code": UserDefaults.standard.string(forKey: "voiceHotkeyCode") as Any? ?? NSNull()])
             case "reconnect":
                 if option("--backend") != nil && ["failed", "disconnected"].contains(connection.state) { startTransport() }
+            // FIX61-03: a visible startup can be cancelled; close() already ends with terminate().
+            case "cancel_startup":
+                if connection.state == "connecting" { connection.close(); voiceRequested = false; wakeRequested = false }
             case "open_management":
                 managementLauncher.open(desktopRoot:sourceRoot,node:option("--node") ?? "/opt/homebrew/bin/node") { [weak self] ok in
                     self?.deliver("managementResult",["ok":ok])

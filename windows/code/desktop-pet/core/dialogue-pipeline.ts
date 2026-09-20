@@ -62,13 +62,22 @@ export class DialoguePipeline {
       if (input.kind === 'voice') {
         if (!captured) throw new Error('Voice turn requires captured audio and capture-stop evidence');
         this.belongs(scope, captured);
-        perception = await this.ports.perception.perceive(captured, signal);
-        this.current(scope, signal); this.belongs(scope, perception);
-        if (perception.status === 'failed') throw new Error('Perception failed');
-        text = perception.transcript;
+        if (input.transcript === undefined) {
+          // Batch fallback only: the whole utterance is transcribed after the key is released.
+          perception = await this.ports.perception.perceive(captured, signal);
+          this.current(scope, signal); this.belongs(scope, perception);
+          if (perception.status === 'failed') throw new Error('Perception failed');
+          text = perception.transcript;
+        } else {
+          // FIX61-08: the live streaming recognizer already produced the verified transcript for this
+          // input session. Accept it as-is — never call a second (batch) ASR for a voice turn.
+          text = input.transcript;
+          if (!captured.audio.id) throw new Error('Voice turn requires its captured audio');
+          perception = { scope, transcript: text, modalities: [], cues: [], status: 'complete' };
+        }
         if(input.wakeKeyword){
           text=cleanWakeTranscript(text,input.wakeKeyword);
-          perception={...perception,transcript:text};
+          perception={...(perception ?? { scope, transcript: text, modalities: [], cues: [], status: 'complete' as const }),transcript:text};
         }
         this.emit({ type: 'transcript', scope: Object.freeze({ ...scope }), text });
       } else if (captured) {

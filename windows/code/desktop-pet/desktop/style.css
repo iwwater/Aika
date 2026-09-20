@@ -10,6 +10,14 @@ button:disabled{cursor:default;opacity:.48}button:focus-visible,textarea:focus-v
 #open{position:absolute;bottom:6px;left:50%;transform:translateX(-50%);border-radius:18px;background:#f4f8fff5;border:1px solid #c2d5f2;padding:6px 20px;box-shadow:0 2px 10px #7089af22;font-size:13px}
 #drawer{width:min(480px,calc(100% - 20px));height:540px;margin:0 auto;padding:18px 20px 14px;display:flex;flex-direction:column;gap:10px;overflow:hidden;background:linear-gradient(145deg,#fbfdfff9,#edf3fdf8);border:1px solid #c3d3e9;border-radius:24px;box-shadow:0 5px 16px #29476a1a;position:relative}
 #drawer header{display:flex;align-items:center;gap:10px;flex:0 0 auto;min-height:30px}
+/* FIX61-04: the function panel is a peer view of the chat drawer, not a replacement for it. */
+#function-panel{width:min(320px,calc(100% - 20px));margin:0 auto;padding:14px 16px 12px;display:flex;flex-direction:column;gap:8px;background:linear-gradient(145deg,#fbfdfff9,#edf3fdf8);border:1px solid #c3d3e9;border-radius:18px;box-shadow:0 5px 16px #29476a1a}
+#function-panel header{display:flex;align-items:center;gap:10px;min-height:28px}
+#function-panel header .panel-title{flex:1;display:flex;align-items:center;gap:8px}
+#function-entries{display:flex;flex-direction:column;gap:6px}
+#function-entries button{text-align:left;padding:8px 10px;border-radius:12px;border:1px solid #c2d5f2;background:#f4f8fff5;font-size:13px}
+#function-entries button:disabled{opacity:.55}
+#function-notice{font-size:12px;color:#5b6b82;min-height:14px;margin:0}
 .panel-title{display:flex;align-items:center;gap:8px;flex:1;min-width:0;white-space:nowrap;font-size:14px;letter-spacing:.06em}
 .presence-dot{width:7px;height:7px;background:#87a8c4;border-radius:50%}
 #display-controls{display:flex;flex:0 0 auto;gap:2px;background:#dfe8f580;padding:3px;border-radius:12px;font-size:12px}

@@ -47,6 +47,13 @@ function presenterPorts(options: {
     timeline: {
       list: async query => (options.timeline ? { ...options.timeline } : { items: [] })
     },
+    // FIX61-02: the production port gained a discovery surface. These cases do not exercise it, so the
+    // stub reports "nothing discovered"; the discovery behaviour itself is covered by fix61-02 tests.
+    discovery: {
+      load: async () => null,
+      saveSource: async () => null,
+      discover: async () => []
+    },
     turn: turnPort,
     voice: { available: () => false }
   };
@@ -170,6 +177,7 @@ test('07-F production wiring: real stores + real turn port + recorder through th
       }
     },
     timeline: { list: query => management.timeline(query) as never },
+    discovery: { load: async () => null, saveSource: async () => null, discover: async () => [] },
     turn: { submit: text => turnPort.submit({ text }), cancel: () => turnPort.cancel(), subscribe: listener => turnPort.subscribe(listener) },
     voice: { available: () => false }
   };

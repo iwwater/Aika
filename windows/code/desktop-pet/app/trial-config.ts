@@ -3,11 +3,15 @@ import { readFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve } from 'node:path';
 import { isQwenAudioTtsModel } from '../providers/qwen-audio-tts.js';
 import { isAllowedEndpoint } from '../providers/slot-registry.js';
+import { isProviderId } from '../contracts/management.js';
 
 export const TRIAL_CONFIG_VERSION = 1;
 export type TrialOperation = 'asr' | 'dialogue' | 'memory_turn' | 'summary' | 'perception' | 'tts' | 'admission';
 export interface TrialModel {
-  readonly provider: 'deepseek' | 'dashscope';
+  /** Free-form provider identity; presets stay 'dashscope'/'deepseek', custom endpoints may use any id. */
+  readonly provider: string;
+  /** The wire protocol the composition root actually instantiates for this model. */
+  readonly protocol?: 'openai-compatible' | 'gemini';
   readonly model: string;
   readonly endpoint: string;
   readonly credentialFile: string;
@@ -122,12 +126,14 @@ export function validateTrialConfiguration(value: unknown): TrialConfiguration {
     if (!isAllowedEndpoint(m.endpoint)) fail('模型服务地址必须是 HTTPS 或显式回环 HTTP，不能交给重定向后的其他主机。');
     // Memory no longer requires a specific vendor: the strict plan-parsing, source validation and commit
     // semantics are preserved in the strict memory provider; only the model-call adapter is swapped.
-    if (['asr', 'perception', 'tts'].includes(operation) && m.provider !== 'dashscope') fail('感知和语音需要已登记的DashScope配置。');
-    if (['dialogue', 'summary', 'admission'].includes(operation) && m.provider === 'deepseek'
-      && (m.model !== 'deepseek-flash' || m.inputMicrosPerToken !== 2 || m.outputMicrosPerToken !== 8
-        || m.inputTokenLimit > 32768 || m.outputTokenLimit > 393216)) fail('DeepSeek文本需要当前登记的Flash型号和保守计费边界。');
+    // FIX61-01: no vendor or model-name white-list. Every slot accepts a custom model on an implemented
+    // protocol; only the protocol capability, the endpoint origin, the credential binding and the usage
+    // bounds are enforced. A price may be unknown, but it must never be silently treated as free.
+    if (!isProviderId(m.provider)) fail('模型供应商标识无效。');
+    if (m.protocol !== undefined && !['openai-compatible', 'gemini'].includes(m.protocol)) fail('模型协议未登记。');
     if (![m.inputMicrosPerToken, m.outputMicrosPerToken].every(n => typeof n === 'number' && Number.isFinite(n) && n >= 0)) fail('模型计费口径未配置。');
-    if (operation === 'asr' && (m.model !== 'qwen3-asr-flash-2026-02-10' || m.audioMicrosPerSecond !== 220 || m.inputMicrosPerToken !== 0 || m.outputMicrosPerToken !== 0)) fail('语音转写型号与音频时长费率未登记。');
+    // Audio slots need a real per-second rate; a text model cannot claim an audio slot without one.
+    if (operation === 'asr' && !(typeof m.audioMicrosPerSecond === 'number' && Number.isFinite(m.audioMicrosPerSecond) && m.audioMicrosPerSecond >= 0)) fail('语音转写缺少音频时长费率。');
     if (operation !== 'tts' && operation !== 'asr') {
       if (!positive(m.inputTokenLimit) || !positive(m.outputTokenLimit)) fail('模型输入输出硬上限未登记。');
       const maximum = Math.ceil(m.inputTokenLimit * m.inputMicrosPerToken + m.outputTokenLimit * m.outputMicrosPerToken);
@@ -135,9 +141,9 @@ export function validateTrialConfiguration(value: unknown): TrialConfiguration {
       if (!unlimited&&m.reservationMicros < maximum) fail('调用预留不足以覆盖登记的最坏费用。');
     }
     if (operation === 'tts' && !(typeof m.characterMicros === 'number' && Number.isFinite(m.characterMicros) && m.characterMicros > 0)) fail('语音计费口径未配置。');
-    if (operation === 'tts' && m.model.startsWith('MiniMax/') && !((m.model === 'MiniMax/speech-2.8-turbo' && m.characterMicros === 200) || (m.model === 'MiniMax/speech-2.8-hd' && m.characterMicros === 350)))
-      fail('MiniMax 仅登记 Turbo/HD 及各自字符费率。');
-    if (m.thinking !== undefined && (operation !== 'memory_turn' || m.thinking !== 'high')) fail('模型思考配置不受当前适配器支持。');
+    // FIX61-01: the MiniMax model/rate pairing and the memory thinking mode are capability parameters of
+    // the selected adapter, not name-based admission gates; the adapter still validates its own wire.
+    if (m.thinking !== undefined && operation !== 'memory_turn') fail('模型思考配置不受当前适配器支持。');
   }
   return structuredClone(c);
 }
