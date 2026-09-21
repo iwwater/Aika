@@ -1,0 +1,43 @@
+{
+  "timestamp": "2026-09-21T02:27:30.415Z",
+  "spec": "STT-08",
+  "endpoint": "http://127.0.0.1:8080",
+  "backend": "CUDA0 (ggml-cuda.dll, whisper-b5130-cuda)",
+  "model": "ggml-large-v3-turbo-q5_0.bin (573.40 MB on CUDA0)",
+  "probe": true,
+  "probeMs": 18.98199999999997,
+  "sample": "official samples/jfk.wav (11.0 s)",
+  "productionClient": "src/services/voice/whisperClient.ts",
+  "transport": "real Node fetch",
+  "repeats": 5,
+  "firstElapsedMs": 734.7011,
+  "medianElapsedMs": 217.5871000000002,
+  "minElapsedMs": 217.00030000000015,
+  "maxElapsedMs": 734.7011,
+  "runs": [
+    {
+      "elapsedMs": 734.7011,
+      "text": "And so, my fellow Americans, ask not what your country can do for you, ask what you can do for your country."
+    },
+    {
+      "elapsedMs": 218.50650000000007,
+      "text": "And so, my fellow Americans, ask not what your country can do for you, ask what you can do for your country."
+    },
+    {
+      "elapsedMs": 217.5871000000002,
+      "text": "And so, my fellow Americans, ask not what your country can do for you, ask what you can do for your country."
+    },
+    {
+      "elapsedMs": 217.00030000000015,
+      "text": "And so, my fellow Americans, ask not what your country can do for you, ask what you can do for your country."
+    },
+    {
+      "elapsedMs": 217.0924,
+      "text": "And so, my fellow Americans, ask not what your country can do for you, ask what you can do for your country."
+    }
+  ],
+  "textStable": true,
+  "vramBackground": "666 MiB desktop background, no compute process",
+  "microphoneTest": "NOT RUN",
+  "tauriWebViewTest": "NOT RUN"
+}

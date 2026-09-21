@@ -8,6 +8,8 @@
 - 唯一文档根为仓库根 docs/。模块规范在 docs/llm、docs/tts、docs/stt、docs/frontend，各自 PRD.md、SPEC.md 索引、specs/ 和 reports/。docs/modules 只放共享规则。不要在 aika-crossplatform 或 src 里创建新的 docs。
 - 开始工作先读当前模块 PRD、当前 SPEC 和共享契约。默认一次只执行一个 SPEC，明确文件/接口范围和 AC；不得依据 archive 中旧 S1–S8 路线扩展任务。
 - 不为拆分文档搬动业务源码，不为局部任务顺手重写架构。新增接口可先用 stub；跨模块公共接口变更须记录版本/兼容方式和受影响消费者。
+- 分层契约：`src/domain/` 是纯领域层，不得反向 import `src/services/`；`src/services/voice/contracts.ts` 是语音模块（STT/TTS）对外的唯一契约边界。合作者重构主工程时，只要 contracts 的接口不变，voice 内部（inputEngine/outputEngine/whisperClient/cloudTtsOutput 等）一行不动。
+- 已知倒挂（暂缓，勿在重构前动）：`src/domain/language.ts` 第 12 行 `import type { VoiceInputLanguage } from "../services/voice/contracts"` 是 type-only 反向依赖（编译期擦除、运行时零影响）。待合作者重构落地后，把该类型下沉到 domain、contracts.ts 改 re-export，届时一并用 `tsc --noEmit` 确认。
 
 ## 测试边界
 

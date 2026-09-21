@@ -1,5 +1,25 @@
 # RT-05 · 持久 Scheduler — 验收报告
 
+## 2026-09-17 宿主接线及任务入口增量
+
+状态：本次定向自动验证 PASS；完整浏览器应用入口 BLOCKED（既有内核错误）；Tauri 设备通知与长跑 NOT RUN。未构建、替换或重启当前 release，避免中断进行中的宿主观察。
+
+改动：新增 `localTasks.ts`、`localTasksPlugin.ts`、`LocalTasksPanel.tsx`；默认能力装配注册服务，设置侧栏新增「定时任务」。支持显式创建一次本地提醒、正文跨重开恢复、任务状态/ID、暂停/恢复/取消；宿主每秒串行推进，dispose/pagehide 停止。到期核验本地主体、local:reminder scope 与已持久化的提醒时刻；不接 GW/outbox 或恢复 Agent。通知失败保留完成记录，明确显示“系统通知未发送”。
+
+纠正原报告与实现的两处不一致：缺 authorize 过去仍执行，如今拒绝；过去执行后才落盘，如今先存 unknown 再 fire，异常/崩溃不重放。读取坏库或失败不再当空库覆盖。旧 schemaVersion=1 不变，新增正文键独立；接口登记见 CONTRACTS。旧两处副作用测试补显式授权，未缩减预期。
+
+验证命令（cwd aika-crossplatform）：
+
+- 初次 `npx.cmd vitest run src/services/runtime/persistentScheduler.test.ts src/services/runtime/localTasks.test.ts`：退出码 1，两处旧测试未提供授权器；补显式授权后退出码 0。
+- 最终 `npx.cmd vitest run src/app/composition.test.ts src/services/runtime/localTasks.test.ts src/services/runtime/persistentScheduler.test.ts`：退出码 0，3 文件 / 24 项通过。
+- `git diff --check`：退出码 0。
+- Playwright CLI +真实 Edge 独立页面，加载生产组件及生产本地提醒服务；外部 notifier 返回 false、持久化用浏览器 localStorage：创建未来提醒 → 到期完成 → 刷新恢复，通知调用计数仍为 1。页面显示正文、完成状态、任务 ID、系统通知未发送。脚本退出码 0；生产定时器和 UI 均实际运行，不证明 Windows 通知送达。
+- 完整浏览器主应用仍在启动时失败：`llm.contextSources` 声明却未提供 `knowledge.wiki`（PLUGIN_CONTRACT_VIOLATION）。该既有问题在本次接线前已出现；未扩展范围修复。主应用设置导航现场检查 BLOCKED，默认插件装配由 composition 定向测试验证。
+
+逐 AC：A（恢复/暂停/恢复/取消）PASS；B（一次执行、到期授权、unknown 预存与异常不重放、坏库不覆盖）PASS；C（关闭不可执行、超过一分钟 missed、通知状态真实）PASS；D（只接受本地显式创建、无 Agent 恢复或外发入口）PASS，限本次一次本地提醒增量。既有 DST/跨天需求与真机长跑没有新增实测证据。
+
+待设备验收：在新版宿主设置→定时任务创建一条两分钟后提醒，记录 ID/通知/状态；创建另一条未来提醒，退出后重开核对；已完成或取消任务不得重复通知；关闭超过到期一分钟应为 missed。Tauri 真机、过夜长跑、人工审阅均 NOT RUN；未宣称完整 RT-05 PASS，也未提交或 push 本次增量。
+
 日期：2026-09-13。执行者：goal worker（自动）。状态：**AUTO_PASS（自动 AC 全过，待人工审阅；真实宿主长期运行 NOT RUN）**。
 
 ## 改动范围

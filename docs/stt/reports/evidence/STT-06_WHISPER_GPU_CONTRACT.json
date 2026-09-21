@@ -1,0 +1,40 @@
+{
+  "timestamp": "2026-09-18T01:04:15.355Z",
+  "spec": "STT-06",
+  "endpoint": "http://127.0.0.1:8081",
+  "probe": true,
+  "probeMs": 20.04389999999998,
+  "sample": "official samples/jfk.wav",
+  "productionClient": "src/services/voice/whisperClient.ts",
+  "transport": "real Node fetch",
+  "repeats": 5,
+  "firstElapsedMs": 348.41549999999995,
+  "medianElapsedMs": 75.57339999999999,
+  "minElapsedMs": 74.29680000000008,
+  "maxElapsedMs": 348.41549999999995,
+  "runs": [
+    {
+      "elapsedMs": 348.41549999999995,
+      "text": "And so my fellow Americans, ask not what your country can do for you, ask what you can do for your country."
+    },
+    {
+      "elapsedMs": 76.8166,
+      "text": "And so my fellow Americans, ask not what your country can do for you, ask what you can do for your country."
+    },
+    {
+      "elapsedMs": 75.57339999999999,
+      "text": "And so my fellow Americans, ask not what your country can do for you, ask what you can do for your country."
+    },
+    {
+      "elapsedMs": 74.29680000000008,
+      "text": "And so my fellow Americans, ask not what your country can do for you, ask what you can do for your country."
+    },
+    {
+      "elapsedMs": 74.65190000000007,
+      "text": "And so my fellow Americans, ask not what your country can do for you, ask what you can do for your country."
+    }
+  ],
+  "textStable": true,
+  "microphoneTest": "NOT RUN",
+  "tauriWebViewTest": "NOT RUN"
+}

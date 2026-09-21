@@ -1,0 +1,30 @@
+{
+  "spec": "TTS-08",
+  "item": "AC-B 补证：chat_gateway.py 真实 serve_forever 生产冒烟（原 NOT RUN 项）",
+  "date": "2026-09-22",
+  "environment": {
+    "python": "D:/ANACONDA/envs/GPTSoVits/python.exe（生产环境，含 faster_whisper/silero-vad）",
+    "command": "chat_gateway.py（默认参数：读 DPAPI、绑 127.0.0.1:9881）",
+    "cwd": "E:/Work/Chat_model/GPT-SoVITS/tools/tts_probe",
+    "upstreams": {
+      "whisper": "127.0.0.1:8080（STT-08 后的 CUDA + large-v3-turbo-q5_0，同日已验收）",
+      "sidecar": "127.0.0.1:9880（GPT-SoVITS，6 情绪）"
+    },
+    "preconditions": "执行前 9881 空闲（原 NOT RUN 的『生产 9881 被占用』前提已消失）"
+  },
+  "results": {
+    "startup": "9881 约 1 s 内可连接；进程存活 4m37s 直至主动停止。DPAPI 读取成功的判定依据：load_key_from_secrets 失败会使进程在绑端口前退出，而服务正常绑定并提供服务（启动横幅因 stdout 块缓冲 + 进程被 kill 未落盘，如实注明）",
+    "page": "GET / → 200，16568 字节，sha256 = 6fad10b8cae189d6e4ddb7026cfae1348e3f8234f34e93a15be6ef1372033104（== PAGE 基线，逐位一致）",
+    "health": "GET /api/health → 200；字段 {sidecar,whisper,history,model,base_url}；sidecar=true、whisper=true（两个上游均为真实服务）；history 加载真实 session.json 共 91 条（仅计数，内容不引用）；model=deepseek-chat、base_url=https://api.deepseek.com；响应不含 api_key",
+    "stt": [
+      {"input": "demo/aika-emotion-demo/audio/ref/mood01.wav（真人，32kHz/3.84s/RMS 2222）", "text": "お兄ちゃん、恋人がいなくても大丈夫だよ。", "elapsedMs": 619},
+      {"input": "demo/aika-emotion-demo/audio/ref/mood05.wav（真人，毒舌语气）", "text": "所詮雑魚、変態野郎のくせにおこがましいんだよ。きもい東京男。", "elapsedMs": 432}
+    ],
+    "sttNote": "走真实双闸门（RMS + silero-vad）+ auto 首跑 + 语言仲裁 + beam5 重跑路径；STT 文本属演示素材台词，非用户私人语料",
+    "chat": "未调用（真实 LLM 会产生外部 API 调用与费用，超出本补证必要范围；LLM 全链路本就不在 TTS-08 SPEC 范围）",
+    "userFiles": "output/dialogue/session.json 前后 sha256 一致（6d4c523b35b8e09b，12857 字节）——/api/stt 不写历史；未调用 /api/reset",
+    "portLifecycle": "停止后 9881 已释放"
+  },
+  "diagnosisSideNote": "首测曾得 {\"text\":\"\"}：根因是探测脚本用了 multipart 而契约是裸 wav 字节体（浏览器 blob 直传）——网关把非 wav 输入优雅降级为空文本（闸门 None 跳过、whisper 空转写），行为符合设计；改裸体后即正确。此坑已记录，防止后续取证重踩",
+  "conclusion": "TTS-08 原唯一代码侧 NOT RUN（真实 serve_forever 启动）补证通过；剩余 NOT RUN 仅真人麦克风/扬声器与人工听音（需用户在场）"
+}

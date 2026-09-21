@@ -248,6 +248,8 @@ INT-01 的兼容检查项：云端合成一旦在设置页可选，`createOutput
 
 ## 详细接口入口
 
+2026-09-17 RT-05 向后兼容追加：`LocalTasksToken` / `createLocalTasks` 提供一次本地提醒 create/list/update/tick/dispose，由 capabilityPlugins 注册、设置页消费。提醒正文独立键 `scheduler.localReminders.v1`，既有 scheduler.tasks.v1 schema 不变。Scheduler 缺 authorize 拒绝；执行前先持久化 unknown，异常不重放。仅本地主体 local:reminder，不影响 GW/outbox 接口。
+
 LLM 各自的 `docs/llm/specs/LLM-01…05` 文件内写明实现级接口；[STT](../stt/ARCHITECTURE.md)、[TTS](../tts/ARCHITECTURE.md)、[前端](../frontend/ARCHITECTURE.md) 按共享架构文件引用对应阶段。代码块是拟定逻辑契约，现有类型通过兼容 adapter 映射；不能以名称尚未存在推断已实现，也不要机械新增重复接口。
 
 发生冲突先依据用户最新范围和 SPEC 的行为约束统一接口，在同一改动中更新文档/适配及针对性契约测试。接口细化不自动触发全仓重构或全流程测试。

@@ -1,0 +1,312 @@
+{
+  "gpu": "RTX 5060 8151 MiB",
+  "sampleIntervalSec": 0.2,
+  "phases": [
+    {
+      "name": "both-idle",
+      "note": "两服务已加载，无推理",
+      "startedAtSec": 0.0,
+      "wallSec": 1.0,
+      "peakUsedMiB": 3552,
+      "minFreeMiB": 4256,
+      "calls": [],
+      "allOk": true
+    },
+    {
+      "name": "whisper-only",
+      "note": "只打 whisper 推理",
+      "startedAtSec": 1.0,
+      "wallSec": 0.83,
+      "peakUsedMiB": 3552,
+      "minFreeMiB": 4256,
+      "calls": [
+        {
+          "ok": true,
+          "ms": 374.0,
+          "respBytes": 122
+        },
+        {
+          "ok": true,
+          "ms": 226.0,
+          "respBytes": 122
+        },
+        {
+          "ok": true,
+          "ms": 226.0,
+          "respBytes": 122
+        }
+      ],
+      "allOk": true
+    },
+    {
+      "name": "sidecar-only",
+      "note": "只打 sidecar 合成",
+      "startedAtSec": 1.83,
+      "wallSec": 4.93,
+      "peakUsedMiB": 3570,
+      "minFreeMiB": 4238,
+      "calls": [
+        {
+          "ok": true,
+          "ms": 1646.1,
+          "respBytes": 384726
+        },
+        {
+          "ok": true,
+          "ms": 1637.0,
+          "respBytes": 384726
+        },
+        {
+          "ok": true,
+          "ms": 1643.0,
+          "respBytes": 384726
+        }
+      ],
+      "allOk": true
+    },
+    {
+      "name": "concurrent",
+      "note": "whisper 与 sidecar 同时推理",
+      "startedAtSec": 6.76,
+      "wallSec": 5.09,
+      "peakUsedMiB": 3562,
+      "minFreeMiB": 4246,
+      "calls": {
+        "whisper": [
+          320.9989070892334,
+          263.00907135009766,
+          264.5678520202637
+        ],
+        "sidecar": [
+          1795.5760955810547,
+          1649.9993801116943,
+          1643.000841140747
+        ]
+      },
+      "allOk": true
+    }
+  ],
+  "errors": [],
+  "overallPeakUsedMiB": 3570,
+  "overallMinFreeMiB": 4238,
+  "oomObserved": false,
+  "verdict": "可共存：全阶段无错误，峰值显存 3570 MiB（上限 8151 MiB）",
+  "samples": [
+    [
+      0.14,
+      3552,
+      4256
+    ],
+    [
+      0.48,
+      3552,
+      4256
+    ],
+    [
+      0.79,
+      3552,
+      4256
+    ],
+    [
+      1.17,
+      3552,
+      4256
+    ],
+    [
+      1.47,
+      3552,
+      4256
+    ],
+    [
+      1.78,
+      3552,
+      4256
+    ],
+    [
+      2.09,
+      3570,
+      4238
+    ],
+    [
+      2.39,
+      3570,
+      4238
+    ],
+    [
+      2.7,
+      3570,
+      4238
+    ],
+    [
+      3.0,
+      3570,
+      4238
+    ],
+    [
+      3.32,
+      3570,
+      4238
+    ],
+    [
+      3.62,
+      3570,
+      4238
+    ],
+    [
+      3.93,
+      3551,
+      4257
+    ],
+    [
+      4.24,
+      3551,
+      4257
+    ],
+    [
+      4.54,
+      3551,
+      4257
+    ],
+    [
+      4.85,
+      3551,
+      4257
+    ],
+    [
+      5.17,
+      3535,
+      4273
+    ],
+    [
+      5.49,
+      3551,
+      4257
+    ],
+    [
+      5.79,
+      3547,
+      4261
+    ],
+    [
+      6.09,
+      3547,
+      4261
+    ],
+    [
+      6.41,
+      3547,
+      4261
+    ],
+    [
+      6.73,
+      3545,
+      4263
+    ],
+    [
+      7.12,
+      3558,
+      4250
+    ],
+    [
+      7.44,
+      3558,
+      4250
+    ],
+    [
+      7.76,
+      3558,
+      4250
+    ],
+    [
+      8.07,
+      3558,
+      4250
+    ],
+    [
+      8.41,
+      3558,
+      4250
+    ],
+    [
+      8.72,
+      3562,
+      4246
+    ],
+    [
+      9.04,
+      3562,
+      4246
+    ],
+    [
+      9.37,
+      3562,
+      4246
+    ],
+    [
+      9.69,
+      3562,
+      4246
+    ],
+    [
+      10.01,
+      3562,
+      4246
+    ],
+    [
+      10.33,
+      3562,
+      4246
+    ],
+    [
+      10.64,
+      3562,
+      4246
+    ],
+    [
+      10.96,
+      3562,
+      4246
+    ],
+    [
+      11.28,
+      3562,
+      4246
+    ],
+    [
+      11.59,
+      3562,
+      4246
+    ],
+    [
+      11.91,
+      3546,
+      4262
+    ]
+  ],
+  "loadStateObservations": [
+    {
+      "state": "ambient（无 whisper、无 sidecar）",
+      "usedMiB": 666,
+      "freeMiB": 7142,
+      "measuredAt": "2026-09-21T02:26Z（本会话，whisper 启动前）",
+      "method": "nvidia-smi --query-gpu=memory.used,memory.free"
+    },
+    {
+      "state": "whisper(turbo/CUDA) 已加载、sidecar 未启动",
+      "usedMiB": 1721,
+      "freeMiB": 6087,
+      "measuredAt": "2026-09-21T02:27Z（本会话，sidecar 启动前）",
+      "method": "同一命令",
+      "whisperNetMiB": 1055
+    },
+    {
+      "state": "两服务均已加载、无推理（本文件 both-idle 阶段）",
+      "usedMiB": 3552,
+      "freeMiB": 4256,
+      "measuredAt": 0.0,
+      "method": "本探针 200 ms 采样",
+      "sidecarNetMiB": 1831
+    }
+  ],
+  "phaseNote": "phases 中的 whisper-only / sidecar-only 指「只有该服务在推理」，两服务在四个阶段全程都已加载；显存读数为 200 ms 间隔采样峰值，波动 ±20 MiB 视为采样噪声。"
+}

@@ -1,0 +1,149 @@
+{
+  "timestamp": "2026-09-21T03:29:38.192Z",
+  "engine": "本地 Whisper（whisper.cpp CUDA large-v3-turbo-q5_0 :8080）",
+  "endpoint": "http://127.0.0.1:8080",
+  "segmentation": "手动触发切段",
+  "transcriptionContract": "与 whisperClient.ts 一致：auto/json/temperature=0/no_context=true",
+  "results": [
+    {
+      "lang": "ja",
+      "expected": "今日は一緒に帰らない？あまり遅くならないうちにね。",
+      "text": "今日は一緒に帰らないあまり奥ならないうちにね",
+      "ms": 404.2,
+      "ok": false
+    },
+    {
+      "lang": "ja",
+      "expected": "もっとゆっくり話してくれる？聞き取れなかったの。",
+      "text": "もっとゆっくり話してくれる 聞けとれなかったの",
+      "ms": 351.6,
+      "ok": false
+    },
+    {
+      "lang": "ja",
+      "expected": "待って、今の言葉、もう一回言って。",
+      "text": "待って、今の言葉も一回言って。",
+      "ms": 321.3,
+      "ok": false
+    },
+    {
+      "lang": "ja",
+      "expected": "アイカちゃん、おはよう。今日も元気だよ。",
+      "text": "Agachang Ohio? Ima mau kinky dayo.",
+      "ms": 205.1,
+      "ok": false
+    },
+    {
+      "lang": "ja",
+      "expected": "うん、わかった。あとでね。",
+      "text": "うう分かった後でね",
+      "ms": 194.4,
+      "ok": false
+    },
+    {
+      "lang": "zh",
+      "expected": "今天天气不错，我们出去走走吧。",
+      "text": "今天天气不错我们出去走走吧",
+      "ms": 191.9,
+      "ok": true
+    },
+    {
+      "lang": "zh",
+      "expected": "你刚才说的那个，我没听清楚。",
+      "text": "你刚才说的那个我没听清",
+      "ms": 194.2,
+      "ok": false
+    },
+    {
+      "lang": "zh",
+      "expected": "谢谢你一直陪着我。",
+      "text": "谢谢你一直陪着我",
+      "ms": 210.4,
+      "ok": true
+    },
+    {
+      "lang": "zh",
+      "expected": "等一等，让我再想想。",
+      "text": "等一等,让我再想一想。",
+      "ms": 222.6,
+      "ok": false
+    },
+    {
+      "lang": "zh",
+      "expected": "今天中午吃什么好呢。",
+      "text": "今天中午吃什么好呢",
+      "ms": 221.6,
+      "ok": true
+    },
+    {
+      "lang": "en",
+      "expected": "How are you doing today?",
+      "text": "How are you doing today?",
+      "ms": 213.8,
+      "ok": true
+    },
+    {
+      "lang": "en",
+      "expected": "Could you say that again, please?",
+      "text": "Could you say that again, please?",
+      "ms": 222.5,
+      "ok": true
+    },
+    {
+      "lang": "en",
+      "expected": "Thank you for being here with me.",
+      "text": "Thank you for being here with me.",
+      "ms": 224.9,
+      "ok": true
+    },
+    {
+      "lang": "en",
+      "expected": "I'm not sure about that.",
+      "text": "I'm not sure about that.",
+      "ms": 209.6,
+      "ok": true
+    },
+    {
+      "lang": "en",
+      "expected": "Let's go for a walk this afternoon.",
+      "text": "Let's go for a week this afternoon.",
+      "ms": 221.9,
+      "ok": false
+    },
+    {
+      "lang": "mix",
+      "expected": "今日の天気は really nice だね。",
+      "text": "Kjóa tínki var vel næsta ne",
+      "ms": 289.9,
+      "ok": false
+    },
+    {
+      "lang": "mix",
+      "expected": "这个 idea 很不错，ありがとう。",
+      "text": "这个idea很不错,arigato",
+      "ms": 224.4,
+      "ok": false
+    },
+    {
+      "lang": "mix",
+      "expected": "Can you もう一回言ってください?",
+      "text": "会話もう一回言ってください",
+      "ms": 204.7,
+      "ok": false
+    },
+    {
+      "lang": "mix",
+      "expected": "アイカちゃん、thank you for today。",
+      "text": "Akijang, thank you for today.",
+      "ms": 224.9,
+      "ok": false
+    },
+    {
+      "lang": "mix",
+      "expected": "ちょっと待って、I need to think。",
+      "text": "ちょっと待って…I need to think…",
+      "ms": 294.8,
+      "ok": false
+    }
+  ]
+}
