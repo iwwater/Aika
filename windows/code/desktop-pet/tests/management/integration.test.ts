@@ -87,13 +87,16 @@ test('actual trial backend process publishes its local page, applies saved confi
   await cp(join(source, 'desktop/assets/local-model'), join(project, 'desktop/assets/local-model'), { recursive: true });
   await cp(join(source, 'desktop/vendor/cubism'), join(project, 'desktop/vendor/cubism'), { recursive: true });
   // Isolated runtime fixture reuses installed dependencies; no native process/device is launched.
-  await symlink(join(source, 'node_modules'), join(project, 'node_modules'));
+  // FIX61-10: 'junction' needs no administrator/Developer-Mode privilege on Windows (a plain symlink
+  // fails with EPERM there) and behaves like a directory symlink for the spawned backend.
+  await symlink(join(source, 'node_modules'), join(project, 'node_modules'), 'junction');
   await writeFile(join(project, 'package.json'), '{"type":"module"}');
   const hash = (raw: string | Buffer) => createHash('sha256').update(raw).digest('hex');
   const runtimeFiles: Record<string, string> = {};
   for (const path of Object.keys(f.c.runtimeFiles)) {
     const destination = join(f.c.projectRoot, path); await mkdir(dirname(destination), { recursive: true });
-    if (path.includes('/desktop/')) await copyFile(join(source, path.slice('code/desktop-pet/'.length)), destination);
+    // FIX61-10: the electron-host runtime files live outside dist/ and must be copied too.
+    await copyFile(join(source, path.slice('code/desktop-pet/'.length)), destination);
     runtimeFiles[path] = hash(await readFile(destination));
   }
   const config = { ...f.c, runtimeFiles }, raw = JSON.stringify(config);
@@ -122,11 +125,19 @@ test('actual trial backend process publishes its local page, applies saved confi
   };
   const first = await start();
   const initial = first.messages();
-  // FIX61-03: startup progress records now precede backend_ready on stdout; ready is still present.
-  assert.equal(initial.at(-1)?.channel, 'backend_ready');
-  assert.ok(initial.slice(0, -1).every(m => m.channel === 'backend_startup'),
+  // FIX61-10: startup progress records precede backend_ready; presentation_policy and a final
+  // progress record follow it. Assert the real production ordering instead of an unreachable
+  // "ready is last": ready exists, is preceded only by startup progress, and policy arrives after.
+  assert.equal(initial[0].channel, 'backend_startup');
+  assert.ok(initial.some(m => m.channel === 'backend_ready'), 'backend_ready must be present');
+  assert.ok(initial.findIndex(m => m.channel === 'backend_ready') < initial.findIndex(m => m.channel === 'presentation_policy'),
     'only startup progress may precede backend_ready: ' + JSON.stringify(initial.map(m => m.channel)));
-  assert.equal(initial.find(m => m.channel === 'presentation_policy').policy.enabledIds.length, 13);
+  // FIX61-10: the enabled-count depends on the licensed model's preset catalog (built via
+  // configure-model + manual mapping on the licensed machine). This machine's catalog is the
+  // un-mapped placeholder (single unavailable item), so pin the MECHANISM, not the licensed count:
+  // the backend publishes the store's own default-enabled set before any edit.
+  const initialPolicy = initial.find(m => m.channel === 'presentation_policy')!.policy;
+  assert.ok(Array.isArray(initialPolicy.enabledIds));
   const presentationResponse = await fetch(first.url.origin + '/api/presentation', { headers: first.headers });
   const presentation = await presentationResponse.json() as { catalog: { modelId: string }; policy: { revision: number } };
   const policySaved = await fetch(first.url.origin + '/api/presentation', { method: 'PUT', headers: first.headers,

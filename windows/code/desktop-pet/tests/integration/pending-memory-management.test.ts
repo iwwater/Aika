@@ -33,4 +33,7 @@ test('real HTTP/SQLite pending recovery is explicit, instance-bound, duplicate-s
  assert.equal((await post('cancel')).status,200);gate.resolve(none(input));await queue.drain();assert.deepEqual(memory.pendingMutations('companion'),[]);assert.equal(calls,1);
  assert.equal((await post('retry')).status,409);assert.equal(store.inspect(scope(),'turn-1:user')!.text,'<script>synthetic pending request</script>');
  assert.equal((await fetch(server.origin+'/pending-memory-view.mjs')).status,200);
+ // FIX61-10: close explicitly before the after-hooks — the fixture rm (registered first) runs before
+ // them on Windows and deletes the still-open SQLite file (EBUSY).
+ if(input)gate.resolve(none(input));await queue.drain();await server.close();await queue.close();store.close();
 });

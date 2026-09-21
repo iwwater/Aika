@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readActiveTrialConfiguration, validateTrialConfiguration, type TrialConfiguration, type TrialModel, type TrialOperation } from '../../app/trial-config.js';
 import { TrialAuthorizer, estimateTrialMicros, assertReviewedUnknownCosts } from '../../app/trial-authorizer.js';
 import { prepareTrialLaunch, trialFiles } from '../../app/trial-launcher.js';
@@ -20,8 +20,14 @@ async function fixture(t: { after(fn: () => Promise<void>): void }, smoke = fals
   const memory: TrialModel = { ...chat, provider: 'deepseek', model: 'deepseek-v4-pro', endpoint: 'https://api.deepseek.com/chat/completions',
     reservationMicros: 11000000, inputMicrosPerToken: 9, outputMicrosPerToken: 27, outputTokenLimit: 393216, thinking: 'high' };
   const c: TrialConfiguration = { version: 1, product: 'companion-v1', phaseId: 'local-trial-controlled', purpose: smoke ? 'smoke-text' : 'user-trial', ...(smoke ? {smokeInput:'合成文字'} : {}), projectRoot, sourceRevision: 'a'.repeat(40),
-    runtimeFiles: Object.fromEntries(['dist/app/trial-backend.js', 'dist/app/trial-launcher.js', 'desktop/build/renderer.js',
-      'desktop/build/星月陪伴.app/Contents/MacOS/DesktopPet'].map(p => [`code/desktop-pet/${p}`, hash('controlled')])),
+    // FIX61-10: the launcher refuses a macOS-targeted configuration on Windows, so the fixture pins
+    // the host explicitly per platform (production validates the same field).
+    ...(process.platform === 'win32' ? {desktopHost: 'electron' as const} : {desktopHost: 'macos' as const}),
+    runtimeFiles: Object.fromEntries((process.platform === 'win32'
+      ? ['dist/app/trial-backend.js', 'dist/app/trial-launcher.js', 'desktop/build/renderer.js',
+         'desktop/electron/main.mjs', 'desktop/electron/preload.cjs', 'desktop/electron/transport.mjs', 'desktop/electron/layout.mjs', 'desktop/electron/assets.mjs', 'tools/management-url.mjs']
+      : ['dist/app/trial-backend.js', 'dist/app/trial-launcher.js', 'desktop/build/renderer.js',
+         'desktop/build/星月陪伴.app/Contents/MacOS/DesktopPet']).map(p => [`code/desktop-pet/${p}`, hash('controlled')])),
     database: join(projectRoot, '.local/data/companion.sqlite'), budgetFile: join(projectRoot, '.local/model-evaluation/budget.json'),
     budgetBatchId: 'original-fixture-batch', limitMicros: 20000000, phaseLimitMicros: 20000000, maxCalls: 200,
     operationLimits: { admission: 40, dialogue: 40, memory_turn: 40, summary: 20, perception: smoke ? 0 : 20, tts: 40 },
@@ -121,7 +127,11 @@ test('launch plan supplies the real native arguments and refuses changed build b
   await mkdir(dirname(paths.configFile), { recursive: true });
   await writeFile(paths.configFile, await readFile(f.configFile)); await writeFile(paths.activationFile, await readFile(f.activationFile));
   const plan = await prepareTrialLaunch(f.c.projectRoot, '/controlled/node');
-  assert.equal(plan.version, f.c.sourceRevision); assert.equal(plan.arguments[0], '--root');
+  assert.equal(plan.version, f.c.sourceRevision);
+  // FIX61-10: on the electron host the plan prepends main.mjs before --root; on macOS it does not.
+  if (process.platform === 'win32') assert.equal(plan.arguments[0], resolve(f.c.projectRoot, 'code/desktop-pet/desktop/electron/main.mjs'));
+  else assert.equal(plan.arguments[0], '--root');
+  assert.ok(plan.arguments.includes('--root'));
   assert.ok(plan.arguments.includes(join(f.c.projectRoot, 'code/desktop-pet/dist/app/trial-backend.js')));
   assert.ok(!plan.arguments.includes('backend.js')); assert.equal(plan.environment.PET_TRIAL_CONFIG, paths.configFile);
   assert.equal(await readFile(priorConfig, 'utf8'), 'frozen-smoke-config');
@@ -211,7 +221,7 @@ test('independent ASR proves WAV duration, preserves unknown reservations, and e
   const {QwenAsrProvider}=await import('../../providers/qwen-asr.js');
   const {ManagementRuntime}=await import('../../management/runtime.js');
   const {defaultManagedSettings,validateManagedSettings}=await import('../../management/settings.js');
-  const tool=await import(resolve(dirname(fileURLToPath(import.meta.url)),'../../../tools/voice-pipeline-update.mjs'));
+  const tool=await import(pathToFileURL(resolve(dirname(fileURLToPath(import.meta.url)),'../../../tools/voice-pipeline-update.mjs')).href);
   const c:TrialConfiguration=tool.nextVoiceConfiguration(f.c);
   assert.equal(c.operationLimits,undefined); assert.equal(c.maxCalls,undefined); assert.equal(c.phaseLimitMicros,undefined);
   const settings=defaultManagedSettings(c); validateManagedSettings(settings,c);

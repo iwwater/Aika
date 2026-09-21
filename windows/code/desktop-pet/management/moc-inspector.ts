@@ -51,12 +51,15 @@ async function core(): Promise<CubismCore> {
   loading = (async () => {
     domShim();
     const source = await readFile(coreFile(), 'utf8');
-    // The bundle assigns to a top-level `Live2DCubismCore`; evaluate it in a function scope so it
-    // never leaks into the module scope of the backend.
-    const evaluate = new Function('window', 'globalThis', 'document', 'navigator', 'self', 'exports', 'module', 'define',
+    // FIX61-10: the Emscripten banner goes through console.log, which on the backend would corrupt
+    // the JSON protocol on stdout (backend_ready and startup records share that stream). Evaluate
+    // with console.log redirected to stderr so stdout stays protocol-only.
+    const evaluate = new Function('window', 'globalThis', 'document', 'navigator', 'self', 'exports', 'module', 'define', 'console',
       source + '\n;return typeof Live2DCubismCore !== "undefined" ? Live2DCubismCore : null;');
     const scope = globalThis as unknown as Record<string, unknown>;
-    const instance = evaluate(scope.window, globalThis, scope.document, navigator, scope.self, undefined, undefined, undefined) as CubismCore | null;
+    const stderrLog = (...parts: unknown[]) => process.stderr.write(parts.map(String).join(' ') + '\n');
+    const instance = evaluate(scope.window, globalThis, scope.document, navigator, scope.self, undefined, undefined, undefined,
+      { log: stderrLog, warn: (...parts: unknown[]) => process.stderr.write(parts.map(String).join(' ') + '\n') }) as CubismCore | null;
     if (!instance?.Version) throw new Error('Cubism Core 未能初始化。');
     // Emscripten finishes its own runtime asynchronously; the first successful call is the barrier.
     for (let attempt = 0; ; attempt++) {

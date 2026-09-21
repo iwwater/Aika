@@ -22,8 +22,12 @@ export async function fixture(t: { after(fn: () => Promise<void>): void }) {
   const memory: TrialModel = { ...chat, provider: 'deepseek', credentialFile: '/nonexistent-external-deepseek-key', model: 'deepseek-v4-pro', endpoint: 'https://api.deepseek.com/chat/completions',
     reservationMicros: 11000000, inputMicrosPerToken: 9, outputMicrosPerToken: 27, outputTokenLimit: 393216, thinking: 'high' };
   const c: TrialConfiguration = { version: 1, product: 'companion-v1', phaseId: 'local-trial-controlled', purpose: 'user-trial', projectRoot, sourceRevision: 'a'.repeat(40),
-    runtimeFiles: Object.fromEntries(['dist/app/trial-backend.js', 'dist/app/trial-launcher.js', 'desktop/build/renderer.js',
-      'desktop/build/星月陪伴.app/Contents/MacOS/DesktopPet'].map(p => [`code/desktop-pet/${p}`, hash('controlled')])),
+    desktopHost: process.platform === 'win32' ? 'electron' : 'macos',
+    runtimeFiles: Object.fromEntries((process.platform === 'win32'
+      ? ['dist/app/trial-backend.js', 'dist/app/trial-launcher.js', 'desktop/build/renderer.js',
+         'desktop/electron/main.mjs', 'desktop/electron/preload.cjs', 'desktop/electron/transport.mjs', 'desktop/electron/layout.mjs', 'desktop/electron/assets.mjs', 'tools/management-url.mjs']
+      : ['dist/app/trial-backend.js', 'dist/app/trial-launcher.js', 'desktop/build/renderer.js',
+         'desktop/build/星月陪伴.app/Contents/MacOS/DesktopPet']).map(p => [`code/desktop-pet/${p}`, hash('controlled')])),
     database: join(projectRoot, '.local/data/companion.sqlite'), budgetFile: join(projectRoot, '.local/model-evaluation/budget.json'),
     budgetBatchId: 'original-fixture-batch', limitMicros: 20000000, phaseLimitMicros: 20000000, maxCalls: 200,
     operationLimits: { admission: 40, dialogue: 40, memory_turn: 40, summary: 20, perception: 20, tts: 40 },

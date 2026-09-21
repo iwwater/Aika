@@ -67,7 +67,8 @@ test('key saving is immutable and distinct from model selection; persisted setti
  const draft=firstRunDraft(f.root,f.options.credentialDirectory),managed=new ManagedCredentialStore(f.root,f.options.credentialDirectory),registry=credentialRegistry(draft,managed);
  const finishedBase=effectiveTrialConfiguration(draft,settings,registry,true);
  const runtimeSettings=await ManagementSettingsStore.open(resolve(f.root,'.local/model-evaluation/trial/user-trial/management-settings.json'),finishedBase,undefined,{credentials:credentialRegistry(finishedBase,managed),draftOnly:true});
- assert.deepEqual(runtimeSettings.snapshot().saved,settings); // Revision-zero placeholder history survives final config preparation.
+ // FIX61-10: the reopened store returns the normalized form (validator output, incl. protocol).
+ assert.deepEqual(runtimeSettings.snapshot().saved,validateManagedSettings(settings,finishedBase,undefined,true,credentialRegistry(finishedBase,managed),true)); // Revision-zero placeholder history survives final config preparation.
  // FIX61-10: t.after hooks run in registration order, so the fixture rm registered first would run
  // while this test's own service is still open; on Windows that deletes an in-use SQLite file (EBUSY).
  // Closing explicitly at the end (idempotent) puts cleanup back in a safe order on every platform.
