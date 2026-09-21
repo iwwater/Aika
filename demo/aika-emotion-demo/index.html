@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Aika — 参考音频驱动的情绪语音合成</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#ffffff; --ink:#171a1f; --sub:#5b646f;
+    --line:#e4e7ec; --accent:#4f6ef7; --accent-soft:#eef1fe;
+    --radius:14px; --shadow:0 1px 2px rgba(16,24,40,.04),0 8px 24px -12px rgba(16,24,40,.12);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI","Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,
+      "Microsoft YaHei","PingFang SC",sans-serif;
+    line-height:1.65; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:940px;margin:0 auto;padding:52px 22px 90px}
+
+  /* header */
+  .kicker{
+    display:inline-block;font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--accent);background:var(--accent-soft);padding:5px 12px;border-radius:999px;font-weight:600;
+  }
+  h1{font-size:34px;line-height:1.25;margin:18px 0 10px;letter-spacing:-.01em;font-weight:700}
+  .lede{color:var(--sub);font-size:16px;margin:0;max-width:640px}
+
+  /* target line */
+  .target{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:22px 24px;margin:30px 0 22px;box-shadow:var(--shadow);
+  }
+  .target .tag{font-size:12px;color:var(--sub);letter-spacing:.08em;text-transform:uppercase;font-weight:600}
+  .target .ja{font-size:21px;font-weight:600;margin:8px 0 4px;letter-spacing:.01em}
+  .target .zh{color:var(--sub);font-size:14.5px}
+
+  /* combo switch */
+  .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 20px}
+  .row .lbl{font-size:13px;color:var(--sub);font-weight:600}
+  .seg{display:inline-flex;background:#eceef2;border-radius:999px;padding:4px;gap:4px}
+  .seg button{
+    border:0;background:transparent;padding:8px 16px;border-radius:999px;cursor:pointer;
+    font-size:13.5px;font-weight:600;color:var(--sub);font-family:inherit;transition:.18s;
+  }
+  .seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(16,24,40,.12)}
+  .hint{font-size:12.5px;color:var(--sub);font-weight:400}
+
+  /* mood grid */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  @media(max-width:760px){.grid{grid-template-columns:repeat(2,1fr)} .wrap{padding:36px 16px 70px} h1{font-size:27px}}
+  @media(max-width:460px){.grid{grid-template-columns:1fr}}
+
+  .mood{
+    position:relative;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px 16px 14px;cursor:pointer;transition:.2s;overflow:hidden;
+  }
+  .mood:hover{transform:translateY(-2px);box-shadow:var(--shadow)}
+  .mood.playing{border-color:var(--c);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 18%,transparent),var(--shadow)}
+  .mood .bar{position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--c);opacity:.85}
+  .mood .head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+  .mood .jp{font-size:17px;font-weight:700;color:var(--c)}
+  .mood .cn{font-size:12.5px;color:var(--sub);font-weight:600}
+  .mood .ref{
+    font-size:11.5px;color:var(--sub);margin:9px 0 11px;line-height:1.5;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:34px;
+  }
+  .mood .foot{display:flex;align-items:center;gap:8px;justify-content:space-between}
+  .play{
+    display:inline-flex;align-items:center;gap:6px;border:0;font-family:inherit;cursor:pointer;
+    background:var(--c);color:#fff;font-size:12.5px;font-weight:600;padding:7px 14px 7px 11px;border-radius:999px;
+  }
+  .play .ic{width:0;height:0;border-left:8px solid #fff;border-top:5px solid transparent;border-bottom:5px solid transparent;margin-left:1px}
+  .mood.playing .play .ic{border:0;width:9px;height:11px;background:
+    linear-gradient(to right,#fff 0 3px,transparent 3px 6px,#fff 6px 9px);border-radius:1px}
+  .refbtn{
+    border:1px solid var(--line);background:var(--card);color:var(--sub);border-radius:999px;
+    font-family:inherit;font-size:12px;font-weight:600;padding:6px 12px;cursor:pointer;transition:.16s;
+  }
+  .refbtn:hover{border-color:var(--c);color:var(--c)}
+  .stats{font-size:11px;color:var(--sub);margin-top:11px;padding-top:10px;border-top:1px dashed var(--line);
+    display:flex;gap:10px;font-variant-numeric:tabular-nums}
+  .stats b{color:var(--ink);font-weight:600}
+
+  /* actions */
+  .actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:22px 0 8px}
+  .btn{
+    border:1px solid var(--line);background:var(--card);border-radius:999px;padding:10px 20px;
+    font-family:inherit;font-size:13.5px;font-weight:600;color:var(--ink);cursor:pointer;transition:.16s;
+  }
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:hover{background:#3f5ce0}
+
+  /* chart */
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px 24px;
+    margin-top:26px;box-shadow:var(--shadow)}
+  .panel h2{font-size:15px;margin:0 0 4px;font-weight:700}
+  .panel .note{font-size:12.5px;color:var(--sub);margin:0 0 18px}
+  .chart{display:flex;flex-direction:column;gap:9px}
+  .crow{display:grid;grid-template-columns:82px 1fr 62px;align-items:center;gap:12px;font-size:12.5px}
+  .crow .nm{font-weight:600;text-align:right;color:var(--ink)}
+  .crow .track{height:16px;background:#f0f2f5;border-radius:5px;overflow:hidden}
+  .crow .fill{height:100%;border-radius:5px;transition:width .5s cubic-bezier(.2,.8,.2,1)}
+  .crow .vl{color:var(--sub);font-variant-numeric:tabular-nums;font-weight:600}
+
+  /* method */
+  details.method{margin-top:26px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:4px 24px;box-shadow:var(--shadow)}
+  details.method summary{cursor:pointer;padding:16px 0;font-size:14.5px;font-weight:700;list-style:none;
+    display:flex;align-items:center;justify-content:space-between}
+  details.method summary::-webkit-details-marker{display:none}
+  details.method summary::after{content:"＋";color:var(--sub);font-weight:400;font-size:18px}
+  details.method[open] summary::after{content:"－"}
+  details.method .body{padding:0 0 20px;color:var(--sub);font-size:13.5px}
+  details.method h3{font-size:13px;color:var(--ink);margin:16px 0 5px;font-weight:700}
+  details.method ul{margin:4px 0 0;padding-left:18px}
+  details.method li{margin:3px 0}
+  details.method code{background:#f2f4f7;padding:1px 6px;border-radius:4px;font-size:12.5px;color:#334}
+  .kpi{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:14px 0 4px}
+  @media(max-width:560px){.kpi{grid-template-columns:1fr}}
+  .kpi div{background:#f8f9fb;border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .kpi b{display:block;font-size:19px;color:var(--ink);font-variant-numeric:tabular-nums}
+  .kpi span{font-size:11.5px;color:var(--sub)}
+
+  footer{margin-top:34px;font-size:12px;color:var(--sub);text-align:center;line-height:1.9}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="kicker">Aika · 情感语音合成</div>
+    <h1>参考音频驱动的情绪迁移</h1>
+    <p class="lede">
+      同一句台词，模型与文本完全不变，<b>只更换一段参考音频</b>，输出语音的情绪随之改变。
+      这是 reference-audio-based 情感控制路线的直接验证。
+    </p>
+  </header>
+
+  <div class="target">
+    <div class="tag">Target line · 固定台词</div>
+    <div class="ja" id="tJa"></div>
+    <div class="zh" id="tZh"></div>
+  </div>
+
+  <div class="row">
+    <span class="lbl">声线</span>
+    <div class="seg" id="seg"></div>
+    <span class="hint" id="segHint"></span>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="actions">
+    <button class="btn primary" id="playAll">▶ 依次播放全部六种情绪</button>
+    <button class="btn" id="stopAll">停止</button>
+    <span class="hint" id="status"></span>
+  </div>
+
+  <div class="panel">
+    <h2>韵律起伏对比</h2>
+    <p class="note">
+      F0 变异系数（pitch variation）＝基频标准差 ÷ 均值。数值越高的情绪，语调起伏越大。
+      同一句台词下该指标相差 <b>2 倍以上</b>，说明情绪确实由参考音频驱动，而非文本内容。
+    </p>
+    <div class="chart" id="chart"></div>
+  </div>
+
+  <details class="method">
+    <summary>方法与数据</summary>
+    <div class="body">
+      <h3>1 · 情感数据工程</h3>
+      <ul>
+        <li>单一授权音源 → 静音切分 39 段（2~12 秒/段，共 2.9 分钟）</li>
+        <li>Fun-ASR 自动转写 → 人工复核（剔除转写幻觉、气息段、过短段）</li>
+        <li>按文本情绪与声学指标（语速、低能量占比）筛出参考音频库</li>
+      </ul>
+
+      <h3>2 · 情绪 → 参考音频映射</h3>
+      <ul>
+        <li>从素材中挑选情绪跨度大的片段作为「情绪原型」：温柔 / 安心 / 亲密 / 嘲讽 / 毒舌 / 恳求</li>
+        <li>每一段既是训练数据，也是推理期的情绪控制接口</li>
+      </ul>
+
+      <h3>3 · Zero-shot 情绪迁移</h3>
+      <ul>
+        <li>参考音频 → HuBERT 语义 token + 频谱 prompt，与目标文本一起送入 GPT + SoVITS 解码</li>
+        <li>换参考音频即换情绪，<b>无需重新训练</b>，热切换零成本</li>
+      </ul>
+
+      <h3>4 · 一次量化发现</h3>
+      <ul>
+        <li>最初的演示只用 2 段温柔系参考，主观听感偏「机械」</li>
+        <li>做采样参数扫描（<code>repetition_penalty</code> 1.5→1.35、<code>top_k</code> 8→15 等）后，F0 变异系数仅从 0.115 变到 0.118（+2.6%）——<b>参数不是原因</b></li>
+        <li>换成情绪化的参考音频后，同一句台词的该指标达 0.20 以上（<b>2.2 倍</b>）——<b>参考音频的情绪属性才是控制变量</b></li>
+      </ul>
+
+      <div class="kpi">
+        <div><b>2.2×</b><span>同一台词的情绪间韵律差异</span></div>
+        <div><b>&lt;3%</b><span>采样参数对韵律的影响</span></div>
+        <div><b>0 次</b><span>切换情绪所需重新训练次数</span></div>
+      </div>
+
+      <h3>当前局限</h3>
+      <ul>
+        <li>自训声线（v1）训练数据仅 2.9 分钟，存在语速偏快与韵律收敛倾向，重训数据补强进行中</li>
+        <li>参考音频库的情绪覆盖仍有限，且全部来自单一音源</li>
+      </ul>
+    </div>
+  </details>
+
+  <footer>
+    音频素材均为已授权录音；页面为离线静态演示，无外部依赖。<br>
+    Aika · 参考音频驱动的情绪语音合成 · 研究演示
+  </footer>
+</div>
+
+<script>
+const DATA = {
+  target_ja: "お兄ちゃん、おはよう。今日も一緒に頑張ろうね。",
+  target_zh: "哥哥，早上好。今天也一起加油吧。",
+  combos: [
+    {id:"A", label:"自训 aika 声线", weights:"aika_jp_v1 · GPT e5 / SoVITS e8"},
+    {id:"C", label:"底模 zero-shot", weights:"s1v3 + s2Gv2Pro（未微调）"}
+  ],
+  items: [
+    {combo:"A",num:"01",slug:"yasashii",ja:"優しい",zh:"温柔",color:"#e8799e",ref_ja:"お兄ちゃん、恋人がいなくても大丈夫だよ。",ref_zh:"哥哥，就算没有恋人也没关系的。",ref_src:"audio/ref/mood01.wav",src:"audio/A/mood01.wav",dur:4.06,f0_cv:0.118,f0_range_st:7.70,dyn_db:63.4,rate_zps:5.16},
+    {combo:"A",num:"02",slug:"anshin",ja:"安心",zh:"安心",color:"#4f93d6",ref_ja:"何も心配することはないよ。私、そばにいるからね。",ref_zh:"什么都不用担心，我会在你身边的。",ref_src:"audio/ref/mood02.wav",src:"audio/A/mood02.wav",dur:4.07,f0_cv:0.124,f0_range_st:7.18,dyn_db:64.8,rate_zps:5.15},
+    {combo:"A",num:"03",slug:"shinmitsu",ja:"親密",zh:"亲密",color:"#a97bd4",ref_ja:"もうこうやってお兄さんに抱っこされてるんだから",ref_zh:"你看，人家都这样被你抱着了。",ref_src:"audio/ref/mood03.wav",src:"audio/A/mood03.wav",dur:5.23,f0_cv:0.099,f0_range_st:5.60,dyn_db:60.5,rate_zps:4.02},
+    {combo:"A",num:"04",slug:"hiniku",ja:"皮肉",zh:"嘲讽",color:"#e08b45",ref_ja:"ねえ、お兄さんってさ、その年でまさか童貞じゃないよなー",ref_zh:"喂，哥哥你该不会到这年纪还是处男吧——",ref_src:"audio/ref/mood04.wav",src:"audio/A/mood04.wav",dur:3.35,f0_cv:0.203,f0_range_st:10.80,dyn_db:57.7,rate_zps:6.27},
+    {combo:"A",num:"05",slug:"dokuzetsu",ja:"毒舌",zh:"毒舌",color:"#d9534f",ref_ja:"所詮雑魚、変態野郎のくせにおこがましいんだよ。キモい童貞を。",ref_zh:"说到底就是个杂鱼，一个变态还这么不自量力。恶心的处男。",ref_src:"audio/ref/mood05.wav",src:"audio/A/mood05.wav",dur:2.99,f0_cv:0.218,f0_range_st:13.06,dyn_db:57.3,rate_zps:7.02},
+    {combo:"A",num:"06",slug:"kongan",ja:"懇願",zh:"恳求",color:"#3fa89b",ref_ja:"私、なんでもするから、見捨てないで、お兄さん",ref_zh:"我什么都会做的，别丢下我，哥哥。",ref_src:"audio/ref/mood06.wav",src:"audio/A/mood06.wav",dur:4.31,f0_cv:0.217,f0_range_st:11.00,dyn_db:43.9,rate_zps:5.34},
+    {combo:"C",num:"01",slug:"yasashii",ja:"優しい",zh:"温柔",color:"#e8799e",ref_ja:"お兄ちゃん、恋人がいなくても大丈夫だよ。",ref_zh:"哥哥，就算没有恋人也没关系的。",ref_src:"audio/ref/mood01.wav",src:"audio/C/mood01.wav",dur:3.72,f0_cv:0.124,f0_range_st:6.97,dyn_db:65.7,rate_zps:5.79},
+    {combo:"C",num:"02",slug:"anshin",ja:"安心",zh:"安心",color:"#4f93d6",ref_ja:"何も心配することはないよ。私、そばにいるからね。",ref_zh:"什么都不用担心，我会在你身边的。",ref_src:"audio/ref/mood02.wav",src:"audio/C/mood02.wav",dur:4.01,f0_cv:0.112,f0_range_st:6.00,dyn_db:76.6,rate_zps:5.49},
+    {combo:"C",num:"03",slug:"shinmitsu",ja:"親密",zh:"亲密",color:"#a97bd4",ref_ja:"もうこうやってお兄さんに抱っこされてるんだから",ref_zh:"你看，人家都这样被你抱着了。",ref_src:"audio/ref/mood03.wav",src:"audio/C/mood03.wav",dur:5.53,f0_cv:0.136,f0_range_st:7.60,dyn_db:67.9,rate_zps:3.80},
+    {combo:"C",num:"04",slug:"hiniku",ja:"皮肉",zh:"嘲讽",color:"#e08b45",ref_ja:"ねえ、お兄さんってさ、その年でまさか童貞じゃないよなー",ref_zh:"喂，哥哥你该不会到这年纪还是处男吧——",ref_src:"audio/ref/mood04.wav",src:"audio/C/mood04.wav",dur:3.98,f0_cv:0.183,f0_range_st:10.47,dyn_db:72.0,rate_zps:5.25},
+    {combo:"C",num:"05",slug:"dokuzetsu",ja:"毒舌",zh:"毒舌",color:"#d9534f",ref_ja:"所詮雑魚、変態野郎のくせにおこがましいんだよ。キモい童貞を。",ref_zh:"说到底就是个杂鱼，一个变态还这么不自量力。恶心的处男。",ref_src:"audio/ref/mood05.wav",src:"audio/C/mood05.wav",dur:4.02,f0_cv:0.230,f0_range_st:12.66,dyn_db:64.4,rate_zps:5.22},
+    {combo:"C",num:"06",slug:"kongan",ja:"懇願",zh:"恳求",color:"#3fa89b",ref_ja:"私、なんでもするから、見捨てないで、お兄さん",ref_zh:"我什么都会做的，别丢下我，哥哥。",ref_src:"audio/ref/mood06.wav",src:"audio/C/mood06.wav",dur:4.10,f0_cv:0.229,f0_range_st:10.70,dyn_db:58.4,rate_zps:5.61}
+  ]
+};
+
+const $ = s => document.querySelector(s);
+let cur = "A";
+let audio = null;
+let playingCard = null;
+let queue = [];
+let queueIdx = 0;
+
+document.getElementById("tJa").textContent = DATA.target_ja;
+document.getElementById("tZh").textContent = DATA.target_zh;
+
+function itemsOf(combo){ return DATA.items.filter(i => i.combo === combo); }
+
+function renderSeg(){
+  const seg = $("#seg");
+  seg.innerHTML = "";
+  DATA.combos.forEach(c => {
+    const b = document.createElement("button");
+    b.textContent = c.label;
+    b.className = c.id === cur ? "on" : "";
+    b.onclick = () => { cur = c.id; renderSeg(); render(); };
+    seg.appendChild(b);
+  });
+  const c = DATA.combos.find(x => x.id === cur);
+  $("#segHint").textContent = c ? c.weights : "";
+}
+
+function render(){
+  const grid = $("#grid");
+  grid.innerHTML = "";
+  itemsOf(cur).forEach(it => {
+    const el = document.createElement("div");
+    el.className = "mood";
+    el.style.setProperty("--c", it.color);
+    el.dataset.num = it.num;
+    el.innerHTML = `
+      <span class="bar"></span>
+      <div class="head"><span class="jp">${it.ja}</span><span class="cn">${it.zh}</span></div>
+      <div class="ref">${it.ref_ja}</div>
+      <div class="foot">
+        <button class="play"><span class="ic"></span>播放</button>
+        <button class="refbtn">参考音频</button>
+      </div>
+      <div class="stats">
+        <span>时长 <b>${it.dur}s</b></span>
+        <span>起伏 <b>${it.f0_range_st}</b> 半音</span>
+        <span>F0cv <b>${it.f0_cv}</b></span>
+      </div>`;
+    el.querySelector(".play").onclick = e => { e.stopPropagation(); playOne(it, el); };
+    el.querySelector(".refbtn").onclick = e => { e.stopPropagation(); playRef(it, el); };
+    el.onclick = () => playOne(it, el);
+    grid.appendChild(el);
+  });
+  renderChart();
+}
+
+function mark(el){
+  document.querySelectorAll(".mood").forEach(m => m.classList.remove("playing"));
+  if (el) el.classList.add("playing");
+}
+
+function playSrc(item, el, src, label){
+  stopAudio();
+  audio = new Audio(src);
+  audio.play().catch(err => {
+    $("#status").textContent = "浏览器阻止了自动播放，请再点一次";
+  });
+  mark(el);
+  $("#status").textContent = label;
+  audio.onended = () => {
+    if (queue.length && queueIdx < queue.length) {
+      const nx = queue[queueIdx++];
+      playSrc(nx.it, nx.el, nx.it.src, `正在播放 ${queueIdx} / ${queue.length} · ${nx.it.zh}`);
+    } else {
+      mark(null);
+      $("#status").textContent = "播放完毕";
+      queue = []; queueIdx = 0;
+    }
+  };
+}
+
+function stopAudio(){
+  if (audio) { audio.pause(); audio.onended = null; audio = null; }
+}
+
+function playOne(it, el){
+  queue = []; queueIdx = 0;
+  playSrc(it, el, it.src, `正在播放 · ${it.zh}（${it.ja}）`);
+}
+
+function playRef(it, el){
+  queue = []; queueIdx = 0;
+  playSrc(it, el, it.ref_src, `参考音频原声 · ${it.ref_zh}`);
+}
+
+function playAll(){
+  stopAudio();
+  queue = itemsOf(cur).map(it => ({
+    it,
+    el: document.querySelector(`.mood[data-num="${it.num}"]`)
+  }));
+  queueIdx = 1;
+  const first = queue[0];
+  playSrc(first.it, first.el, first.it.src, `正在播放 1 / ${queue.length} · ${first.it.zh}`);
+}
+
+function renderChart(){
+  const chart = $("#chart");
+  chart.innerHTML = "";
+  const max = 0.25;
+  itemsOf(cur).forEach(it => {
+    const row = document.createElement("div");
+    row.className = "crow";
+    const pct = Math.max(4, Math.round((it.f0_cv / max) * 100));
+    row.innerHTML = `
+      <span class="nm" style="color:${it.color}">${it.zh}</span>
+      <span class="track"><span class="fill" style="width:${pct}%;background:${it.color}"></span></span>
+      <span class="vl">${it.f0_cv}</span>`;
+    chart.appendChild(row);
+  });
+}
+
+$("#playAll").onclick = playAll;
+$("#stopAll").onclick = () => {
+  queue = []; queueIdx = 0;
+  stopAudio(); mark(null); $("#status").textContent = "";
+};
+
+renderSeg();
+render();
+</script>
+</body>
+</html>
