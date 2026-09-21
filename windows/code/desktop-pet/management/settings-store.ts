@@ -5,6 +5,7 @@ import { ManagementError, type ManagedSettings, type SettingsSnapshot } from '..
 import type { TrialConfiguration } from '../app/trial-config.js';
 import { defaultManagedSettings, validateManagedSettings } from './settings.js';
 import { credentialRegistry } from './credentials.js';
+import { restrictPrivatePathSync } from '../core/platform-files.js';
 import type { RegisteredVoiceStore } from '../providers/registered-voices.js';
 
 interface Revision { revision: number; savedAt: string; settings: ManagedSettings }
@@ -46,6 +47,9 @@ export class ManagementSettingsStore {
       await mkdir(dirname(this.file), { recursive: true }); const temporary = `${this.file}.${randomUUID()}.next`;
       try { await writeFile(temporary, JSON.stringify(next) + '\n', { mode: 0o600, flag: 'wx' }); await rename(temporary, this.file); }
       finally { await unlink(temporary).catch(error => { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }); }
+      // FIX61-10: POSIX mode bits above are a no-op on Windows, where privacy requires the SID-based
+      // private ACL (the same guarantee every other private file gets). The rename target is ours.
+      if (process.platform === 'win32') restrictPrivatePathSync(this.file);
       this.state = next; return this.snapshot();
     });
     this.tail = run.catch(() => {}); return run;

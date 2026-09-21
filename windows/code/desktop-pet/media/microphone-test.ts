@@ -5,8 +5,11 @@
 //     conversation: it never touches the camera, the network, ASR, the LLM or Timeline.
 //  2. "Which device am I actually using" must be answerable from real track settings. A missing value is
 //     reported as unknown, never filled with a fabricated default.
-import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
+//
+// FIX61-11: this file deliberately imports NOTHING from node, and does NOT re-export the preference store:
+// the desktop renderer bundles it (FIX61-07 §2 puts the test there), so a filesystem dependency anywhere in
+// this module's import graph would break the browser build. `MicrophonePreferenceStore` therefore lives in
+// `microphone-preference.ts`, which only the backend and Electron main import.
 
 /** A microphone test is capped at five seconds and only ever exists in memory. */
 export const TEST_RECORD_MAX_MS = 5000;
@@ -34,37 +37,6 @@ export function describeTrackSettings(settings: { sampleRate?: unknown; channelC
   };
 }
 
-/** The only durable state: the chosen device id, in this machine's app data. Never a path or a recording. */
-export class MicrophonePreferenceStore {
-  private constructor(readonly file: string, private selected: string | null) {}
-  static async open(file: string): Promise<MicrophonePreferenceStore> {
-    let selected: string | null = null;
-    try {
-      const raw = JSON.parse(await readFile(file, 'utf8')) as { version?: unknown; deviceId?: unknown };
-      if (raw.version !== 1) throw new Error('unsupported_microphone_preference');
-      if (raw.deviceId !== null && typeof raw.deviceId !== 'string') throw new Error('invalid_microphone_preference');
-      selected = (raw.deviceId as string | null) ?? null;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-    }
-    return new MicrophonePreferenceStore(file, selected);
-  }
-  /** null means "the system default device" — an explicit, stored choice, not a missing value. */
-  deviceId(): string | null { return this.selected; }
-  async save(deviceId: string | null): Promise<void> {
-    if (deviceId !== null && (!deviceId.trim() || deviceId.length > 512 || /[\u0000-\u001f]/.test(deviceId))) throw new Error('invalid_microphone_device');
-    const temporary = `${this.file}.${process.pid}.next`;
-    await mkdir(dirname(this.file), { recursive: true });
-    try {
-      await writeFile(temporary, JSON.stringify({ version: 1, deviceId }) + '\n', { mode: 0o600, flag: 'wx' });
-      await rename(temporary, this.file);
-    } finally {
-      await unlink(temporary).catch(error => { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; });
-    }
-    this.selected = deviceId;
-  }
-}
-
 /** The subset of the media API a microphone test uses. Injectable so tests never touch a real device. */
 export interface MicrophoneMedia {
   enumerateDevices(): Promise<readonly { kind?: string; deviceId?: string; label?: string }[]>;
@@ -74,7 +46,7 @@ export interface MicrophoneStreamLike {
   getTracks(): readonly { stop(): void; getSettings?(): { sampleRate?: unknown; channelCount?: number; deviceId?: unknown }; label?: string }[];
   getAudioTracks?(): readonly { stop(): void; getSettings?(): { sampleRate?: unknown; channelCount?: number; deviceId?: unknown }; label?: string }[];
 }
-export interface MicrophoneTestOwner { readonly media: MicrophoneMedia; readonly store: MicrophonePreferenceStore }
+export interface MicrophoneTestOwner { readonly media: MicrophoneMedia; readonly store: import('./microphone-preference.js').MicrophonePreferenceStore }
 
 export interface MicrophoneTestSession {
   readonly leaseId: string;
@@ -122,6 +94,15 @@ export class MicrophoneTestLease {
   }
 
   active(): boolean { return this.#active !== null; }
+
+  /**
+   * FIX61-11: the stream this lease actually opened, so a recorder or a level tap can attach to the SAME
+   * microphone instead of acquiring a second one. Two concurrent acquisitions for one test would open the
+   * device twice and could fail or fight over it. Null when no test is running.
+   */
+  stream(leaseId: string): MicrophoneStreamLike | null {
+    return this.#active?.leaseId === leaseId ? this.#active.stream : null;
+  }
 
   /** A level outside the documented range is refused rather than displayed as if it were measured. */
   validateLevel(level: MicrophoneLevel): void {

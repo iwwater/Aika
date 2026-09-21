@@ -23,7 +23,7 @@
 | [FIX61-07](specs/FIX61-07.md) | 模块健康状态与麦克风诊断 | FIX61-01、FIX61-02、FIX61-03、FIX61-04 | AUTO_PASS（核心；[报告](reports/FIX61-07.md)） |
 | [FIX61-08](specs/FIX61-08.md) | 逐 chunk 实时 ASR 与单次轮次提交 | FIX61-01、FIX61-07 | AUTO_PASS（[报告](reports/FIX61-08.md)） |
 | [FIX61-09](specs/FIX61-09.md) | 冻结上下文前缀与异步更新 | FIX61-01、FIX61-06 | PASS（[报告](reports/FIX61-09.md)） |
-| [FIX61-10](specs/FIX61-10.md) | 版本自动收口与后置验收交接 | FIX61-01～09 | NOT RUN |
+| [FIX61-10](specs/FIX61-10.md) | 版本自动收口与后置验收交接 | FIX61-01～09 | 10-A/B/C AUTO_PASS（所测修订；[报告](reports/FIX61-10.md)）；**基线 FROZEN**（token 缺陷已修复并通过 RED→GREEN，重冻结门槛见报告 §7b）；10-D DEFERRED_TO_K65_11 |
 
 ## 3. 共享接口归属
 
@@ -44,7 +44,7 @@
 
 所有 SPEC 提供逐条 AC；先 RED，再 GREEN，再受影响回归。既有测例归属见各 SPEC，源码基线变化后重新定位，不能按过期行号盲改。
 
-新增 test:next61 及其测试目录是 FIX61-10 的交付，当前并不存在。此前单个任务可使用 `npm run build` 后 `node --test <实际编译后的测试文件>`；MJS 测例直接运行。不要提前把不存在的命令写成 PASS。
+新增 test:next61 及其测试目录是 FIX61-10 的交付。**现状（2026-09-21 经 FIX61-10 核实）：已存在并可用**——`package.json` 有 `"test:next61": "npm run build && node tools/run-tests.mjs next61"`，`tools/run-tests.mjs` 有真实 `next61` 分组（同时收集 `dist/tests/next61/*.test.js` 与 `tests/next61/*.test.mjs`，集合为空时 `exit 2`，不做 passWithNoTests 假通过），`tests/next61/` 有 32 个源文件。此前单个任务可使用 `npm run build` 后 `node --test <实际编译后的测试文件>`；MJS 测例直接运行。**规则不变：命令存在不等于通过，不要提前把未实际运行或未通过的命令写成 PASS；引用 test:next61 结果时必须附本轮真实命令与退出码。**
 
 报告逐 AC 写命令、退出码、测试数量、失败原因、源码提交和 fixture hash；Fixture/真实本地 ASR/真实远程模型/人工验收分列。生产代码为被测对象，外部网络和设备可 fake，不能 fake 被修复的组合根来证明接线。
 

@@ -43,3 +43,20 @@ id_ed25519*
 *.m4a
 *.mp4
 *.zip
+
+# 审计/侦察临时残渣（AI worker 会话产物，不入库）
+.audit-k65/
+.audit-*/
+.n61-*
+**/.n61-*
+.n61.txt
+.nx.txt
+.df.txt
+.tap.txt
+.vc.txt
+.vc2.txt
+.vc3.txt
+.w.txt
+.probe*
+**/.probe*
+.isolate-next61.ps1

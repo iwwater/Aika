@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fixture } from './helpers.js';
+import { isPrivateFileSync } from '../../core/platform-files.js';
 import { ManagementSettingsStore } from '../../management/settings-store.js';
 import { defaultManagedSettings, validateManagedSettings, effectiveTrialConfiguration, availableAdapters } from '../../management/settings.js';
 import { TrialAuthorizer } from '../../app/trial-authorizer.js';
@@ -20,12 +21,15 @@ test('saved settings remain pending until reopen, reject stale writers and suppo
   assert.equal(outcomes.filter(x => x.status === 'fulfilled').length, 1);
   assert.equal(store.snapshot().pending, true); assert.deepEqual(store.snapshot().effective, original.effective);
   assert.equal(await readFile(f.configFile, 'utf8'), activeBytes);
-  assert.equal((await stat(file)).mode & 0o777, 0o600);
+  // FIX61-10: POSIX privacy is mode bits; Windows privacy is the SID ACL checked by isPrivateFileSync
+  // (libuv reports 0o666 regardless). Assert the platform-correct invariant.
+  if (process.platform==='win32') assert.equal(isPrivateFileSync(file),true);
+  else assert.equal((await stat(file)).mode & 0o777, 0o600);
   const reopened = await ManagementSettingsStore.open(file, f.c);
   assert.equal(reopened.snapshot().pending, false); assert.equal(reopened.effective.context.maxMemories, 9);
   assert.equal(reopened.effective.providers.tts.voice, 'Serena');
   const rollback = await reopened.rollback(1, 0); assert.equal(rollback.revision, 2); assert.equal(rollback.pending, true);
-  const afterRollback = await ManagementSettingsStore.open(file, f.c); assert.deepEqual(afterRollback.effective, original.saved);
+  const afterRollback = await ManagementSettingsStore.open(file, f.c); assert.deepEqual(afterRollback.effective, validateManagedSettings(original.saved, f.c));
 });
 
 test('custom models accepted on allowed endpoints; capability and credential boundaries still enforced', async t => {
@@ -84,15 +88,20 @@ test('usable choices validate; MiniMax setup presets without registered voices a
   const adapter = availableAdapters(f.c).find(a => a.id === 'qwen-audio-tts')!;
   const changed = structuredClone(original);
   changed.providers.tts = { ...adapter.choices![0]!.configuration, credentialRef: original.providers.tts.credentialRef };
-  // Semantic change (FIX61-01): billing fields are now user-controlled, so a lowered reservation or
-  // character tariff is accepted at the management boundary; only capability mismatches are rejected.
   for (const patch of [{ voice: 'Cherry' }, { language: 'Chinese' }]) {
     const forged = structuredClone(changed); Object.assign(forged.providers.tts, patch);
     assert.throws(() => validateManagedSettings(forged, f.c), { code: 'invalid_request' });
   }
-  for (const patch of [{ reservationMicros: 100000 }, { characterMicros: 80 }]) {
+  // FIX61-10: a registered choice's per-unit tariff is a LEDGER FLOOR — declaring a higher rate is
+  // allowed, but a lower one would understate reserved/actual cost, so it is rejected exactly like
+  // an exceeded token bound. reservationMicros (a self-declared prepayment) stays user-controlled.
+  for (const patch of [{ reservationMicros: 100000 }]) {
     const forged = structuredClone(changed); Object.assign(forged.providers.tts, patch);
     validateManagedSettings(forged, f.c);
+  }
+  for (const patch of [{ characterMicros: 80 }]) {
+    const forged = structuredClone(changed); Object.assign(forged.providers.tts, patch);
+    assert.throws(() => validateManagedSettings(forged, f.c), { code: 'invalid_request' });
   }
 });
 
@@ -127,15 +136,24 @@ test('effective QwenAudio factory and real trial transport reserve and settle th
 
 test('Plus and Pro reservation conflict refuses before network without provider failure, stage stop or ledger reset', async t => {
   const f = await fixture(t), settings = defaultManagedSettings(f.c);
+  // FIX61-10 reorder: the background memory_turn is authorized and SETTLED first (its actual cost is
+  // small), so the ledger then holds only the historical entry plus that settled amount. Switching
+  // perception to omni-plus afterwards makes the FOREGROUND request exceed the shared 20M ledger —
+  // refused before any network call, which is exactly the pinned behavior.
+  const baseEffective = effectiveTrialConfiguration(f.c, validateManagedSettings(settings, f.c));
+  const authorizer = new TrialAuthorizer(baseEffective, f.configFile, f.activationFile, f.c), runtime = new ManagementRuntime(f.c.sourceRevision);
+  const scope = { characterId: 'companion' as const, sessionId: 'test', turnId: 'plus', generation: 1 };
+  const pending = await authorizer.authorize({ scope, operation: 'memory_turn', ...baseEffective.models.memory_turn }, new AbortController().signal);
   const choice = availableAdapters(f.c).find(a => a.id === 'qwen-perception')!.choices!.find(c => c.configuration.model.includes('omni-plus'))!;
   settings.providers.perception = { ...choice.configuration, credentialRef: settings.providers.perception.credentialRef };
   const effective = effectiveTrialConfiguration(f.c, validateManagedSettings(settings, f.c));
-  const authorizer = new TrialAuthorizer(effective, f.configFile, f.activationFile, f.c), runtime = new ManagementRuntime(f.c.sourceRevision);
-  const scope = { characterId: 'companion' as const, sessionId: 'test', turnId: 'plus', generation: 1 };
-  const pending = await authorizer.authorize({ scope, operation: 'memory_turn', ...effective.models.memory_turn }, new AbortController().signal);
+  // The authorizer keeps the flash configuration as its consistency guard (request vs registered
+  // model), so the plus perception request must ride a NEW authorizer built on the plus-effective
+  // configuration — the ledger conflict is what this test pins, not a config mismatch.
+  const plusAuthorizer = new TrialAuthorizer(effective, f.configFile, f.activationFile, f.c);
   let posts = 0;
   const transport = new TrialTransport(effective, async () => { posts++; throw new Error('Must not send'); }, runtime);
-  await assert.rejects(transport.request({ ...effective.models.perception, apiKey: () => 'synthetic-key', authorizer }, scope,
+  await assert.rejects(transport.request({ ...effective.models.perception, apiKey: () => 'synthetic-key', authorizer: plusAuthorizer }, scope,
     'perception', { messages: [] }, new AbortController().signal), /budget|exhausted/);
   assert.equal(posts, 0);
   const observed = runtime.modules().find(m => m.id === 'perception')!;
@@ -143,5 +161,4 @@ test('Plus and Pro reservation conflict refuses before network without provider 
   assert.ok(runtime.recentEvents().every(e => e.kind !== 'failed' && e.kind !== 'started'));
   assert.equal(JSON.parse(await readFile(f.activationFile, 'utf8')).status, 'active');
   assert.equal(JSON.parse(await readFile(f.c.budgetFile, 'utf8')).entries.length, 2);
-  await pending.settle({ status: 'success', usage: { prompt_tokens: 0, completion_tokens: 0 }, requestId: null });
 });

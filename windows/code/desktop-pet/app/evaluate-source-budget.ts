@@ -2,6 +2,7 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
+import { isAbsolute } from 'node:path';
 import type { TurnScope } from '../contracts/index.js';
 import type { MemorySource, MemoryTurnInput } from '../contracts/memory-lifecycle.js';
 import { SqliteMemoryStore, CONFIRMED_RETENTION } from '../memory/sqlite-store.js';
@@ -13,7 +14,9 @@ import { ProviderTransport } from '../providers/transport.js';
 import { contextInputUpperBound, memoryTurnInputUpperBound, summaryInputUpperBound } from './input-budgets.js';
 
 export async function evaluateSourceBudget(root: string, runId: string): Promise<void> {
-  if (!root.startsWith('/') || !/^source-budget-[a-z0-9-]+$/.test(runId)) throw new Error('Explicit probe paths required');
+  // FIX61-10: absolute means absolute on the running platform (same fix as evaluate-lifecycle); the
+  // slash prefix rejected every Windows drive path before any probe could run.
+  if (!isAbsolute(root) || !/^source-budget-[a-z0-9-]+$/.test(runId)) throw new Error('Explicit probe paths required');
   const out = `${root}/.local/${runId}`;
   await mkdir(out, { recursive: false });
   const sessionId = randomUUID(), scope = (): TurnScope => ({ characterId: 'friend', sessionId, turnId: randomUUID(), generation: 1 });

@@ -18,6 +18,29 @@ button:disabled{cursor:default;opacity:.48}button:focus-visible,textarea:focus-v
 #function-entries button{text-align:left;padding:8px 10px;border-radius:12px;border:1px solid #c2d5f2;background:#f4f8fff5;font-size:13px}
 #function-entries button:disabled{opacity:.55}
 #function-notice{font-size:12px;color:#5b6b82;min-height:14px;margin:0}
+/* FIX61-11: the microphone test is a third peer view. It never shares state with a conversation turn. */
+#mic-test{width:min(360px,calc(100% - 20px));margin:0 auto;padding:14px 16px 12px;display:flex;flex-direction:column;gap:8px;max-height:520px;overflow:auto;background:linear-gradient(145deg,#fbfdfff9,#edf3fdf8);border:1px solid #c3d3e9;border-radius:18px;box-shadow:0 5px 16px #29476a1a}
+#mic-test header{display:flex;align-items:center;gap:10px;min-height:28px}
+#mic-test header .panel-title{flex:1;display:flex;align-items:center;gap:8px}
+#mic-test .subtle{font-size:12px;color:#6a7e99;margin:0;line-height:1.6;overflow-wrap:anywhere}
+#mic-test .field{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#5b6b82}
+#mic-test select{padding:7px 9px;border-radius:10px;border:1px solid #c2d5f2;background:#f8fbff;color:#334968;font-size:13px}
+#mic-test .actions{display:flex;gap:8px;flex-wrap:wrap}
+#mic-test .actions button{padding:8px 12px;border-radius:12px;border:1px solid #c2d5f2;background:#f4f8fff5;font-size:13px}
+#mic-test .actions button:disabled{opacity:.55}
+#mic-test .actions button.primary{background:#e1ebf9;border-color:#a9c3e6;color:#2f4f7a}
+#mic-meter{height:8px;border-radius:5px;background:#dfe8f580;overflow:hidden}
+#mic-meter-fill{display:block;height:100%;width:0;background:#87a8c4;transition:width .08s linear}
+#mic-meter[data-loud="true"] #mic-meter-fill{background:#c48787}
+#mic-level,#mic-diagnosis{font-size:12px;color:#5b6b82;margin:0;line-height:1.6;min-height:14px;overflow-wrap:anywhere}
+#mic-diagnosis[data-tone="error"]{color:#8c4a4a}
+#mic-playback{display:flex;flex-direction:column;gap:4px}
+#mic-playback small{font-size:11px;color:#7d8fa8}
+#mic-audio{width:100%;height:32px}
+#mic-test .definitions{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;margin:0;font-size:12px;color:#5b6b82}
+#mic-test .definitions dt{color:#7d8fa8}
+#mic-test .definitions dd{margin:0;overflow-wrap:anywhere}
+
 .panel-title{display:flex;align-items:center;gap:8px;flex:1;min-width:0;white-space:nowrap;font-size:14px;letter-spacing:.06em}
 .presence-dot{width:7px;height:7px;background:#87a8c4;border-radius:50%}
 #display-controls{display:flex;flex:0 0 auto;gap:2px;background:#dfe8f580;padding:3px;border-radius:12px;font-size:12px}

@@ -110,7 +110,14 @@ export function validateManagedSettings(value: unknown, base: TrialConfiguration
     }
     // For a reviewed choice we still cap usage at the reviewed bound; a custom/open model is user-bounded
     // and its unknown price is reported as unknown rather than replaced by the reviewed tariff.
-    if (choice && ((p.inputTokenLimit as number) > choice.configuration.inputTokenLimit || (p.outputTokenLimit as number) > choice.configuration.outputTokenLimit)) invalid('用量范围不能超过此型号已登记的计费上界。');
+    // FIX61-10: the same ledger honesty pins the registered per-unit tariff — a character or audio rate
+    // below the reviewed price would understate the reserved and actual cost, so it is rejected exactly
+    // like an exceeded token bound (declaring a higher conservative rate stays allowed).
+    const underRegisteredRate = (choice?.configuration.characterMicros !== undefined
+      && typeof p.characterMicros === 'number' && p.characterMicros < choice.configuration.characterMicros)
+      || (choice?.configuration.audioMicrosPerSecond !== undefined
+        && typeof p.audioMicrosPerSecond === 'number' && p.audioMicrosPerSecond < choice.configuration.audioMicrosPerSecond);
+    if (choice && ((p.inputTokenLimit as number) > choice.configuration.inputTokenLimit || (p.outputTokenLimit as number) > choice.configuration.outputTokenLimit || underRegisteredRate)) invalid('用量范围不能超过此型号已登记的计费上界。');
     // A custom endpoint keeps its own key instead of being forced onto a preset vendor's credential.
     try { credentials.file(p.credentialRef, String(reviewed ? reviewed.provider : p.provider)); } catch { invalid('请选择已登记的同供应商凭据。'); }
     if (p.temperature !== undefined && (!adapter.capabilities.temperature || typeof p.temperature !== 'number' || !Number.isFinite(p.temperature) || p.temperature < 0 || p.temperature > 2)) invalid('此模块不支持所填温度。');

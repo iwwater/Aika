@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { BackendConnection } from './transport.mjs';
 import { fitDisplay } from './layout.mjs';
 import { assetResponse } from './assets.mjs';
-import { managementUrl } from '../../tools/management-url.mjs';
+import { managementUrl, managementTarget } from '../../tools/management-url.mjs';
 import { nextUserDataDir } from '../../core/next-namespace.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -20,7 +20,7 @@ app.setName('AAAAGENT');
 app.setPath('userData', nextUserDataDir(app.getPath('appData'), smoke ? 'smoke-test' : preview ? 'preview' : 'desktop'));
 if (!app.requestSingleInstanceLock({ root, preview })) { app.quit(); process.exit(0); }
 protocol.registerSchemesAsPrivileged([{ scheme: 'pet', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
-let win, ready = false, voiceRequested = false, wakeRequested = false, panelOpen = false, beforeResize;
+let win, ready = false, voiceRequested = false, wakeRequested = false, micTestRequested = false, panelOpen = false, beforeResize;
 let prefs = { mode: 'full', width: 360, hotkey: null }, anchor, prefsFile, writes = Promise.resolve();
 const deliver = (method, ...args) => { if (ready && win && !win.isDestroyed()) win.webContents.send('pet:delivery', method, ...args); };
 const connection = new BackendConnection({
@@ -37,6 +37,23 @@ function savePreferences() {
   const raw = JSON.stringify({ ...prefs, anchor });
   writes = writes.then(() => writeFile(prefsFile, raw)).catch(() => process.stderr.write('Display preferences could not be saved.\n'));
 }
+// FIX61-11 / FIX61-07: the microphone device preference. It lives in this machine's app data beside the
+// display preferences, holds a device id only (never a path or a recording), and is written on its own
+// serialized chain so a preference write can never race the display write.
+let microphoneFile;
+const readMicrophonePreference = async () => {
+  if (!microphoneFile) return null;
+  try {
+    const saved = JSON.parse(await readFile(microphoneFile, 'utf8'));
+    return typeof saved?.deviceId === 'string' && saved.deviceId ? saved.deviceId : null;
+  } catch { return null; }
+};
+const writeMicrophonePreference = deviceId => {
+  if (!microphoneFile) return writes;
+  writes = writes.then(() => writeFile(microphoneFile, JSON.stringify({ version: 1, deviceId }) + '\n', { mode: 0o600 }))
+    .catch(() => process.stderr.write('Microphone preference could not be saved.\n'));
+  return writes;
+};
 function layout() {
   if (!win || win.isDestroyed()) return;
   const display = screen.getDisplayNearestPoint({ x: Math.round(anchor.x), y: Math.round(anchor.y) });
@@ -53,12 +70,16 @@ ipcMain.on('pet:desktop', (event, value) => {
   if (['finish_voice', 'cancel', 'submit_text'].includes(type)) voiceRequested = false;
   connection.send(value.message, value.generation);
 });
-ipcMain.on('pet:shell', (event, value) => {
+ipcMain.on('pet:shell', async (event, value) => {
   if (!trusted(event) || !value || typeof value !== 'object') return;
   switch (value.type) {
     case 'ready':
       if (ready) return;
-      ready = true; layout(); deliver('hotkeyConfig', { code: prefs.hotkey }); start(); break;
+      ready = true; layout(); deliver('hotkeyConfig', { code: prefs.hotkey });
+      // FIX61-10 (FIX61-07 07-C "重启一致"): report the stored microphone choice on every fresh page so
+      // the conversation capture applies the same device after a restart, not only in the test panel.
+      void readMicrophonePreference().then(deviceId => deliver('microphonePreference', deviceId));
+      start(); break;
     case 'panel': panelOpen = value.open === true; layout(); if (panelOpen) win.focus(); break;
     case 'focus': win.focus(); break;
     case 'drag':
@@ -78,6 +99,21 @@ ipcMain.on('pet:shell', (event, value) => {
       } break;
     case 'set_hotkey': if (validHotkey(value.code)) { prefs.hotkey = value.code; savePreferences(); deliver('hotkeyConfig', { code: prefs.hotkey }); } break;
     case 'reconnect': if (['failed', 'disconnected'].includes(connection.state)) start(); break;
+    // FIX61-11 / FIX61-07: an explicit, user-initiated microphone-test lease. It grants AUDIO ONLY, and
+    // only while the test panel is open, so a mic test never needs the backend to be ready and can never
+    // open the camera. Releasing the lease drops the permission again immediately.
+    case 'mic_test_request':
+      micTestRequested = true;
+      // FIX61-11: the renderer owns the device but not the file. The chosen device id is stored here, in
+      // this machine's app data, and reported back — the renderer never sees a path.
+      deliver('microphonePreference', await readMicrophonePreference());
+      break;
+    case 'mic_test_release': micTestRequested = false; break;
+    case 'mic_test_preference':
+      // null is an explicit "use the system default device", distinct from a missing value.
+      if (value.deviceId !== null && (typeof value.deviceId !== 'string' || !value.deviceId.trim() || value.deviceId.length > 512)) break;
+      await writeMicrophonePreference(value.deviceId);
+      break;
     // FIX61-03: a visible startup can be cancelled; EOF first, then the shutdown timeout.
     case 'cancel_startup': if (connection.state === 'connecting') void connection.cancel(); break;
     case 'disconnect': if (value.generation === connection.generation) connection.close(); break;
@@ -85,9 +121,12 @@ ipcMain.on('pet:shell', (event, value) => {
       if (preview) { deliver('managementResult', { ok: false }); break; }
       // FIX61-04: a panel entry may name a console section. Only a same-origin console path is accepted;
       // an absolute URL from the renderer is refused rather than handed to the shell.
-      if (value.path !== undefined && (typeof value.path !== 'string' || !/^\/[A-Za-z0-9._~\-/?#=&%]*$/.test(value.path))) { deliver('managementResult', { ok: false }); break; }
+      if (value.path !== undefined && (typeof value.path !== 'string' || !/^\/(?!\/)[A-Za-z0-9._~\-/?#=&%]*$/.test(value.path))) { deliver('managementResult', { ok: false }); break; }
       void managementUrl(process.env.PET_TRIAL_CONFIG)
-        .then(url => shell.openExternal(value.path && value.path !== '/' ? new URL(value.path, url).href : url))
+        // FIX61-11: the route is MERGED into the session fragment. Composing with `new URL(value.path, url)`
+        // replaced the whole fragment and silently dropped `#token=`, so 外观 / 换肤 opened in the locked
+        // state even though the page itself was right.
+        .then(url => shell.openExternal(managementTarget(url, value.path)))
         .then(() => deliver('managementResult', { ok: true })).catch(() => deliver('managementResult', { ok: false })); break;
     case 'quit': app.quit(); break;
   }
@@ -103,6 +142,7 @@ ipcMain.on('pet:diagnostic', (event, value) => {
 void app.whenReady().then(async () => {
 await mkdir(app.getPath('userData'), { recursive: true });
 prefsFile = resolve(app.getPath('userData'), 'windows-display.json');
+microphoneFile = resolve(app.getPath('userData'), 'microphone.json');
 try {
   const saved = JSON.parse(await readFile(prefsFile, 'utf8'));
   if (['full', 'half'].includes(saved.mode)) prefs.mode = saved.mode;
@@ -121,9 +161,13 @@ Menu.setApplicationMenu(Menu.buildFromTemplate([{ label: 'AAAAGENT', submenu: [
   { label: 'Developer tools', accelerator: 'Ctrl+Shift+I', click: () => win.webContents.toggleDevTools() }, { role: 'quit' }
 ] }, { role: 'editMenu' }]));
 await win.webContents.session.protocol.handle('pet', request => assetResponse(root, request.url));
+// FIX61-11 / FIX61-07: a microphone test is a separate, explicit lease (`mic_test_request`). It grants
+// AUDIO only — `video` still requires a real voice turn, so a mic test can never light the camera — and
+// it is deliberately independent of `voiceRequested`, so a failed or not-yet-ready backend does not stop
+// the user from checking whether the device itself works.
 const mediaAllowed = (wc, permission, origin, types, mainFrame) => !preview && wc === win.webContents && permission === 'media'
   && origin?.startsWith('pet://app/') && mainFrame !== false && types.length > 0
-  && types.every(type => type === 'audio' ? voiceRequested || wakeRequested : type === 'video' && voiceRequested);
+  && types.every(type => type === 'audio' ? voiceRequested || wakeRequested || micTestRequested : type === 'video' && voiceRequested);
 win.webContents.session.setPermissionRequestHandler((wc, permission, callback, details) => callback(mediaAllowed(wc, permission, details.requestingUrl, details.mediaTypes || [], details.isMainFrame)));
 win.webContents.session.setPermissionCheckHandler((wc, permission, origin, details) => mediaAllowed(wc, permission, origin + '/', [details.mediaType], details.isMainFrame));
 win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));

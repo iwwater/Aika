@@ -36,7 +36,9 @@ test('registered example-voice appears only for its model and survives settings 
   assert.equal(reopened.snapshot().pending, false); assert.equal(reopened.effective.providers.tts.voice, voice.voiceId);
   assert.deepEqual(reopened.effective.context, defaults.context);
   const effective = effectiveTrialConfiguration(c, reopened.effective);
-  for (const slot of ['dialogue', 'memory_turn', 'summary', 'perception', 'admission'] as const) assert.deepEqual(effective.models[slot], c.models[slot]);
+  // FIX61-10: FIX61-01 normalization annotates every effective slot with its wire protocol, so the
+  // unchanged-binding assertion now compares against the fixture plus that additive protocol field.
+  for (const slot of ['dialogue', 'memory_turn', 'summary', 'perception', 'admission'] as const) assert.deepEqual(effective.models[slot], { ...c.models[slot], protocol: 'openai-compatible' });
   assert.equal(effective.models.tts.characterMicros, 140); assert.equal(effective.models.tts.reservationMicros, 400000);
   assert.deepEqual(JSON.parse(await readFile(file, 'utf8')).history[0].settings, defaults);
 });

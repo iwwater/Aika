@@ -5,6 +5,7 @@ import {dirname,isAbsolute} from 'node:path';
 import {ManagementError} from '../contracts/management.js';
 import type {ProjectEntry,ProjectIndexPort,ProjectIndexQuery,ProjectIndexPage,ProjectIndexSave} from '../contracts/projects.js';
 import {assertProjectDatabase,PROJECT_DATABASE_ID,PROJECT_SCHEMA_VERSION} from './database-identity.js';
+import {restrictPrivatePathSync} from '../core/platform-files.js';
 
 const invalid=():never=>{throw new ManagementError('invalid_request','项目索引字段无效。');};
 function object(value:unknown,keys:readonly string[]):Record<string,unknown> {
@@ -50,6 +51,9 @@ export class SqliteProjectIndex implements ProjectIndexPort {
    try{fd=openSync(filename,constants.O_CREAT|constants.O_EXCL|constants.O_WRONLY,0o600);created=true;fchmodSync(fd,0o600);}
    catch(error){if((error as NodeJS.ErrnoException).code!=='EEXIST')throw error;assertProjectDatabase(filename);}
    finally{if(fd!==undefined)closeSync(fd);}
+   // FIX61-10: on Windows the mode bits above are a no-op, so a freshly created index must get the
+   // same SID-based private ACL as every other private file; on POSIX this re-asserts 0o600.
+   if(created)restrictPrivatePathSync(filename);
   }
   // SQLite may only open the file we created exclusively or already validated, never create a 0644 fallback.
   this.db=new Database(filename,{fileMustExist:true});

@@ -31,10 +31,14 @@ test(`registered ${label} survives settings restart and production factory/guard
   const filename = join(f.c.projectRoot, 'settings.json'), settings = await ManagementSettingsStore.open(filename, f.c, voices);
   await settings.save(0, changed);
   const reopened = await ManagementSettingsStore.open(filename, f.c, voices);
-  assert.deepEqual(reopened.effective, changed); assert.equal(reopened.snapshot().pending, false);
+  // FIX61-10: compare against the validator's normalized form of the same selection — FIX61-01 annotates
+  // every slot with its wire protocol on save, and the restart must return exactly what was persisted.
+  assert.deepEqual(reopened.effective, validateManagedSettings(changed, f.c, voices)); assert.equal(reopened.snapshot().pending, false);
   assert.deepEqual(JSON.parse(await readFile(filename, 'utf8')).history[0].settings, defaults);
   const effective = effectiveTrialConfiguration(f.c, reopened.effective);
-  for (const slot of ['dialogue', 'memory_turn', 'summary', 'admission', 'perception'] as const) assert.deepEqual(effective.models[slot], f.c.models[slot]);
+  // FIX61-10: FIX61-01 normalization annotates every effective slot with its wire protocol, so the
+  // unchanged-binding assertion now compares against the fixture plus that additive protocol field.
+  for (const slot of ['dialogue', 'memory_turn', 'summary', 'admission', 'perception'] as const) assert.deepEqual(effective.models[slot], { ...f.c.models[slot], protocol: 'openai-compatible' });
   const authorizer = new TrialAuthorizer(effective, f.configFile, f.activationFile, f.c);
   const media = new MemoryMediaStore(), wav = pcm16Wav(new Float32Array(24), 24000); let posts = 0, keys = 0;
   const transport = new TrialTransport(effective, async (_url, init) => {

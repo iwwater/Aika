@@ -18,7 +18,9 @@ test('HTTP dynamics uses real isolated SQLite; pure views, forward policy, confl
  const store=new SqliteMemoryStore({filename:f.c.database,retention:CONFIRMED_RETENTION,invitations:confirmedInvitationPolicy('Asia/Shanghai'),clock:()=>NOW});t.after(()=>store.close());seed(store);
  const memory=new SqliteManagementMemoryPort(store,lifecycle(store)),settings=await ManagementSettingsStore.open(join(f.c.projectRoot,'settings.json'),f.c),runtime=new ManagementRuntime(f.c.sourceRevision);
  const server=await startManagementServer({uiRoot:join(f.c.projectRoot,'ui'),settings,memory,snapshot:()=>({apiVersion:1,runtime:runtime.identity(),modules:runtime.modules(),events:[],settings:settings.snapshot(),adapters:[],credentials:[],characters:memory.characters()})});t.after(()=>server.close());
- const headers={Authorization:'Bearer '+server.token,Origin:server.origin,'Content-Type':'application/json'};
+ // FIX61-10: Connection: close — a pooled keep-alive client socket outlives server.close() and keeps the
+ // node event loop alive after the test has finished, which made this file hang forever on Windows.
+ const headers={Authorization:'Bearer '+server.token,Origin:server.origin,'Content-Type':'application/json',Connection:'close'};
  const get=(p:string)=>fetch(server.origin+p,{headers});
  const send=(p:string,body:unknown,method='POST')=>fetch(server.origin+p,{method,headers,body:JSON.stringify(body)});
  assert.equal((await fetch(server.origin+'/api/memory/dynamics?characterId=companion')).status,401);
@@ -40,4 +42,9 @@ test('HTTP dynamics uses real isolated SQLite; pure views, forward policy, confl
  assert.equal(failed.status,400);assert.match(await failed.text(),/来源/);assert.equal(store.inspect(scope(),'job')!.state,'active');assert.equal(store.revision(scope()),rev);
  assert.equal((await send('/api/memory/policy/rollback',{characterId:'companion',expectedRevision:2,targetRevision:1,operationId:'rollback'})).status,200);
  assert.equal(store.dynamics.policy().revision,3);assert.equal(store.inspect(scope(),'job')!.state,'active');
+ // FIX61-10: t.after hooks run in registration order, so the fixture's rm (registered first) would
+ // otherwise run BEFORE these closes — fine on POSIX, but on Windows it deletes a still-open SQLite
+ // file and fails with EBUSY. Closing explicitly here (both are idempotent) makes the shared rm run
+ // against a closed database on every platform.
+ await server.close();store.close();
 });

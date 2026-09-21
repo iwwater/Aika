@@ -34,4 +34,8 @@ test('import HTTP rejects unauthorized, cross-origin and cross-role input before
   assert.equal((await post('pause', { instanceId: 'current', jobId: 'job', expectedRevision: 0 })).status, 400);
   const failed = await post('pause', { instanceId: 'current', jobId: 'job', expectedRevision: 1 });
   assert.equal(failed.status, 500); assert.equal((await failed.text()).includes('PRIVATE'), false);
+  // FIX61-10: close explicitly before the after-hook. Tearing the server down inside process
+  // teardown trips a libuv assertion on Windows (uv_close during exit); an explicit, idempotent
+  // close here keeps the crash path out of the run.
+  await server.close();
 });

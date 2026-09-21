@@ -15,3 +15,19 @@ export async function managementUrl(configFile, fetcher = fetch) {
   if (runtime?.pid !== descriptor.pid || runtime?.instanceId !== descriptor.instanceId || runtime?.sourceRevision !== descriptor.sourceRevision) throw Error('Management session changed');
   return url.href;
 }
+// FIX61-11: the console URL for one panel entry. The session URL already carries `#token=…` and an entry
+// names a ROUTE (`/#page=skins`, `/#section=records`), but the WHATWG URL constructor REPLACES the whole
+// fragment — `new URL('/#page=skins', session)` returns a token-less URL, so the console opened its page
+// in the locked state. The two fragments are merged here instead: the session fragment keeps its exact
+// bytes and comes first, because `management/ui/app.mjs` reads the FIRST `token` value, so a route that
+// also named a token can never downgrade the real session.
+export function managementTarget(session, route) {
+  const base = new URL(session);
+  const target = new URL(route ?? '/', base);
+  // Merging the session fragment into another origin's URL would hand it to that host instead of keeping
+  // it local. A protocol-relative route (`//host/x`) is refused rather than rewritten.
+  if (target.origin !== base.origin) throw Error('The console route must stay on the local management origin.');
+  const sessionFragment = base.hash.slice(1), routeFragment = target.hash.slice(1);
+  if (sessionFragment || routeFragment) target.hash = sessionFragment && routeFragment ? sessionFragment + '&' + routeFragment : sessionFragment || routeFragment;
+  return target.href;
+}

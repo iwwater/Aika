@@ -38,7 +38,7 @@ import { aikaManagement, ModelDiscoveryService } from './aika-routes.js';
 import { AikaDiscoveryDraftStore } from './model-discovery-draft.js';
 import { readSetupKey } from './self-setup.js';
 import { healthManagement, microphoneManagement } from './health-routes.js';
-import { MicrophonePreferenceStore, MicrophoneTestLease } from '../media/microphone-test.js';
+import { MicrophonePreferenceStore } from '../media/microphone-preference.js';
 import { applyAikaProfile } from './aika-profile.js';
 import type { NextTurnPort } from '../core/turn-port.js';
 
@@ -49,7 +49,9 @@ export async function startRuntimeManagement(base: TrialConfiguration, configFil
   /** FIX61-06: knowledge library management for the same console; absent leaves the section unavailable. */
   knowledge?: import('../contracts/knowledge.js').KnowledgeManagement,
   /** FIX61-07: microphone preference is machine-local; the desktop renderer owns the device itself. */
-  microphone?: import('../media/microphone-test.js').MicrophonePreferenceStore) {
+  microphone?: import('../media/microphone-preference.js').MicrophonePreferenceStore,
+  /** FIX61-11: the FIX61-05 model-pack registry, opened by the composition root over real pack directories. */
+  skins?: import('../contracts/skin.js').SkinManagement) {
   /** The registry already publishes which provider owns a reference; no key material is read here. */
   const credentialOwner = (ref: string, list: readonly { id: string; provider?: string }[]) => {
     const owner = list.find(entry => entry.id === ref)?.provider;
@@ -102,7 +104,7 @@ export async function startRuntimeManagement(base: TrialConfiguration, configFil
   const aikaRecorder = aika?.turn ? new AikaTimelineRecorder(aika.turn, aika.timeline) : undefined;
   const stopRecorder = aikaRecorder?.start();
   try { server = await startManagementServer({ ...(emotion?{emotion}:{}), selfSetup, ...(memoryImport?{memoryImport}:{}), balances, ...(wake?{wake}:{}), uiRoot: resolve(base.projectRoot, 'code/desktop-pet/management/ui'), settings, memory, ...(aikaPort?{aika:aikaPort}:{}), ...(knowledge?{knowledge}:{}), health: healthManagement(runtime.health),
-      ...(microphone?{microphone: microphoneManagement(microphone)}:{}), ...(wechat?{wechat}:{}), ...(projects ? { projects } : {}), ...(tasks ? { tasks } : {}), ...(pendingMemory?{pendingMemory}:{}), ...(presentation ? { presentation, presentationAssets: await presentationAssetRoutes(base.projectRoot) } : {}),
+      ...(microphone?{microphone: microphoneManagement(microphone)}:{}), ...(skins?{skins}:{}), ...(wechat?{wechat}:{}), ...(projects ? { projects } : {}), ...(tasks ? { tasks } : {}), ...(pendingMemory?{pendingMemory}:{}), ...(presentation ? { presentation, presentationAssets: await presentationAssetRoutes(base.projectRoot) } : {}),
     snapshot: async () => ({ apiVersion: 1, balances:balances.snapshot(), accounting:await accountingSnapshot(base), runtime: runtime.identity(), modules: runtime.modules(), events: runtime.recentEvents(),
       settings: settings.snapshot(), adapters: availableAdapters(base, settings.registeredVoices), credentials: credentialRegistry(base).list(), characters: memory.characters() }) });
   } catch (error) { stopRecorder?.(); await selfSetup.close(); await tasks?.close(); await projects?.close(); throw error; }

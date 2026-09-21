@@ -24,6 +24,14 @@ export interface BrowserCaptureOptions {
   readonly cameraWidth: number;
   readonly jpegQuality: number;
   readonly maxBufferedSamples: number;
+  /**
+   * FIX61-11 / FIX61-07: the microphone the user chose in the mic test, applied to the real conversation
+   * capture so "试麦选的那只" is also the one the conversation uses. Absent or null means the system
+   * default device — never a silent substitution for a device that disappeared: an `exact` constraint
+   * makes the device request fail loudly instead, which is reported through the existing device-failure
+   * plane. Signatures of existing consumers are unchanged, so callers that pass nothing keep working.
+   */
+  readonly deviceId?: string | null;
   /** Local timing/counts only; never samples, images, transcript or device identifiers. */
   readonly onDiagnostic?: (event:CaptureDiagnostic)=>void;
   /** First real PCM (including zero), then about20Hz. Never after finish/stop/abort. No samples or persistence. */
@@ -101,7 +109,11 @@ export class BrowserCaptureDriver implements CaptureDriver {
     };
     try{
       diagnostic('microphone_request');
-      const pendingMicrophone=navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false},video:false}).then(stream=>{
+      // FIX61-11: the selected device, or the system default. `exact` deliberately does not fall back:
+      // silently recording from a different microphone than the user picked would be worse than failing.
+      const selected = this.options.deviceId ?? null;
+      const audioConstraints = selected === null ? { echoCancellation: false } : { deviceId: { exact: selected }, echoCancellation: false };
+      const pendingMicrophone=navigator.mediaDevices.getUserMedia({audio:audioConstraints,video:false}).then(stream=>{
         if(stopped||signal.aborted){stream.getTracks().forEach(t=>t.stop());throw abortError();}
         microphone=stream;
         // Read only the actual boolean; optional diagnostics must never fail capture.

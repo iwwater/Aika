@@ -15,4 +15,15 @@
 </section>
 <dialog id="work-records-dialog" aria-labelledby="work-records-title"><header><h2 id="work-records-title">工程记录</h2><button id="work-records-close" type="button" aria-label="关闭工程记录">×</button></header><div id="work-records-content" tabindex="0" aria-label="任务问答与执行详情"></div></dialog>
 <section id="function-panel" hidden aria-label="功能面板" role="dialog" aria-modal="false"><header><div class="panel-title"><span class="presence-dot" aria-hidden="true"></span><strong>功能</strong></div><button id="function-close" type="button" aria-label="关闭功能面板">×</button></header><nav id="function-entries" aria-label="功能入口"></nav><p id="function-notice" role="status"></p></section>
+<section id="mic-test" hidden aria-label="麦克风测试" role="dialog" aria-modal="false">
+ <header><div class="panel-title"><span class="presence-dot" aria-hidden="true"></span><strong>麦克风测试</strong></div><button id="mic-close" type="button" aria-label="关闭麦克风测试">×</button></header>
+ <p class="subtle" id="mic-hint">只在本机测试设备，最长 5 秒，录音只留在内存里，不会上传，也不会写进对话记录。</p>
+ <label class="field" for="mic-device"><span>输入设备</span><select id="mic-device"><option value="">系统默认设备</option></select></label>
+ <div class="actions"><button id="mic-refresh" type="button">刷新设备</button><button id="mic-start" type="button" class="primary">开始试麦</button><button id="mic-stop" type="button" hidden>停止</button></div>
+ <div id="mic-meter" hidden aria-label="实测输入电平"><span id="mic-meter-fill"></span></div>
+ <p id="mic-level" role="status">尚未开始：先选择一个设备，再点“开始试麦”。</p>
+ <div id="mic-playback" hidden><audio id="mic-audio" controls preload="none"></audio><small>本地回放，关闭面板即销毁。</small></div>
+ <dl class="definitions" id="mic-facts"></dl>
+ <p id="mic-diagnosis" role="status"></p>
+</section>
 <script src="vendor/cubism/Core/live2dcubismcore.min.js"></script><script type="module" src="build/renderer.js"></script></body></html>

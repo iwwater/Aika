@@ -63,7 +63,9 @@ test('all six registered baselines retain tariffs and limits without reading or 
   // reviewed choice and no tariff, so the reviewed-baseline assertions below apply only to the seven
   // reviewed adapters (six slot baselines plus the two extra speech adapters minus the overlap).
   const reviewed = catalog.filter(adapter => !adapter.open);
-  assert.equal(reviewed.length, 8); assert.equal(new Set(catalog.map(adapter => adapter.id)).size, catalog.length);
+  // FIX61-10: the MiniMax adapter is hosted cloning — unusable without a registered voice, so it only
+  // appears once one is registered. This fixture registers none, hence 7 reviewed adapters, not 8.
+  assert.equal(reviewed.length, 7); assert.equal(new Set(catalog.map(adapter => adapter.id)).size, catalog.length);
   for (const adapter of reviewed.filter(adapter => !['qwen-audio-tts', 'minimax-tts'].includes(adapter.id))) {
     const slot = adapter.slots[0]!, original = base.models[slot]!, first = adapter.choices![0]!.configuration;
     for (const field of ['model', 'provider', 'endpoint', 'inputTokenLimit', 'outputTokenLimit',
@@ -180,11 +182,20 @@ test('supported TTS voice changes the existing request and returns WAV without p
   await store.releaseScope(scope);
 });
 
-test('only reviewed MiniMax cloning is offered and it has no selectable voice before enrollment', () => {
+test('only reviewed MiniMax cloning is offered and it appears only after a voice is registered', () => {
+  // FIX61-10: with no registered voice the hosted cloning adapter is absent entirely; registering a
+  // matching voice makes it the only cloning-capable adapter, carrying exactly that voice.
   const catalog = managementAdapterCatalog(fixture());
-  assert.deepEqual(catalog.filter(adapter => adapter.capabilities.cloning).map(adapter => adapter.id), ['minimax-tts']);
-  for (const choice of catalog.find(adapter => adapter.id === 'minimax-tts')!.choices!) {
-    assert.deepEqual(choice.voices, []); assert.equal(choice.configuration.voice, undefined);
+  assert.deepEqual(catalog.filter(adapter => adapter.capabilities.cloning).map(adapter => adapter.id), []);
+  assert.ok(!catalog.some(adapter => adapter.id === 'minimax-tts'));
+  const registered: import('../../providers/registered-voices.js').RegisteredVoice[] = [{ voiceId: 'SyntheticCloningVoice', label: '合成克隆', provider: 'dashscope',
+    endpoint: 'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation', targetModel: 'MiniMax/speech-2.8-turbo',
+    credentialRef: 'x', referenceSha256: 'a'.repeat(64), createdAt: '2026-09-11T00:00:00.000Z' }];
+  const withVoice = managementAdapterCatalog(fixture(), registered);
+  assert.deepEqual(withVoice.filter(adapter => adapter.capabilities.cloning).map(adapter => adapter.id), ['minimax-tts']);
+  for (const choice of withVoice.find(adapter => adapter.id === 'minimax-tts')!.choices!) {
+    if (choice.configuration.model === 'MiniMax/speech-2.8-turbo') assert.deepEqual(choice.voices!.map(v => v.id), ['SyntheticCloningVoice']);
+    else assert.deepEqual(choice.voices ?? [], []);
   }
   assert.doesNotMatch(JSON.stringify(catalog.map(adapter => adapter.models)), /cosyvoice|deepseek-v4-flash|tts-vc/);
   assert.deepEqual(catalog.find(adapter => adapter.id === 'strict-deepseek')!.models, ['deepseek-v4-pro']);

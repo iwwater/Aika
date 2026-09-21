@@ -12,6 +12,7 @@
     "test": "npm run build && node tools/run-tests.mjs",
     "test:next": "npm run build && node tools/run-tests.mjs next",
     "test:next61": "npm run build && node tools/run-tests.mjs next61",
+    "test:next65": "npm run build && node tools/run-tests.mjs next65",
     "test:next:real": "npm run build && node tools/run-tests.mjs next-real",
     "test:release": "npm run build && node tools/run-tests.mjs release",
     "build:wake": "node tools/build-wake.mjs",

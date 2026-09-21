@@ -15,6 +15,7 @@ import { DesktopPlaybackController } from './playback-controller.ts';
 import { BrowserCaptureDriver } from '../media/browser-capture.ts';
 import { DESKTOP_BRIDGE_VERSION } from '../contracts/desktop-bridge.ts';
 import { PcmFrameAggregator } from '../media/voice-input-session.ts';
+import { installMicrophoneTest } from './mic-test-panel.mjs';
 const $ = id => document.getElementById(id);
 const native = (name, value) => window.desktopHost ? window.desktopHost.postMessage(name, value) : window.webkit?.messageHandlers[name]?.postMessage(value);
 const report = value => native('diagnostic', value);
@@ -238,7 +239,9 @@ function fitComposer() {
 // FIX61-04: the function panel is its own view, separate from the chat drawer. It shares no state with
 // the conversation, so opening it never clears a draft, an active turn or the reading position.
 let functionPanelOpen = false;
-const FUNCTION_CAPABILITIES = { skin: false, microphone: false };
+// FIX61-11: both view entries are now backed by real production objects (the skin console page and the
+// desktop mic-test controller), so the function panel offers them instead of rendering them disabled.
+const FUNCTION_CAPABILITIES = { skin: true, microphone: true };
 function functionPanel(open) {
   if (functionPanelOpen === open) return;
   functionPanelOpen = open;
@@ -269,6 +272,10 @@ function renderFunctionPanel() {
       if (entry.kind === 'shell' && entry.action === 'open_chat') { functionPanel(false); panel(true); return; }
       if (entry.kind === 'shell' && entry.action === 'open_management') { openConsole('/'); return; }
       if (entry.kind === 'console') { openConsole(entry.target); return; }
+      // FIX61-11: "外观 / 换肤" is a console page (the registry is backend-owned), "麦克风" is a desktop
+      // view (FIX61-07 §2 requires the trusted renderer to own the device, not the console page).
+      if (wired && entry.target === 'skin') { functionPanel(false); openConsole('/#page=skins'); return; }
+      if (wired && entry.target === 'microphone') { functionPanel(false); micTestPanel(true); return; }
       // A view entry whose feature is not wired yet says so instead of doing nothing silently.
       if (!wired) { $('function-notice').textContent = `${entry.label}：${entry.note ?? ''}（尚未接通）`; return; }
     });
@@ -455,6 +462,10 @@ async function receive(message, generation) {
       const active = { scope: message.scope, controller: new AbortController(),feedbackToken:captureFeedbackToken,wake:fromWake,frameIndex:0 }; capturing = active;
       pcmFrames.reset();voiceFrames.reset();
       const driver = new BrowserCaptureDriver({ workletModuleUrl: new URL('./recorder-worklet.js', import.meta.url), cameraWidth: 640, jpegQuality: .8, maxBufferedSamples: 12000000,
+        // FIX61-10 (FIX61-07 07-C): the conversation records from the machine-local microphone choice,
+        // the same device the mic test validated. null keeps the system default; an exact id that has
+        // disappeared fails loudly through the existing device-failure plane instead of switching mics.
+        deviceId: microphoneTest?.selectedDeviceId() ?? null,
         // Live leg: every 2048-sample flush is framed here and kept for the backend's frame requests.
         voiceSink:block=>{for(const frame of pcmFrames.push(block)){voiceFrames.add(message.scope.turnId,active.frameIndex++,frame);}},
         onVoiceSinkError:()=>{if(capturing===active)report({type:'voice-sink-error'});},
@@ -488,7 +499,21 @@ async function receive(message, generation) {
     send({ channel: 'rpc_error', requestId: message.requestId, ...(scope ? { scope } : {}), error: failure, message: text }, generation);
   }
 }
-window.petBridge = { receive, connectionChanged, hotkeyConfig, hotkeyEvent, displayConfig: display.receive, managementResult };
+// FIX61-11 / FIX61-07: the mic test lives in this trusted renderer, not in the console page — there is no
+// websocket/MCP channel, so a console-side getUserMedia would test the browser's device instead of the
+// pet's. It is independent of the backend connection, so a failed backend still lets the user check
+// whether the microphone itself works. Installed before petBridge is published so the shell's data
+// directory delivery can reach it.
+const microphoneTest = installMicrophoneTest({
+  get: $,
+  shell: value => native('shell', value),
+  busy: () => !!capturing || voicePhase !== 'idle'
+});
+function micTestPanel(open) { microphoneTest?.open(open); }
+window.petBridge = { receive, connectionChanged, hotkeyConfig, hotkeyEvent, displayConfig: display.receive, managementResult,
+  // FIX61-11: the shell owns the microphone preference file; it reports the stored device id here so the
+  // renderer never needs a path (and never imports the Node-only preference store).
+  microphonePreference: deviceId => microphoneTest?.setStoredDevice(deviceId) };
 window.desktopHost?.subscribe((method, ...args) => window.petBridge[method]?.(...args));
 $('function-close').onclick = () => functionPanel(false);
 renderFunctionPanel();
@@ -537,7 +562,8 @@ document.addEventListener('keydown', e => {
   if (bindingKey || composing || e.isComposing || e.keyCode === 229) return;
   if (!editing(e.target) && !e.metaKey && !e.ctrlKey && !e.altKey && timedVoiceInput(receivedAt,'keyboard',()=>hold.down(e.code,e.repeat))) { e.preventDefault(); e.stopPropagation(); return; }
   if (e.key === 'Escape') {
-    // Topmost first: the function panel is a peer view, so Escape closes it before the chat drawer.
+    // Topmost first: a test session is the most modal peer view, then the function panel, then the drawer.
+    if (microphoneTest?.isOpen()) { e.preventDefault(); micTestPanel(false); return; }
     if (functionPanelOpen) { e.preventDefault(); functionPanel(false); return; }
     if (playback.busy || capturing || voicePhase !== 'idle' || view.scope) command({ type: 'cancel' }); else panel(false);
   }
@@ -546,7 +572,7 @@ document.addEventListener('keyup', e => { if (hold.up(e.code)) { e.preventDefaul
 document.addEventListener('focusin', e => { if (editing(e.target)) hold.cancel(); });
 window.addEventListener('blur', () => { hold.cancel(); display.cancel(); pointer = null; });
 document.addEventListener('visibilitychange', () => { introductionEpoch++; introductionFramePending = false; if (document.hidden) { hold.cancel(); display.cancel(); pointer = null; } else scheduleIntroductionAck(); });
-window.addEventListener('pagehide', () => { display.cancel(); connectionChanged({ generation: connection.generation, state: 'disconnected' }); void stopPlayback(); stopCapture(); renderer?.dispose(); });
+window.addEventListener('pagehide', () => { display.cancel(); void microphoneTest?.close(); connectionChanged({ generation: connection.generation, state: 'disconnected' }); void stopPlayback(); stopCapture(); renderer?.dispose(); });
 window.addEventListener('error', e => report({ type: 'script-error', message: e.message }));
 window.addEventListener('unhandledrejection', e => report({ type: 'promise-error', message: String(e.reason) }));
 renderUI(); native('shell', { type: 'ready' });

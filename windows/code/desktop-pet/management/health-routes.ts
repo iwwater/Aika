@@ -5,7 +5,7 @@
 // console only stores the machine-local preference — it never opens a capture on the user's behalf.
 import { ManagementError } from '../contracts/management.js';
 import type { HealthSnapshot } from '../core/health-snapshot.js';
-import type { MicrophonePreferenceStore } from '../media/microphone-test.js';
+import type { MicrophonePreferenceStore } from '../media/microphone-preference.js';
 
 export interface HealthManagement {
   snapshot(): HealthSnapshot;

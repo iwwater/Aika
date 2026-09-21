@@ -64,7 +64,8 @@ import { AikaProfileStore, applyAikaProfile } from '../management/aika-profile.j
 import { AikaTimelineStore } from '../management/aika-timeline.js';
 import { KnowledgeLibraryStore } from '../memory/knowledge-library.js';
 import { knowledgeManagement } from '../management/knowledge-routes.js';
-import { MicrophonePreferenceStore } from '../media/microphone-test.js';
+import { MicrophonePreferenceStore } from '../media/microphone-preference.js';
+import { SkinStore } from '../management/skin-store.js';
 // Health is derived from the runtime's own observations, so no extra probe is started here.
 
 /** Keep production trial calls within the reviewed text bounds without truncating user content or replies. */
@@ -396,6 +397,14 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
       } catch { process.stderr.write('Historical memory import unavailable; companion chat remains available.\n'); }
       const aikaProfile = await AikaProfileStore.open(resolve(configuration.projectRoot, '.local/data/aika-profile.json'));
       const aikaTimeline = await AikaTimelineStore.open(resolve(configuration.projectRoot, '.local/data/aika-timeline.sqlite'));
+      // FIX61-11: the skin registry is opened over the real pack directories so 换肤 is reachable from the
+      // console. A registry failure must never take the console down: the section then reports unavailable.
+      // The built-in rig stays bound to desktop/assets/local-model, the same directory tools/configure-model
+      // validates, so the skin path never becomes a second configuration authority.
+      let skins: SkinStore | undefined;
+      try { skins = await SkinStore.open(resolve(configuration.projectRoot, '.local/data/skins.json'),
+        resolve(configuration.projectRoot, '.local/data/skin-packs'), resolve(configuration.projectRoot, 'code/desktop-pet/desktop')); }
+      catch { process.stderr.write('Skin registry unavailable; appearance stays on the built-in model.\n'); }
       // The console reads and writes the same profile the composition root applies; nothing is duplicated.
       management = await startRuntimeManagement(registeredConfiguration, configFile, settings, runtime,
         withStrictManagementForget(new SqliteManagementMemoryPort(store,memory),managementForget),presentation,
@@ -403,7 +412,8 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
           (scope,id,text)=>session!.retryPendingMemory(scope,id,text),()=>session!.pendingMemoryJobs().some(x=>x.queued+x.running>0)),wechat,wake,memoryImport,store.emotion,
         { store: aikaProfile, timeline: aikaTimeline }, knowledge,
         // The preference is per-machine app data; the console only reads and writes it.
-        await MicrophonePreferenceStore.open(resolve(configuration.projectRoot, '.local/data/microphone.json')));
+        await MicrophonePreferenceStore.open(resolve(configuration.projectRoot, '.local/data/microphone.json')),
+        skins);
     }
     if (configuration.purpose === 'user-trial') {
       const classifier = new WorkIntentClassifier(endpoint('admission'), transport);

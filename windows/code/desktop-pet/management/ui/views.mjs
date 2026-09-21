@@ -29,9 +29,11 @@ function settingsActions(a){return el('div',{class:'actions'},button(a.s.pending
 function contextSettings(a){const {s}=a,c=s.settingsDraft?.context;if(!c)return el('div');const labels={maxRecentMessages:'近期对话条数',maxMemories:'长期记忆条数',summaryLimit:'选入上下文的摘要条数',summaryMinMessages:'开始生成摘要的消息数',summaryMaxMessages:'单次摘要消息数',timeoutMs:'模型请求超时（毫秒）'};
  return card('检索与上下文配置',el('p',{class:'subtle'},'控制各类内容的选取范围；不修改已有记录正文。'),...settingsNotices(a),el('div',{class:'form-grid'},Object.entries(labels).map(([key,label])=>field(label,'context-'+key,c[key],v=>a.editSetting(['context',key],Number(v)),{type:'number',min:0,step:1,disabled:s.pending.has('settings')}))),settingsActions(a));
 }
+/** The memory sub-tabs, in one place: the tab strip and the `#section=` deep link share this list. */
+export const MEMORY_SECTIONS=[['dynamics','记忆总览'],['emotion','当前情绪'],['import','导入旧聊天'],['fragments','来源与片段'],['traces','实际召回'],['policy','策略微调'],['maintenance','维护与遗忘'],['records','纠正记录'],['prompt','角色设定 Prompt'],['context','上下文试算']];
 export function memoryView(a) {
   const {s}=a;
-  const tabs=[['dynamics','记忆总览'],['emotion','当前情绪'],['import','导入旧聊天'],['fragments','来源与片段'],['traces','实际召回'],['policy','策略微调'],['maintenance','维护与遗忘'],['records','纠正记录'],['prompt','角色设定 Prompt'],['context','上下文试算']];
+  const tabs=MEMORY_SECTIONS;
   return el('div',{},
     el('div',{class:'tab-actions md-tabs'},tabs.map(([key,label])=>button(label,()=>{s.section=key;a.render();const load=({records:a.loadRecords,prompt:a.loadPrompt,context:a.loadContext,import:a.memoryImport.refresh,emotion:()=>a.emotion.refresh()})[key];if(load)load();else a.memoryDynamics.load(key);},{id:'memory-'+key,'aria-pressed':s.section===key}))),
     s.section==='emotion'?a.emotion.view():s.section==='import'?a.memoryImport.view():s.section==='records'?recordsView(a):s.section==='prompt'?promptView(a):s.section==='context'?contextView(a):a.memoryDynamics.view(s.section));

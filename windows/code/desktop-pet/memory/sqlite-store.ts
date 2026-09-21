@@ -496,6 +496,10 @@ export class SqliteMemoryStore implements CompanionProfilePort {
   }
   close(): void {
     if (this.#closed) return;
+    // FIX61-10: on Windows, closing with a live WAL leaves the -shm/-wal files locked for a moment
+    // after close() returns, which made immediate test-fixture cleanup fail with EBUSY. A final
+    // TRUNCATE checkpoint before close releases them deterministically without changing any state.
+    try { this.#db.pragma('wal_checkpoint(TRUNCATE)'); } catch { /* a read-only or already-stopped db just closes */ }
     this.#db.close(); this.#closed = true;
   }
 }

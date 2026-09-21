@@ -11,7 +11,7 @@ import { firstRunDraft, startFirstRunSetup } from '../../app/self-setup.js';
 import { ManagementSettingsStore } from '../../management/settings-store.js';
 import { ManagedCredentialStore } from '../../management/credential-store.js';
 import { credentialRegistry } from '../../management/credentials.js';
-import { effectiveTrialConfiguration } from '../../management/settings.js';
+import { effectiveTrialConfiguration, validateManagedSettings } from '../../management/settings.js';
 import { pcm16Wav } from '../../media/wav.js';
 
 async function fixture(t:test.TestContext){
@@ -55,14 +55,23 @@ test('key saving is immutable and distinct from model selection; persisted setti
  assert.deepEqual((await f.request()).value.settings.saved,s.settings.saved);
  const settings=structuredClone(s.settings.saved);for(const p of Object.values(settings.providers) as any[])p.credentialRef=p.provider==='deepseek'?saved.value.credentialRef:bailian.value.credentialRef;
  assert.equal((await f.request('/settings',{instanceId,expectedRevision:0,settings},'PUT')).status,200);
+ const savedAfterPut=(await f.request()).value.settings.saved;
  assert.deepEqual((await f.request()).value.settings.effective,s.settings.effective);assert.equal(f.calls.length,0);
- await f.restart();const reopened=(await f.request()).value;assert.deepEqual(reopened.settings.saved,settings);assert.equal(reopened.credentialRevision,2);assert.equal(JSON.stringify(reopened).includes(key),false);
+ await f.restart();const reopened=(await f.request()).value;
+ // FIX61-10: FIX61-01 annotates every persisted slot with its wire protocol on save, so the restart
+ // must return exactly what the server itself reported as saved right after the PUT — not the raw
+ // client payload, which lacks the normalized protocol fields.
+ assert.deepEqual(reopened.settings.saved,savedAfterPut);assert.equal(reopened.credentialRevision,2);assert.equal(JSON.stringify(reopened).includes(key),false);
  assert.equal((await f.request('/settings',{instanceId,expectedRevision:1,settings},'PUT')).status,409);
  assert.ok(reopened.credentials.filter((c:any)=>c.managed).every((c:any)=>c.status==='configured'));
  const draft=firstRunDraft(f.root,f.options.credentialDirectory),managed=new ManagedCredentialStore(f.root,f.options.credentialDirectory),registry=credentialRegistry(draft,managed);
  const finishedBase=effectiveTrialConfiguration(draft,settings,registry,true);
  const runtimeSettings=await ManagementSettingsStore.open(resolve(f.root,'.local/model-evaluation/trial/user-trial/management-settings.json'),finishedBase,undefined,{credentials:credentialRegistry(finishedBase,managed),draftOnly:true});
  assert.deepEqual(runtimeSettings.snapshot().saved,settings); // Revision-zero placeholder history survives final config preparation.
+ // FIX61-10: t.after hooks run in registration order, so the fixture rm registered first would run
+ // while this test's own service is still open; on Windows that deletes an in-use SQLite file (EBUSY).
+ // Closing explicitly at the end (idempotent) puts cleanup back in a safe order on every platform.
+ await f.service.close();
 });
 test('real HTTP upload/clone/first-use use two confirmations, same ledger and bound registry without changing selected voice',async t=>{
  const f=await fixture(t),s=(await f.request()).value,instanceId=s.instanceId;

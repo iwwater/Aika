@@ -9,6 +9,7 @@
 | [开发与 Agent 协作规范](../AGENTS.md) | 模块责任、契约变更、定向测试、交接与版本验收 |
 | [插件与能力包开发规范](development/PLUGIN_DEVELOPMENT.md) | STT/TTS/情感陪伴合作者的分工、接口与交付清单 |
 | [0.61 → 0.65 连续开发计划](next/EXECUTION_061_065.md) | 自动接续、人工验收后置、可复制的 Goal 指令 |
+| [0.65 架构改造测试计划](next/0.65/TEST_PLAN.md) | 保留旧业务回归，按 K65 步骤新增契约、插件、多源与独立产物测试 |
 | [DSH 分发意向](integrations/dsh/README.md) | 后置，不增加本轮实现或验收要求 |
 | [总路线图 RPD](next/RPD_ROADMAP.md) | 产品方向、版本边界、架构原则 |
 | [需求 TODO](next/TODO.md) | 用户原始登记；指定 11 条已排入 0.61，其余保留待办，不改变 0.6 SPEC |

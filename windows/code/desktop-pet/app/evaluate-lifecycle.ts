@@ -1,6 +1,7 @@
 /** Bounded silent real-model evaluation. This does not enable lifecycle memory in the general desktop backend. */
 import { access, mkdir, open, readFile, unlink, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
+import { isAbsolute } from 'node:path';
 import { SqliteMemoryStore, CONFIRMED_RETENTION } from '../memory/sqlite-store.js';
 import { SqliteLifecycleMemoryPort } from '../memory/sqlite-lifecycle-port.js';
 import { confirmedInvitationPolicy } from '../companion/invitations.js';
@@ -22,7 +23,11 @@ import { loadMemoryTrial, MemoryTrialCallGuard, reviewedTrialCount, runMemoryTri
 import { buildMemoryTurnFormat } from '../providers/memory-turn-format.js';
 
 export async function evaluateLifecycle(root: string, credentialFile: string, runId: string, suite: 'natural' | 'sources' | 'dialogue' | 'absence' | 'source-originals' | 'remaining-sources' | 'prompt-trial-known' | 'prompt-trial-holdout' = 'natural', memoryWireMode: MemoryWireMode = 'numeric-v1'): Promise<void> {
-  if (!root.startsWith('/') || !credentialFile.startsWith('/') || !/^lifecycle-[a-z0-9-]+$/.test(runId)) throw new Error('Invalid explicit evaluation paths or run ID');
+  // FIX61-10: "explicit absolute path" means an absolute path on the running platform, not a POSIX
+  // slash prefix. On Windows a drive path (F:\...) was rejected here before the STOPPED gate, which
+  // both blocked every Windows evaluation and reordered the guard the test pins: the stop gate must
+  // fire before credentials are read, on every platform.
+  if (!isAbsolute(root) || !isAbsolute(credentialFile) || !/^lifecycle-[a-z0-9-]+$/.test(runId)) throw new Error('Invalid explicit evaluation paths or run ID');
   if (!['natural', 'sources', 'dialogue', 'absence', 'source-originals', 'remaining-sources', 'prompt-trial-known', 'prompt-trial-holdout'].includes(suite)) throw new Error('Unknown lifecycle scenario suite');
   assertMemoryWireMode(memoryWireMode);
   if (memoryWireMode === 'quoted-v2' && (suite === 'dialogue' || suite === 'absence')) throw new Error('Memory wire mode is not applicable to a dialogue-only suite');

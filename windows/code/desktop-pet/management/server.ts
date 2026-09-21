@@ -27,8 +27,11 @@ import { taskRoute, type TaskManagement } from './task-routes.js';
 import { aikaRoute } from './aika-routes.js';
 import { knowledgeRoute } from './knowledge-routes.js';
 import { healthRoute, microphoneRoute } from './health-routes.js';
+import { skinRoute } from './skin-routes.js';
 
-interface RuntimeServerOptions { emotion?: EmotionManagement; aika?: import('./aika-routes.js').AikaManagement; knowledge?: import('../contracts/knowledge.js').KnowledgeManagement; health?: import('./health-routes.js').HealthManagement; microphone?: import('./health-routes.js').MicrophoneManagement; mode?: 'runtime'; selfSetup?:SelfSetupManagement; memoryImport?: MemoryImportManagement; balances?: BalanceManagement; wake?: WakeManagement; wechat?: WeChatManagement; uiRoot: string; memory: ManagementMemoryPort; settings: ManagementSettingsStore; snapshot(): ManagementSnapshot | Promise<ManagementSnapshot>; token?: string; presentation?: PresentationControls; presentationAssets?: ReadonlyMap<string, string>; pendingMemory?:PendingMemoryManagement; projects?: ProjectIndexPort; tasks?: TaskManagement }
+interface RuntimeServerOptions { emotion?: EmotionManagement; aika?: import('./aika-routes.js').AikaManagement; knowledge?: import('../contracts/knowledge.js').KnowledgeManagement; health?: import('./health-routes.js').HealthManagement; microphone?: import('./health-routes.js').MicrophoneManagement; mode?: 'runtime'; selfSetup?:SelfSetupManagement; memoryImport?: MemoryImportManagement; balances?: BalanceManagement; wake?: WakeManagement; wechat?: WeChatManagement; uiRoot: string; memory: ManagementMemoryPort; settings: ManagementSettingsStore; snapshot(): ManagementSnapshot | Promise<ManagementSnapshot>; token?: string; presentation?: PresentationControls; presentationAssets?: ReadonlyMap<string, string>; pendingMemory?:PendingMemoryManagement; projects?: ProjectIndexPort; tasks?: TaskManagement;
+  /** FIX61-11: the FIX61-05 model-pack registry. Appearance only; absent leaves the skin section unavailable. */
+  skins?: import('../contracts/skin.js').SkinManagement }
 type ServerOptions = RuntimeServerOptions | { mode:'setup'; selfSetup:SelfSetupManagement; uiRoot:string; token?:string; presentationAssets?:undefined };
 const character = (value: unknown): CharacterId => { if (!isProductCharacter(value)) throw new ManagementError('invalid_request', '仅可访问当前陪伴角色。'); return value; };
 const integer = (value: unknown, fallback: number, min: number, max: number) => { const n = value === null || value === undefined ? fallback : Number(value); if (!Number.isSafeInteger(n) || n < min || n > max) throw new ManagementError('invalid_request', '数值范围无效。'); return n; };
@@ -60,7 +63,7 @@ export async function startManagementServer(options: ServerOptions) {
           const type = asset.endsWith('.png') ? 'image/png' : asset.endsWith('.json') ? 'application/json' : asset.endsWith('.js') ? 'text/javascript' : 'application/octet-stream';
           res.setHeader('Content-Type', type); res.end(req.method === 'HEAD' ? undefined : data); return;
         }
-        const names = new Map([['/emotion-view.mjs','emotion-view.mjs'],['/self-setup-view.mjs','self-setup-view.mjs'],['/memory-import-view.mjs','memory-import-view.mjs'],['/balances-view.mjs','balances-view.mjs'],['/wake-view.mjs','wake-view.mjs'],['/wechat-view.mjs','wechat-view.mjs'],['/', 'index.html'], ['/index.html', 'index.html'], ['/app.mjs', 'app.mjs'], ['/pending-memory-view.mjs','pending-memory-view.mjs'], ['/api.mjs', 'api.mjs'], ['/projects-view.mjs', 'projects-view.mjs'], ['/tasks-view.mjs', 'tasks-view.mjs'], ['/dom.mjs', 'dom.mjs'], ['/views.mjs', 'views.mjs'], ['/style.css', 'style.css'], ['/presentation-view.mjs', 'presentation-view.mjs'], ['/memory-dynamics-view.mjs','memory-dynamics-view.mjs'], ['/presentation-preview.js', 'presentation-preview.js'], ['/aika-view.mjs', 'aika-view.mjs'], ['/aika.html', 'aika.html'], ['/knowledge-view.mjs', 'knowledge-view.mjs']]);
+        const names = new Map([['/emotion-view.mjs','emotion-view.mjs'],['/self-setup-view.mjs','self-setup-view.mjs'],['/memory-import-view.mjs','memory-import-view.mjs'],['/balances-view.mjs','balances-view.mjs'],['/wake-view.mjs','wake-view.mjs'],['/wechat-view.mjs','wechat-view.mjs'],['/skin-view.mjs','skin-view.mjs'],['/health-view.mjs','health-view.mjs'],['/', 'index.html'], ['/index.html', 'index.html'], ['/app.mjs', 'app.mjs'], ['/pending-memory-view.mjs','pending-memory-view.mjs'], ['/api.mjs', 'api.mjs'], ['/projects-view.mjs', 'projects-view.mjs'], ['/tasks-view.mjs', 'tasks-view.mjs'], ['/dom.mjs', 'dom.mjs'], ['/views.mjs', 'views.mjs'], ['/style.css', 'style.css'], ['/presentation-view.mjs', 'presentation-view.mjs'], ['/memory-dynamics-view.mjs','memory-dynamics-view.mjs'], ['/presentation-preview.js', 'presentation-preview.js'], ['/aika-view.mjs', 'aika-view.mjs'], ['/aika.html', 'aika.html'], ['/knowledge-view.mjs', 'knowledge-view.mjs']]);
         const name = names.get(url.pathname); if (!name) throw new ManagementError('not_found', '没有这个页面。');
         let data: Buffer; try { data = await readFile(resolve(options.uiRoot, name)); } catch { throw new ManagementError('unavailable', '管理页面文件尚未就绪。'); }
         res.setHeader('Content-Type', name.endsWith('.html') ? 'text/html; charset=utf-8' : name.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8'); res.end(req.method === 'HEAD' ? undefined : data); return;
@@ -83,6 +86,11 @@ export async function startManagementServer(options: ServerOptions) {
         json(res,200,url.pathname.endsWith('/retry')?options.pendingMemory.retry(instanceId,id):await options.pendingMemory.cancel(instanceId,id));return;
       }
       if (await memoryDynamicsRoute(req, url, options.memory.dynamics, () => body(req), value => json(res, 200, value))) return;
+      // FIX61-11: the model-pack registry. Its own bytes-sender is used because an asset response is a
+      // real file (texture/moc) rather than the JSON envelope every other route uses.
+      if (await skinRoute(req, options.skins, url.pathname, () => body(req), value => {
+        res.setHeader('Content-Type', value.mime + (value.mime === 'application/json' ? '; charset=utf-8' : ''));
+        res.end(req.method === 'HEAD' ? undefined : value.bytes); })) return;
       if (url.pathname === '/api/presentation' && options.presentation) {
         if (req.method === 'GET') { json(res, 200, { catalog: options.presentation.catalog, policy: options.presentation.snapshot() }); return; }
         if (req.method === 'PUT') { const b = await body(req); json(res, 200, { catalog: options.presentation.catalog, policy: await options.presentation.save(str(b.modelId, 100), integer(b.expectedRevision, -1, 0, Number.MAX_SAFE_INTEGER), b.enabledIds) }); return; }
@@ -135,6 +143,9 @@ export async function startManagementServer(options: ServerOptions) {
         server.close(error => { clearTimeout(timer); if (error && (error as NodeJS.ErrnoException).code !== 'ERR_SERVER_NOT_RUNNING') reject(error); else done(); });
       });
       for (const socket of sockets) socket.destroy();
+      // FIX61-10: also drop pooled client keep-alive sockets pointing at this server; the agent keeps
+      // the loop alive after close() otherwise, which hung the HTTP test files forever on Windows.
+      server.closeAllConnections();
       if(options.mode!=='setup')await options.settings.drain();
     } };
 }

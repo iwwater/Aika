@@ -72,6 +72,11 @@ test('actual HTTP management edits the injected SQLite store, invalidates contex
   const reopened = new SqliteManagementMemoryPort(store, lifecycle(store));
   assert.equal((await reopened.context('companion', '山川公司')).memories[0]!.text, edit.text);
   assert.equal(reopened.prompt('companion').text, '人工设置的角色提示'); assert.equal(providerCalls, 0);
+  // FIX61-10: t.after hooks run in registration order — the fixture rm (registered first) runs before
+  // these closes, and on Windows it deletes an open SQLite file (EBUSY). Close explicitly here; the
+  // after-hooks remain for the failure paths and are idempotent.
+  await server.close(); store.close();
+  (reopened as unknown as { store: { close(): void } }).store.close();
 });
 
 test('actual trial backend process publishes its local page, applies saved configuration only after restart and exits cleanly', async t => {

@@ -1,6 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 const channels = new Set(['desktop', 'shell', 'diagnostic']);
-const methods = new Set(['receive', 'connectionChanged', 'hotkeyConfig', 'hotkeyEvent', 'displayConfig', 'managementResult']);
+// FIX61-11: `microphonePreference` carries the stored microphone device id from the shell to the renderer.
+// It is a device id only — never a path, never a recording.
+const methods = new Set(['receive', 'connectionChanged', 'hotkeyConfig', 'hotkeyEvent', 'displayConfig', 'managementResult', 'microphonePreference']);
 contextBridge.exposeInMainWorld('desktopHost', {
   postMessage(name, value) { if (channels.has(name)) ipcRenderer.send('pet:' + name, value); },
   subscribe(callback) {

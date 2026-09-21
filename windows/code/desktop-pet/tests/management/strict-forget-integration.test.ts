@@ -53,12 +53,18 @@ test('real HTTP, strict semantic adapter and SQLite share one atomic mixed-sourc
  assert.ok(f.store.visible(scope(),'transcript').every(x=>!x.text.includes('网页')&&!x.text.includes('红茶')));
  assert.deepEqual(await(await f.send()).json(),aa);assert.equal(f.calls(),1);
  assert.equal((await f.send({...action,reason:'changed'})).status,409);
+ // FIX61-10: explicit idempotent teardown before the after-hooks (see the next test).
+ await f.server.close();f.store.close();
 });
 test('failed plan, racing source update and shutdown do not report successful forgetting',async t=>{
  const f=await setup(t),before=f.store.revision(scope());f.mode('failure');assert.equal((await f.send()).status,503);assert.equal(f.store.revision(scope()),before);assert.equal(f.store.inspect(scope(),'tea')!.state,'active');
  f.mode('bad-dynamics');assert.equal((await f.send()).status,503);assert.equal(f.store.revision(scope()),before);assert.equal(f.store.inspect(scope(),'tea')!.state,'active');
  f.mode('stale');assert.equal((await f.send()).status,409);assert.equal(f.store.inspect(scope(),'tea')!.state,'active');
  f.mode('valid');const p=f.send();await new Promise(r=>setTimeout(r,10));f.forget.close();assert.equal((await p).status,503);assert.equal(f.store.inspect(scope(),'tea')!.state,'active');
+ // FIX61-10: t.after hooks run in registration order — the fixture rm (registered first) would run
+ // while these handles are still open, and on Windows that deletes an open SQLite file (EBUSY).
+ // Explicit idempotent closes put the shared rm last in a safe order on every platform.
+ await f.forget.drain();f.forget.close();await f.server.close();f.store.close();
 });
 test('actual memory page reads SQLite, previews now without mutation, then performs strict shared-source forgetting',{skip:!process.env.PLAYWRIGHT_MODULE},async t=>{
  const f=await setup(t);const {chromium}=await import(pathToFileURL(process.env.PLAYWRIGHT_MODULE!).href);const browser=await chromium.launch({headless:true});t.after(()=>browser.close());

@@ -121,6 +121,10 @@ export function managementAdapterCatalog(base: TrialConfiguration, registeredVoi
   // I appends the selected voice only after its first formal synthesis succeeds.
   for (const [model, label, characterMicros] of [[MINIMAX_TTS_MODEL, 'MiniMax Turbo', 200], ['MiniMax/speech-2.8-hd', 'MiniMax HD', 350]] as const) {
     const compatible = registeredVoices.filter(voice => voice.provider === 'dashscope' && voice.endpoint === MINIMAX_TTS_ENDPOINT && voice.targetModel === model);
+    // FIX61-10: this hosted adapter is only usable with a registered (cloned) voice — its own note says
+    // the selection exists only after the clone is completed. A model with no registered voice must not
+    // appear, so the `minimaxChoices.length` guard below keeps the whole adapter away until one exists.
+    if (!compatible.length) continue;
     const configuration: Selection = { adapterId: 'minimax-tts', protocol: WIRE, provider: 'dashscope', endpoint: MINIMAX_TTS_ENDPOINT,
       model, inputTokenLimit: 0, outputTokenLimit: 0, inputMicrosPerToken: 0, outputMicrosPerToken: 0,
       characterMicros, reservationMicros: 2400 * characterMicros, ...(compatible[0]?{voice:compatible[0].voiceId}:{}) };

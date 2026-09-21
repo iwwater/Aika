@@ -6,20 +6,41 @@ import {createWakeView} from './wake-view.mjs';
 import {createPendingMemoryView} from './pending-memory-view.mjs';
 import {ManagementClient,query,clone,rebase} from './api.mjs';
 import {el,button,badge,notice,field,time,captureView,restoreView} from './dom.mjs';
-import {overviewView,memoryView,modelsView,eventsView} from './views.mjs';
+import {overviewView,memoryView,modelsView,eventsView,MEMORY_SECTIONS} from './views.mjs';
 import {createMemoryDynamicsView} from './memory-dynamics-view.mjs';
 import {createTasksView} from './tasks-view.mjs';
 import {createWeChatView} from './wechat-view.mjs';
 import {createProjectsView} from './projects-view.mjs';
 import {createPresentationView} from './presentation-view.mjs';
+import {createSkinView} from './skin-view.mjs';
+import {createHealthView} from './health-view.mjs';
 const sessionKey='pet-management-session-v1';
+// The page catalog is the single list of routable pages: the sidebar, the heading lookup and the deep
+// link all read it, so a `#page=` id that is not in here can never select a page that does not exist.
+const PAGE_LABELS={overview:'运行总览',memory:'记忆与对话',projects:'项目索引',tasks:'任务转发',wechat:'微信连接',models:'模型与声音',presentation:'表情与动作',skins:'外观 / 换肤',health:'模块状态',events:'运行记录'};
+const PAGES=Object.keys(PAGE_LABELS);
+// The memory sub-tabs that `#section=` may name come from the view that renders them, so an id can never
+// point at a sub-section the memory page does not have.
+const SECTIONS=MEMORY_SECTIONS.map(([key])=>key);
 let token='';try{token=new URLSearchParams(location.hash.slice(1)).get('token')||sessionStorage.getItem(sessionKey)||'';if(token)sessionStorage.setItem(sessionKey,token)}catch{}
+// FIX61-11: the desktop function panel opens the console with a real deep link (`/#page=skins`), and the
+// pre-existing panel entries use `/#section=records` etc. The route is therefore read from the hash BEFORE
+// the hash is erased for the token's sake — erasing first is exactly what made every one of those entries
+// land on 运行总览. An entry in `#section=` also selects the memory page, because that is the only page
+// with sub-sections; an unknown page id falls back to the default page instead of rendering nothing.
+let route={page:'overview',section:null};
+try{const hash=new URLSearchParams(location.hash.slice(1));
+ const page=hash.get('page'),section=hash.get('section');
+ if(SECTIONS.includes(section)){route.page='memory';route.section=section;}
+ if(PAGES.includes(page))route.page=page;}catch{}
 if(location.hash)history.replaceState(null,'',location.pathname+location.search);
 const app=document.getElementById('app'),client=new ManagementClient(token);
-const s={page:'overview',setupMode:null,providerSlot:null,connection:'locked',error:'',message:'',snapshot:null,character:'companion',section:'dynamics',kind:'memory',query:'',recordState:'active',offset:0,pageData:null,selected:null,prompt:null,context:null,contextQuery:'',drafts:new Map(),prompts:new Map(),pending:new Set(),settingsDraft:null,settingsBase:null,settingsRevision:null,settingsConflict:false,settingsLatest:null,eventModule:'',eventKind:'',auto:false};
+const s={page:route.page,setupMode:null,providerSlot:null,connection:'locked',error:'',message:'',snapshot:null,character:'companion',section:route.section??'dynamics',kind:'memory',query:'',recordState:'active',offset:0,pageData:null,selected:null,prompt:null,context:null,contextQuery:'',drafts:new Map(),prompts:new Map(),pending:new Set(),settingsDraft:null,settingsBase:null,settingsRevision:null,settingsConflict:false,settingsLatest:null,eventModule:'',eventKind:'',auto:false};
 const presentation=createPresentationView(client,render);
+const skin=createSkinView(client,render,()=>({page:s.page,connection:s.connection,instanceId:s.snapshot?.runtime.instanceId,authEpoch}));
+const health=createHealthView(client,render,()=>({page:s.page,connection:s.connection,instanceId:s.snapshot?.runtime.instanceId,authEpoch}));
 const pendingMemory=createPendingMemoryView(client,render,()=>s);
-window.addEventListener('pagehide',()=>{balances.deactivate();selfSetup.dispose();emotion.dispose();memoryImport.dispose();presentation.dispose();memoryDynamics.dispose();projects.dispose();tasks.dispose();});
+window.addEventListener('pagehide',()=>{balances.deactivate();selfSetup.dispose();emotion.dispose();memoryImport.dispose();presentation.dispose();memoryDynamics.dispose();projects.dispose();tasks.dispose();skin.dispose();health.dispose();});
 let authEpoch=0,snapshotSequence=0;const reads=new Map();
 const id=()=>crypto.randomUUID();
 const recordKey=r=>r.characterId+'/'+r.kind+'/'+r.id;
@@ -43,7 +64,7 @@ async function refreshSnapshot(){if(!client.token)return;const seq=++snapshotSeq
   if(s.snapshot&&s.snapshot.runtime.instanceId!==snap.runtime.instanceId){s.message='连接已更新。未保存编辑已保留，请读取最新内容并核对。';for(const d of s.drafts.values())d.conflict=true;for(const d of s.prompts.values())d.conflict=true;if(s.settingsDraft)s.settingsConflict=true;}
   s.snapshot=snap;s.connection='online';s.error='';if(!s.settingsDraft){s.settingsDraft=clone(snap.settings.saved);s.settingsBase=clone(snap.settings.saved);s.settingsRevision=snap.settings.revision;}else if(s.settingsRevision!==snap.settings.revision)s.settingsConflict=true;s.settingsLatest=snap.settings;if(s.page==='memory')loadMemorySection();if(s.page==='projects')projects.refresh();if(s.page==='tasks')tasks.refresh();if(s.page==='wechat')wechat.refresh();
  }catch(e){if(seq===snapshotSequence&&auth===authEpoch)error(e)}finally{if(seq===snapshotSequence){s.pending.delete('snapshot');render()}}}
-function selectPage(page){if(page!=='overview')balances.deactivate();if(page!=='presentation')presentation.deactivate();s.page=page;s.error='';s.message='';render();if(page==='tasks')tasks.refresh();if(page==='projects')projects.refresh();if(page==='memory'){loadMemorySection();pendingMemory.load()}}
+function selectPage(page){if(page!=='overview')balances.deactivate();if(page!=='presentation')presentation.deactivate();if(page!=='skins')skin.dispose();if(page!=='health')health.dispose();s.page=page;s.error='';s.message='';render();if(page==='tasks')tasks.refresh();if(page==='projects')projects.refresh();if(page==='memory'){loadMemorySection();pendingMemory.load()}}
 function loadMemorySection(){if(!client.token)return;if(s.section==='records')loadRecords();else if(s.section==='prompt')loadPrompt();else if(s.section==='context')loadContext();else if(s.section==='emotion')emotion.refresh();else if(s.section==='import')memoryImport.refresh();else memoryDynamics.load(s.section)}
 function loadRecords(){const q={characterId:s.character,kind:s.kind,query:s.query,offset:s.offset,limit:25,state:s.recordState};return read('records',query('/api/records',q),data=>{if(data.records.some(r=>r.characterId!==s.character))throw Error('查询结果包含其他角色，已拒绝显示。');s.pageData=data;if(s.selected){const latest=data.records.find(r=>r.id===s.selected.id&&r.kind===s.selected.kind);const draft=currentDraft();if(latest&&draft){draft.latest=latest;if(latest.version!==draft.version)draft.conflict=true;}if(latest)s.selected=latest;}})}
 function loadPrompt(){return read('prompt',query('/api/prompt',{characterId:s.character}),data=>{s.prompt=data;let d=s.prompts.get(data.characterId);if(!d){d={text:data.text,original:data.text,version:data.revision,operationId:id(),conflict:false};s.prompts.set(data.characterId,d)}else if(d.version!==data.revision)d.conflict=true;d.latest=data;})}
@@ -61,17 +82,16 @@ function acceptSettings(settings){s.snapshot.settings=settings;s.settingsLatest=
 function saveSettings(){if(s.settingsConflict||s.connection!=='online'||!selfSetup.validBindings(s.settingsDraft))return;return write('settings',async()=>{try{acceptSettings(await client.request('/api/settings',{method:'PUT',body:{expectedRevision:s.settingsRevision,settings:clone(s.settingsDraft)}}))}catch(e){if(e.status===409){s.settingsConflict=true;s.message='配置已在其他位置更新。草稿已保留，请核对差异后再保存。';await refreshSnapshot()}else throw e;}})}
 function rollbackSettings(targetRevision){if(s.connection!=='online'||s.settingsConflict)return;return write('settings',async()=>{try{acceptSettings(await client.request('/api/settings/rollback',{method:'POST',body:{expectedRevision:s.settingsRevision,targetRevision}}))}catch(e){if(e.status===409){s.settingsConflict=true;s.message='回滚前配置已变化，本次没有覆盖新版本。';await refreshSnapshot()}else throw e;}})}
 function connect(value){client.token=value.trim();try{sessionStorage.setItem(sessionKey,client.token)}catch{}authEpoch++;s.error='';refreshSnapshot()}
-function render(){captureView(app);emotion.sync();selfSetup.sync();if(selfSetup.isComposing())return;if(s.setupMode==='first-run'&&s.connection!=='locked'){app.replaceChildren(el('main',{class:'main setup-first-run'},el('header',{class:'topbar'},el('div',{},el('p',{class:'page-eyebrow'},'AAAAGENT / 本机设置'),el('h1',{},'准备你的桌宠'),el('p',{class:'subtle'},'先完成配置，再启动陪伴。'))),selfSetup.view()));restoreView(app,'first-run');return;}balances.sync();pendingMemory.sync();memoryImport.sync();wake.sync();memoryDynamics.sync();projects.sync();tasks.sync();wechat.sync();if(s.page!=='presentation'||s.connection!=='online')presentation.deactivate();
- const pages=[['overview','运行总览'],['memory','记忆与对话'],['projects','项目索引'],['tasks','任务转发'],['wechat','微信连接'],['models','模型与声音'],['presentation','表情与动作'],['events','运行记录']];
- const sidebar=el('aside',{class:'sidebar'},el('div',{class:'brand'},'AAAAGENT',el('small',{},'运行控制台 · 本机')),el('nav',{class:'nav',role:'tablist','aria-label':'控制台页面'},pages.map(([key,label])=>button(label,()=>selectPage(key),{role:'tab','aria-selected':s.page===key,id:'nav-'+key}))),el('p',{class:'sidebar-note'},'检查当前运行状态，调整角色与模型设置。'));
+function render(){captureView(app);emotion.sync();selfSetup.sync();if(selfSetup.isComposing())return;if(s.setupMode==='first-run'&&s.connection!=='locked'){app.replaceChildren(el('main',{class:'main setup-first-run'},el('header',{class:'topbar'},el('div',{},el('p',{class:'page-eyebrow'},'AAAAGENT / 本机设置'),el('h1',{},'准备你的桌宠'),el('p',{class:'subtle'},'先完成配置，再启动陪伴。'))),selfSetup.view()));restoreView(app,'first-run');return;}balances.sync();pendingMemory.sync();memoryImport.sync();wake.sync();memoryDynamics.sync();projects.sync();tasks.sync();wechat.sync();skin.sync();health.sync();if(s.page!=='presentation'||s.connection!=='online')presentation.deactivate();
+ const sidebar=el('aside',{class:'sidebar'},el('div',{class:'brand'},'AAAAGENT',el('small',{},'运行控制台 · 本机')),el('nav',{class:'nav',role:'tablist','aria-label':'控制台页面'},PAGES.map(key=>button(PAGE_LABELS[key],()=>selectPage(key),{role:'tab','aria-selected':s.page===key,id:'nav-'+key}))),el('p',{class:'sidebar-note'},'检查当前运行状态，调整角色与模型设置。'));
  const connection=s.connection==='online'?badge('管理服务已连接','success'):s.connection==='offline'?badge('连接中断','error'):badge('等待本机授权','warning');
- const top=el('header',{class:'topbar'},el('div',{},el('p',{class:'page-eyebrow'},'AAAAGENT / 本机管理'),el('h1',{},pages.find(p=>p[0]===s.page)[1]),el('p',{class:'subtle'},s.snapshot?'快照时间：'+time(s.snapshot.runtime.observedAt):'通过本机入口连接正在运行的桌宠')),el('div',{class:'toolbar'},connection,button(s.pending.has('snapshot')?'刷新中…':'刷新状态',refreshSnapshot,{id:'refresh',disabled:!client.token||s.pending.has('snapshot')})));
+ const top=el('header',{class:'topbar'},el('div',{},el('p',{class:'page-eyebrow'},'AAAAGENT / 本机管理'),el('h1',{},PAGE_LABELS[s.page]),el('p',{class:'subtle'},s.snapshot?'快照时间：'+time(s.snapshot.runtime.observedAt):'通过本机入口连接正在运行的桌宠')),el('div',{class:'toolbar'},connection,button(s.pending.has('snapshot')?'刷新中…':'刷新状态',refreshSnapshot,{id:'refresh',disabled:!client.token||s.pending.has('snapshot')})));
  const main=el('main',{class:'main'},top,s.error&&notice(s.error,'error'),s.message&&notice(s.message,'success'));
  if(s.connection==='locked'){
   const form=el('form',{class:'card login',onSubmit:e=>{e.preventDefault();connect(e.target.elements.session.value)}},el('h2',{},'连接本机管理会话'),el('p',{class:'subtle'},'请从桌宠的本机管理入口打开此页。会话失效后重新打开即可；如需手动连接，可粘贴该入口提供的会话口令。'),field('本机会话口令','session','',()=>{},{type:'password',required:true,autocomplete:'off'}),el('div',{class:'actions'},el('button',{type:'submit',class:'primary'},'连接')));main.append(form);
  }
  if(s.snapshot){if(s.connection!=='online')main.append(notice('以下保留上次快照及本页草稿，暂时无法确认实时状态；保存已停用。','warning'));
- if(s.page==='wechat'){main.append(el('div',{class:'page-content'},wechat.view()));}else if(s.page==='tasks'){main.append(el('div',{class:'page-content'},tasks.view()));}else if(s.page==='projects'){main.append(el('div',{class:'page-content'},projects.view()));}else if(s.page==='presentation'){if(s.connection==='online')main.append(el('div',{class:'page-content'},presentation.view()));}else main.append(el('div',{class:'page-content'},({overview:overviewView,memory:memoryView,models:modelsView,events:eventsView})[s.page](actions)));if(s.page==='memory')main.append(el('div',{class:'page-content'},pendingMemory.view()));}
+ if(s.page==='wechat'){main.append(el('div',{class:'page-content'},wechat.view()));}else if(s.page==='tasks'){main.append(el('div',{class:'page-content'},tasks.view()));}else if(s.page==='projects'){main.append(el('div',{class:'page-content'},projects.view()));}else if(s.page==='skins'){if(s.connection==='online')main.append(el('div',{class:'page-content'},skin.view()));}else if(s.page==='health'){if(s.connection==='online')main.append(el('div',{class:'page-content'},health.view()));}else if(s.page==='presentation'){if(s.connection==='online')main.append(el('div',{class:'page-content'},presentation.view()));}else main.append(el('div',{class:'page-content'},({overview:overviewView,memory:memoryView,models:modelsView,events:eventsView})[s.page](actions)));if(s.page==='memory')main.append(el('div',{class:'page-content'},pendingMemory.view()));}
  else if(s.connection!=='locked')main.append(notice('正在读取运行状态…'));
  app.replaceChildren(el('div',{class:'shell'},sidebar,main));restoreView(app,s.page+'/'+(s.page==='memory'?s.section:''));tasks.afterRender();pendingMemory.afterRender();
 }

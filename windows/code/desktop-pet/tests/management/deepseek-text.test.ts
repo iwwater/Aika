@@ -18,25 +18,48 @@ const context: DialogueContext = { scope, characterPrompt: 'Synthetic persona pr
 function nextBase(base: Awaited<ReturnType<typeof fixture>>['c']) {
   return { ...base, models: { ...base.models, ...Object.fromEntries(TEXT_SLOTS.map(slot => [slot, deepseekFlashModel(base.models.memory_turn.credentialFile)])) } };
 }
-test('DeepSeek-only current catalog preserves old settings history but forbids restoring Qwen text', async t => {
+test('DeepSeek-only current catalog preserves old settings history; restoring Qwen text rides the open adapter while memory stays strict', async t => {
   const f = await fixture(t), base = nextBase(f.c), old = defaultManagedSettings(f.c), next = defaultManagedSettings(base);
   const file = join(f.c.projectRoot, 'deepseek-settings.json');
   await writeFile(file, JSON.stringify({version:1,current:{revision:2,savedAt:'now',settings:next},history:[{revision:1,savedAt:'old',settings:old}]}));
   const store = await ManagementSettingsStore.open(file, base);
   assert.equal(store.snapshot().history.length, 1);
-  await assert.rejects(store.rollback(2,1), {code:'invalid_request'});
+  // FIX61-10: FIX61-01 removed the model white-list, so restoring the pre-DeepSeek history is a legal
+  // user action, not an invalid request. The guarantee that survives is threefold: the restored text
+  // slots return through the capability-only OPEN adapter (never dressed up as a reviewed preset), the
+  // strict DeepSeek memory_turn binding is preserved verbatim, and the result is a servable
+  // configuration (effectiveTrialConfiguration accepts it).
+  const restored = await store.rollback(2, 1);
+  assert.equal(restored.revision, 3);
   for (const slot of TEXT_SLOTS) {
+    // FIX61-01 grew the catalog with capability-only open adapters, so the text slot no longer has
+    // exactly one candidate; the meaningful guarantee is that the reviewed DeepSeek flash choice is
+    // still offered for every text slot and remains what defaultManagedSettings selects.
     const adapters = availableAdapters(base).filter(a=>a.slots.includes(slot));
-    assert.equal(adapters.length,1); assert.equal(adapters[0]!.provider,'deepseek');
-    assert.deepEqual(adapters[0]!.models,['deepseek-flash']);
+    assert.ok(adapters.some(a=>a.provider==='deepseek'&&Array.isArray(a.models)&&a.models.includes('deepseek-flash')),
+      'the reviewed DeepSeek flash choice is still offered for every text slot');
     assert.equal(next.providers[slot].adapterId,`deepseek-${slot}`);
+    assert.equal(restored.saved.providers[slot].adapterId,'openai-compatible-text');
+    assert.equal(restored.saved.providers[slot].provider,'dashscope');
+    assert.equal(restored.saved.providers[slot].model,'qwen-plus-2025-12-01');
   }
-  const effective = effectiveTrialConfiguration(base,next);
-  for (const slot of ['memory_turn','perception','tts'] as const) assert.deepEqual(effective.models[slot],f.c.models[slot]);
+  assert.equal(restored.saved.providers.memory_turn.adapterId,'strict-deepseek');
+  assert.equal(restored.saved.providers.memory_turn.provider,'deepseek');
+  assert.equal(restored.saved.providers.memory_turn.model,'deepseek-v4-pro');
+  const effective = effectiveTrialConfiguration(base,restored.saved);
+  // FIX61-01 normalization annotates every slot with its wire protocol, so "unchanged" now means
+  // unchanged apart from that additive protocol field: memory/perception/tts keep their exact binding.
+  for (const slot of ['memory_turn','perception','tts'] as const) assert.deepEqual(effective.models[slot],{...f.c.models[slot],protocol:'openai-compatible'});
+  assert.equal(effective.models.dialogue?.model,'qwen-plus-2025-12-01');
+  // FIX61-10: FIX61-01 made two of the historical mutations legal by design — a custom price on a
+  // registered provider is user-bounded (unknown cost, not a rejection) and there is no model-name
+  // white-list (deepseek-v4-pro in summary is servable). The still-real boundaries are asserted here:
+  // a cross-vendor credential swap, a negative price, an empty model name, and exceeding the reviewed
+  // usage bound must all be rejected.
   for (const mutate of [
     (v:typeof next)=>{v.providers.dialogue.credentialRef=old.providers.dialogue.credentialRef;},
-    (v:typeof next)=>{v.providers.dialogue.inputMicrosPerToken=.8;},
-    (v:typeof next)=>{v.providers.summary.model='deepseek-v4-pro';},
+    (v:typeof next)=>{v.providers.dialogue.inputMicrosPerToken=-1;},
+    (v:typeof next)=>{v.providers.summary.model='';},
     (v:typeof next)=>{v.providers.admission.outputTokenLimit=393217;},
   ]) {const v=structuredClone(next);mutate(v);assert.throws(()=>validateManagedSettings(v,base));}
   assert.equal(estimateTrialMicros(base.models.dialogue,'dialogue',{status:'success',requestId:null,usage:{prompt_tokens:100,completion_tokens:20,prompt_cache_hit_tokens:90}}),360);

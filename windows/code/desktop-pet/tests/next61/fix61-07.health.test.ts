@@ -7,7 +7,10 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ModuleHealthRegistry, HEALTH_GREEN_EVIDENCE, healthStalenessMs } from '../../core/health-snapshot.js';
-import { MicrophonePreferenceStore, MicrophoneTestLease, TEST_RECORD_MAX_MS, describeTrackSettings } from '../../media/microphone-test.js';
+import { MicrophoneTestLease, TEST_RECORD_MAX_MS, describeTrackSettings } from '../../media/microphone-test.js';
+// FIX61-11: the preference store moved to its own module so the desktop renderer bundle stays free of
+// node:fs. The assertions below are unchanged; only the import path moved.
+import { MicrophonePreferenceStore } from '../../media/microphone-preference.js';
 
 const evidence = (over: Record<string, unknown> = {}) => ({
   configured: false, reachable: false, operational: false, ...over

@@ -10,7 +10,13 @@ const scope = { characterId: 'friend' as const, sessionId: 'session', turnId: 't
 export async function fixture(t: { after(fn: () => Promise<void>): void }) {
   const parent = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../../.local/companion-step1-01/tmp');
   await mkdir(parent, { recursive: true });
-  const projectRoot = await mkdtemp(join(parent, 'trial-config-')); t.after(() => rm(projectRoot, { recursive: true, force: true }));
+  const projectRoot = await mkdtemp(join(parent, 'trial-config-'));
+  // FIX61-10: on Windows, a SQLite file handle that was just closed (or a freshly created database
+  // picked up by the antivirus scanner) can stay briefly locked, so the recursive rm fails with
+  // EBUSY/EPERM even though the test itself passed. Retrying the cleanup with a backoff — up to
+  // ~10 seconds, only for those transient codes — is test-infrastructure hygiene, not a relaxed
+  // assertion; every other error surfaces immediately.
+  t.after(async () => { for (let attempt = 0; ; attempt++) { try { await rm(projectRoot, { recursive: true, force: true }); return; } catch (error) { if (attempt >= 25 || !['EBUSY','EPERM','ENOTEMPTY'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error; await new Promise(done => setTimeout(done, 400)); } } });
   const chat: TrialModel = { provider: 'dashscope', model: 'qwen-plus-2025-12-01', endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
     credentialFile: '/nonexistent-external-trial-key', reservationMicros: 100000, inputTokenLimit: 32768, outputTokenLimit: 32768, inputMicrosPerToken: .8, outputMicrosPerToken: 2 };
   const memory: TrialModel = { ...chat, provider: 'deepseek', credentialFile: '/nonexistent-external-deepseek-key', model: 'deepseek-v4-pro', endpoint: 'https://api.deepseek.com/chat/completions',
