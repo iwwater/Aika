@@ -81,6 +81,13 @@
 | `package-lock.json` | `E87ED8A1F190B58273039D7E856BE19110D1D847C7C3FA82636E8A09181EF19E` | 55040 |
 | `tsconfig.json` | `2FB53B1B172BB71222C25F19EEE757ADAEACAD05D60986FBBD577BC27A42885F` | 752 |
 
+> **re-pin（`2026-09-22`，K65-01 独立审计轮）—— 上表两行的值已过期，以本表为准**：K65-01 修改了 `tsconfig.json` 与 `package.json` 两个冻结文件，按 `../../RUN_061_065.md` §6 触发重固定。审计轮在 HEAD `45ee904` + K65-01 产物上重跑 0.61 收口门槛全集（check 0 / test:next 80 / test:next61 148 / test:windows 22 / media 63 / build:windows 0 / test:windows:ui 0 且含 `WINDOWS_SMOKE_OK`），并复算 hash。**其余冻结文件逐个复算为 UNCHANGED。**
+
+| 文件 | 被取代的旧值 | **新 SHA256（re-pin）** | 字节 | 变化 |
+| --- | --- | --- | --- | --- |
+| `tsconfig.json` | `2FB53B1B…`（752 B） | **`A26899847F00B64141FBF89F8145636A82779F448467F81DF28D68D1544BCCFD`** | 809 | include 增 `plugins/**/*.ts`；exclude 增 `tests/next65/fixtures/**` |
+| `package.json` | `C1FB99F6…`（2711 B） | **`F01B580432E0A146284220865657642BB74874BC79B591235DC978B5907B3243`** | 2853 | 增 `"sdk:next65": "npm run build && node tools/emit-plugin-sdk.mjs"`；K65-00 的 `test:next65` 保留 |
+
 **再固化（`2026-09-21T20:30:43+08:00`）—— 初冻结后被并行 worker 改动的 4 个文件**（均**非本步所为**；本步零生产代码改动）：
 
 | 文件 | 新 SHA256 | 字节 | 说明 |

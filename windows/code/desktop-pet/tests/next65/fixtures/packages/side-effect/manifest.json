@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "formatVersion": 1,
+  "hostApiRange": ">=1.0.0 <2.0.0",
+  "packageId": "com.aika.fixture.sideeffect",
+  "version": "1.0.0",
+  "label": "副作用探针包",
+  "dependencies": [],
+  "optionalDependencies": [],
+  "resources": [],
+  "platform": {
+    "platform": [
+      "any"
+    ],
+    "arch": [
+      "any"
+    ],
+    "runtimeVersion": "22.0.0",
+    "features": []
+  },
+  "plugins": [
+    {
+      "pluginId": "side.effect.plugin",
+      "entry": "entry.mjs",
+      "label": "顶层副作用探针插件",
+      "capabilities": [
+        {
+          "capabilityId": "background.lifecycle",
+          "category": "background_lifecycle",
+          "adapterId": "sideeffect.local",
+          "adapterVersion": "1.0.0",
+          "contractVersion": "1.0.0",
+          "auth": "none",
+          "sideEffect": "local_write",
+          "execution": [
+            "unary"
+          ],
+          "parameters": [
+            "pollIntervalMs"
+          ],
+          "inputs": [
+            {
+              "name": "pollIntervalMs",
+              "type": "string",
+              "required": true,
+              "description": "探针间隔"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "status",
+              "type": "string",
+              "required": true,
+              "description": "探针状态"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "permissions": [],
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 140,
+      "hash": "sha256-71f1b61644e2fd2845aa4aa246462d44f7da80accb65335a019f46254d52d009",
+      "role": "documentation",
+      "executable": false
+    },
+    {
+      "path": "entry.mjs",
+      "bytes": 1542,
+      "hash": "sha256-28bfb2a181fd38b32d03046405ba3c4a8ad176c85e06a2d6dd9c1613bb162087",
+      "role": "entry",
+      "executable": false
+    }
+  ],
+  "manifestHash": "sha256-5d5cf133ba057b59928899b87ffc9465f3133fb4cce28437a2806ae0b4103d56"
+}

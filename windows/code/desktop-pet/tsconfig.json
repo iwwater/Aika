@@ -27,10 +27,12 @@
     "harness/**/*.ts",
     "projects/**/*.ts",
     "desktop/**/*.ts",
+    "plugins/**/*.ts",
     "tests/**/*.ts"
   ],
   "exclude": [
     "desktop/vendor/**",
-    "desktop/build/**"
+    "desktop/build/**",
+    "tests/next65/fixtures/**"
   ]
 }

@@ -15,7 +15,7 @@
 | SPEC | 交付 | 前置 | 状态 |
 | --- | --- | --- | --- |
 | [K65-00](specs/K65-00.md) | 固定交付基线与拆包边界 | 0.61 自动收口证据与可复现基线（不要求人工 ACCEPTED） | **AUTO_PASS**（[报告](reports/K65-00.md) · [基线](reports/BASELINE.md)） |
-| [K65-01](specs/K65-01.md) | 公共插件契约与独立包格式 | K65-00 AUTO_PASS | NOT RUN |
+| [K65-01](specs/K65-01.md) | 公共插件契约与独立包格式 | K65-00 AUTO_PASS | **AUTO_PASS**（[报告](reports/K65-01.md)；01-A/B/C/D/E 全 PASS，门槛 `check`/`build`/`sdk:next65`/`test:next65` 89/89/`test:next61` 148/148 退出码 0；FROZEN re-pin 待本步审计） |
 | [K65-02](specs/K65-02.md) | 包注册与惰性加载宿主 | K65-01 AUTO_PASS | NOT RUN |
 | [K65-02A](specs/K65-02A.md) | 多源 Provider 注册、绑定与实例生命周期 | K65-02 AUTO_PASS | NOT RUN |
 | [K65-03](specs/K65-03.md) | 最小内核与普通包独立运行 | K65-02A AUTO_PASS | NOT RUN |
