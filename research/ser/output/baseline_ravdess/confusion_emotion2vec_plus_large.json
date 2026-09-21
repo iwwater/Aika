@@ -1,0 +1,65 @@
+{
+  "neutral": {
+    "neutral": 91,
+    "happy": 1,
+    "sad": 4,
+    "angry": 0,
+    "fearful": 0,
+    "disgusted": 0,
+    "surprised": 0
+  },
+  "happy": {
+    "neutral": 6,
+    "happy": 179,
+    "sad": 1,
+    "angry": 3,
+    "fearful": 0,
+    "disgusted": 0,
+    "surprised": 3
+  },
+  "sad": {
+    "neutral": 16,
+    "happy": 6,
+    "sad": 163,
+    "angry": 0,
+    "fearful": 1,
+    "disgusted": 6,
+    "surprised": 0
+  },
+  "angry": {
+    "neutral": 0,
+    "happy": 0,
+    "sad": 0,
+    "angry": 187,
+    "fearful": 0,
+    "disgusted": 3,
+    "surprised": 2
+  },
+  "fearful": {
+    "neutral": 1,
+    "happy": 5,
+    "sad": 10,
+    "angry": 1,
+    "fearful": 167,
+    "disgusted": 6,
+    "surprised": 2
+  },
+  "disgusted": {
+    "neutral": 1,
+    "happy": 0,
+    "sad": 0,
+    "angry": 2,
+    "fearful": 0,
+    "disgusted": 187,
+    "surprised": 1
+  },
+  "surprised": {
+    "neutral": 2,
+    "happy": 3,
+    "sad": 3,
+    "angry": 1,
+    "fearful": 1,
+    "disgusted": 6,
+    "surprised": 176
+  }
+}

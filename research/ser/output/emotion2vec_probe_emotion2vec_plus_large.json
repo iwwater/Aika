@@ -1,0 +1,542 @@
+[
+  {
+    "kind": "ref(真人)",
+    "slug": "yasashii",
+    "ja": "優しい",
+    "zh": "温柔",
+    "path": "E:\\Work\\AI CHAT\\demo\\aika-emotion-demo\\audio\\ref\\mood01.wav",
+    "elapsed_s": 0.208,
+    "pred_labels": [
+      "生气/angry",
+      "厌恶/disgusted",
+      "恐惧/fearful",
+      "开心/happy",
+      "中立/neutral",
+      "其他/other",
+      "难过/sad",
+      "吃惊/surprised",
+      "<unk>"
+    ],
+    "pred_scores": [
+      3.623438715294469e-06,
+      1.8127104794984916e-06,
+      0.00020347234385553747,
+      0.9917397499084473,
+      7.51482320993091e-06,
+      1.068619859267983e-09,
+      1.0453158211021218e-05,
+      0.00803318340331316,
+      2.199289497184509e-07
+    ]
+  },
+  {
+    "kind": "ref(真人)",
+    "slug": "anshin",
+    "ja": "安心",
+    "zh": "安心",
+    "path": "E:\\Work\\AI CHAT\\demo\\aika-emotion-demo\\audio\\ref\\mood02.wav",
+    "elapsed_s": 0.024,
+    "pred_labels": [
+      "生气/angry",
+      "厌恶/disgusted",
+      "恐惧/fearful",
+      "开心/happy",
+      "中立/neutral",
+      "其他/other",
+      "难过/sad",
+      "吃惊/surprised",
+      "<unk>"
+    ],
+    "pred_scores": [
+      0.000359725410817191,
+      3.657027627923526e-05,
+      0.007654355838894844,
+      0.2920309901237488,
+      2.1084486434119754e-05,
+      2.9252031907844867e-09,
+      0.00018881175492424518,
+      0.6997085213661194,
+      3.5849567758816647e-09
+    ]
+  },
+  {
+    "kind": "ref(真人)",
+    "slug": "shinmitsu",
+    "ja": "親密",
+    "zh": "亲密",
+    "path": "E:\\Work\\AI CHAT\\demo\\aika-emotion-demo\\audio\\ref\\mood03.wav",
+    "elapsed_s": 0.024,
+    "pred_labels": [
+      "生气/angry",
+      "厌恶/disgusted",
+      "恐惧/fearful",
+      "开心/happy",
+      "中立/neutral",
+      "其他/other",
+      "难过/sad",
+      "吃惊/surprised",
+      "<unk>"
+    ],
+    "pred_scores": [
+      9.637271015938698e-12,
+      1.1234279131966396e-11,
+      9.776613546508273e-11,
+      1.1934686572345754e-09,
+      3.022156136456289e-11,
+      2.844358216176314e-23,
+      8.580633426014117e-11,
+      1.0,
+      1.2664120032057473e-21
+    ]
+  },
+  {
+    "kind": "ref(真人)",
+    "slug": "hiniku",
+    "ja": "皮肉",
+    "zh": "嘲讽",
+    "path": "E:\\Work\\AI CHAT\\demo\\aika-emotion-demo\\audio\\ref\\mood04.wav",
+    "elapsed_s": 0.029,
+    "pred_labels": [
+      "生气/angry",
+      "厌恶/disgusted",
+      "恐惧/fearful",
+      "开心/happy",
+      "中立/neutral",
+      "其他/other",
+      "难过/sad",
+      "吃惊/surprised",
+      "<unk>"
+    ],
+    "pred_scores": [
+      7.412379043891804e-10,
+      2.1892737622764002e-10,
+      1.4333727538229368e-09,
+      2.015601921812049e-06,
+      2.109573404851517e-09,
+      5.363483924336797e-21,
+      3.5507727869088512e-09,
+      0.9999979734420776,
+      3.9810945955387054e-20
+    ]
+  },
+  {
+    "kind": "ref(真人)",
+    "slug": "dokuzetsu",
+    "ja": "毒舌",
+    "zh": "毒舌",
+    "path": "E:\\Work\\AI CHAT\\demo\\aika-emotion-demo\\audio\\ref\\mood05.wav",
+    "elapsed_s": 0.027,
+    "pred_labels": [
+      "生气/angry",
+      "厌恶/disgusted",
+      "恐惧/fearful",
+      "开心/happy",
+      "中立/neutral",
+      "其他/other",
+      "难过/sad",
+      "吃惊/surprised",
+      "<unk>"
+    ],
+    "pred_scores": [
+      0.6225223541259766,
+      0.0006479519652202725,
+      0.0017742832424119115,
+      0.004542188253253698,
+      0.0015992176486179233,
+      2.8811237484660523e-07,
+      0.003053762251511216,
+      0.36585989594459534,
+      7.243264832368368e-08
+    ]
+  },
+  {
+    "kind": "ref(真人)",
+    "slug": "kongan",
+    "ja": "懇願",
+    "zh": "恳求",
+    "path": "E:\\Work\\AI CHAT\\demo\\aika-emotion-demo\\audio\\ref\\mood06.wav",
+    "elapsed_s": 0.027,
+    "pred_labels": [
+      "生气/angry",
+      "厌恶/disgusted",
+      "恐惧/fearful",
+      "开心/happy",
+      "中立/neutral",
+      "其他/other",
+      "难过/sad",
+      "吃惊/surprised",
+      "<unk>"
+    ],
+    "pred_scores": [
+      1.104292302045451e-08,
+      1.689501232249313e-07,
+      0.9999980926513672,
+      3.5154820920979546e-07,
+      9.206807760619995e-09,
+      1.720503775004545e-07,
+      1.0156264806937543e-06,
+      1.7034003008120635e-07,
+      2.5577828743905684e-10
+    ]
+  },
+  {
+    "kind": "合成A",
+    "slug": "yasashii",
+    "ja": "優しい",
+    "zh": "温柔",
+    "path": "E:\\Work\\AI CHAT\\demo\\aika-emotion-demo\\audio\\A\\mood01.wav",
+    "elapsed_s": 0.021,
+    "pred_labels": [
+      "生气/angry",
+      "厌恶/disgusted",
+      "恐惧/fearful",
+      "开心/happy",
+      "中立/neutral",
+      "其他/other",
+      "难过/sad",
+      "吃惊/surprised",
+      "<unk>"
+    ],
+    "pred_scores": [
+      0.008631501346826553,
+      0.0011682736221700907,
+      0.1321430653333664,
+      0.012112499214708805,
+      0.001999758882448077,
+      0.00020616338588297367,
+      0.00372522184625268,
+      0.023040302097797394,
+      0.8169733285903931
+    ]
+  },
+  {
+    "kind": "合成A",
+    "slug": "anshin",
+    "ja": "安心",
+    "zh": "安心",
+    "path": "E:\\Work\\AI CHAT\\demo\\aika-emotion-demo\\audio\\A\\mood02.wav",
+    "elapsed_s": 0.021,
+    "pred_labels": [
+      "生气/angry",
+      "厌恶/disgusted",
+      "恐惧/fearful",
+      "开心/happy",
+      "中立/neutral",
+      "其他/other",
+      "难过/sad",
+      "吃惊/surprised",
+      "<unk>"
+    ],
+    "pred_scores": [
+      0.008298625238239765,
+      0.0029582816641777754,
+      0.1588503122329712,
+      0.15527328848838806,
+      0.015852471813559532,
+      3.9700524212094024e-05,
+      0.009182726964354515,
+      0.5473194718360901,
+      0.10222510993480682
+    ]
+  },
+  {
+    "kind": "合成A",
+    "slug": "shinmitsu",
+    "ja": "親密",
+    "zh": "亲密",
+    "path": "E:\\Work\\AI CHAT\\demo\\aika-emotion-demo\\audio\\A\\mood03.wav",
+    "elapsed_s": 0.026,
+    "pred_labels": [
+      "生气/angry",
+      "厌恶/disgusted",
+      "恐惧/fearful",
+      "开心/happy",
+      "中立/neutral",
+      "其他/other",
+      "难过/sad",
+      "吃惊/surprised",
+      "<unk>"
+    ],
+    "pred_scores": [
+      8.48012719073532e-12,
+      1.2155726945850542e-11,
+      6.066273594562688e-10,
+      3.486891608783793e-10,
+      3.550810340202659e-11,
+      5.476393573079306e-23,
+      2.9210633911702644e-10,
+      1.0,
+      1.9623714581542652e-20
+    ]
+  },
+  {
+    "kind": "合成A",
+    "slug": "hiniku",
+    "ja": "皮肉",
+    "zh": "嘲讽",
+    "path": "E:\\Work\\AI CHAT\\demo\\aika-emotion-demo\\audio\\A\\mood04.wav",
+    "elapsed_s": 0.02,
+    "pred_labels": [
+      "生气/angry",
+      "厌恶/disgusted",
+      "恐惧/fearful",
+      "开心/happy",
+      "中立/neutral",
+      "其他/other",
+      "难过/sad",
+      "吃惊/surprised",
+      "<unk>"
+    ],
+    "pred_scores": [
+      0.0006294910563156009,
+      0.00043709861347451806,
+      0.00033939487184397876,
+      0.889151930809021,
+      7.368993829004467e-05,
+      6.163595145380896e-08,
+      0.00010099171049660072,
+      0.10926081985235214,
+      6.6263287408219185e-06
+    ]
+  },
+  {
+    "kind": "合成A",
+    "slug": "dokuzetsu",
+    "ja": "毒舌",
+    "zh": "毒舌",
+    "path": "E:\\Work\\AI CHAT\\demo\\aika-emotion-demo\\audio\\A\\mood05.wav",
+    "elapsed_s": 0.019,
+    "pred_labels": [
+      "生气/angry",
+      "厌恶/disgusted",
+      "恐惧/fearful",
+      "开心/happy",
+      "中立/neutral",
+      "其他/other",
+      "难过/sad",
+      "吃惊/surprised",
+      "<unk>"
+    ],
+    "pred_scores": [
+      4.5625174038832483e-07,
+      7.119501077568202e-08,
+      2.569110222339077e-07,
+      1.3376137530940468e-06,
+      4.5383546876109904e-07,
+      4.632834528908779e-16,
+      6.111696393418242e-07,
+      0.9999967813491821,
+      1.165429515045946e-12
+    ]
+  },
+  {
+    "kind": "合成A",
+    "slug": "kongan",
+    "ja": "懇願",
+    "zh": "恳求",
+    "path": "E:\\Work\\AI CHAT\\demo\\aika-emotion-demo\\audio\\A\\mood06.wav",
+    "elapsed_s": 0.021,
+    "pred_labels": [
+      "生气/angry",
+      "厌恶/disgusted",
+      "恐惧/fearful",
+      "开心/happy",
+      "中立/neutral",
+      "其他/other",
+      "难过/sad",
+      "吃惊/surprised",
+      "<unk>"
+    ],
+    "pred_scores": [
+      1.62946707860101e-05,
+      0.0010856692679226398,
+      0.6365759372711182,
+      0.0005576428957283497,
+      1.848443571361713e-05,
+      4.7844871176039305e-08,
+      0.0008019963861443102,
+      0.3609307110309601,
+      1.31526057884912e-05
+    ]
+  },
+  {
+    "kind": "合成C",
+    "slug": "yasashii",
+    "ja": "優しい",
+    "zh": "温柔",
+    "path": "E:\\Work\\AI CHAT\\demo\\aika-emotion-demo\\audio\\C\\mood01.wav",
+    "elapsed_s": 0.02,
+    "pred_labels": [
+      "生气/angry",
+      "厌恶/disgusted",
+      "恐惧/fearful",
+      "开心/happy",
+      "中立/neutral",
+      "其他/other",
+      "难过/sad",
+      "吃惊/surprised",
+      "<unk>"
+    ],
+    "pred_scores": [
+      7.803718290233519e-06,
+      3.2681830361980246e-06,
+      8.785817044554278e-05,
+      0.0021880322601646185,
+      9.060450793185737e-06,
+      4.566616182422045e-12,
+      3.7182373489486054e-05,
+      0.9976669549942017,
+      1.6434380967211837e-08
+    ]
+  },
+  {
+    "kind": "合成C",
+    "slug": "anshin",
+    "ja": "安心",
+    "zh": "安心",
+    "path": "E:\\Work\\AI CHAT\\demo\\aika-emotion-demo\\audio\\C\\mood02.wav",
+    "elapsed_s": 0.023,
+    "pred_labels": [
+      "生气/angry",
+      "厌恶/disgusted",
+      "恐惧/fearful",
+      "开心/happy",
+      "中立/neutral",
+      "其他/other",
+      "难过/sad",
+      "吃惊/surprised",
+      "<unk>"
+    ],
+    "pred_scores": [
+      0.00023491252795793116,
+      3.569103864720091e-05,
+      0.028753377497196198,
+      0.1632184386253357,
+      0.0003776790981646627,
+      1.3229779050050183e-08,
+      0.0004726344777736813,
+      0.8069068789482117,
+      3.5560401556722354e-07
+    ]
+  },
+  {
+    "kind": "合成C",
+    "slug": "shinmitsu",
+    "ja": "親密",
+    "zh": "亲密",
+    "path": "E:\\Work\\AI CHAT\\demo\\aika-emotion-demo\\audio\\C\\mood03.wav",
+    "elapsed_s": 0.026,
+    "pred_labels": [
+      "生气/angry",
+      "厌恶/disgusted",
+      "恐惧/fearful",
+      "开心/happy",
+      "中立/neutral",
+      "其他/other",
+      "难过/sad",
+      "吃惊/surprised",
+      "<unk>"
+    ],
+    "pred_scores": [
+      2.3218612796305216e-11,
+      9.11886972182474e-12,
+      2.1024426644089544e-10,
+      6.144551534248421e-10,
+      4.792110805396099e-11,
+      5.479507364844394e-23,
+      9.459404787248715e-11,
+      1.0,
+      1.0601434304989436e-20
+    ]
+  },
+  {
+    "kind": "合成C",
+    "slug": "hiniku",
+    "ja": "皮肉",
+    "zh": "嘲讽",
+    "path": "E:\\Work\\AI CHAT\\demo\\aika-emotion-demo\\audio\\C\\mood04.wav",
+    "elapsed_s": 0.021,
+    "pred_labels": [
+      "生气/angry",
+      "厌恶/disgusted",
+      "恐惧/fearful",
+      "开心/happy",
+      "中立/neutral",
+      "其他/other",
+      "难过/sad",
+      "吃惊/surprised",
+      "<unk>"
+    ],
+    "pred_scores": [
+      0.08157972991466522,
+      0.0020007798448204994,
+      0.0014661994064226747,
+      0.4166824519634247,
+      0.000608967209700495,
+      8.107764983833476e-07,
+      0.0006911988602951169,
+      0.4969487488269806,
+      2.1146193830645643e-05
+    ]
+  },
+  {
+    "kind": "合成C",
+    "slug": "dokuzetsu",
+    "ja": "毒舌",
+    "zh": "毒舌",
+    "path": "E:\\Work\\AI CHAT\\demo\\aika-emotion-demo\\audio\\C\\mood05.wav",
+    "elapsed_s": 0.023,
+    "pred_labels": [
+      "生气/angry",
+      "厌恶/disgusted",
+      "恐惧/fearful",
+      "开心/happy",
+      "中立/neutral",
+      "其他/other",
+      "难过/sad",
+      "吃惊/surprised",
+      "<unk>"
+    ],
+    "pred_scores": [
+      5.950755166850286e-06,
+      2.8410631784936413e-06,
+      1.0072683835460339e-05,
+      0.0032647608313709497,
+      1.4067723896005191e-05,
+      8.555339054382161e-13,
+      1.7877302525448613e-05,
+      0.9966843724250793,
+      2.08882772190222e-10
+    ]
+  },
+  {
+    "kind": "合成C",
+    "slug": "kongan",
+    "ja": "懇願",
+    "zh": "恳求",
+    "path": "E:\\Work\\AI CHAT\\demo\\aika-emotion-demo\\audio\\C\\mood06.wav",
+    "elapsed_s": 0.022,
+    "pred_labels": [
+      "生气/angry",
+      "厌恶/disgusted",
+      "恐惧/fearful",
+      "开心/happy",
+      "中立/neutral",
+      "其他/other",
+      "难过/sad",
+      "吃惊/surprised",
+      "<unk>"
+    ],
+    "pred_scores": [
+      1.2479936231102329e-06,
+      6.731441771989921e-06,
+      0.6211514472961426,
+      0.00013915193267166615,
+      3.4147169571951963e-06,
+      5.558927970716887e-11,
+      2.823855356837157e-05,
+      0.378669798374176,
+      8.515722349500265e-09
+    ]
+  }
+]

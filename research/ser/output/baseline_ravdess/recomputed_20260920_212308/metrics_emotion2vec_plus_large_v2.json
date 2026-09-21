@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 2,
+  "ruleVersion": "ser-metrics/2",
+  "score_classes": [
+    "neutral",
+    "happy",
+    "sad",
+    "angry",
+    "fearful",
+    "disgusted",
+    "surprised"
+  ],
+  "pred_classes": [
+    "neutral",
+    "happy",
+    "sad",
+    "angry",
+    "fearful",
+    "disgusted",
+    "surprised",
+    "other",
+    "unknown"
+  ],
+  "n_attempted": 1440,
+  "n_success": 1440,
+  "n_failed": 0,
+  "n_excluded": 192,
+  "n_scored": 1248,
+  "n_matrix_total": 1248,
+  "accuracy": 0.921474,
+  "uar": 0.923363,
+  "missing_classes": [],
+  "per_class_recall": {
+    "neutral": 0.947917,
+    "happy": 0.932292,
+    "sad": 0.848958,
+    "angry": 0.973958,
+    "fearful": 0.869792,
+    "disgusted": 0.973958,
+    "surprised": 0.916667
+  },
+  "confusion": {
+    "neutral": {
+      "neutral": 91,
+      "happy": 1,
+      "sad": 4,
+      "angry": 0,
+      "fearful": 0,
+      "disgusted": 0,
+      "surprised": 0,
+      "other": 0,
+      "unknown": 0
+    },
+    "happy": {
+      "neutral": 6,
+      "happy": 179,
+      "sad": 1,
+      "angry": 3,
+      "fearful": 0,
+      "disgusted": 0,
+      "surprised": 3,
+      "other": 0,
+      "unknown": 0
+    },
+    "sad": {
+      "neutral": 16,
+      "happy": 6,
+      "sad": 163,
+      "angry": 0,
+      "fearful": 1,
+      "disgusted": 6,
+      "surprised": 0,
+      "other": 0,
+      "unknown": 0
+    },
+    "angry": {
+      "neutral": 0,
+      "happy": 0,
+      "sad": 0,
+      "angry": 187,
+      "fearful": 0,
+      "disgusted": 3,
+      "surprised": 2,
+      "other": 0,
+      "unknown": 0
+    },
+    "fearful": {
+      "neutral": 1,
+      "happy": 5,
+      "sad": 10,
+      "angry": 1,
+      "fearful": 167,
+      "disgusted": 6,
+      "surprised": 2,
+      "other": 0,
+      "unknown": 0
+    },
+    "disgusted": {
+      "neutral": 1,
+      "happy": 0,
+      "sad": 0,
+      "angry": 2,
+      "fearful": 0,
+      "disgusted": 187,
+      "surprised": 1,
+      "other": 0,
+      "unknown": 1
+    },
+    "surprised": {
+      "neutral": 2,
+      "happy": 3,
+      "sad": 3,
+      "angry": 1,
+      "fearful": 1,
+      "disgusted": 6,
+      "surprised": 176,
+      "other": 0,
+      "unknown": 0
+    }
+  }
+}

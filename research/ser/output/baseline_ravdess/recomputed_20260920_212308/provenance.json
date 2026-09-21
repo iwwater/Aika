@@ -1,0 +1,45 @@
+{
+  "ruleVersion": "ser-metrics/2",
+  "schemaVersion": 2,
+  "run_id": "20260920_212308",
+  "source_log": {
+    "path": "logs\\baseline_ravdess_20260920_212308.jsonl",
+    "sha256": "30d088262162bd1aab4a904a89d9def0f99cf7d2b205871625faf6187a9be2b8"
+  },
+  "old_metrics": {
+    "path": "metrics_emotion2vec_plus_large.json",
+    "sha256": "7cfb1f9b6e297b8cc917c86ec21c331a17bdc7b358424e4165f2a03003e0e9e8"
+  },
+  "model": "iic/emotion2vec_plus_large",
+  "n_log_events": 1456,
+  "log_errors": [],
+  "scores_note": "历史日志无逐样本 scores 字段，重建记录 scores 全为 null（禁止补造）",
+  "command": "python recompute_ravdess.py --log output\\logs\\baseline_ravdess_20260920_212308.jsonl",
+  "diff_old_new": {
+    "old_metrics_file": "metrics_emotion2vec_plus_large.json",
+    "fields": {
+      "accuracy": {
+        "old": 0.9215,
+        "new": 0.921474
+      },
+      "uar": {
+        "old": 0.9241,
+        "new": 0.923363
+      },
+      "n_scored": {
+        "old": 1248,
+        "new": 1248,
+        "note": "旧 n_scored=计分样本数；旧混淆矩阵总数=1247（漏 1 条 <unk>）"
+      }
+    },
+    "leaked_samples": [
+      {
+        "file": "03-01-07-01-02-02-07.wav",
+        "target": "disgusted",
+        "pred": "unknown",
+        "excluded": false,
+        "scores": null
+      }
+    ]
+  }
+}

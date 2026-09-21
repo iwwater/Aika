@@ -1,0 +1,19 @@
+# SER 实验直接依赖（SER-04）。安装渠道分两类，见 RUNBOOK.md。
+# torch/torchaudio 必须走 PyTorch 官方 cu128 源（清华镜像无 cu128 wheel）：
+#   pip install torch==2.11.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu128 --no-deps
+# 其余走默认源/清华镜像。完整环境见 requirements.snapshot.txt。
+torch==2.11.0+cu128; platform_system == "Windows"
+torchaudio==2.11.0+cu128; platform_system == "Windows"
+funasr==1.4.16
+modelscope==1.40.1
+librosa==0.11.0
+soundfile==0.14.0
+numpy==2.4.6
+scipy==1.17.1
+scikit-learn==1.9.1
+umap-learn==0.5.12
+matplotlib==3.11.2
+requests==2.34.2
+fastapi==0.141.1
+uvicorn==0.53.0
+python-multipart==0.0.32

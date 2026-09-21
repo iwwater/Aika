@@ -1,0 +1,18 @@
+{
+  "model": "iic/emotion2vec_plus_large",
+  "n_total": 1440,
+  "n_scored": 1248,
+  "n_failed": 0,
+  "accuracy": 0.9215,
+  "uar": 0.9241,
+  "per_class_recall": {
+    "neutral": 0.9479,
+    "happy": 0.9323,
+    "sad": 0.849,
+    "angry": 0.974,
+    "fearful": 0.8698,
+    "disgusted": 0.9791,
+    "surprised": 0.9167
+  },
+  "elapsed_total_s": 101.9
+}
