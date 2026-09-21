@@ -162,4 +162,40 @@
 | 00-D test:next65 非零生产特征测试；空目录/零用例非零退出；阈值实现前登记 | **PASS** | `npm run test:next65` 退出码 0、**21 用例**；缺目录 exit 2、空集合 exit 2（三种守卫实测）；§4 阈值表先登记后实现 |
 | 00-E 多源矩阵覆盖现有提供者，模型/音色按来源归属 | **PASS** | K65-00 报告 §00-E；未具备项与阻塞如实登记 |
 
+## 8. K65-00 补遗（提交隔离核对，2026-09-22 01:02+08:00 追加，未改动上文原始记录）
+
+本节由 K65-00 隔离核对轮追加（基线修订已前移至 `02a6870`/`abd594b`）。核对方式：`git show --stat 02a6870`（逐文件归属）、`git log`（`tools/run-tests.mjs` 与 `tests/next65/` 均在 02a6870 入库、其前历史无 next65 触点）、`git status --porcelain`（当前未提交清单）、`git show HEAD:windows/code/desktop-pet/package.json`（已提交脚本表）。
+
+**结论：K65-00 范围无缺失、无未提交残留。** 七节结构与 §7 的 AC 判定维持不变；已有内容核对后仍以本节为最终权威：
+
+- **已提交入库（02a6870）**：本文件全部七节、`reports/K65-00.md` §1–§8、`evidence/K65-00-raw.txt`、`test:next65` 脚本、`tools/run-tests.mjs` 的 `next65` 分支、`tests/next65/{baselineSurface,baselineBehavior,rendererArtifact}` 三个基线特征测试。
+- **未提交项全部属 K65-01 在途产物，非本步残留**（本步不提交、不修改、不删除，K65-01 棒将续用）：`contracts/{plugin,capability,flow-profile,provider-source}.ts`、`plugins/**`（boundary/manifest/paths/package-build/sdk-emit/esm-graph 等 8 文件）、`tools/emit-plugin-sdk.mjs`、`tests/next65/{dependencyBoundary,entryExecution,packageBuild,packageManifest}.test.ts` 与 `tests/next65/fixtures/**`、`package.json` 增量行 `sdk:next65`、`tsconfig.json` 增量 `include: plugins/**` 与 `exclude: tests/next65/fixtures/**`。4 个新测试文件头注均自述 K65-01 的 01-A/01-B/01-C/01-D 归属；`run-tests.mjs` 已提交版无未提交改动。
+- **本节追加时的门槛实测**：`npm run check` 退出码 **0**；`npm run test:next65` 退出码 **0**（58 用例 = K65-00 基线 21 + K65-01 在途 37，58/58 pass——K65-01 用例仅验证可共存，不构成本步交付证据，其断言与归属由 K65-01 自行验收）。
+- **超出清单外的未提交项**：无（`git status --porcelain` 仅上列内容）。
+
+## 附录：验收基线符号表（00-A/00-C 逐项归属的源码证据）
+
+下表为"已验收已启用行为 → 兼容能力包"逐项归属登记的实际源码证据（相对 `windows/code/desktop-pet/`，提交 `02a6870`/`abd594b` 实测存在）。具体拆分接线按对应步骤 SPEC 实施；本表只保证"不遗漏后静默删除"的登记可核。
+
+| 项 | 证据符号（实际路径） | 现状与归属 |
+| --- | --- | --- |
+| 近期 Memory/SQLite | `memory/sqlite-store.ts`（`better-sqlite3` 值导入） | 普通包必需（普通包含现有近期历史）；长期 Memory/Timeline 归 04 兼容包 |
+| Emotion | `memory/emotion-state.ts` + `providers/emotion-inference.ts` + `management/emotion-routes.ts`（`management/server.ts:1` 导入；`bootstrap.ts` 接线） | 04 兼容能力包 |
+| Timeline | `management/aika-timeline.ts` | 04 兼容能力包 |
+| 知识库 | `memory/knowledge-library.ts` | 04 兼容能力包 |
+| 冻结快照 | `memory/prefix-snapshot.ts` | 04 兼容能力包 |
+| 记忆导入 | `memory/import-management.ts` | 04 兼容能力包 |
+| Work | `harness/desktop-work.ts` | 04 兼容能力包（后台轮询生命周期归 03 宿主，见 §00-C C-6） |
+| Wake | `media/wake/keywords.ts`（`pinyin-pro`）、`media/wake/detector-worker.ts`（`sherpa-onnx-node`）、`desktop/wake-controller.mjs` | 06 兼容能力包（可选） |
+| WeChat | `wechat/store.ts`、`wechat/voice.ts`（`silk-wasm`）、`wechat/qr.ts`（`qrcode`） | 兼容能力包（可选）；`tools/build-wechat.mjs` 的 silk.wasm 复制与 `npm run build` 连带（§00-C C-4）须随包拆分解除 |
+| 视觉（perception/视觉情绪） | `providers/management-catalog.ts` 的 `qwen-perception` / `qwen-visual-emotion` 条目（云端、需凭据） | 05 多源兼容包；视觉情绪无本地实现，按 00-E BLOCKED 口径登记 |
+| TTS 本地 | `providers/sapi-tts.ts`（Windows `System.Speech`，真实实现，0.6 真实回放 138286 B） | 05 接入槽系统（现被 `createTrialTtsProvider()` 拒收，§00-E E-5） |
+| TTS/STT 云端 | `providers/transport.ts`（https-only）+ `slot-registry.ts` | 05 多源兼容包；`transport.ts:56` https-only 是本地来源前置阻塞（§00-E E-3） |
+| 组合根 | `app/trial-backend.ts`（68 个顶层 static import） | 03 起按 import 图拆产物 |
+| 数据目录 | `desktop/electron/main.mjs` `app.setPath('userData', nextUserDataDir(...))`（Next 命名空间） | §6；03/04 沿用 |
+
+**数据模式与恢复路径**（§6 之外明确一句话）：业务数据的唯一持久化权威是 `better-sqlite3`（`memory/sqlite-store.ts` 等 24 个引用文件，§00-C C-5）；0.61/0.65 均未交付任何数据库迁移/备份/恢复工具（源码中无对应符号），0.6 BASELINE 与本基线记录的恢复路径就是"目录整体可删、重装后重建 + 凭据文件（activation 校验、项目外私有 ACL）外部自管 + 配置权威 `management-settings.json`（revision/CAS）可整体删除重建"。`.gitignore` 的审计残渣排除规则不覆盖任何用户数据目录。该现状如实登记为 0.65 的迁移输入，不视为缺陷修复项。
+
+**K65-01 议题登记（本步不实现，仅登记）**：`SlotBinding` 强制 `credentialRef`（`providers/slot-registry.ts:54`）+ TTS 强制 `characterMicros > 0`（`slot-registry.ts:87`）与 K65-02A「无 Key 本地来源、费用 unknown」存在直接冲突。K65-00 已盘点完整七段校验链与 `transport.ts:56` https-only 阻塞（§00-E E-3/E-4），`OPEN_COST_POLICY` 的裁决点（费用豁免、unknown 计费口径如何表达）与解除顺序由 K65-01 在其 SPEC/契约冻结时决策；02A 只消费冻结结果（D2）。
+
 相关文档：[K65-00 报告](K65-00.md) · [执行索引](../SPEC.md) · [公共契约](../CONTRACTS.md) · [测试规则](../TESTING.md) · [源码核对](../SOURCE_AUDIT.md) · [多源 Provider](../PROVIDERS.md) · [0.61 收口报告](../../0.61/reports/FIX61-10.md) · [续跑账本](../../RUN_061_065.md)。
