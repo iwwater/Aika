@@ -11,6 +11,7 @@
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node tools/run-tests.mjs",
     "test:next": "npm run build && node tools/run-tests.mjs next",
+    "test:next075": "npm run build && node tools/run-tests.mjs next075",
     "test:next61": "npm run build && node tools/run-tests.mjs next61",
     "test:next65": "npm run build && node tools/build-next65.mjs && node tools/release-next65.mjs && node tools/run-tests.mjs next65",
     "build:next65": "npm run build && node tools/build-next65.mjs",

@@ -23,6 +23,12 @@ else if (group === 'release') {
     console.error('NEXT contract tests missing after build; refusing a passWithNoTests run.');
     process.exit(2);
   }
+} else if (group === 'next075') {
+  await collect('dist/tests/next075', name => name.endsWith('.test.js'));
+  if (!paths.length) {
+    console.error('NEXT075 integration tests missing after build; refusing a passWithNoTests run.');
+    process.exit(2);
+  }
 } else if (group === 'next61') {
   // FIX61-10: the repair-round suite. Explicit discovery of the compiled next61 cases; a missing or empty
   // collection exits non-zero instead of quietly reporting success with no tests.
