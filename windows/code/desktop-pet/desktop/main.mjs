@@ -65,6 +65,62 @@ let lastUI = '';
 let awaitingTextTurn = false;
 let bindingKey = false;
 let managementOpening = false, managementSource = 'top';
+
+// RP75-07: Floating speech bubble & 40s thinking state machine
+const THINKING_TIMEOUT_MS = 40000;
+let bubbleTimer = null;
+let thinkingTimeoutTimer = null;
+let currentBubbleState = 'idle';
+
+function showBubble(text, state = 'speaking', customDwellMs = null) {
+  const bubble = $('speech-bubble');
+  const bubbleText = $('speech-bubble-text');
+  if (!bubble || !bubbleText) return;
+
+  clearTimeout(bubbleTimer);
+  bubbleTimer = null;
+  currentBubbleState = state;
+  bubble.dataset.state = state;
+  bubbleText.textContent = text;
+  bubble.hidden = false;
+
+  if (state === 'speaking') {
+    const dwellMs = customDwellMs ?? Math.max(6000, Math.min(10000, text.length * 150 + 4500));
+    bubbleTimer = setTimeout(() => {
+      dismissBubble();
+    }, dwellMs);
+  } else if (state === 'error') {
+    bubbleTimer = setTimeout(() => {
+      dismissBubble();
+    }, customDwellMs ?? 6000);
+  }
+}
+
+function dismissBubble() {
+  const bubble = $('speech-bubble');
+  if (!bubble) return;
+  clearTimeout(bubbleTimer);
+  bubbleTimer = null;
+  bubble.hidden = true;
+  currentBubbleState = 'idle';
+}
+
+function startThinking() {
+  clearTimeout(thinkingTimeoutTimer);
+  showBubble('想一想… ✦', 'thinking');
+  thinkingTimeoutTimer = setTimeout(() => {
+    if (currentBubbleState === 'thinking') {
+      showBubble('哎呀，想太久有点走神啦，请再问我一次吧～', 'error', 6000);
+      view.error = '模型思考超时';
+      renderUI();
+    }
+  }, THINKING_TIMEOUT_MS);
+}
+
+function stopThinking() {
+  clearTimeout(thinkingTimeoutTimer);
+  thinkingTimeoutTimer = null;
+}
 function requestManagement(path, source = 'top') {
   if (managementOpening) return;
   managementOpening = true;
@@ -187,7 +243,13 @@ function renderUI() {
   else if(inputRow)scroller.scrollTop=Math.max(0,(scroller.scrollTop||0)+inputRow.getBoundingClientRect().top-scroller.getBoundingClientRect().top);
   else scroller.scrollTop=nearBottom?scroller.scrollHeight:oldScroll;
   $('status').textContent = connectionText() || view.error || (workSpeechView.state==='speaking'?'正在播报任务状态…':'') || (awaitingTranscript ? '正在转写…' : '') || (voicePhase === 'preparing' ? '正在准备麦克风…' : '') || ({ idle: wakeLabels[wakeUI.phase]||(wakeUI.phase==='error'?'唤醒已停止，请在网页重新开启':'我在这里'), listening: voicePhase === 'recording' ? '正在听你说 · 再点一次结束' : '正在准备麦克风…', thinking: '正在想怎么回应你…', speaking: '正在说话…', error: '这一轮没有完成' }[view.state]);
-  $('thinking-indicator').hidden = !connection.connected || !!view.error || awaitingTranscript || !(awaitingTextTurn || view.state === 'thinking');
+  const isThinking = connection.connected && !view.error && !awaitingTranscript && (awaitingTextTurn || view.state === 'thinking');
+  $('thinking-indicator').hidden = !isThinking;
+  if (isThinking && currentBubbleState !== 'thinking') {
+    startThinking();
+  } else if (!isThinking && currentBubbleState === 'thinking') {
+    dismissBubble();
+  }
   reconnect.hidden = connection.active || !connection.canRetry; reconnect.disabled = connection.active;
   // The cancel entry exists only while a startup is still in flight and not yet answered by the user.
   startupCancel.hidden = connection.state !== 'connecting' || startupCancel.disabled;
@@ -471,8 +533,16 @@ async function receive(message, generation) {
     if (accepted && ['turn', 'error'].includes(e.type)) awaitingTextTurn = false;
     if (accepted && e.type === 'turn') { if (e.input.kind === 'text') chat.acknowledge(e.input.scope, true); else chat.bindVoice(e.input.scope); }
     if (accepted && e.type === 'transcript') { if (e.interim) chat.interim(e.scope, e.text); else chat.transcript(e.scope, e.text); }
-    if (accepted && e.type === 'reply' && scopeEquals(companionRoute,e.reply.scope)) chat.reply(e.reply.scope, e.reply.text);
-    if (accepted && e.type === 'error') { hold.clear(); voiceRequestId = null; invitationPending = false; chat.cancelVoice(view.characterId); chat.failPending(view.characterId); $('text').value = chat.draft(view.characterId); }
+    if (accepted && e.type === 'reply' && scopeEquals(companionRoute,e.reply.scope)) {
+      stopThinking();
+      showBubble(e.reply.text, 'speaking');
+      chat.reply(e.reply.scope, e.reply.text);
+    }
+    if (accepted && e.type === 'error') {
+      stopThinking();
+      showBubble(e.message || '这一轮没有完成，请稍后再试～', 'error', 6000);
+      hold.clear(); voiceRequestId = null; invitationPending = false; chat.cancelVoice(view.characterId); chat.failPending(view.characterId); $('text').value = chat.draft(view.characterId);
+    }
     if (accepted && (e.type === 'error' || e.type === 'presentation' && e.presentation.state === 'error')) { captureFeedback.stop();void stopPlayback(); stopCapture(); renderer?.reset(); }
     if (accepted && e.type === 'turn') { if (playback.scope && !scopeEquals(playback.scope, e.input.scope)) void stopPlayback(); if (capturing && !scopeEquals(capturing.scope, e.input.scope)) stopCapture(); renderer?.reset({ preserveAttention: e.input.kind === 'voice' }); }
     if (accepted) renderUI(); return;
@@ -564,6 +634,8 @@ window.petBridge = { receive, connectionChanged, hotkeyConfig, hotkeyEvent, disp
 window.desktopHost?.subscribe((method, ...args) => window.petBridge[method]?.(...args));
 $('function-close').onclick = () => functionPanel(false);
 renderFunctionPanel();
+$('speech-bubble')?.addEventListener('click', () => dismissBubble());
+$('speech-bubble-close')?.addEventListener('click', e => { e.stopPropagation(); dismissBubble(); });
 $('open').onclick = () => panel(true); $('close').onclick = () => panel(false); $('quit').onclick = () => { wake.disconnect();captureFeedback.stop();void stopPlayback(); stopCapture(); native('shell', { type: 'quit' }); };
 $('text').oninput = () => { clearWorkSpeech();workSpeechBlocked=true;interactionFocusEpoch++; work.input(!!displayedWorkBinding()); chat.setDraft(view.characterId, $('text').value); fitComposer(); };
 $('text').oncompositionstart = () => { composing = true; };

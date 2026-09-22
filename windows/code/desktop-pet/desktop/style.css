@@ -1,4 +1,4 @@
-﻿:root{font:14px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:#334968;color-scheme:light}
+:root{font:14px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:#334968;color-scheme:light}
 *{box-sizing:border-box}html,body{padding:0;margin:0;background:transparent;overflow:hidden}
 button,input,textarea{font:inherit}button{cursor:pointer;border:0;color:inherit;background:transparent}
 button:disabled{cursor:default;opacity:.48}button:focus-visible,textarea:focus-visible{outline:2px solid #527db7;outline-offset:3px}
@@ -83,6 +83,100 @@ footer{display:flex;flex:0 0 auto;flex-wrap:wrap;gap:7px;align-items:center}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
 @media(max-width:380px){#drawer{padding:14px 12px 12px;gap:8px}#drawer header{gap:5px}.panel-title{font-size:13px;gap:5px}#display-controls button{padding:5px 7px}#model-size-control{flex-basis:76px;min-width:58px}#model-size{width:42px}#model-size-value{display:none}#hotkey-settings .input-tip{flex-basis:100%;margin-left:0}}
 @media(prefers-reduced-motion:reduce){#drawer{scroll-behavior:auto}}
+
+/* RP75-07: Floating speech bubble near pet's head */
+#speech-bubble {
+  position: absolute;
+  top: 14px;
+  right: 12px;
+  max-width: 260px;
+  min-width: 120px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  border-bottom-left-radius: 4px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(185, 204, 227, 0.7);
+  box-shadow: 0 4px 18px rgba(48, 75, 107, 0.18);
+  font-size: 13px;
+  line-height: 1.55;
+  color: #1e293b;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+  transition: opacity 220ms ease, transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: speech-pop 250ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes speech-pop {
+  0% { opacity: 0; transform: scale(0.9) translateY(6px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+#speech-bubble[data-state="thinking"] {
+  border-color: #93c5fd;
+  background: rgba(248, 251, 255, 0.95);
+  color: #2563eb;
+  font-weight: 500;
+}
+
+#speech-bubble[data-state="error"] {
+  border-color: #fca5a5;
+  background: rgba(254, 242, 242, 0.95);
+  color: #b91c1c;
+}
+
+.speech-bubble-tail {
+  position: absolute;
+  bottom: -7px;
+  left: 12px;
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: 7px solid rgba(185, 204, 227, 0.7);
+}
+
+.speech-bubble-tail::after {
+  content: "";
+  position: absolute;
+  bottom: 1.5px;
+  left: -6px;
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 6px solid #ffffff;
+}
+
+.speech-bubble-content {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  word-break: break-word;
+}
+
+.speech-bubble-close {
+  position: absolute;
+  top: 3px;
+  right: 6px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  font-size: 14px;
+  line-height: 18px;
+  color: #94a3b8;
+  cursor: pointer;
+  display: none;
+}
+
+#speech-bubble:hover .speech-bubble-close {
+  display: block;
+}
 
 /* A separate waiting cue inside the existing model area; never a hit target. */
 #thinking-indicator{position:absolute;top:24px;right:10px;display:flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid #b9cce3;border-radius:20px;background:#f8fbfff5;box-shadow:0 2px 10px #304b6b1c;color:#496487;font-size:12px;line-height:20px;white-space:nowrap;pointer-events:none;user-select:none}
