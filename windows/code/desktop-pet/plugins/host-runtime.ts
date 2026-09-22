@@ -42,6 +42,9 @@ export interface PackageHost {
   readonly outstanding: () => readonly string[];
   readonly assertCleanState: () => readonly string[];
   readonly resolve: (request: PluginRequest) => Promise<readonly CapabilityProviderRef[]>;
+  /** N075-01/R8: live runtime inspection of whether a package is loaded/active. */
+  readonly isLoaded?: (packageId: string) => boolean;
+  readonly activePackages?: () => readonly string[];
   readonly hostContextForTest: (request: PluginRequest, manifest: PackageManifest) => HostContext;
   readonly loadManifestForTest: (request: PluginRequest) => Promise<PackageManifest>;
 }
@@ -256,6 +259,8 @@ export function createPackageHost(options: PackageHostOptions): PackageHost {
   return {
     hostRoot,
     resolve: resolveRequest,
+    isLoaded: (packageId: string) => [...active.values()].some(record => record.packageId === packageId && !record.failed),
+    activePackages: () => [...new Set([...active.values()].filter(r => !r.failed).map(r => r.packageId))],
     outstanding: () => [...active.values()].flatMap(record => [...record.resources.keys()].map(id => `${record.packageId}/${record.pluginId}:${id}`)).sort(),
     assertCleanState: () => [...active.values()].flatMap(record => [...record.resources.keys()].map(id => `${record.pluginId}:${id}`)),
     close: async reason => {

@@ -33,7 +33,9 @@ import { continuityRoute, type ContinuityManagement } from './continuity-routes.
 interface RuntimeServerOptions { emotion?: EmotionManagement; aika?: import('./aika-routes.js').AikaManagement; knowledge?: import('../contracts/knowledge.js').KnowledgeManagement; continuity?: ContinuityManagement; health?: import('./health-routes.js').HealthManagement; microphone?: import('./health-routes.js').MicrophoneManagement; mode?: 'runtime'; selfSetup?:SelfSetupManagement; memoryImport?: MemoryImportManagement; balances?: BalanceManagement; wake?: WakeManagement; wechat?: WeChatManagement; uiRoot: string; memory: ManagementMemoryPort; settings: ManagementSettingsStore; snapshot(): ManagementSnapshot | Promise<ManagementSnapshot>; token?: string; port?: number; presentation?: PresentationControls; presentationAssets?: ReadonlyMap<string, string>; pendingMemory?:PendingMemoryManagement; projects?: ProjectIndexPort; tasks?: TaskManagement;
   traces?: import('../core/trace-store.js').RuntimeTraceStore;
   /** FIX61-11: the FIX61-05 model-pack registry. Appearance only; absent leaves the skin section unavailable. */
-  skins?: import('../contracts/skin.js').SkinManagement }
+  skins?: import('../contracts/skin.js').SkinManagement;
+  /** N075-01/R8: live host and flow management projection. */
+  next65?: import('./next65-management.js').Next65Management; }
 type ServerOptions = RuntimeServerOptions | { mode:'setup'; selfSetup:SelfSetupManagement; uiRoot:string; token?:string; presentationAssets?:undefined };
 const character = (value: unknown): CharacterId => { if (!isProductCharacter(value)) throw new ManagementError('invalid_request', '仅可访问当前陪伴角色。'); return value; };
 const integer = (value: unknown, fallback: number, min: number, max: number) => { const n = value === null || value === undefined ? fallback : Number(value); if (!Number.isSafeInteger(n) || n < min || n > max) throw new ManagementError('invalid_request', '数值范围无效。'); return n; };
@@ -100,6 +102,16 @@ export async function startManagementServer(options: ServerOptions) {
       if (options.aika && url.pathname.startsWith('/api/aika/')) { json(res, 200, await aikaRoute(req.method, options.aika, url.pathname, url.searchParams, () => body(req))); return; }
       if (url.pathname.startsWith('/api/continuity/')) { json(res, 200, await continuityRoute(req.method, options.continuity, url.pathname, () => body(req))); return; }
       if (url.pathname.startsWith('/api/knowledge')) { json(res, 200, await knowledgeRoute(req.method, options.knowledge, url.pathname, () => body(req))); return; }
+      if (req.method === 'GET' && url.pathname === '/api/next65/packages') {
+        if (!options.next65) throw new ManagementError('unavailable', '0.65 包管理未接入。');
+        json(res, 200, options.next65.packages());
+        return;
+      }
+      if (req.method === 'GET' && url.pathname === '/api/next65/truth') {
+        if (!options.next65) throw new ManagementError('unavailable', '0.65 运行时未接入。');
+        json(res, 200, options.next65.runtimeTruth());
+        return;
+      }
       if (url.pathname.startsWith('/api/health')) { json(res, 200, await healthRoute(req.method, options.health, url.pathname)); return; }
       if (url.pathname.startsWith('/api/microphone')) { json(res, 200, await microphoneRoute(req.method, options.microphone, url.pathname, () => body(req))); return; }
       if (url.pathname === '/api/wake' && options.wake) { json(res, 200, await wakeRoute(req.method, options.wake, () => body(req))); return; }

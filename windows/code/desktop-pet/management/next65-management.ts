@@ -6,23 +6,96 @@ import { discoverInstalledPackages } from '../plugins/host-runtime.js';
 import { PackageLifecycleManager, type LifecycleImpact, type LifecycleUpdate } from '../plugins/package-lifecycle.js';
 import { readHostConfig } from '../plugins/host-config.js';
 
-export interface Next65PackageView extends LifecycleImpact { readonly ready: boolean | null; readonly loaded: false; readonly manifestLabels: readonly string[]; }
+export interface Next65PackageView extends LifecycleImpact {
+  readonly ready: boolean | null;
+  readonly loaded: boolean;
+  readonly active?: boolean;
+  readonly manifestLabels: readonly string[];
+}
 export interface Next65Diagnostic { readonly at: string; readonly scopeId: string; readonly profileId: string; readonly profileRevision: number; readonly packageVersions: Readonly<Record<string, string>>; readonly stageId: string; readonly status: 'completed' | 'failed' | 'skipped' | 'partial'; readonly detail: string; }
 export interface Next65ProfileRecord { readonly profile: FlowProfile; readonly updatedAt: string; }
+
+export interface Next65ManagementOptions {
+  readonly hostRoot: string;
+  readonly host?: import('../plugins/host-runtime.js').PackageHost;
+  readonly flow?: FlowRuntime;
+  readonly providerRuntime?: import('../plugins/provider-runtime.js').ProviderRuntime;
+}
 
 /** Read-only management projection plus guarded mutations for the 0.65 host. */
 export class Next65Management {
   readonly #hostRoot: string;
   readonly #lifecycle: PackageLifecycleManager;
   readonly #flow: FlowRuntime;
+  readonly #host?: import('../plugins/host-runtime.js').PackageHost | undefined;
+  readonly #providerRuntime?: import('../plugins/provider-runtime.js').ProviderRuntime | undefined;
   readonly #profilesPath: string;
   readonly #diagnostics: Next65Diagnostic[] = [];
-  constructor(hostRoot: string, flow: FlowRuntime = new FlowRuntime([])) { this.#hostRoot = resolve(hostRoot); this.#lifecycle = new PackageLifecycleManager(this.#hostRoot); this.#flow = flow; this.#profilesPath = resolve(this.#hostRoot, 'next65-profiles.json'); }
+
+  constructor(
+    hostRootOrOptions: string | Next65ManagementOptions,
+    flow: FlowRuntime = new FlowRuntime([]),
+    host?: import('../plugins/host-runtime.js').PackageHost,
+    providerRuntime?: import('../plugins/provider-runtime.js').ProviderRuntime,
+  ) {
+    if (typeof hostRootOrOptions === 'string') {
+      this.#hostRoot = resolve(hostRootOrOptions);
+      this.#flow = flow;
+      this.#host = host;
+      this.#providerRuntime = providerRuntime;
+    } else {
+      this.#hostRoot = resolve(hostRootOrOptions.hostRoot);
+      this.#flow = hostRootOrOptions.flow ?? flow;
+      this.#host = hostRootOrOptions.host ?? host;
+      this.#providerRuntime = hostRootOrOptions.providerRuntime ?? providerRuntime;
+    }
+    this.#lifecycle = new PackageLifecycleManager(this.#hostRoot);
+    this.#profilesPath = resolve(this.#hostRoot, 'next65-profiles.json');
+  }
 
   packages(): readonly Next65PackageView[] {
-    const discovered = discoverInstalledPackages(this.#hostRoot); const config = readHostConfig(this.#hostRoot);
-    return discovered.packages.map(item => { const impact = this.#lifecycle.impact(item.record.packageId); const enabled = config.ok && config.config.packages.some(entry => entry.packageId === item.record.packageId && entry.enabled); const labels = item.manifest.plugins.map(plugin => plugin.label); return { ...impact, enabled, ready: config.ok ? config.config.packages.find(entry => entry.packageId === item.record.packageId)?.ready ?? null : null, loaded: false as const, manifestLabels: labels }; });
+    const discovered = discoverInstalledPackages(this.#hostRoot);
+    const config = readHostConfig(this.#hostRoot);
+    return discovered.packages.map(item => {
+      const impact = this.#lifecycle.impact(item.record.packageId);
+      const enabled = config.ok && config.config.packages.some(entry => entry.packageId === item.record.packageId && entry.enabled);
+      const labels = item.manifest.plugins.map(plugin => plugin.label);
+      const loaded = this.#host?.isLoaded ? this.#host.isLoaded(item.record.packageId) : false;
+      const active = this.#host?.activePackages ? this.#host.activePackages().includes(item.record.packageId) : false;
+      return {
+        ...impact,
+        enabled,
+        ready: config.ok ? config.config.packages.find(entry => entry.packageId === item.record.packageId)?.ready ?? null : null,
+        loaded,
+        active,
+        manifestLabels: labels,
+      };
+    });
   }
+
+  runtimeTruth(): {
+    readonly installedCount: number;
+    readonly loadedPackages: readonly string[];
+    readonly activePackages: readonly string[];
+    readonly registeredCapabilities: readonly string[];
+  } {
+    const pkgs = this.packages();
+    const loadedPackages = pkgs.filter(p => p.loaded).map(p => p.packageId);
+    const activePackages = pkgs.filter(p => p.active).map(p => p.packageId);
+    const registeredCapabilities = this.#providerRuntime
+      ? ['llm.chat', 'context.source', 'background.lifecycle', 'tts.synthesize', 'stt.transcribe']
+      : [];
+    return Object.freeze({
+      installedCount: pkgs.length,
+      loadedPackages: Object.freeze(loadedPackages),
+      activePackages: Object.freeze(activePackages),
+      registeredCapabilities: Object.freeze(registeredCapabilities),
+    });
+  }
+
+  liveHost(): import('../plugins/host-runtime.js').PackageHost | null { return this.#host ?? null; }
+  liveFlow(): FlowRuntime { return this.#flow; }
+  liveProviderRuntime(): import('../plugins/provider-runtime.js').ProviderRuntime | null { return this.#providerRuntime ?? null; }
   importPackage(sourceRoot: string): Next65PackageView { const update = this.#lifecycle.stageUpdate(sourceRoot); return this.packages().find(item => item.packageId === update.packageId)!; }
   disable(packageId: string): LifecycleImpact { return this.#lifecycle.disable(packageId); }
   stageUpdate(sourceRoot: string): LifecycleUpdate { return this.#lifecycle.stageUpdate(sourceRoot); }

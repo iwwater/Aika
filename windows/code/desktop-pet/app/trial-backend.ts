@@ -72,6 +72,7 @@ import { ProductionContinuityContext, productionPairingResolver } from '../memor
 import { continuityManagement } from '../management/continuity-routes.js';
 import { RuntimeTraceStore } from '../core/trace-store.js';
 import { LegacyProviderRuntimeAdapter } from '../plugins/legacy-provider-adapter.js';
+import { Next65Management } from '../management/next65-management.js';
 // Health is derived from the runtime's own observations, so no extra probe is started here.
 
 /** Keep production trial calls within the reviewed text bounds without truncating user content or replies. */
@@ -450,7 +451,11 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
         continuity,
         await MicrophonePreferenceStore.open(resolve(configuration.projectRoot, '.local/data/microphone.json')),
         skins,
-        traceStore);
+        traceStore,
+        new Next65Management({
+          hostRoot: resolve(configuration.projectRoot, '.local/next65-host'),
+          providerRuntime: legacyProviderAdapter.runtime,
+        }));
     }
     if (configuration.purpose === 'user-trial') {
       const classifier = new WorkIntentClassifier(endpoint('admission'), transport);
