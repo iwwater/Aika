@@ -97,3 +97,9 @@
 | --- | --- | --- |
 | R-TODO-18 | **【N075-01 已落地 + 后续优化】记忆提炼生命周期与频率策略**：用户明确指出：当前 MVP 版本的长期事实沉淀频率过快（每轮对话后立即触发异步提炼），正常生产环境应严格压制事实沉淀速度；同时 N075-01 前置修复要求所有生产 Distill 必须经过正式生命周期，**正确的生命周期 > 减少几次 LLM Call**。 | **【N075-01 已落地（Commit cfb6d37, 05bc40e）+ 后续优化】**（2026-09-22 落地）。<br>① **生命周期语义（N075-01 已全面落地）**：<br>　• **Raw Transcript** → 永远立即保存（immediate durable write），任何策略不得延迟；（测试 T4 验证）<br>　• **correction / forget / uncertain** → 立即进入 strict memory handling，**Pending privacy guard 不等待 batching**；（测试 T6 验证）<br>　• **普通事实提炼（ordinary additive memory）** → 经 `DistillationScheduler` 调度，后台异步执行，Foreground Reply 不等待普通 Distillation；（测试 T3 验证）<br>　• **Summary** → 保留现有 minMessages threshold scheduler；<br>　• **所有生产 Distill 必须经 `MemoryTurnPlan → validation → SqliteLifecycleState.commitTurn()`**，彻底禁止 direct SQL 写 `memory_records` / `memory_search`；<br>② **频率策略（架构支持，已预留 batching 接口）**：<br>　• `DistillationScheduler` 已实现 `per_turn` 与 `batched` 模式支持；<br>③ **权威**：`RoleMemoryLifecycleQueue` + `DistillationScheduler` + `DistillationMemoryTurnProvider`；归属：**N075-01 落地完毕，后续扩展留作 0.8** |
 
+## 12. 桌面交互与主动陪伴（2026-09-23 用户现场验收补充）
+
+| ID | 需求 | 设计要点与建议归属 |
+| --- | --- | --- |
+| R-TODO-17 | **基于本地时间的零 LLM 轻量主动问候**：桌宠可根据本地时钟和用户长时间未交互状态，不发起大模型调用（0 Token、0 成本），主动在头部浮动气泡弹出时段关怀（如深夜“2:09 还没睡呀？”、早晨问候、下午茶提醒等） | 用户 2026-09-23 现场验收时提供参考图（猫耳桌宠探头 + 气泡“2:09 还没睡呀？”）。设计：由 `desktop/main.mjs` 中的轻量时间感知状态机驱动，按预设时段模板（深夜、晨间、午间、傍晚）和防打扰间隔触发，复用 `#speech-bubble` 优雅淡入淡出。纳入 `TOFIX_20260923.md` 清单并排期落地。 |
+
