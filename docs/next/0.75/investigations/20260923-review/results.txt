@@ -1,0 +1,2 @@
+{"probe":"continuity-forget","included":true,"remainingSoul":0,"staleRejected":false}
+{"probe":"trace","bodyRedacted":true,"detailsContainRaw":true,"earlyStageAccepted":false,"backgroundStageRetained":false}

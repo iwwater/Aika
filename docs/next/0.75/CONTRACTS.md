@@ -51,34 +51,31 @@
 
 ## 6. Runtime Maturity Matrix
 
-2026-09-22 新增。术语：`IMPLEMENTED` = Domain/Core 代码存在且有单测/验收证据；`WIRED` = 正式 Production Runtime 实际消费该能力；`EXPOSED` = Management API / Console 可真实读取或控制。基线为当前 `aika-next` 工作树（de95e1d）；N075-01 完成后须复核此表。
+2026-09-22 新增，2026-09-23 依据 Review 实测校准。术语：`IMPLEMENTED` = Domain/Core 代码存在且有单测/验收证据；`WIRED` = 正式 Production Runtime 实际消费该能力；`EXPOSED` = Management API / Console 可真实读取或控制。
 
-| Capability | IMPLEMENTED | WIRED | EXPOSED |
-| --- | :-: | :-: | :-: |
-| DialoguePipeline | ✅ | ✅ | — |
-| Strict Memory Lifecycle（plan/validate/commitTurn） | ✅ | ✅ | ✅ |
-| Knowledge Library | ✅ | ✅ | ✅ |
-| Skin | ✅ | ✅ | ✅ |
-| Character Pack | ✅ | ✅ | ✅ |
-| Continuity Memory（ContinuityMemoryStore 存储/纠正/遗忘） | ✅ | ✅ | ✅ |
-| Continuity Context（Composer → 正式 Dialogue Context） | ✅ | ✅ | ✅ |
-| Canon Timeline | ✅ | ✅ | ✅ |
-| Companion Timeline（含 latest-N 修复） | ✅ | ✅ | ✅ |
-| Runtime Trace（真实 stage 注入与隐私脱敏） | ✅ | ✅ | ✅ |
-| ProviderRuntime（Legacy Adapter 桥接） | ✅ | ✅ | ✅ |
-| PackageHost（Live 状态投影） | ✅ | ✅ | ✅ |
-| FlowRuntime（Live 实例与 Profile 管理） | ✅ | ✅ | ✅ |
+| Capability | IMPLEMENTED | WIRED | EXPOSED | 2026-09-23 Review 校准与待修项 |
+| --- | :-: | :-: | :-: | --- |
+| DialoguePipeline | ✅ | ✅ | — | 唯一正式文本对话主链已确立 |
+| Strict Memory Lifecycle（plan/validate/commitTurn） | ✅ | ✅ | ✅ | 事实提炼走计划-校验-提交；真实落库接线 |
+| Knowledge Library | ✅ | ✅ | ✅ | 已有删除/修订接口；需补正文查看/分页与在途失效（RP75-06） |
+| Skin | ✅ | ✅ | ✅ | 基础换肤后端正常；桌宠前端右键需接通唯一运行实例（RP75-01） |
+| Character Pack | ✅ | ✅ | ✅ | 基础持有正常；管理端展示待前端重写 |
+| Continuity Memory（ContinuityMemoryStore 存储/纠正/遗忘） | ✅ | ✅ | ✅ | 存储与纠正/遗忘 API 存在；待补普通对话派生事实自动投影闭环 |
+| Continuity Context（Composer → 正式 Dialogue Context） | ✅ | ⚠️ | ✅ | **RV75-02**：已进入前台 Context，但 `assertContextCurrent()` 未校验 continuity 版本，遗忘后在途回复未拦截（RP75-02） |
+| Canon Timeline | ✅ | ✅ | ✅ | 原作时间线已进入上下文检索 |
+| Companion Timeline（含 latest-N 修复） | ✅ | ✅ | ✅ | latest-N 排序已修复；但生产对话自动沉淀至 Timeline 尚未接线 |
+| Runtime Trace（真实 stage 注入与隐私脱敏） | ✅ | ⚠️ | ✅ | **RV75-03/05**：正文摘要脱敏，但 stages details 存在明文记忆副本；后台先完时 stage 丢失（RP75-03） |
+| ProviderRuntime（Legacy Adapter 桥接） | ✅ | ✅ | ✅ | Legacy 适配器已解析 Binding；需在唯一入口中消费真实生效配置 |
+| PackageHost（Live 状态投影） | ✅ | ⚠️ | ⚠️ | **RV75-04**：trial-backend 组合根未传入实际 PackageHost 实例（RP75-04） |
+| FlowRuntime（Live 实例与 Profile 管理） | ✅ | ⚠️ | ⚠️ | **RV75-04**：管理类退回新建空 FlowRuntime，未能代表真实运行态（RP75-04） |
 
-说明（2026-09-22 N075-01 修复后状态）：
+说明（2026-09-23 Review 校准后状态）：
 
-- N075-01 已通过 10 个核心集成测试（T1-T10，见 `tests/next075/runtimeConvergence.test.ts`）。
-- `Character Pack` & `Continuity Memory`：在 `trial-backend.ts` 中作为 formal dependency 持有，经 `ProductionContinuityContext` 进入生产前台对话。
-- `Continuity Context`：经只读适配层进入 `DialogueContext.continuity`，送入单一 Dialogue LLM 调用（T1、T2 证据）。
-- `Runtime Trace`：在 `DialoguePipeline` 与 `RoleMemoryLifecycleQueue` 中记录真实 stage 与时延，默认对正文进行 digest 脱敏（T7、T8 证据）。
-- `Context Inspector`：读取 `memory_recall_trace` 真实发出的快照，包含候选分数、排除原因和失效检测（T6 证据）。
-- `ProviderRuntime`：经 `LegacyProviderRuntimeAdapter` 将传统 7-slot 配置映射为 `ResolvedBinding`（T10 证据）。
-- `PackageHost / FlowRuntime`：`Next65Management` 接入 live runtime 实例，消除 `loaded: false` 写死投影。
-- `Companion Timeline`：修复 `ORDER BY created_at DESC LIMIT N` 并 reverse()，确保最新经历按自然时序组装（T9 证据）。
+- N075-01 的 10 个测试块（T1-T10）证明了受测模块的组装成立，但未覆盖在途连续性失效、Trace 阶段明文、真实宿主注入及桌面入口一致性。
+- `Continuity Context`：在途遗忘/纠正后，发出的 Context 必须能被 `assertContextCurrent()` 拒绝，防止旧私密数据继续输出（RP75-02）。
+- `Runtime Trace`：阶段 details 需白名单脱敏，起止时间与前后台归属解耦，后台先完成时 Trace 必须保留（RP75-03）。
+- `PackageHost / FlowRuntime`：若未接入真实宿主，需明确返回 unsupported/unavailable，禁止以新建空实例冒充真实在线（RP75-04）。
+- `现场接入`：桌宠与控制台必须由唯一 `trial-backend` 启动并统一 management session，不使用 `--preview` 与独立假数据服务（RP75-01）。
 
 ## 7. Wiki 与 Context Inspector 契约
 

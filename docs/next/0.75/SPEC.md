@@ -1,6 +1,6 @@
 # 0.75 执行 SPEC：逐界面改造范围
 
-状态：仅规划，所有步骤未实施。更新日期：2026-09-22。
+状态：基线复核与校准中。已完成初步外壳初稿与后端收口，现按 2026-09-23 Review 与 RP75-00~08 计划推进运行时真值与界面整改。更新日期：2026-09-23。
 
 > **Runtime Truth 术语纪律（2026-09-22 起）**：本文档及 0.75 全部报告统一使用 `IMPLEMENTED`（Domain/Core 代码存在，并有单测或验收证据）、`WIRED`（正式 Production Runtime 实际消费该能力）、`EXPOSED`（Management API / Console 可以真实读取或控制该能力）三态描述完成度。禁止以下模糊表述："implemented therefore production-ready"、"accepted therefore runtime-wired"、"API exists therefore real runtime uses it"。当前正式启动装配点为 `windows/code/desktop-pet/app/trial-backend.ts`。
 
@@ -14,7 +14,7 @@
 
 仅非可见的接口盘点、契约适配及基础设施可先行。开发某页前还需其真实业务端口可用；其他未完成业务不应阻塞无依赖页面的独立工作，但不能用前端假实现绕过依赖。
 
-逐页状态：`WAIT_REQUIREMENTS → WAIT_REFERENCE → REFERENCE_CONFIRMED → IMPLEMENTING → AUTO_VERIFIED → WAIT_USER_REVIEW → ACCEPTED`。除 N075-02 外，当前所有可见界面均为 WAIT_REQUIREMENTS：首次修改前先询问具体改造要求，收到回答后再进入 WAIT_REFERENCE 索取参考图。**N075-02 已收到改造要求（导航形态选定为顶部分组导航），现处于 WAIT_REFERENCE：其余布局、交互要求与参考图均未收到，不得开始实现。** 界面级证据登记在 `reports/N075-02.md`。N075-00/01 技术部分为 PLANNED。审核未通过回到本页要求/参考确认及修改流程，不能进入下一界面。状态改变必须附实际证据，不因计划写完而更新。
+逐页状态：`WAIT_REQUIREMENTS → WAIT_REFERENCE → REFERENCE_CONFIRMED → IMPLEMENTING → AUTO_VERIFIED → WAIT_USER_REVIEW → ACCEPTED`。N075-02 控制台外壳视觉初稿已获用户认可（登记顶栏切侧边栏 TODO）；但经 2026-09-23 现场复核，真实运行接入与总览数据存在偏差，拆分为“外壳视觉初稿用户已认可”与“真实运行接入与数据待修（映射至 RP75-01 / RP75-05）”，待底层真值统一后再行关闭。除 N075-02 外，其余业务界面一律严格保持 WAIT_REQUIREMENTS，严格遵循“问要求 → 索取参考图 → 重写 → 找用户审核 → 通过后下一页”流程。界面级证据登记在 `reports/N075-02.md`。N075-01 核心实现已落地，但存在 4 项在途失效与隐私缺口，按 RP75-01~04 修复。审核未通过回到本页要求/参考确认及修改流程，不能进入下一界面。状态改变必须附实际证据，不因计划写完而更新。
 
 一次只推进一个已获参考的界面。用户提出新的参考时，仅调整该页及明确受影响的共同规范；页面功能完成与参考复现验收分别记录。参考未提供时停在该页设计门槛，允许继续无依赖的接口核对，不能自动切到别页自行设计。
 
@@ -25,8 +25,8 @@
 | SPEC | 改造单元 | 依赖 | 当前状态 |
 | --- | --- | --- | --- |
 | N075-00 | 固定基线、全量入口/功能盘点 | 0.7 实际交付边界 | **AUTO_PASS（基线盘点完成）**（[报告](reports/N075-00.md)） |
-| N075-01 | 共享基础设施、运行时收口与后端契约 | 00 | **ACCEPTED（Runtime Convergence 修复完毕，通过 T1-T10 验收测试矩阵）**（[报告](reports/N075-01.md)） |
-| N075-02 | 控制台外壳、启动与鉴权 | 01 | **ACCEPTED（用户已确认初稿；真实桌宠已接通；登记顶栏切侧边栏 TODO）**（[记录](reports/N075-02.md)） |
+| N075-01 | 共享基础设施、运行时收口与后端契约 | 00 | **REPAIRING（核心收口已落地，但经 2026-09-23 Review 发现在途连续性失效、Trace 详情隐私、Host 真实注入等 4 项关键缺口，正在 RP75-01~04 修复）**（[报告](reports/N075-01.md) · [修复计划](REPAIR_PLAN_20260923.md)） |
+| N075-02 | 控制台外壳、启动与鉴权 | 01 | **PARTIAL（外壳视觉初稿已获用户确认，登记顶栏切侧边栏 TODO；真实桌宠与控制台独立运行偏差在 RP75-01/05 修复）**（[记录](reports/N075-02.md)） |
 | N075-03 | 桌宠右键减负与管理入口 | 02 | WAIT_REQUIREMENTS |
 | N075-04 | API、Provider、模型与绑定配置 | 02；真实 Provider 管理端口 | WAIT_REQUIREMENTS |
 | N075-05 | 音频、设备、试麦、唤醒设置 | 03/04；可信设备桥 | WAIT_REQUIREMENTS |
@@ -74,20 +74,20 @@
 - 参考门槛：本步不先画导航或通用弹窗。若要实现可见组件，按该组件索取参考并确认。
 - 验收：无硬编码 companion；保留旧校验语义并扩大作用域隔离；迟到响应/双页编辑冲突/鉴权失效可重现；构建后资源真实可加载；运行时收口各项以下述完成条件为准。
 
-**N075-01 完成条件（Definition of Done）**：满足 [RPD 第 3 节](RPD.md#3-需求与完成标准) 之外，还必须同时满足 [Runtime Maturity Matrix](CONTRACTS.md#6-runtime-maturity-matrix) 与 [N075-01 DoD 清单](#n075-01-definition-of-done)。没有满足 DoD 前，`N075-01 != ACCEPTED`；文档与报告必须用 `IMPLEMENTED / WIRED / EXPOSED` 三态区分完成度，不得把"代码存在"等同于"正式可用"。
+**N075-01 完成条件（Definition of Done）**：满足 [RPD 第 3 节](RPD.md#3-需求与完成标准) 之外，还必须同时满足 [Runtime Maturity Matrix](CONTRACTS.md#6-runtime-maturity-matrix) 与 [N075-01 DoD 清单](#n075-01-definition-of-done)。依据 2026-09-23 Review，此前测试通过不能掩盖真实接入缺口；当前状态校准为 `REPAIRING`，待 RP75-01~04 修复完成后方可认定全量达标。
 
-#### N075-01 Definition of Done
+#### N075-01 Definition of Done (2026-09-23 校准)
 
-- [x] `trial-backend → BackendSession → DialoguePipeline` 是唯一正式文本主链；`tools/real-backend.mjs` 仅作 dev/smoke harness。（Commit 2 `6ce016f`, Commit 4 `05bc40e`）
-- [x] CharacterPackStore、ContinuityMemoryStore 成为正式 runtime dependency（open 后持久持有并注入下游）。（Commit 2 `6ce016f`）
-- [x] ContinuityContextComposer 数据真实进入 Production Dialogue Context；User Soul / User Wiki / Relationship 至少能影响真实 Dialogue LLM Context；Character Soul / Canon Timeline / Companion Timeline 至少进入正式 ContextSource 管线。（Commit 3 `a15f8ec`）
-- [x] 正常对话仍只有一次 Dialogue LLM Call；Raw Transcript 立即写入；普通 Distillation 后台执行不阻塞前台。（Commit 3 `a15f8ec`, Commit 4 `05bc40e`, Commit 5 `cfb6d37`, Test T1-T5）
-- [x] correction / forget / uncertain 的 privacy guard 不被 batching 破坏；自动 Distillation 不经 Production direct SQL 写 `memory_records`；长期 Memory 写入经 `MemoryTurnPlan → validation → commitTurn`。（Commit 4 `05bc40e`, Commit 5 `cfb6d37`）
-- [x] RuntimeTraceStore 由正式 Pipeline 产生真实记录；Context Inspector 展示真实 issued/consumed Context。（Commit 6 `caeff9d`, Commit 7 `cf414bf`, Test T7-T8）
-- [x] ProviderRuntime、PackageHost / FlowRuntime 被复用，不存在第二套 registry/runtime；Next65Management 读取 live runtime。（Commit 8 `f9d95bd`, Commit 9 `2af02f4`, Test T10）
-- [x] Companion Timeline latest-N 修复；Skin / Knowledge Library 后端无回归；不新增 Wiki 数据库、不新增第二条 DialoguePipeline。（Commit 10 `b47cad6`, Test T9）
-- [x] 文档统一 `IMPLEMENTED / WIRED / EXPOSED`；0.7 文档不再把 Core Acceptance 写成 Production Wiring。（Commit 1 `ae28876`, Commit 12）
-- [ ] 新增 integration tests 全绿；原有核心测试全绿（`test:next07`、memory lifecycle、knowledge、skin、0.65 package/provider/flow）。
+- [ ] **唯一的真实生产启动与接入**：`trial-backend → BackendSession → DialoguePipeline` 是唯一正式主链，桌宠与控制台通过该实例发布与消费 management session，实验 harness 严格隔离（当前待修：现场误用 `dev-desktop-real.mjs` + `--preview` + 独立 `serve-management.mjs`，映射至 RP75-01）。
+- [x] **Store 依赖持有**：CharacterPackStore、ContinuityMemoryStore 成为正式 runtime dependency（open 后持久持有并注入下游）。（Commit 2 `6ce016f`）
+- [ ] **连续性 Context 与在途失效保护**：ContinuityContextComposer 数据真实进入 Production Dialogue Context（Commit 3 `a15f8ec`）；且当发生遗忘/纠正时，已发出的在途 Context 必须触发失效拒绝（当前待修：RV75-02 遗忘后 `assertContextCurrent()` 未检查 continuity 修订，映射至 RP75-02）。
+- [x] **单次 LLM 调用与立即落库**：正常对话仍只有一次 Dialogue LLM Call；Raw Transcript 立即写入；普通 Distillation 后台执行不阻塞前台。（Commit 3 `a15f8ec`, Commit 4 `05bc40e`, Commit 5 `cfb6d37`, Test T1-T5）
+- [x] **严格记忆生命周期**：correction / forget / uncertain 的 privacy guard 不被 batching 破坏；自动 Distillation 不经 Production direct SQL 写 `memory_records`；长期 Memory 写入经 `MemoryTurnPlan → validation → commitTurn`。（Commit 4 `05bc40e`, Commit 5 `cfb6d37`）
+- [ ] **Runtime Trace 阶段完整与端到端脱敏**：RuntimeTraceStore 由正式 Pipeline 产生真实记录；Context Inspector 展示真实 issued/consumed Context；但 details 字段须白名单脱敏防敏感副本，且后台先完成时不丢失 stages（当前待修：RV75-03 details 存明文、RV75-05 时序丢失，映射至 RP75-03）。
+- [ ] **宿主真值与 Provider 适配**：ProviderRuntime 经 Legacy Adapter 桥接生效；Next65Management 真实对接实际运行的宿主，不可用时返回明确不可用而非新建空 FlowRuntime 伪装在线（当前待修：RV75-04 实际组合根未注入 PackageHost/Flow 实例，映射至 RP75-04）。
+- [x] **双时间线与资产无破坏**：Companion Timeline latest-N 修复；Skin / Knowledge Library 后端无回归；不新增 Wiki 数据库、不新增第二条 DialoguePipeline。（Commit 10 `b47cad6`, Test T9）
+- [x] **文档统一与事实诚实**：文档统一 `IMPLEMENTED / WIRED / EXPOSED`；不把单测通过等同真实接线，每项问题映射至具体修复步骤（RP75-00）。
+- [ ] **全量回归与缺陷覆盖测试**：在修复上述 4 项 P1 缺口并补全定向复现用例后全绿（覆盖在途连续性失效、Trace 阶段白名单、后台先行 Trace 保留、真实会话接入）。
 
 ### N075-02：控制台外壳与启动流程
 
