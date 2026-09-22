@@ -300,6 +300,81 @@ test('T6: Real Context Stale Invalidation prevents stale reuse after fact edit',
   );
 });
 
+test('T6-B: Continuity in-flight invalidation prevents stale reuse after forget or correction (RV75-02)', async t => {
+  const f = fixture();
+  t.after(f.cleanup);
+  const store = f.open();
+
+  const packs = await CharacterPackStore.open(store);
+  const continuityMemory = await ContinuityMemoryStore.open(store);
+  const pairing = productionPairing('companion', 'companion-default');
+
+  const fact = continuityMemory.record({
+    pairing,
+    operationId: 'seed-t6b-soul',
+    layer: 'user_soul',
+    kind: 'user_defined',
+    text: 'USER_PRIVATE_LOCATION',
+    origin: 'user',
+    status: 'active',
+  }).fact;
+
+  const continuityContext = new ProductionContinuityContext({
+    packs,
+    memory: continuityMemory,
+    pairing: { pairingFor: () => pairing },
+    dialogueInputTokenBudget: 30000,
+  });
+
+  const port = new SqliteLifecycleMemoryPort(store, {
+    context: {
+      inputTokenBudget: 30000,
+      maxRecentMessages: 10,
+      maxMemories: 5,
+      summaryLimit: 2,
+      countTokens: () => 10,
+      relevance: () => 1,
+      continuity: s => continuityContext.contextFor(s.characterId, ''),
+      assertContinuityCurrent: res => continuityContext.assertCurrent(res),
+    },
+    turn: {
+      provider: { plan: async () => { throw new Error('unused'); } },
+      inputTokenBudget: 10000,
+      countTokens: () => 10,
+    },
+    summary: {
+      provider: { summarize: async () => { throw new Error('unused'); } },
+      minMessages: 10,
+      maxMessages: 20,
+      inputTokenBudget: 5000,
+      countTokens: () => 10,
+    },
+  });
+
+  const turn = scope('companion', 'turn-t6b-1');
+  await port.append(turn, [message('turn-t6b-1:user', '你好呀')]);
+  const c = await port.foregroundContext(turn, 'turn-t6b-1:user', '你好呀', null, signal());
+
+  assert.ok(c.continuity?.text.includes('USER_PRIVATE_LOCATION'), 'Issued context must include the user soul fact');
+  assert.doesNotThrow(() => port.assertContextCurrent(c));
+
+  // User forgets the fact in-flight
+  continuityMemory.forget({
+    pairing,
+    operationId: 'forget-t6b-soul',
+    targetId: fact.id,
+    expectedVersion: fact.version,
+    reason: '隐私遗忘',
+  });
+
+  // Now, assertContextCurrent MUST throw and reject the in-flight context
+  assert.throws(
+    () => port.assertContextCurrent(c),
+    /stale_context/i,
+    'T6-B: In-flight context containing forgotten continuity fact must be rejected',
+  );
+});
+
 // -------------------------------------------------------------------------------------------------
 // T7 & T8: Production Trace Stage Sequence & Privacy Default
 // -------------------------------------------------------------------------------------------------

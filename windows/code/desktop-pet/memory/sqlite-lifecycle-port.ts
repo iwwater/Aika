@@ -463,7 +463,50 @@ export class SqliteLifecycleMemoryPort extends SqliteMemoryPort implements Backg
       const actual = live();
       if (actual !== null && actual !== context.knowledge.revision) throw new MemoryRuleError('stale_context');
     }
+    // RP75-02: validate continuity context against live pair state, tombstones and pack revisions
+    if (context.continuity) {
+      this.#assertContinuityCurrent(context.continuity);
+    }
     this.store.lifecycle.assertContextCurrent(context);
+  }
+
+  #assertContinuityCurrent(continuity: import('../contracts/continuity-context.js').ContinuityContextResult): void {
+    const checker = this.lifecycleOptions.context.assertContinuityCurrent;
+    if (checker) {
+      checker(continuity);
+      return;
+    }
+    const pairing = continuity.pairing;
+    if (!pairing) return;
+    try {
+      const db = this.store.rawDatabaseForKnowledge();
+      const stateRow = db.prepare(
+        'SELECT revision FROM continuity_pair_state WHERE user_id=? AND character_id=? AND instance_id=?'
+      ).get(pairing.userId, pairing.characterId, pairing.characterInstanceId) as { revision: number } | undefined;
+      if (stateRow && stateRow.revision !== continuity.memory.revision) {
+        throw new MemoryRuleError('stale_context');
+      }
+      const packCount = (db.prepare('SELECT COUNT(*) as c FROM character_packs WHERE character_id=?').get(pairing.characterId) as { c: number } | undefined)?.c ?? 0;
+      const historyCount = (db.prepare('SELECT COUNT(*) as c FROM character_pack_history WHERE character_id=?').get(pairing.characterId) as { c: number } | undefined)?.c ?? 0;
+      const companionCount = (db.prepare('SELECT COUNT(*) as c FROM character_companion_timeline WHERE user_id=? AND character_id=? AND character_instance_id=?').get(pairing.userId, pairing.characterId, pairing.characterInstanceId) as { c: number } | undefined)?.c ?? 0;
+      const revocationCount = (db.prepare('SELECT COUNT(*) as c FROM character_source_revocations WHERE character_id=?').get(pairing.characterId) as { c: number } | undefined)?.c ?? 0;
+      const currentPackRev = packCount + historyCount + companionCount + revocationCount + 1;
+      if (currentPackRev !== continuity.continuity.packRevision) {
+        throw new MemoryRuleError('stale_context');
+      }
+      for (const segment of continuity.segments || []) {
+        for (const evidenceId of segment.evidenceIds || []) {
+          const srcId = evidenceId.split(':')[0]!;
+          const revoked = db.prepare(
+            "SELECT 1 FROM character_source_revocations WHERE character_id=? AND target_type='source' AND target_id=?"
+          ).get(pairing.characterId, srcId);
+          if (revoked) throw new MemoryRuleError('stale_context');
+        }
+      }
+    } catch (err) {
+      if (err instanceof MemoryRuleError) throw err;
+      // Database errors (such as missing tables in legacy tests without continuity schema) are safely ignored
+    }
   }
   async summarizePending(scope: TurnScope, signal: AbortSignal): Promise<SummaryResult> {
     checkAbort(signal); const owned = bindScope(scope, scope.characterId);

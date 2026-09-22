@@ -1036,6 +1036,18 @@ export class CharacterPackStore implements ContinuityReadPort {
     }).reverse();
 
     // Calculate revision number
+    const packRevision = this.getPackRevision(pairing);
+
+    return Object.freeze({
+      pairing: Object.freeze({ ...pairing }),
+      activePack,
+      canonTimeline: Object.freeze(canonTimeline),
+      companionTimeline: Object.freeze(companionTimeline),
+      packRevision,
+    });
+  }
+
+  getPackRevision(pairing: PairingScope): number {
     const packCount = (
       this.db
         .prepare('SELECT COUNT(*) as c FROM character_packs WHERE character_id=?')
@@ -1059,15 +1071,7 @@ export class CharacterPackStore implements ContinuityReadPort {
         .get(pairing.characterId) as { c: number }
     ).c;
 
-    const packRevision = packCount + historyCount + companionCount + revocationCount + 1;
-
-    return Object.freeze({
-      pairing: Object.freeze({ ...pairing }),
-      activePack,
-      canonTimeline: Object.freeze(canonTimeline),
-      companionTimeline: Object.freeze(companionTimeline),
-      packRevision,
-    });
+    return packCount + historyCount + companionCount + revocationCount + 1;
   }
 
   // --- Internal Helpers ------------------------------------------------------

@@ -341,7 +341,9 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
         // N075-01/R2: the continuity projection is read fresh per turn, scoped by the production
         // pairing resolver. Character soul, relationship, user soul, user wiki, canon timeline and
         // companion timeline now reach the ONE production DialogueContext.
-        continuity: (scope: { readonly characterId: string }) => continuityContext.contextFor(scope.characterId, '') },
+        continuity: (scope: { readonly characterId: string }) => continuityContext.contextFor(scope.characterId, ''),
+        // RP75-02: synchronous continuity validation in assertContextCurrent against live mutations
+        assertContinuityCurrent: (result: import('../contracts/continuity-context.js').ContinuityContextResult) => continuityContext.assertCurrent(result) },
       turn: { inputTokenBudget: configuration.models.memory_turn.inputTokenLimit,
         countTokens: input => buildMemorySemanticFormat(input,true).inputUpperBound, maxSupplementaryPlans: 1,
         provider: strictProvider },

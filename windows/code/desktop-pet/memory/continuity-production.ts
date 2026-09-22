@@ -7,6 +7,7 @@ import type { ContinuityContextRequest, ContinuityContextResult, ContinuityConte
 import { ContinuityContextComposer } from './continuity-context.js';
 import type { CharacterPackStore } from './character-pack-store.js';
 import type { ContinuityMemoryStore } from './continuity-memory-store.js';
+import { MemoryRuleError } from './scope.js';
 
 /**
  * N075-01/R2: production pairing resolver. 0.7 delivered instance-scoped pairing for the management
@@ -75,5 +76,28 @@ export class ProductionContinuityContext {
     const result = await this.#composer.compose(request);
     await this.#composer.assertCurrent(result);
     return result;
+  }
+
+  /**
+   * RP75-02: synchronous in-flight context validation against live continuity and pack revisions.
+   * Throws MemoryRuleError('stale_context') if continuity memory was forgotten/corrected or if the pack changed.
+   */
+  assertCurrent(result: ContinuityContextResult): void {
+    const currentMemory = this.options.memory.snapshot(result.pairing);
+    if (currentMemory.revision !== result.memory.revision) {
+      throw new MemoryRuleError('stale_context');
+    }
+    const currentPackRev = this.options.packs.getPackRevision(result.pairing);
+    if (currentPackRev !== result.continuity.packRevision) {
+      throw new MemoryRuleError('stale_context');
+    }
+    for (const segment of result.segments || []) {
+      for (const evidenceId of segment.evidenceIds || []) {
+        const srcId = evidenceId.split(':')[0]!;
+        if (this.options.packs.isSourceRevoked(result.pairing.characterId, srcId)) {
+          throw new MemoryRuleError('stale_context');
+        }
+      }
+    }
   }
 }

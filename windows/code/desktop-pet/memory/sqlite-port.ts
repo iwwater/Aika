@@ -14,7 +14,12 @@ export interface SqliteContextOptions extends Omit<ContextOptions, 'prompts' | '
    * stores the management API reads. Absent (or a null resolution) means the runtime has no active
    * continuity pairing; a thrown error would fail the turn visibly instead of faking an empty one.
    */
-  readonly continuity?: (scope: { readonly characterId: string }) => import('../contracts/continuity-context.js').ContinuityContextResult | null | Promise<import('../contracts/continuity-context.js').ContinuityContextResult | null> }
+  readonly continuity?: (scope: { readonly characterId: string }) => import('../contracts/continuity-context.js').ContinuityContextResult | null | Promise<import('../contracts/continuity-context.js').ContinuityContextResult | null>;
+  /**
+   * RP75-02: synchronous continuity context validator to detect in-flight forget/correct/revocation.
+   */
+  readonly assertContinuityCurrent?: (continuity: import('../contracts/continuity-context.js').ContinuityContextResult) => void;
+}
 export function checkAbort(signal: AbortSignal): void { if (signal.aborted) throw signal.reason ?? new Error('memory_cancelled'); }
 /** A privacy-excluded turn never carries the pair-scoped continuity projection, like knowledge. */
 function privacySafeContinuity(continuity: import('../contracts/continuity-context.js').ContinuityContextResult | null, privacyExcluded: boolean): import('../contracts/continuity-context.js').ContinuityContextResult | null {
