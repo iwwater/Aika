@@ -15,6 +15,13 @@ export interface ContextOptions {
    * than silently overrunning the prefix. Its revocation revision is asserted with the rest.
    */
   readonly knowledge?: import('../contracts/knowledge.js').KnowledgeSelection | null;
+  /**
+   * N075-01/R2: the continuity projection for this turn, composed by ContinuityContextComposer from
+   * the same production stores the management API reads. It is delivered like knowledge: one bounded
+   * block, selected with the turn's own token budget, entirely omitted (never silently truncated)
+   * when it does not fit. It carries no write path and never becomes a second pipeline.
+   */
+  readonly continuity?: import('../contracts/continuity-context.js').ContinuityContextResult | null;
   readonly messageEmotions?: readonly import('../contracts/emotion-state.js').EmotionMessageSnapshot[];
   readonly emotionBackground?: import('../contracts/emotion-state.js').EmotionBackground;
   readonly memoryTieBreak?: (a:MemoryReference,b:MemoryReference)=>number;
@@ -106,6 +113,16 @@ export function assembleContext(ledger: ContextReader, scope: TurnScope, text: s
     // reported as fully omitted instead of being partially delivered.
     if (tokens <= options.inputTokenBudget) { context = candidate; countedInputTokens = tokens; }
     else omittedIds.push(...options.knowledge.blocks.map(block => `knowledge:${block.documentId}:${block.ordinal}`));
+  }
+  // N075-01/R2: continuity sources ride after knowledge and before emotion metadata. The whole
+  // projection is one unit here - segment-level selection already happened inside the composer
+  // under its own budget, so the assembly either delivers the composed result or omits all of it
+  // with one visible reason. It is read-model data: nothing here can mutate Memory or the stores.
+  if (options.continuity && options.continuity.selected.length) {
+    const candidate = { ...context, continuity: options.continuity };
+    const tokens = count(candidate);
+    if (tokens <= options.inputTokenBudget) { context = candidate; countedInputTokens = tokens; }
+    else omittedIds.push(...options.continuity.selected.map(item => `continuity:${item.key}`));
   }
   if(options.messageEmotions?.length){
     const metadata=new Map(options.messageEmotions.map(m=>[m.message.id,m]));

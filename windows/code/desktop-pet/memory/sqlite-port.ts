@@ -3,13 +3,23 @@ import { assembleContext, type ContextOptions, type ContextSnapshot } from './co
 import { bindScope, sameScope } from './scope.js';
 import { SqliteMemoryStore } from './sqlite-store.js';
 
-export interface SqliteContextOptions extends Omit<ContextOptions, 'prompts' | 'knowledge'> { readonly summaryLimit: number;
+export interface SqliteContextOptions extends Omit<ContextOptions, 'prompts' | 'knowledge' | 'continuity'> { readonly summaryLimit: number;
   /**
    * FIX61-06: the active knowledge library, read fresh on every turn so a switch or a document removal
    * is visible immediately. Absent means no library is selected.
    */
-  readonly knowledge?: () => import('../contracts/knowledge.js').KnowledgeSelection | null | Promise<import('../contracts/knowledge.js').KnowledgeSelection | null> }
+  readonly knowledge?: () => import('../contracts/knowledge.js').KnowledgeSelection | null | Promise<import('../contracts/knowledge.js').KnowledgeSelection | null>
+  /**
+   * N075-01/R2: the continuity projection for this scope's turn, read fresh per turn from the same
+   * stores the management API reads. Absent (or a null resolution) means the runtime has no active
+   * continuity pairing; a thrown error would fail the turn visibly instead of faking an empty one.
+   */
+  readonly continuity?: (scope: { readonly characterId: string }) => import('../contracts/continuity-context.js').ContinuityContextResult | null | Promise<import('../contracts/continuity-context.js').ContinuityContextResult | null> }
 export function checkAbort(signal: AbortSignal): void { if (signal.aborted) throw signal.reason ?? new Error('memory_cancelled'); }
+/** A privacy-excluded turn never carries the pair-scoped continuity projection, like knowledge. */
+function privacySafeContinuity(continuity: import('../contracts/continuity-context.js').ContinuityContextResult | null, privacyExcluded: boolean): import('../contracts/continuity-context.js').ContinuityContextResult | null {
+  return privacyExcluded ? null : continuity;
+}
 export async function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   checkAbort(signal);
   return new Promise<T>((resolve, reject) => {
@@ -29,10 +39,11 @@ export class SqliteMemoryPort implements MemoryPort {
   /** Same assembly as context(), with the snapshot metadata the knowledge/privacy paths need. */
   async contextSnapshot(scope: TurnScope, text: string, perception: PerceptionResult | null, signal: AbortSignal, excludePersonal = false): Promise<ContextSnapshot> {
     const knowledge = this.options.knowledge ? await this.options.knowledge() : null;
+    const continuity = privacySafeContinuity(this.options.continuity ? await this.options.continuity(scope) : null, excludePersonal || this.store.pending.has(scope.characterId));
     checkAbort(signal);
-    return this.createContext(scope, text, perception, signal, excludePersonal, knowledge ?? null);
+    return this.createContext(scope, text, perception, signal, excludePersonal, knowledge ?? null, continuity);
   }
-  protected createContext(scope: TurnScope, text: string, perception: PerceptionResult | null, signal: AbortSignal, excludePersonal=false, knowledge: import('../contracts/knowledge.js').KnowledgeSelection | null = null): ContextSnapshot {
+  protected createContext(scope: TurnScope, text: string, perception: PerceptionResult | null, signal: AbortSignal, excludePersonal=false, knowledge: import('../contracts/knowledge.js').KnowledgeSelection | null = null, continuity: import('../contracts/continuity-context.js').ContinuityContextResult | null = null): ContextSnapshot {
     checkAbort(signal); const owned = bindScope(scope, scope.characterId);
     if (perception && !sameScope(owned, perception.scope)) throw new Error('perception_scope_mismatch');
     if (perception) {
@@ -51,6 +62,9 @@ export class SqliteMemoryPort implements MemoryPort {
       memoryTieBreak:(a,b)=>candidates.findIndex(x=>x.source.id===a.id)-candidates.findIndex(x=>x.source.id===b.id), maxMemories:Math.min(6,this.options.maxMemories), relevance:memory=>scores.get(memory.id)??0, prompts: { [owned.characterId]: this.store.prompt(owned) },
       // A privacy exclusion drops knowledge too: an excluded turn must not carry reference text either.
       knowledge: privacyExcluded ? null : knowledge,
+      // N075-01/R2: the same boundary applies to the continuity projection - a pending privacy hold
+      // or an explicitly excluded turn never carries pair-scoped personal continuity data.
+      continuity: privacyExcluded ? null : continuity,
     });
     checkAbort(signal); return {...snapshot,privacyExcluded,recall:{candidates,policyRevision,evaluatedAt,dataRevision:data.revision}};
   }

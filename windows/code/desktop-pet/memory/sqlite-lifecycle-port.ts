@@ -116,7 +116,7 @@ export class SqliteLifecycleMemoryPort extends SqliteMemoryPort implements Backg
    * makes reuse observable rather than merely asserted. Per-turn perception is volatile and stays out of
    * the prefix, exactly as the provider requires.
    */
-  #suffixContext(scope: TurnScope, text: string, perception: PerceptionResult | null, signal: AbortSignal, excludePersonal: boolean, knowledge: KnowledgeSelection | null): ContextSnapshot {
+  #suffixContext(scope: TurnScope, text: string, perception: PerceptionResult | null, signal: AbortSignal, excludePersonal: boolean, knowledge: KnowledgeSelection | null, continuity: import('../contracts/continuity-context.js').ContinuityContextResult | null = null): ContextSnapshot {
     const options = this.lifecycleOptions.context;
     checkAbort(signal);
     const owned = bindScope(scope, scope.characterId);
@@ -141,6 +141,9 @@ export class SqliteLifecycleMemoryPort extends SqliteMemoryPort implements Backg
       }),
       prompts: { [owned.characterId]: this.store.prompt(owned) },
       knowledge: privacyExcluded ? null : knowledge,
+      // N075-01/R2: continuity rides the dynamic suffix boundary exactly like knowledge - the frozen
+      // prefix never owns it, so a revoke/correct/forget invalidates it from the very next turn.
+      continuity: privacyExcluded ? null : continuity,
     });
     checkAbort(signal);
     return { ...snapshot, privacyExcluded, recall: { candidates: [], policyRevision, evaluatedAt, dataRevision: data.revision } };
@@ -151,6 +154,17 @@ export class SqliteLifecycleMemoryPort extends SqliteMemoryPort implements Backg
     const reader = this.#prefix?.books ?? this.lifecycleOptions.context.knowledge;
     if (!reader) return null;
     return (await reader()) ?? null;
+  }
+
+  /**
+   * N075-01/R2: the continuity projection for this turn, read fresh from the production stores the
+   * composition root injected. A resolution failure is a visible turn failure - the runtime never
+   * silently pretends an existing pairing contributed nothing.
+   */
+  async #continuity(scope: TurnScope): Promise<import('../contracts/continuity-context.js').ContinuityContextResult | null> {
+    const reader = this.lifecycleOptions.context.continuity;
+    if (!reader) return null;
+    return (await reader(scope)) ?? null;
   }
 
   async #identity(scope: TurnScope): Promise<string> {
@@ -414,9 +428,10 @@ export class SqliteLifecycleMemoryPort extends SqliteMemoryPort implements Backg
   pendingMutations(characterId:TurnScope['characterId']) {return this.store.pending.list(characterId);}
   override async context(scope: TurnScope, text: string, perception: PerceptionResult | null, signal: AbortSignal): Promise<DialogueContext> {
     const knowledge=await this.#knowledge();
+    const continuity=await this.#continuity(scope);
     const built=this.#prefix
-      ? this.#suffixContext(scope, text, perception, signal, false, knowledge)
-      : this.createContext(scope, text, perception, signal, false, knowledge);
+      ? this.#suffixContext(scope, text, perception, signal, false, knowledge, continuity)
+      : this.createContext(scope, text, perception, signal, false, knowledge, continuity);
     const context=this.#prefix?await this.#attachPrefix(built.context, text, signal):built.context;
     return this.store.lifecycle.trackContext({...built,context},text);
   }
@@ -424,9 +439,10 @@ export class SqliteLifecycleMemoryPort extends SqliteMemoryPort implements Backg
     checkAbort(signal);const owned=bindScope(scope,scope.characterId);
     const completedPending=this.store.lifecycle.registerForegroundCurrent(owned,currentMessageId,text);
     const knowledge=await this.#knowledge();
+    const continuity=await this.#continuity(owned);
     const built=this.#prefix
-      ? this.#suffixContext(owned, text, perception, signal, completedPending, knowledge)
-      : this.createContext(owned,text,perception,signal,completedPending,knowledge);
+      ? this.#suffixContext(owned, text, perception, signal, completedPending, knowledge, continuity)
+      : this.createContext(owned,text,perception,signal,completedPending,knowledge,continuity);
     const context=this.#prefix?await this.#attachPrefix(built.context, text, signal):built.context;
     return this.store.lifecycle.trackContext({...built,context},text,true);
   }

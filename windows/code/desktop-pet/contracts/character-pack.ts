@@ -232,3 +232,17 @@ export interface ContinuityReadPort {
     },
   ): Promise<ContinuitySnapshot>;
 }
+
+/**
+ * N075-01/R2: resolves the production pairing a desktop turn actually belongs to. The composer
+ * projection is pair-scoped, so the production path must never invent a pairing by hand - tests and
+ * tools may pass an explicit scope, but the desktop composition root supplies this resolver.
+ */
+export interface ContinuityPairingResolver {
+  pairingFor(scope: { readonly characterId: string }): PairingScope | null;
+}
+
+/** Production pairing: the single local user paired to the canonical product character instance. */
+export function productionPairing(characterId: string, instanceId: string): PairingScope {
+  return Object.freeze({ userId: 'local-user', characterId, characterInstanceId: instanceId });
+}

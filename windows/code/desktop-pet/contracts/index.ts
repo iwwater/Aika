@@ -101,6 +101,13 @@ export interface DialogueContext extends Scoped {
    * selected", which is distinct from "a selected library contributed no block". Reference data only.
    */
   readonly knowledge?: import('./knowledge.js').KnowledgeSelection;
+  /**
+   * N075-01/R2: the composed continuity projection this turn actually received (character soul,
+   * relationship, user soul, user wiki, canon timeline, companion timeline). Absent means the
+   * production runtime has no active continuity pairing or the capability is unavailable - which is
+   * distinct from "a pairing exists but contributed no segment". Data only, never an instruction.
+   */
+  readonly continuity?: import('./continuity-context.js').ContinuityContextResult;
   readonly characterPrompt: string;
   readonly recent: readonly ConversationMessage[];
   readonly summary: string;

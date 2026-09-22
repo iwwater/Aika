@@ -68,6 +68,7 @@ import { MicrophonePreferenceStore } from '../media/microphone-preference.js';
 import { SkinStore } from '../management/skin-store.js';
 import { CharacterPackStore } from '../memory/character-pack-store.js';
 import { ContinuityMemoryStore } from '../memory/continuity-memory-store.js';
+import { ProductionContinuityContext, productionPairingResolver } from '../memory/continuity-production.js';
 import { continuityManagement } from '../management/continuity-routes.js';
 // Health is derived from the runtime's own observations, so no extra probe is started here.
 
@@ -310,6 +311,15 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
     const characterPacks = await CharacterPackStore.open(store);
     const continuityStore = await ContinuityMemoryStore.open(store);
     const continuity = continuityManagement(continuityStore);
+    // N075-01/R2: the continuity context source composes the pack store and the continuity memory
+    // store into ONE production dialogue context. It is a read-only projection: no second pipeline,
+    // no second store, one dialogue call. A compose failure fails the turn visibly; capability-off
+    // (no pairing) keeps the ordinary text path byte-identical.
+    const continuityContext = new ProductionContinuityContext({
+      packs: characterPacks, memory: continuityStore,
+      pairing: productionPairingResolver(configuration.purpose === 'user-trial' ? 'companion-default' : 'smoke-default'),
+      dialogueInputTokenBudget: configuration.models.dialogue.inputTokenLimit,
+    });
     // The active library is read fresh per turn; the port never caches a selection across a switch.
     // A library read failure must never take the whole conversation store down with it.
     const knowledgeSelection = async () => {
@@ -317,7 +327,11 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
     };
     const memory = new ObservedTrialMemory(store, {
       context: { knowledge: knowledgeSelection, inputTokenBudget: configuration.models.dialogue.inputTokenLimit, maxRecentMessages: settings.effective.context.maxRecentMessages, maxMemories: settings.effective.context.maxMemories,
-        summaryLimit: settings.effective.context.summaryLimit, countTokens: contextInputUpperBound, relevance: () => 1 },
+        summaryLimit: settings.effective.context.summaryLimit, countTokens: contextInputUpperBound, relevance: () => 1,
+        // N075-01/R2: the continuity projection is read fresh per turn, scoped by the production
+        // pairing resolver. Character soul, relationship, user soul, user wiki, canon timeline and
+        // companion timeline now reach the ONE production DialogueContext.
+        continuity: (scope: { readonly characterId: string }) => continuityContext.contextFor(scope.characterId, '') },
       turn: { inputTokenBudget: configuration.models.memory_turn.inputTokenLimit,
         countTokens: input => buildMemorySemanticFormat(input,true).inputUpperBound, maxSupplementaryPlans: 1,
         provider: strictProvider },
