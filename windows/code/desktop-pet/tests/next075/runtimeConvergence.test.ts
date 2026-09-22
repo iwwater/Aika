@@ -430,6 +430,67 @@ test('T7 & T8: Production Trace Stages and Privacy Defaults', async t => {
   assert.ok(trace.replyText.startsWith('[digest:'), 'T8: Reply text replaced with digest');
 });
 
+test('T8-B: Trace Stage Details Sanitization & Early Stage Retainment (RV75-03, RV75-05)', async t => {
+  const { db, cleanup } = createTempDb();
+  t.after(cleanup);
+
+  const traceStore = RuntimeTraceStore.open(db);
+
+  // 1. Early background stage arrives before foreground record
+  const accepted = traceStore.appendStage('race-turn-1', {
+    name: 'memory_plan',
+    label: '后台记忆规划与提炼',
+    elapsedMs: 25,
+    status: 'ok',
+    category: 'background',
+    details: { retrievedMemories: ['SENSITIVE_LEAK_TARGET'] },
+  });
+  assert.equal(accepted, true, 'Early background stage must be accepted');
+
+  // 2. Foreground records turn trace with raw secret in details
+  traceStore.record({
+    traceId: 'trace-race-1',
+    turnId: 'race-turn-1',
+    characterId: 'companion',
+    sessionId: 'session-race',
+    userText: 'SECRET_USER_INPUT',
+    replyText: 'SECRET_REPLY_OUTPUT',
+    totalElapsedMs: 50,
+    status: 'ok',
+    stages: [
+      {
+        name: 'context',
+        label: '上下文与记忆召回',
+        elapsedMs: 5,
+        status: 'ok',
+        category: 'foreground',
+        details: { rawUserSecret: 'SENSITIVE_LEAK_TARGET', memories: 3 },
+      },
+    ],
+    createdAt: new Date().toISOString(),
+  }, false);
+
+  const saved = traceStore.get('trace-race-1')!;
+  assert.ok(saved, 'Trace must be saved');
+
+  // Verify background stage was retained
+  assert.ok(
+    saved.stages.some(s => s.name === 'memory_plan'),
+    'Early background stage must be retained after record() merge (RV75-05)',
+  );
+
+  // Verify details whitelist: raw secret string must be redacted to digest
+  const serializedStages = JSON.stringify(saved.stages);
+  assert.ok(
+    !serializedStages.includes('SENSITIVE_LEAK_TARGET'),
+    'Stage details must NOT contain plain-text memory/fact secrets (RV75-03)',
+  );
+  assert.ok(
+    serializedStages.includes('[digest:'),
+    'Sensitive values in details must be sanitized to digests',
+  );
+});
+
 // -------------------------------------------------------------------------------------------------
 // T9: Companion Timeline Latest-N & Chronological Order
 // -------------------------------------------------------------------------------------------------

@@ -62,6 +62,7 @@ export class DialoguePipeline {
     let outcome: {status: 'played' | 'replied' | 'handled' | 'cancelled' | 'failed'; error?: string} | undefined;
     let playbackFailed = false;
     const turnStart = performance.now();
+    let llmStart = 0;
     const stages: TraceStage[] = [];
     let text = input.text ?? '';
     let replyText = '';
@@ -125,9 +126,9 @@ export class DialoguePipeline {
         memoryPending={scope:Object.freeze({...scope}),request,status:'pending'};
         // Queue owns lifetime and diagnostics; no completed outcome is invented for the foreground.
         void background!.enqueueTurn(scope, userMessage.id, text).catch(() => {});
-        stages.push({ name: 'memory_enqueue', label: '后台记忆排队', elapsedMs: 0, status: 'ok', details: { request } });
+        stages.push({ name: 'memory_enqueue', label: '后台记忆排队', elapsedMs: 0, status: 'ok', category: 'background', details: { request } });
       }
-      stages.push({ name: 'admission', label: '意图路由与准入', elapsedMs: Math.max(1, Math.round(performance.now() - admissionStart)), status: 'ok', details: { route: 'companion', memoryRequest: memoryPending?.request ?? 'none' } });
+      stages.push({ name: 'admission', label: '意图路由与准入', elapsedMs: Math.max(1, Math.round(performance.now() - admissionStart)), status: 'ok', category: 'foreground', details: { route: 'companion', memoryRequest: memoryPending?.request ?? 'none' } });
       const memoryOutcome = independent ? undefined : await this.ports.memoryLifecycle?.prepareTurn(scope, userMessage.id, text, signal);
       this.current(scope, signal);
       if (memoryOutcome) {
@@ -142,7 +143,7 @@ export class DialoguePipeline {
         ? await background!.foregroundContext(scope, userMessage.id, text, perception, signal)
         : await this.ports.memory.context(scope, text, perception, signal);
       this.current(scope, signal); this.contextBelongs(scope, context);
-      stages.push({ name: 'context', label: '上下文与记忆召回', elapsedMs: Math.max(1, Math.round(performance.now() - contextStart)), status: 'ok', details: { memories: context.memories.length, recent: context.recent.length, inputTokenBudget: context.inputTokenBudget, hasContinuity: !!context.continuity } });
+      stages.push({ name: 'context', label: '上下文与记忆召回', elapsedMs: Math.max(1, Math.round(performance.now() - contextStart)), status: 'ok', category: 'foreground', details: { memories: context.memories.length, recent: context.recent.length, inputTokenBudget: context.inputTokenBudget, hasContinuity: !!context.continuity } });
       const validateContext = () => independent ? background!.assertContextCurrent(context) : this.ports.memoryLifecycle?.assertContextCurrent(context);
       validateContext();
       let emotionInput:EmotionInferenceInput|null=null;
@@ -154,7 +155,7 @@ export class DialoguePipeline {
         : await this.ports.dialogue.reply({scope, text, context, ...(memoryOutcome ? { memoryOutcome } : {}), ...(memoryPending ? {memoryPending} : {})}, signal);
       if (!reply.text) throw new Error('需要澄清的记忆请求缺少问题。');
       replyText = reply.text;
-      stages.push({ name: 'llm', label: '大模型对话生成', elapsedMs: Math.max(1, Math.round(performance.now() - llmStart)), status: 'ok', details: { emotion: reply.expression.emotion } });
+      stages.push({ name: 'llm', label: '大模型对话生成', elapsedMs: Math.max(1, Math.round(performance.now() - llmStart)), status: 'ok', category: 'foreground', details: { emotion: reply.expression.emotion } });
       this.current(scope, signal); this.belongs(scope, reply);
       validateContext();
       if(emotionInput)try{this.ports.emotion?.complete(emotionInput,reply.emotionAssessment);}catch{/* Emotion metadata cannot interrupt a reply. */}
@@ -167,7 +168,7 @@ export class DialoguePipeline {
       } else {
         await this.ports.memory.append(scope, [assistantMessage]);
       }
-      stages.push({ name: 'assistant_persist', label: '助手回复持久化', elapsedMs: Math.max(1, Math.round(performance.now() - persistStart)), status: 'ok' });
+      stages.push({ name: 'assistant_persist', label: '助手回复持久化', elapsedMs: Math.max(1, Math.round(performance.now() - persistStart)), status: 'ok', category: 'foreground' });
       // The background owner captures this original role before frontend cancellation/switching.
       this.afterConversationSaved?.(scope, text);
       this.current(scope, signal);
@@ -179,7 +180,7 @@ export class DialoguePipeline {
       this.controller.express(scope, reply.expression); this.presentation();
       const ttsStart = performance.now();
       const audio = await this.ports.tts.synthesize(reply, signal);
-      stages.push({ name: 'tts', label: '语音合成', elapsedMs: Math.max(1, Math.round(performance.now() - ttsStart)), status: 'ok' });
+      stages.push({ name: 'tts', label: '语音合成', elapsedMs: Math.max(1, Math.round(performance.now() - ttsStart)), status: 'ok', category: 'foreground' });
       this.current(scope, signal); this.belongs(scope, audio);
       validateContext();
       let started = false; let ended = false; let stopped = false; let playbackError: string | undefined;
@@ -215,13 +216,38 @@ export class DialoguePipeline {
     } catch (error) {
       this.ports.emotion?.cancel(scope);
       const message = error instanceof Error ? error.message : String(error);
-      if (error instanceof StaleTurnError || (signal.aborted && !playbackFailed)) outcome = {status: 'cancelled'};
+      const isCancelled = error instanceof StaleTurnError || (signal.aborted && !playbackFailed);
+      if (isCancelled) outcome = {status: 'cancelled'};
       else {
         if (this.controller.accepts(scope)) {
           this.controller.playback({scope, at: new Date().toISOString(), type: 'error', message});
           this.emit({type: 'error', scope, message:userFacingError(error)}); this.presentation();
         }
         outcome = {status: 'failed', error: message};
+      }
+
+      // RV75-05: Record failed or cancelled stage in trace so the broken phase is visible
+      const stageStatus = isCancelled ? 'cancelled' : 'failed';
+      const errCode = error instanceof Error && 'code' in error ? String((error as any).code) : undefined;
+      const errType = error instanceof Error ? error.name : 'UnknownError';
+      if (!stages.some(s => s.name === 'llm')) {
+        stages.push({
+          name: 'llm',
+          label: '大模型对话生成',
+          elapsedMs: Math.max(1, Math.round(performance.now() - (llmStart > 0 ? llmStart : turnStart))),
+          status: stageStatus,
+          category: 'foreground',
+          details: { error: errType, ...(errCode ? { code: errCode } : {}) },
+        });
+      } else if (this.ports.outputMode !== 'text' && !stages.some(s => s.name === 'tts')) {
+        stages.push({
+          name: 'tts',
+          label: '语音合成',
+          elapsedMs: Math.max(1, Math.round(performance.now() - turnStart)),
+          status: stageStatus,
+          category: 'foreground',
+          details: { error: errType, ...(errCode ? { code: errCode } : {}) },
+        });
       }
     } finally {
       if (this.ports.traceStore) {
@@ -234,7 +260,7 @@ export class DialoguePipeline {
             userText: text,
             replyText,
             totalElapsedMs: Math.max(1, Math.round(performance.now() - turnStart)),
-            status: !outcome || outcome.status === 'failed' ? 'failed' : 'ok',
+            status: !outcome || outcome.status === 'failed' || outcome.status === 'cancelled' ? 'failed' : 'ok',
             stages,
             createdAt: new Date().toISOString(),
           }, this.ports.traceDebugOptIn ?? false);

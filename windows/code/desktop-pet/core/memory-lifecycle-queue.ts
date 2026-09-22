@@ -65,21 +65,26 @@ export class RoleMemoryLifecycleQueue {
     const owned=Object.freeze({...scope});
     const planStart = performance.now();
     const work=this.schedule(owned, async (captured,signal)=>{
+      const planStart = performance.now();
       const outcome = await this.backgroundMemory().prepareBackgroundTurn(captured,currentMessageId,text,signal);
-      const elapsedMs = Math.max(1, Math.round(performance.now() - planStart));
+      const planElapsed = Math.max(1, Math.round(performance.now() - planStart));
       try {
         this.traceStore?.appendStage(captured.turnId, {
           name: 'memory_plan',
           label: '后台记忆规划与提炼',
-          elapsedMs,
+          elapsedMs: planElapsed,
+          category: 'background',
           status: outcome.status === 'rejected' ? 'failed' : 'ok',
           details: { request: outcome.request, outcomeStatus: outcome.status },
         });
         if (outcome.status === 'applied') {
+          const commitStart = performance.now();
+          const commitElapsed = Math.max(1, Math.round(performance.now() - commitStart));
           this.traceStore?.appendStage(captured.turnId, {
             name: 'memory_commit',
             label: '后台记忆落库提交',
-            elapsedMs,
+            elapsedMs: commitElapsed,
+            category: 'background',
             status: 'ok',
             details: { affectedIds: outcome.affectedIds, retrievalInvalidated: outcome.retrievalInvalidated },
           });

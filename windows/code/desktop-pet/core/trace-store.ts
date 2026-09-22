@@ -18,8 +18,11 @@ export interface TraceStage {
   name: TraceStageName;
   label: string;
   elapsedMs: number;
-  status: 'ok' | 'skipped' | 'failed';
-  details?: Record<string, unknown>;
+  status: 'ok' | 'skipped' | 'failed' | 'cancelled';
+  category?: 'foreground' | 'background' | undefined;
+  startedAt?: string | undefined;
+  endedAt?: string | undefined;
+  details?: Record<string, unknown> | undefined;
 }
 
 export function sanitizeTraceText(text: string): string {
@@ -27,6 +30,56 @@ export function sanitizeTraceText(text: string): string {
   const len = [...text].length;
   const digest = createHash('sha256').update(text).digest('hex').slice(0, 8);
   return `[digest:${digest} len:${len}]`;
+}
+
+const SAFE_METRIC_KEYS = new Set([
+  'memories', 'recent', 'inputTokenBudget', 'elapsedMs', 'count', 'tokens',
+  'totalTokens', 'inputTokens', 'outputTokens', 'affectedCount', 'sequence',
+  'completed', 'total', 'hasContinuity', 'retrievalInvalidated', 'ok',
+  'emotion', 'route', 'request', 'status', 'name', 'label', 'code', 'error',
+  'model', 'provider', 'outcomeStatus', 'requestId', 'stage',
+]);
+
+/**
+ * RV75-03: Stage details whitelist sanitization.
+ * Prevents plain-text personal memories, conversation transcripts and user facts
+ * from leaking into the trace stage details payload unless debugOptIn is explicitly true.
+ */
+export function sanitizeStageDetails(
+  details: Record<string, unknown> | undefined,
+  debugOptIn = false,
+): Record<string, unknown> | undefined {
+  if (!details || debugOptIn) return details;
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(details)) {
+    if (value === null || value === undefined) continue;
+    if (typeof value === 'number' || typeof value === 'boolean') {
+      sanitized[key] = value;
+      continue;
+    }
+    if (typeof value === 'string') {
+      // Safe metadata keywords and short code identifiers
+      if (SAFE_METRIC_KEYS.has(key) && /^[a-zA-Z0-9_\-\.:]{1,64}$/.test(value)) {
+        sanitized[key] = value;
+      } else {
+        sanitized[key] = sanitizeTraceText(value);
+      }
+      continue;
+    }
+    if (Array.isArray(value)) {
+      if (key === 'affectedIds') {
+        sanitized[key] = value.filter(v => typeof v === 'string' && /^[a-zA-Z0-9_\-\.:]{1,64}$/.test(v));
+      } else {
+        // Redact any free-form text elements (such as retrievedMemories or prompts)
+        sanitized[key] = value.map(v => typeof v === 'string' ? sanitizeTraceText(v) : v);
+      }
+      continue;
+    }
+    if (typeof value === 'object') {
+      sanitized[key] = sanitizeStageDetails(value as Record<string, unknown>, debugOptIn);
+    }
+  }
+  return sanitized;
 }
 
 export interface RuntimeTrace {
@@ -90,15 +143,23 @@ export class RuntimeTraceStore {
       CREATE INDEX IF NOT EXISTS idx_runtime_traces_created ON runtime_traces(created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_runtime_traces_char ON runtime_traces(character_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_runtime_traces_turn ON runtime_traces(turn_id);
+
+      -- RV75-05: Buffer for early background stages arriving before foreground trace record is created
+      CREATE TABLE IF NOT EXISTS runtime_trace_pending_stages (
+        turn_id TEXT NOT NULL,
+        stage_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_pending_stages_turn ON runtime_trace_pending_stages(turn_id);
     `);
     return new RuntimeTraceStore(db);
   }
 
   /**
    * Records a complete turn trace.
-   * Privacy: by default (debugOptIn: false), user_text and reply_text are sanitized to
-   * cryptographic digests + length counters so the trace store does not become a second
-   * persistent chat transcript database. Full bodies are persisted only when debugOptIn: true.
+   * Privacy: by default (debugOptIn: false), user_text, reply_text, and stage details are sanitized
+   * to cryptographic digests or whitelisted metadata so the trace store does not become a second
+   * persistent chat transcript or memory database. Full bodies are persisted only when debugOptIn: true.
    */
   record(trace: RuntimeTrace, debugOptIn = false): void {
     const stmt = this.db.prepare(`
@@ -112,6 +173,46 @@ export class RuntimeTraceStore {
     const storedUserText = debugOptIn ? trace.userText : sanitizeTraceText(trace.userText);
     const storedReplyText = debugOptIn ? trace.replyText : sanitizeTraceText(trace.replyText);
 
+    let stages: TraceStage[] = (trace.stages || []).map(s => ({
+      ...s,
+      details: sanitizeStageDetails(s.details, debugOptIn),
+    }));
+
+    // RV75-05: Merge early pending background stages if any completed before record()
+    try {
+      const pendingRows = this.db
+        .prepare('SELECT rowid, stage_json FROM runtime_trace_pending_stages WHERE turn_id=?')
+        .all(trace.turnId) as Array<{ rowid: number; stage_json: string }>;
+      if (pendingRows.length > 0) {
+        for (const p of pendingRows) {
+          try {
+            const pendingStage = JSON.parse(p.stage_json) as TraceStage;
+            if (!stages.some(s => s.name === pendingStage.name && s.label === pendingStage.label)) {
+              stages.push(pendingStage);
+            }
+          } catch {}
+        }
+        this.db.prepare('DELETE FROM runtime_trace_pending_stages WHERE turn_id=?').run(trace.turnId);
+      }
+    } catch {}
+
+    // Check if an existing row with this trace_id already has stages
+    try {
+      const existingRow = this.db
+        .prepare('SELECT stages_json, total_elapsed_ms FROM runtime_traces WHERE trace_id=?')
+        .get(trace.traceId) as { stages_json: string; total_elapsed_ms: number } | undefined;
+      if (existingRow) {
+        const existingStages = JSON.parse(existingRow.stages_json) as TraceStage[];
+        for (const es of existingStages) {
+          if (!stages.some(s => s.name === es.name && s.label === es.label)) {
+            stages.push(es);
+          }
+        }
+      }
+    } catch {}
+
+    const totalElapsed = Math.max(trace.totalElapsedMs, ...stages.map(s => s.elapsedMs));
+
     stmt.run(
       trace.traceId,
       trace.turnId,
@@ -119,12 +220,12 @@ export class RuntimeTraceStore {
       trace.sessionId,
       storedUserText,
       storedReplyText,
-      trace.totalElapsedMs,
+      totalElapsed,
       trace.status,
       trace.tokens?.inputTokens || 0,
       trace.tokens?.outputTokens || 0,
       trace.tokens?.totalTokens || 0,
-      JSON.stringify(trace.stages || []),
+      JSON.stringify(stages),
       trace.createdAt || new Date().toISOString()
     );
   }
@@ -132,19 +233,37 @@ export class RuntimeTraceStore {
   /**
    * Appends an asynchronous background stage (e.g. memory_plan, memory_commit, summary)
    * to an existing foreground turn trace by turnId, updating elapsed time and stages list.
-   * Returns true if matching trace was found and updated, false otherwise.
+   * If the foreground record has not yet been written (race condition RV75-05), the stage is
+   * saved into runtime_trace_pending_stages and merged when record() is called.
+   * Returns true in both cases.
    */
-  appendStage(turnId: string, stage: TraceStage): boolean {
+  appendStage(turnId: string, stage: TraceStage, debugOptIn = false): boolean {
+    const safeStage: TraceStage = {
+      ...stage,
+      details: sanitizeStageDetails(stage.details, debugOptIn),
+    };
+
     const row = this.db
       .prepare('SELECT trace_id, stages_json, total_elapsed_ms FROM runtime_traces WHERE turn_id=? ORDER BY created_at DESC LIMIT 1')
       .get(turnId) as { trace_id: string; stages_json: string; total_elapsed_ms: number } | undefined;
-    if (!row) return false;
+    if (!row) {
+      // RV75-05: Store in pending table so record() can claim it
+      this.db
+        .prepare('INSERT INTO runtime_trace_pending_stages (turn_id, stage_json, created_at) VALUES (?, ?, ?)')
+        .run(turnId, JSON.stringify(safeStage), new Date().toISOString());
+      return true;
+    }
 
     let stages: TraceStage[] = [];
     try { stages = JSON.parse(row.stages_json); } catch {}
-    stages.push(stage);
+    const existingIndex = stages.findIndex(s => s.name === safeStage.name && s.label === safeStage.label);
+    if (existingIndex >= 0) {
+      stages[existingIndex] = safeStage;
+    } else {
+      stages.push(safeStage);
+    }
 
-    const updatedElapsed = Math.max(row.total_elapsed_ms, stage.elapsedMs);
+    const updatedElapsed = Math.max(row.total_elapsed_ms, safeStage.elapsedMs);
     this.db
       .prepare('UPDATE runtime_traces SET stages_json=?, total_elapsed_ms=? WHERE trace_id=?')
       .run(JSON.stringify(stages), updatedElapsed, row.trace_id);

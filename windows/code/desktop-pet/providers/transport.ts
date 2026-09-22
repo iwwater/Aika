@@ -114,9 +114,15 @@ export class ProviderTransport {
       const data = frame.split('\n').filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n');
       if (!data || data === '[DONE]') return;
       const chunk = object(JSON.parse(data));
-      if (chunk.error) throw new Error('Provider stream error');
-      if (chunk.usage) usage = chunk.usage;
       if (chunk.id) requestId = chunk.id;
+      if (chunk.error) {
+        const errObj = typeof chunk.error === 'object' && chunk.error !== null ? chunk.error as Record<string, unknown> : null;
+        const errCode = errObj?.code ? String(errObj.code) : errObj?.type ? String(errObj.type) : 'stream_error';
+        const err = new Error(`Provider stream error: ${errCode}`);
+        (err as unknown as Record<string, unknown>).code = errCode;
+        if (requestId) (err as unknown as Record<string, unknown>).requestId = requestId;
+        throw err;
+      }
       if (Array.isArray(chunk.choices)) for (const raw of chunk.choices) {
         const choice = object(raw), delta = object(choice.delta ?? {});
         if (typeof delta.content === 'string') content += delta.content;
