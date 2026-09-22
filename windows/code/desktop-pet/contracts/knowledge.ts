@@ -23,6 +23,10 @@ export interface KnowledgeDocument {
   readonly revision: number;
   readonly createdAt: string;
 }
+
+export interface KnowledgeDocumentContent extends KnowledgeDocument {
+  readonly text: string;
+}
 /**
  * One bounded, stable knowledge block. `ordinal` is its position in the library's stable document
  * order; `locator` is a Unicode code point range inside the source document, so every delivered
@@ -63,6 +67,7 @@ export interface KnowledgeManagement {
   rename(libraryId: string, name: string, expectedRevision: number): Promise<KnowledgeSnapshot>;
   importDocuments(libraryId: string, files: readonly { sourceName: string; text: string }[]): Promise<KnowledgeSnapshot>;
   documents(libraryId: string): Promise<readonly KnowledgeDocument[]>;
+  documentContent?(libraryId: string, documentId: string): Promise<KnowledgeDocumentContent | null>;
   removeDocument(libraryId: string, documentId: string, expectedRevision: number): Promise<KnowledgeSnapshot>;
   deleteLibrary(libraryId: string, expectedRevision: number): Promise<KnowledgeSnapshot>;
   activate(expectedRevision: number, libraryId: string | null): Promise<KnowledgeSnapshot>;

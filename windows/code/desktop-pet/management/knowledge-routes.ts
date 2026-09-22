@@ -33,6 +33,7 @@ export function knowledgeManagement(store: KnowledgeLibraryStore): KnowledgeMana
     rename: (libraryId, name, expectedRevision) => safe(async () => { await store.rename(libraryId, name, expectedRevision); return snapshot(store); }),
     importDocuments: (libraryId, files) => safe(async () => { await store.importDocuments(libraryId, files); return snapshot(store); }),
     documents: libraryId => safe(() => store.documents(libraryId)),
+    documentContent: (libraryId, documentId) => safe(() => store.getDocumentContent(libraryId, documentId)),
     removeDocument: (libraryId, documentId, expectedRevision) => safe(async () => { await store.removeDocument(libraryId, documentId, expectedRevision); return snapshot(store); }),
     deleteLibrary: (libraryId, expectedRevision) => safe(async () => { await store.deleteLibrary(libraryId, expectedRevision); return snapshot(store); }),
     activate: (expectedRevision, libraryId) => safe(async () => { await store.activate(expectedRevision, libraryId); return snapshot(store); })
@@ -91,6 +92,14 @@ export async function knowledgeRoute(method: string | undefined, port: Knowledge
     if (method !== 'POST') throw new ManagementError('not_found', '没有这个知识库操作。');
     const payload = await body();
     return port.documents(text(payload.libraryId, 80));
+  }
+  if (pathname === '/api/knowledge/documents/content') {
+    if (method !== 'POST') throw new ManagementError('not_found', '没有这个知识库操作。');
+    const payload = await body();
+    if (!port.documentContent) throw new ManagementError('unavailable', '正文查看未接入。');
+    const content = await port.documentContent(text(payload.libraryId, 80), text(payload.documentId, 80));
+    if (!content) throw new ManagementError('not_found', '文档不存在或已被删除。');
+    return content;
   }
   if (pathname === '/api/knowledge/documents/remove') {
     if (method !== 'POST') throw new ManagementError('not_found', '没有这个知识库操作。');

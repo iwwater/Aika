@@ -56,6 +56,7 @@ test('N075-02 Shell Assets: required console assets exist and are non-empty', as
     'routes.mjs',
     'icons.mjs',
     'modern-overview.mjs',
+    'modern-knowledge-view.mjs',
   ];
 
   for (const file of files) {

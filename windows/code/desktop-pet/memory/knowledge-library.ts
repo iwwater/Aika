@@ -132,6 +132,21 @@ export class KnowledgeLibraryStore {
     return row ? Object.freeze({ id: row.id, libraryId: row.library_id, sourceName: row.source_name, contentHash: row.content_hash, bytes: row.bytes, revision: row.revision, createdAt: row.created_at }) : null;
   }
 
+  getDocumentContent(libraryId: string, documentId: string): (KnowledgeDocument & { text: string }) | null {
+    this.row(libraryId);
+    const row = this.db.prepare('SELECT id, library_id, source_name, content_hash, bytes, revision, created_at, body FROM knowledge_documents WHERE id=? AND library_id=?').get(documentId, libraryId) as (DocumentRow & { body: string }) | undefined;
+    return row ? Object.freeze({
+      id: row.id,
+      libraryId: row.library_id,
+      sourceName: row.source_name,
+      contentHash: row.content_hash,
+      bytes: row.bytes,
+      revision: row.revision,
+      createdAt: row.created_at,
+      text: row.body,
+    }) : null;
+  }
+
   async create(name: string): Promise<KnowledgeLibrary> {
     const trimmed = typeof name === 'string' ? name.trim() : '';
     if (!trimmed || trimmed.length > 80) throw new KnowledgeError('invalid_request', '知识库名称必须是 1～80 个字符。');

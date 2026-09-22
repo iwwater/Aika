@@ -16,6 +16,7 @@ import {createSkinView} from './skin-view.mjs';
 import {createHealthView} from './health-view.mjs';
 import {ICONS, svgIcon} from './icons.mjs';
 import {createModernOverview} from './modern-overview.mjs';
+import {createModernKnowledgeView} from './modern-knowledge-view.mjs';
 import {parseConsoleRoute} from './routes.mjs';
 
 const sessionKey='pet-management-session-v1';
@@ -805,6 +806,8 @@ function render() {
       main.append(el('div', { class: 'page-content' }, pendingMemory.view()));
     } else if (s.page === 'timeline') {
       main.append(el('div', { class: 'page-content' }, memoryDynamics.view()));
+    } else if (s.page === 'knowledge') {
+      main.append(createModernKnowledgeView(actions));
     } else {
       main.append(el('div', { class: 'card empty' }, `页面 "${s.page}" 正在准备中...`));
     }

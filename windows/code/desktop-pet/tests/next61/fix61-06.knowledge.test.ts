@@ -10,6 +10,7 @@ import { SqliteMemoryStore, CONFIRMED_RETENTION } from '../../memory/sqlite-stor
 import { confirmedInvitationPolicy } from '../../companion/invitations.js';
 import { KnowledgeLibraryStore, splitKnowledgeBlocks, KNOWLEDGE_LIMITS } from '../../memory/knowledge-library.js';
 import { COMPANION_ID } from '../../contracts/character.js';
+import { knowledgeManagement, knowledgeRoute } from '../../management/knowledge-routes.js';
 
 /** One cleanup hook, so the database handle is always closed before the temp directory is removed. */
 async function tempStore(t: { after(fn: () => Promise<void> | void): void }, prefix = 'fix61-kb-') {
@@ -241,4 +242,44 @@ test('06-E panel import -> switch -> the real production dialogue port receives 
   assert.ok(bodies[0]!.includes('乌龙茶'), 'the selected knowledge actually reaches the provider request');
   assert.ok(!bodies[0]!.includes('黑咖啡'), 'the unselected library never reaches the provider request');
   assert.ok(bodies[0]!.includes('参考资料'), 'knowledge is labelled as reference data, not as an instruction');
+});
+
+test('06-F documentContent: secure text inspection and post-deletion 404 (RP75-06)', async t => {
+  const f = await tempStore(t);
+  const knowledgeDir = join(f.dir, 'knowledge');
+  const store = await KnowledgeLibraryStore.open(f.store, knowledgeDir);
+  const port = knowledgeManagement(store);
+
+  const lib = await store.create('文档检视测试库');
+  const imported = await store.importDocuments(lib.id, [{ sourceName: 'test-doc.md', text: '# 知识库正文\n\n这是可看可删的测试文本。' }]);
+  const doc = imported.imported[0]!;
+
+  // 1. Direct store retrieval of document content
+  const content = store.getDocumentContent(lib.id, doc.id);
+  assert.ok(content, 'Document content must be found');
+  assert.equal(content.sourceName, 'test-doc.md');
+  assert.equal(content.text, '# 知识库正文\n\n这是可看可删的测试文本。');
+
+  // 2. HTTP route invocation
+  const routeContent = await knowledgeRoute('POST', port, '/api/knowledge/documents/content', async () => ({
+    libraryId: lib.id,
+    documentId: doc.id,
+  })) as any;
+  assert.equal(routeContent.id, doc.id);
+  assert.equal(routeContent.text, '# 知识库正文\n\n这是可看可删的测试文本。');
+
+  // 3. Remove document
+  const snap = await port.snapshot();
+  await port.removeDocument(lib.id, doc.id, snap.revision);
+
+  // 4. Assert content is now 404 / null
+  assert.equal(store.getDocumentContent(lib.id, doc.id), null, 'Deleted document must return null');
+  await assert.rejects(
+    knowledgeRoute('POST', port, '/api/knowledge/documents/content', async () => ({
+      libraryId: lib.id,
+      documentId: doc.id,
+    })),
+    /not_found|文档不存在/i,
+    'Deleted document route must return not_found',
+  );
 });
