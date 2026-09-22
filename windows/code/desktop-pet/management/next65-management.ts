@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { FlowProfile } from '../contracts/flow-profile.js';
+import { validateFlowProfile, type FlowProfile } from '../contracts/flow-profile.js';
 import { FlowRuntime } from '../kernel/flow-runtime.js';
 import { discoverInstalledPackages } from '../plugins/host-runtime.js';
 import { PackageLifecycleManager, type LifecycleImpact, type LifecycleUpdate } from '../plugins/package-lifecycle.js';
@@ -17,16 +17,16 @@ export interface Next65ProfileRecord { readonly profile: FlowProfile; readonly u
 
 export interface Next65ManagementOptions {
   readonly hostRoot: string;
-  readonly host?: import('../plugins/host-runtime.js').PackageHost;
-  readonly flow?: FlowRuntime;
-  readonly providerRuntime?: import('../plugins/provider-runtime.js').ProviderRuntime;
+  readonly host?: import('../plugins/host-runtime.js').PackageHost | undefined;
+  readonly flow?: FlowRuntime | undefined;
+  readonly providerRuntime?: import('../plugins/provider-runtime.js').ProviderRuntime | undefined;
 }
 
 /** Read-only management projection plus guarded mutations for the 0.65 host. */
 export class Next65Management {
   readonly #hostRoot: string;
   readonly #lifecycle: PackageLifecycleManager;
-  readonly #flow: FlowRuntime;
+  readonly #flow?: FlowRuntime | undefined;
   readonly #host?: import('../plugins/host-runtime.js').PackageHost | undefined;
   readonly #providerRuntime?: import('../plugins/provider-runtime.js').ProviderRuntime | undefined;
   readonly #profilesPath: string;
@@ -34,7 +34,7 @@ export class Next65Management {
 
   constructor(
     hostRootOrOptions: string | Next65ManagementOptions,
-    flow: FlowRuntime = new FlowRuntime([]),
+    flow?: FlowRuntime,
     host?: import('../plugins/host-runtime.js').PackageHost,
     providerRuntime?: import('../plugins/provider-runtime.js').ProviderRuntime,
   ) {
@@ -74,6 +74,8 @@ export class Next65Management {
   }
 
   runtimeTruth(): {
+    readonly hostAvailable: boolean;
+    readonly flowAvailable: boolean;
     readonly installedCount: number;
     readonly loadedPackages: readonly string[];
     readonly activePackages: readonly string[];
@@ -86,6 +88,8 @@ export class Next65Management {
       ? ['llm.chat', 'context.source', 'background.lifecycle', 'tts.synthesize', 'stt.transcribe']
       : [];
     return Object.freeze({
+      hostAvailable: !!this.#host,
+      flowAvailable: !!this.#flow,
       installedCount: pkgs.length,
       loadedPackages: Object.freeze(loadedPackages),
       activePackages: Object.freeze(activePackages),
@@ -94,15 +98,20 @@ export class Next65Management {
   }
 
   liveHost(): import('../plugins/host-runtime.js').PackageHost | null { return this.#host ?? null; }
-  liveFlow(): FlowRuntime { return this.#flow; }
+  liveFlow(): FlowRuntime | null { return this.#flow ?? null; }
   liveProviderRuntime(): import('../plugins/provider-runtime.js').ProviderRuntime | null { return this.#providerRuntime ?? null; }
   importPackage(sourceRoot: string): Next65PackageView { const update = this.#lifecycle.stageUpdate(sourceRoot); return this.packages().find(item => item.packageId === update.packageId)!; }
   disable(packageId: string): LifecycleImpact { return this.#lifecycle.disable(packageId); }
   stageUpdate(sourceRoot: string): LifecycleUpdate { return this.#lifecycle.stageUpdate(sourceRoot); }
   applyRestart(packageId: string): LifecycleImpact { return this.#lifecycle.applyPendingOnRestart(packageId); }
   uninstall(packageId: string): void { this.#lifecycle.uninstall(packageId); }
-  validateProfile(profile: FlowProfile): readonly { readonly path: string; readonly detail: string }[] { return this.#flow.validate(profile); }
-  previewProfile(profile: FlowProfile): readonly { readonly nodeId: string; readonly capabilityId: string | null; readonly dependsOn: readonly string[] }[] { return this.#flow.preview(profile); }
+  validateProfile(profile: FlowProfile): readonly { readonly path: string; readonly detail: string }[] {
+    return this.#flow ? this.#flow.validate(profile) : validateFlowProfile(profile);
+  }
+  previewProfile(profile: FlowProfile): readonly { readonly nodeId: string; readonly capabilityId: string | null; readonly dependsOn: readonly string[] }[] {
+    if (!this.#flow) throw new Error('Flow runtime is not available in this backend session');
+    return this.#flow.preview(profile);
+  }
   saveProfile(profile: FlowProfile, expectedRevision: number): Next65ProfileRecord {
     const profiles = this.#readProfiles(); const prior = profiles[profile.profileId]; if (prior && prior.profile.revision !== expectedRevision) throw new Error(`profile revision conflict: expected ${expectedRevision}, current ${prior.profile.revision}`);
     const issues = this.validateProfile(profile); if (issues.length) throw new Error(`profile refused: ${issues[0]!.detail}`);

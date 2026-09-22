@@ -256,6 +256,7 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
   let memoryImport: SqliteMemoryImportManagement | undefined;
   let desktopWork: import('../contracts/desktop-work.js').DesktopWorkPort | undefined;
   let management: Awaited<ReturnType<typeof startRuntimeManagement>> | undefined;
+  let liveHost: import('../plugins/host-runtime.js').PackageHost | undefined;
   const release = async () => { await lock.close(); await unlink(lockPath); };
   try {
     const authorizer = new TrialAuthorizer(configuration, configFile, activationFile, registeredConfiguration);
@@ -443,6 +444,17 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
       try { skins = await SkinStore.open(resolve(configuration.projectRoot, '.local/data/skins.json'),
         resolve(configuration.projectRoot, '.local/data/skin-packs'), resolve(configuration.projectRoot, 'code/desktop-pet/desktop')); }
       catch { process.stderr.write('Skin registry unavailable; appearance stays on the built-in model.\n'); }
+      const next65HostRoot = resolve(configuration.projectRoot, '.local/next65-host');
+      await mkdir(next65HostRoot, { recursive: true });
+      try {
+        const { createPackageHost } = await import('../plugins/host-runtime.js');
+        const { secretStore } = await import('../plugins/secret-store.js');
+        liveHost = createPackageHost({
+          hostRoot: next65HostRoot,
+          secrets: secretStore(configuration),
+        });
+      } catch { /* Host stays unavailable if creation fails */ }
+
       // The console reads and writes the same profile the composition root applies; nothing is duplicated.
       management = await startRuntimeManagement(registeredConfiguration, configFile, settings, runtime,
         withStrictManagementForget(new SqliteManagementMemoryPort(store,memory),managementForget),presentation,
@@ -455,7 +467,8 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
         skins,
         traceStore,
         new Next65Management({
-          hostRoot: resolve(configuration.projectRoot, '.local/next65-host'),
+          hostRoot: next65HostRoot,
+          host: liveHost,
           providerRuntime: legacyProviderAdapter.runtime,
         }));
     }
@@ -488,7 +501,7 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
     const close = async () => {
       if (stopping) return; stopping = true; clearInterval(cleanupTimer); lines.close(); process.stdin.pause();
       managementForget?.close();
-      try { await wake?.close(); await wechat?.close(); await desktopWork?.close(); await management?.close(); await managementForget?.drain(); await settings.drain(); await presentation.drain(); }
+      try { await wake?.close(); await wechat?.close(); await desktopWork?.close(); await liveHost?.close(); await management?.close(); await managementForget?.drain(); await settings.drain(); await presentation.drain(); }
       finally { try { await session!.close(); } finally { await release(); } }
     };
     let submitted = false;
@@ -509,7 +522,7 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
     process.once('SIGTERM', () => { void close(); }); process.once('SIGINT', () => { void close(); });
   } catch (error) {
     managementForget?.close();
-    await wake?.close(); await wechat?.close(); await management?.close(); await managementForget?.drain();
+    await wake?.close(); await wechat?.close(); await liveHost?.close(); await management?.close(); await managementForget?.drain();
     await memoryImport?.close();
     if (session) await session.close(); else store?.close();
     await release(); throw error;
