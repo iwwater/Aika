@@ -1,4 +1,7 @@
-// Real LLM backend for Aika Desktop Pet
+// DEV / SMOKE / EFFECT VALIDATION ONLY — NOT PRODUCTION TRUTH.
+// This script is an experimental standalone smoke harness for live LLM / UI testing.
+// Production runtime authority is app/trial-backend.ts -> BackendSession -> DialoguePipeline.
+// All production memory mutations run strictly through RoleMemoryLifecycleQueue -> MemoryTurnPlan -> commitTurn().
 import { createInterface } from 'node:readline';
 import { randomUUID } from 'node:crypto';
 import { COMPANION_ID } from '../dist/contracts/character.js';
@@ -256,25 +259,33 @@ Aika：${replyText}
             if (memoryStore) {
               const memId = `mem-auto-${randomUUID().slice(0, 8)}`;
               const nowIso = new Date().toISOString();
-              const nowMs = Date.now();
-              const db = memoryStore.rawDatabaseForKnowledge();
-              db.prepare(`
-                INSERT OR REPLACE INTO memory_records (
-                  character_id, id, kind, state, version, text,
-                  sources_json, created_at, created_ms, transcript_bytes,
-                  logical_order, evidence_eligible, origin
-                ) VALUES (?, ?, 'memory', 'active', 1, ?, ?, ?, ?, 0, 0, 1, 'automatic')
-              `).run(
-                COMPANION_ID,
-                memId,
-                distilledFact,
-                JSON.stringify([{ id: userMsgId, version: 1 }, { id: asstMsgId, version: 1 }]),
-                nowIso,
-                nowMs
-              );
-              try {
-                db.prepare(`INSERT INTO memory_search (rowid, text) VALUES ((SELECT rowid FROM memory_records WHERE id = ?), ?)`).run(memId, distilledFact);
-              } catch {}
+              // N075-01/R3: formal background lifecycle commit — NO direct SQL to memory_records or memory_search.
+              // All memory additions MUST go through MemoryTurnPlan -> validation -> SqliteLifecycleState.commitTurn().
+              const turnScope = { characterId: COMPANION_ID, sessionId, turnId: scope.turnId, generation: scope.generation };
+              const ticket = memoryStore.lifecycle.readTurn(turnScope, userMsgId, c.text, {
+                maxRecentMessages: 12, maxMemories: 8, summaryLimit: 4, inputTokenBudget: 20000,
+                countTokens: () => 100,
+              });
+              const plan = {
+                scope: turnScope,
+                request: 'none',
+                changes: [{
+                  scope: turnScope,
+                  operation: {
+                    type: 'add',
+                    id: memId,
+                    text: distilledFact,
+                    sourceIds: [userMsgId],
+                  },
+                  operationId: `distill-op-${randomUUID().slice(0, 8)}`,
+                  reason: 'automatic_distillation',
+                  createdAt: nowIso,
+                }],
+                suppressSources: [],
+                clarification: null,
+                reason: 'distilled_fact',
+              };
+              memoryStore.lifecycle.commitTurn(ticket, plan);
             }
           }
 
