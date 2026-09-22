@@ -13,6 +13,7 @@ import { wechatRoute } from './wechat-routes.js';
 import { isProductCharacter } from '../contracts/character.js';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { CharacterId } from '../contracts/index.js';
@@ -67,8 +68,13 @@ export async function startManagementServer(options: ServerOptions) {
           const type = asset.endsWith('.png') ? 'image/png' : asset.endsWith('.json') ? 'application/json' : asset.endsWith('.js') ? 'text/javascript' : 'application/octet-stream';
           res.setHeader('Content-Type', type); res.end(req.method === 'HEAD' ? undefined : data); return;
         }
-        const names = new Map([['/emotion-view.mjs','emotion-view.mjs'],['/self-setup-view.mjs','self-setup-view.mjs'],['/memory-import-view.mjs','memory-import-view.mjs'],['/balances-view.mjs','balances-view.mjs'],['/wake-view.mjs','wake-view.mjs'],['/wechat-view.mjs','wechat-view.mjs'],['/skin-view.mjs','skin-view.mjs'],['/health-view.mjs','health-view.mjs'],['/', 'index.html'], ['/index.html', 'index.html'], ['/app.mjs', 'app.mjs'], ['/routes.mjs', 'routes.mjs'], ['/icons.mjs', 'icons.mjs'], ['/modern-overview.mjs', 'modern-overview.mjs'], ['/pending-memory-view.mjs','pending-memory-view.mjs'], ['/api.mjs', 'api.mjs'], ['/projects-view.mjs', 'projects-view.mjs'], ['/tasks-view.mjs', 'tasks-view.mjs'], ['/dom.mjs', 'dom.mjs'], ['/views.mjs', 'views.mjs'], ['/style.css', 'style.css'], ['/presentation-view.mjs', 'presentation-view.mjs'], ['/memory-dynamics-view.mjs','memory-dynamics-view.mjs'], ['/presentation-preview.js', 'presentation-preview.js'], ['/aika-view.mjs', 'aika-view.mjs'], ['/aika.html', 'aika.html'], ['/knowledge-view.mjs', 'knowledge-view.mjs']]);
-        const name = names.get(url.pathname); if (!name) throw new ManagementError('not_found', '没有这个页面。');
+        const names = new Map([['/emotion-view.mjs','emotion-view.mjs'],['/self-setup-view.mjs','self-setup-view.mjs'],['/memory-import-view.mjs','memory-import-view.mjs'],['/balances-view.mjs','balances-view.mjs'],['/wake-view.mjs','wake-view.mjs'],['/wechat-view.mjs','wechat-view.mjs'],['/skin-view.mjs','skin-view.mjs'],['/health-view.mjs','health-view.mjs'],['/', 'index.html'], ['/index.html', 'index.html'], ['/app.mjs', 'app.mjs'], ['/routes.mjs', 'routes.mjs'], ['/icons.mjs', 'icons.mjs'], ['/modern-overview.mjs', 'modern-overview.mjs'], ['/modern-knowledge-view.mjs', 'modern-knowledge-view.mjs'], ['/pending-memory-view.mjs','pending-memory-view.mjs'], ['/api.mjs', 'api.mjs'], ['/projects-view.mjs', 'projects-view.mjs'], ['/tasks-view.mjs', 'tasks-view.mjs'], ['/dom.mjs', 'dom.mjs'], ['/views.mjs', 'views.mjs'], ['/style.css', 'style.css'], ['/presentation-view.mjs', 'presentation-view.mjs'], ['/memory-dynamics-view.mjs','memory-dynamics-view.mjs'], ['/presentation-preview.js', 'presentation-preview.js'], ['/aika-view.mjs', 'aika-view.mjs'], ['/aika.html', 'aika.html'], ['/knowledge-view.mjs', 'knowledge-view.mjs']]);
+        let name = names.get(url.pathname);
+        if (!name && /^\/[a-zA-Z0-9_\-]+\.(mjs|js|css|html)$/.test(url.pathname)) {
+          const candidate = url.pathname.slice(1);
+          if (existsSync(resolve(options.uiRoot, candidate))) name = candidate;
+        }
+        if (!name) throw new ManagementError('not_found', '没有这个页面。');
         let data: Buffer; try { data = await readFile(resolve(options.uiRoot, name)); } catch { throw new ManagementError('unavailable', '管理页面文件尚未就绪。'); }
         res.setHeader('Content-Type', name.endsWith('.html') ? 'text/html; charset=utf-8' : name.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8'); res.end(req.method === 'HEAD' ? undefined : data); return;
       }
