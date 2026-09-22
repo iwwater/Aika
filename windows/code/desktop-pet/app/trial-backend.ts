@@ -66,6 +66,9 @@ import { KnowledgeLibraryStore } from '../memory/knowledge-library.js';
 import { knowledgeManagement } from '../management/knowledge-routes.js';
 import { MicrophonePreferenceStore } from '../media/microphone-preference.js';
 import { SkinStore } from '../management/skin-store.js';
+import { CharacterPackStore } from '../memory/character-pack-store.js';
+import { ContinuityMemoryStore } from '../memory/continuity-memory-store.js';
+import { continuityManagement } from '../management/continuity-routes.js';
 // Health is derived from the runtime's own observations, so no extra probe is started here.
 
 /** Keep production trial calls within the reviewed text bounds without truncating user content or replies. */
@@ -300,6 +303,10 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
     // through the context assembly, so switching a library is visible to the next turn immediately.
     const knowledgeStore = await KnowledgeLibraryStore.open(store, resolve(configuration.projectRoot, '.local/data/knowledge'));
     const knowledge = knowledgeManagement(knowledgeStore);
+    // N07: continuity tables live beside History/Knowledge in the same companion database. The optional
+    // package is opened here but does not alter the ordinary text path until a caller supplies its context.
+    await CharacterPackStore.open(store);
+    const continuity = continuityManagement(await ContinuityMemoryStore.open(store));
     // The active library is read fresh per turn; the port never caches a selection across a switch.
     // A library read failure must never take the whole conversation store down with it.
     const knowledgeSelection = async () => {
@@ -412,6 +419,7 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
           (scope,id,text)=>session!.retryPendingMemory(scope,id,text),()=>session!.pendingMemoryJobs().some(x=>x.queued+x.running>0)),wechat,wake,memoryImport,store.emotion,
         { store: aikaProfile, timeline: aikaTimeline }, knowledge,
         // The preference is per-machine app data; the console only reads and writes it.
+        continuity,
         await MicrophonePreferenceStore.open(resolve(configuration.projectRoot, '.local/data/microphone.json')),
         skins);
     }

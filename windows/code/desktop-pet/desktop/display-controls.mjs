@@ -1,9 +1,12 @@
-// The native shell owns saved preferences and screen constraints. These controls
+﻿// The native shell owns saved preferences and screen constraints. These controls
 // only express user intent and apply its acknowledgement in logical CSS pixels.
 export function installDisplayControls({ get, shell, setFraming }) {
   let config = { mode: 'full', preferredWidth: 360, modelWidth: 360, modelHeight: 340, drawerHeight: 540 };
   let drag = null;
+  let sliderResize = false;
   const handle = get('model-resize');
+  const sizeSlider = get('model-size');
+  const sizeValue = get('model-size-value');
   const stop = event => { event?.preventDefault?.(); event?.stopPropagation?.(); };
   const release = () => {
     const active = drag; drag = null;
@@ -11,8 +14,9 @@ export function installDisplayControls({ get, shell, setFraming }) {
     handle.dataset.resizing = 'false';
   };
   function cancel(event) {
-    if (!drag) return false;
-    stop(event); release(); shell({ type: 'resize_model', phase: 'cancel' }); return true;
+    if (drag) { stop(event); release(); shell({ type: 'resize_model', phase: 'cancel' }); return true; }
+    if (sliderResize) { stop(event); sliderResize = false; shell({ type: 'resize_model', phase: 'cancel' }); return true; }
+    return false;
   }
   function receive(value) {
     if (!value || !['full', 'half'].includes(value.mode) || !['preferredWidth', 'modelWidth', 'modelHeight', 'drawerHeight'].every(k => Number.isFinite(value[k])) || value.modelWidth <= 0 || value.modelHeight <= 0 || value.drawerHeight < 0) return;
@@ -29,12 +33,15 @@ export function installDisplayControls({ get, shell, setFraming }) {
     }
     get('character').style.width = `${value.modelWidth}px`;
     get('character').style.height = `${value.modelHeight}px`;
+    if (sizeSlider) sizeSlider.value = String(Math.round(value.modelWidth));
+    if (sizeValue) sizeValue.value = `${Math.round(value.modelWidth)}px`;
     handle.style.right = `calc(50% - ${value.modelWidth / 2}px)`;
     get('drawer').style.maxHeight = `${value.drawerHeight}px`;
     get('drawer').style.height = `${value.drawerHeight}px`;
     for (const mode of ['full', 'half']) get(`view-${mode}`).setAttribute('aria-pressed', String(mode === value.mode));
     setFraming(value.mode);
   }
+
   for (const mode of ['full', 'half']) {
     const button = get(`view-${mode}`);
     button.onpointerdown = event => event.stopPropagation?.();
@@ -70,6 +77,25 @@ export function installDisplayControls({ get, shell, setFraming }) {
     stop(event); cancel(); shell({ type: 'resize_model', phase: 'begin' });
     shell({ type: 'resize_model', phase: 'commit', width: config.preferredWidth + step });
   };
+  if (sizeSlider) {
+    const sliderWidth = () => Math.min(720, Math.max(220, Number(sizeSlider.value) || config.modelWidth));
+    sizeSlider.onpointerdown = event => { event.stopPropagation?.(); if (!sliderResize) { cancel(); sliderResize = true; shell({ type: 'resize_model', phase: 'begin' }); } };
+    sizeSlider.oninput = event => {
+      stop(event);
+      if (!sliderResize) { sliderResize = true; shell({ type: 'resize_model', phase: 'begin' }); }
+      const width = sliderWidth();
+      if (sizeValue) sizeValue.value = `${Math.round(width)}px`;
+      shell({ type: 'resize_model', phase: 'update', width });
+    };
+    const commitSlider = event => {
+      if (!sliderResize) return;
+      stop(event); const width = sliderWidth(); sliderResize = false;
+      shell({ type: 'resize_model', phase: 'commit', width });
+    };
+    sizeSlider.onchange = commitSlider;
+    sizeSlider.onblur = commitSlider;
+    sizeSlider.onkeydown = event => { if (event.key === 'Escape') cancel(event); };
+  }
   receive(config);
   return { receive, cancel, get mode() { return config.mode } };
 }

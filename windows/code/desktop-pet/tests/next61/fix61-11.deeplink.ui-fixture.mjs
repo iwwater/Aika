@@ -17,7 +17,7 @@ const STATIC = {
   '/wake-view.mjs': 'wake-view.mjs', '/wechat-view.mjs': 'wechat-view.mjs',
   '/pending-memory-view.mjs': 'pending-memory-view.mjs', '/projects-view.mjs': 'projects-view.mjs',
   '/tasks-view.mjs': 'tasks-view.mjs', '/memory-dynamics-view.mjs': 'memory-dynamics-view.mjs',
-  '/aika-view.mjs': 'aika-view.mjs', '/knowledge-view.mjs': 'knowledge-view.mjs'
+  '/aika-view.mjs': 'aika-view.mjs', '/knowledge-view.mjs': 'knowledge-view.mjs', '/icons.mjs': 'icons.mjs', '/routes.mjs': 'routes.mjs', '/modern-overview.mjs': 'modern-overview.mjs'
 };
 
 /**

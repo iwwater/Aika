@@ -28,8 +28,10 @@ import { aikaRoute } from './aika-routes.js';
 import { knowledgeRoute } from './knowledge-routes.js';
 import { healthRoute, microphoneRoute } from './health-routes.js';
 import { skinRoute } from './skin-routes.js';
+import { continuityRoute, type ContinuityManagement } from './continuity-routes.js';
 
-interface RuntimeServerOptions { emotion?: EmotionManagement; aika?: import('./aika-routes.js').AikaManagement; knowledge?: import('../contracts/knowledge.js').KnowledgeManagement; health?: import('./health-routes.js').HealthManagement; microphone?: import('./health-routes.js').MicrophoneManagement; mode?: 'runtime'; selfSetup?:SelfSetupManagement; memoryImport?: MemoryImportManagement; balances?: BalanceManagement; wake?: WakeManagement; wechat?: WeChatManagement; uiRoot: string; memory: ManagementMemoryPort; settings: ManagementSettingsStore; snapshot(): ManagementSnapshot | Promise<ManagementSnapshot>; token?: string; presentation?: PresentationControls; presentationAssets?: ReadonlyMap<string, string>; pendingMemory?:PendingMemoryManagement; projects?: ProjectIndexPort; tasks?: TaskManagement;
+interface RuntimeServerOptions { emotion?: EmotionManagement; aika?: import('./aika-routes.js').AikaManagement; knowledge?: import('../contracts/knowledge.js').KnowledgeManagement; continuity?: ContinuityManagement; health?: import('./health-routes.js').HealthManagement; microphone?: import('./health-routes.js').MicrophoneManagement; mode?: 'runtime'; selfSetup?:SelfSetupManagement; memoryImport?: MemoryImportManagement; balances?: BalanceManagement; wake?: WakeManagement; wechat?: WeChatManagement; uiRoot: string; memory: ManagementMemoryPort; settings: ManagementSettingsStore; snapshot(): ManagementSnapshot | Promise<ManagementSnapshot>; token?: string; port?: number; presentation?: PresentationControls; presentationAssets?: ReadonlyMap<string, string>; pendingMemory?:PendingMemoryManagement; projects?: ProjectIndexPort; tasks?: TaskManagement;
+  traces?: import('../core/trace-store.js').RuntimeTraceStore;
   /** FIX61-11: the FIX61-05 model-pack registry. Appearance only; absent leaves the skin section unavailable. */
   skins?: import('../contracts/skin.js').SkinManagement }
 type ServerOptions = RuntimeServerOptions | { mode:'setup'; selfSetup:SelfSetupManagement; uiRoot:string; token?:string; presentationAssets?:undefined };
@@ -63,7 +65,7 @@ export async function startManagementServer(options: ServerOptions) {
           const type = asset.endsWith('.png') ? 'image/png' : asset.endsWith('.json') ? 'application/json' : asset.endsWith('.js') ? 'text/javascript' : 'application/octet-stream';
           res.setHeader('Content-Type', type); res.end(req.method === 'HEAD' ? undefined : data); return;
         }
-        const names = new Map([['/emotion-view.mjs','emotion-view.mjs'],['/self-setup-view.mjs','self-setup-view.mjs'],['/memory-import-view.mjs','memory-import-view.mjs'],['/balances-view.mjs','balances-view.mjs'],['/wake-view.mjs','wake-view.mjs'],['/wechat-view.mjs','wechat-view.mjs'],['/skin-view.mjs','skin-view.mjs'],['/health-view.mjs','health-view.mjs'],['/', 'index.html'], ['/index.html', 'index.html'], ['/app.mjs', 'app.mjs'], ['/pending-memory-view.mjs','pending-memory-view.mjs'], ['/api.mjs', 'api.mjs'], ['/projects-view.mjs', 'projects-view.mjs'], ['/tasks-view.mjs', 'tasks-view.mjs'], ['/dom.mjs', 'dom.mjs'], ['/views.mjs', 'views.mjs'], ['/style.css', 'style.css'], ['/presentation-view.mjs', 'presentation-view.mjs'], ['/memory-dynamics-view.mjs','memory-dynamics-view.mjs'], ['/presentation-preview.js', 'presentation-preview.js'], ['/aika-view.mjs', 'aika-view.mjs'], ['/aika.html', 'aika.html'], ['/knowledge-view.mjs', 'knowledge-view.mjs']]);
+        const names = new Map([['/emotion-view.mjs','emotion-view.mjs'],['/self-setup-view.mjs','self-setup-view.mjs'],['/memory-import-view.mjs','memory-import-view.mjs'],['/balances-view.mjs','balances-view.mjs'],['/wake-view.mjs','wake-view.mjs'],['/wechat-view.mjs','wechat-view.mjs'],['/skin-view.mjs','skin-view.mjs'],['/health-view.mjs','health-view.mjs'],['/', 'index.html'], ['/index.html', 'index.html'], ['/app.mjs', 'app.mjs'], ['/routes.mjs', 'routes.mjs'], ['/icons.mjs', 'icons.mjs'], ['/modern-overview.mjs', 'modern-overview.mjs'], ['/pending-memory-view.mjs','pending-memory-view.mjs'], ['/api.mjs', 'api.mjs'], ['/projects-view.mjs', 'projects-view.mjs'], ['/tasks-view.mjs', 'tasks-view.mjs'], ['/dom.mjs', 'dom.mjs'], ['/views.mjs', 'views.mjs'], ['/style.css', 'style.css'], ['/presentation-view.mjs', 'presentation-view.mjs'], ['/memory-dynamics-view.mjs','memory-dynamics-view.mjs'], ['/presentation-preview.js', 'presentation-preview.js'], ['/aika-view.mjs', 'aika-view.mjs'], ['/aika.html', 'aika.html'], ['/knowledge-view.mjs', 'knowledge-view.mjs']]);
         const name = names.get(url.pathname); if (!name) throw new ManagementError('not_found', '没有这个页面。');
         let data: Buffer; try { data = await readFile(resolve(options.uiRoot, name)); } catch { throw new ManagementError('unavailable', '管理页面文件尚未就绪。'); }
         res.setHeader('Content-Type', name.endsWith('.html') ? 'text/html; charset=utf-8' : name.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8'); res.end(req.method === 'HEAD' ? undefined : data); return;
@@ -96,12 +98,24 @@ export async function startManagementServer(options: ServerOptions) {
         if (req.method === 'PUT') { const b = await body(req); json(res, 200, { catalog: options.presentation.catalog, policy: await options.presentation.save(str(b.modelId, 100), integer(b.expectedRevision, -1, 0, Number.MAX_SAFE_INTEGER), b.enabledIds) }); return; }
       }
       if (options.aika && url.pathname.startsWith('/api/aika/')) { json(res, 200, await aikaRoute(req.method, options.aika, url.pathname, url.searchParams, () => body(req))); return; }
+      if (url.pathname.startsWith('/api/continuity/')) { json(res, 200, await continuityRoute(req.method, options.continuity, url.pathname, () => body(req))); return; }
       if (url.pathname.startsWith('/api/knowledge')) { json(res, 200, await knowledgeRoute(req.method, options.knowledge, url.pathname, () => body(req))); return; }
       if (url.pathname.startsWith('/api/health')) { json(res, 200, await healthRoute(req.method, options.health, url.pathname)); return; }
       if (url.pathname.startsWith('/api/microphone')) { json(res, 200, await microphoneRoute(req.method, options.microphone, url.pathname, () => body(req))); return; }
       if (url.pathname === '/api/wake' && options.wake) { json(res, 200, await wakeRoute(req.method, options.wake, () => body(req))); return; }
       if (url.pathname === '/api/wechat' && options.wechat) { json(res, 200, await wechatRoute(req.method, options.wechat, () => body(req))); return; }
       if (req.method === 'GET' && url.pathname === '/api/snapshot') { json(res, 200, await options.snapshot()); return; }
+      if (req.method === 'GET' && url.pathname === '/api/traces') {
+        const limit = integer(q.get('limit'), 20, 1, 100);
+        const offset = integer(q.get('offset'), 0, 0, 1000000);
+        const charId = q.get('characterId') ? character(q.get('characterId')) : undefined;
+        if (options.traces) {
+          json(res, 200, options.traces.list({ characterId: charId, limit, offset }));
+        } else {
+          json(res, 200, { total: 0, offset, limit, traces: [], summary: { totalCount: 0, avgElapsedMs: 0, successRate: 100, totalTokens: 0 } });
+        }
+        return;
+      }
       if (req.method === 'GET' && url.pathname === '/api/records') {
         const kind = q.get('kind'); if (!['memory', 'transcript', 'summary', 'keyword_index', 'vector_index', 'context_cache'].includes(kind ?? '')) throw new ManagementError('invalid_request', '记录类型无效。');
         const state = q.get('state') ?? 'active'; if (state !== 'all' && state !== 'active') throw new ManagementError('invalid_request', '记录状态无效。');
@@ -130,7 +144,27 @@ export async function startManagementServer(options: ServerOptions) {
       json(res, status, { error: { code: safe.code, message: safe.message } });
     });
   });
-  await new Promise<void>((done, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', () => { const address = server.address(); if (!address || typeof address === 'string') { reject(new Error('No local address')); return; } origin = 'http://127.0.0.1:' + address.port; done(); }); });
+  const desiredPort = ('port' in options && typeof options.port === 'number') ? options.port : 0;
+  await new Promise<void>((done, reject) => {
+    server.once('error', (err: NodeJS.ErrnoException) => {
+      if (desiredPort !== 0 && err.code === 'EADDRINUSE') {
+        server.listen(0, '127.0.0.1', () => {
+          const address = server.address();
+          if (!address || typeof address === 'string') { reject(new Error('No local address')); return; }
+          origin = 'http://127.0.0.1:' + address.port;
+          done();
+        });
+      } else {
+        reject(err);
+      }
+    });
+    server.listen(desiredPort, '127.0.0.1', () => {
+      const address = server.address();
+      if (!address || typeof address === 'string') { reject(new Error('No local address')); return; }
+      origin = 'http://127.0.0.1:' + address.port;
+      done();
+    });
+  });
   return { origin, token, url: origin + '/#token=' + token,
     async close() {
       // FIX61-10: a keep-alive socket left open would make close() wait for its idle timeout, so any

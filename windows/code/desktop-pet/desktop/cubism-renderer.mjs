@@ -1,5 +1,5 @@
-import { InteractionMotion } from './interaction-motion.mjs';
-import { strokePlan } from './pointer-router.ts';
+﻿import { InteractionMotion } from './interaction-motion.mjs';
+import { directStrokePlan } from './pointer-router.ts';
 import { normalizePresentationIntent } from '../contracts/presentation.ts';
 import { ModelFeather } from './model-feather.mjs';
 // Application adapter over the official SDK; SDK owns deformation, physics, blending and WebGL rendering.
@@ -54,6 +54,7 @@ export class SkinBinding {
 }
 
 /** The skin shipped inside the application, used until a registry manifest arrives. */
+export const DEFAULT_AUTOMATIC_IDS = Object.freeze(['motion-idle-0', 'proc-blink', 'proc-head', 'proc-body']);
 export const BUILT_IN_SKIN_ID = 'local-model';
 export class JellyfishRenderer extends CubismUserModel {
   constructor(canvas, report = () => {}, options = {}) {
@@ -62,7 +63,7 @@ export class JellyfishRenderer extends CubismUserModel {
     this.expressionParameters = new Set(); this.expressionValues = new Map(); this.previewParameters = new Set(); this.appearanceParameters = new Set();
     this.interaction = new InteractionMotion(); this.elapsed = 0; this.gestureManager = new CubismExpressionMotionManager(); this.previewManager = new CubismExpressionMotionManager(); this.framing = 'full';
     // No policy yet means no automatic animation, including before backend ready.
-    this.automaticIds = new Set(); this.policyRevision = -1; this.previewValues = new Map();
+    this.automaticIds = new Set(DEFAULT_AUTOMATIC_IDS); this.policyRevision = -1; this.policyValid = true; this.previewValues = new Map();
     // FIX61-05: the active skin. Until a registry manifest arrives the built-in pack is bound from
     // the local preset catalog so a fresh install still renders and previews.
     this.skin = null; this.activeRevision = -1; this.generation = 0;
@@ -214,6 +215,17 @@ export class JellyfishRenderer extends CubismUserModel {
       }
     }
     const motion = await read(this.settings.getMotionFileName('Idle', 0)); this.idle = this.loadMotion(motion, motion.byteLength, 'Idle'); this.idle.setLoop(true); this.idle.setEffectIds([], []);
+    try {
+      const tapFileName = this.settings.getMotionFileName('TapBody', 0);
+      if (tapFileName) {
+        const tapBytes = await read(tapFileName);
+        this.tapMotion = this.loadMotion(tapBytes, tapBytes.byteLength, 'TapBody');
+        this.tapMotion.setLoop(false);
+        this.tapMotion.setEffectIds([], []);
+      }
+    } catch {
+      this.tapMotion = null;
+    }
     this.motionParameters = new Set(JSON.parse(new TextDecoder().decode(motion)).Curves.filter(c => c.Target === 'Parameter').map(c => c.Id));
     this.runtimeParameters = new Set([...this.expressionParameters, ...this.motionParameters, ...skin.interactionParameters, 'ParamBodyAngleX', 'ParamEyeLOpen', 'ParamEyeROpen', skin.parameters.mouthForm, 'ParamMouthOpenY']);
     for (const id of this.runtimeParameters) { if (!this.parameterIndices.has(id)) throw new Error('动作引用了模型不存在的参数'); this.previewParameters.add(id); this.appearanceParameters.delete(id); }
@@ -229,12 +241,16 @@ export class JellyfishRenderer extends CubismUserModel {
   set(name, value) { const m = this._model; const id = CubismFramework.getIdManager().getId(name); const i = m.getParameterIndex(id); if (i >= 0 && i < m.getParameterCount()) m.setParameterValueByIndex(i, value); }
   get(name) { return this._model.getParameterValueById(CubismFramework.getIdManager().getId(name)); }
   setAutomaticPolicy(policy) {
-    // The host sends this sentinel at a backend-generation boundary. Other
-    // foreign model IDs must not silently reset the monotonic revision guard.
-    if (policy?.modelId === 'disconnected') this.policyRevision = -1;
+    // When disconnected or no policy is provided, fall back to safe default animations.
+    if (!policy || policy.modelId === 'disconnected') {
+      this.policyRevision = -1;
+      this.policyValid = true;
+      this.automaticIds = new Set(DEFAULT_AUTOMATIC_IDS);
+      return true;
+    }
     if (policy?.modelId !== this.skin?.skinId) { this.policyValid = false; this.automaticIds.clear(); this.interaction.release(); this.clearAutomatic(); return false; }
     if (!Number.isSafeInteger(policy.revision) || policy.revision < 0 || policy.revision < this.policyRevision) return false;
-    if (!Array.isArray(policy.enabledIds) || policy.enabledIds.some(id => this.skin.presets.get(id)?.availability !== 'automatic')) { this.policyValid = false; this.automaticIds.clear(); this.interaction.release(); this.clearAutomatic(); return false; }
+    if (!Array.isArray(policy.enabledIds) || policy.enabledIds.some(id => !DEFAULT_AUTOMATIC_IDS.includes(id) && this.skin.presets.get(id)?.availability !== 'automatic')) { this.policyValid = false; this.automaticIds.clear(); this.interaction.release(); this.clearAutomatic(); return false; }
     const next = new Set(policy.enabledIds);
     if (this.policyValid && policy.revision === this.policyRevision) return next.size === this.automaticIds.size && [...next].every(id => this.automaticIds.has(id));
     this.policyValid = true; this.policyRevision = policy.revision; this.automaticIds = next;
@@ -276,13 +292,15 @@ export class JellyfishRenderer extends CubismUserModel {
   }
   stroke() {
     const capabilities = this.strokeCapabilities();
-    const plan = strokePlan(capabilities);
-    // Honor the same automatic-action policy the pointer already respects: a disabled head/body action
-    // means no stroke movement, matching what "动作开关" promises the user.
-    const allowed = id => this.previewMode || (this.policyValid && this.automaticIds.has(id));
-    this.applicable = plan.applicable && (allowed('proc-head') || allowed('proc-body'));
+    const plan = directStrokePlan(capabilities, this.tapMotion != null);
+    // A physical tap is an explicit user action. It must remain available even when the user has
+    // disabled autonomous head/body animation in the presentation policy; that policy controls idle
+    // behavior, not direct input. Prefer the authored TapBody motion when the rig provides one, while
+    // keeping the parameter fallback for packs that only expose a procedural rig.
+    this.applicable = plan.applicable;
     if (!this.applicable) return { applicable: false, reason: plan.reason || '自动动作当前已关闭，抚摸不产生动作。', values: plan.values };
-    this._strokeUntil = performance.now() + 900;
+    if (this.tapMotion && !this.previewMode) this._motionManager.startMotionPriority(this.tapMotion, false, 2);
+    this._strokeUntil = performance.now() + 1200;
     this.interaction.start(performance.now());
     return { applicable: true, reason: '', values: plan.values };
   }
@@ -373,7 +391,16 @@ export class JellyfishRenderer extends CubismUserModel {
     if (enabled('proc-body') || workActive) this.set('ParamBodyAngleX', this.get('ParamBodyAngleX') + movement.body);
     if (this.previewMode) this.blendParameters(this.previewParameters, this.previewValues, delta);
     // This asset's MouthForm2 is a smile shape; only MouthOpenY receives output amplitude.
-    this.set(this.skin.parameters.mouthForm, face === '星星眼' ? .7 : face === '脸红' ? .25 : 0);
+        if (now < (this._strokeUntil ?? 0)) {
+      const strokeProgress = Math.max(0, (this._strokeUntil - now) / 1500);
+      const strokeFactor = Math.sin(strokeProgress * Math.PI);
+      this.set('ParamEyeLSmile', strokeFactor);
+      this.set('ParamEyeRSmile', strokeFactor);
+      this.set('ParamCheek', 0.85 * strokeFactor);
+      this.set(this.skin.parameters.mouthForm, Math.max(0.6 * strokeFactor, face === '星星眼' ? .7 : face === '脸红' ? .25 : 0));
+    } else {
+      this.set(this.skin.parameters.mouthForm, face === '星星眼' ? .7 : face === '脸红' ? .25 : 0);
+    }
     this.set('ParamMouthOpenY', active ? Math.min(1, Math.sqrt(view.mouth) * 1.9) : 0);
     for (const [id, value] of this.parameterOverrides) this.set(id, value);
     this._model.update();

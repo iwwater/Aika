@@ -245,6 +245,13 @@ export interface MediaStorePort {
 
 export * from './memory-import.js';
 
+export * from './flow-profile.js';
+
 export type * from './self-setup.js';
 
 export type * from './emotion-state.js';
+
+export type * from './continuity-memory.js';
+export type * from './continuity-context.js';
+
+export * from './character-pack.js';

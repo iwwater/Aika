@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain, protocol, screen, Menu, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, protocol, screen, Menu, shell, globalShortcut } from 'electron';
+import { spawn } from 'node:child_process';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,7 +21,7 @@ app.setName('AAAAGENT');
 app.setPath('userData', nextUserDataDir(app.getPath('appData'), smoke ? 'smoke-test' : preview ? 'preview' : 'desktop'));
 if (!app.requestSingleInstanceLock({ root, preview })) { app.quit(); process.exit(0); }
 protocol.registerSchemesAsPrivileged([{ scheme: 'pet', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
-let win, ready = false, voiceRequested = false, wakeRequested = false, micTestRequested = false, panelOpen = false, beforeResize;
+let win, ready = false, voiceRequested = false, wakeRequested = false, micTestRequested = false, panelOpen = false, beforeResize, clickThrough = false;
 let prefs = { mode: 'full', width: 360, hotkey: null }, anchor, prefsFile, writes = Promise.resolve();
 const deliver = (method, ...args) => { if (ready && win && !win.isDestroyed()) win.webContents.send('pet:delivery', method, ...args); };
 const connection = new BackendConnection({
@@ -58,10 +59,59 @@ function layout() {
   if (!win || win.isDestroyed()) return;
   const display = screen.getDisplayNearestPoint({ x: Math.round(anchor.x), y: Math.round(anchor.y) });
   const fitted = fitDisplay(prefs.width, panelOpen, display.workArea, anchor, prefs.mode);
-  anchor = fitted.anchor; win.setBounds(fitted.bounds); deliver('displayConfig', fitted.config);
+  anchor = fitted.anchor; win.setBounds(fitted.bounds); syncRightClickHookBounds(); deliver('displayConfig', fitted.config);
 }
 const trusted = event => win && event.sender === win.webContents && event.senderFrame === win.webContents.mainFrame && event.senderFrame.url === 'pet://app/index.html';
 const start = () => connection.start(node, [backend], process.env);
+const CLICK_THROUGH_SHORTCUT = 'CommandOrControl+Shift+M';
+// Windows does not offer per-button hit testing through setIgnoreMouseEvents: forward=true only
+// forwards mouse movement. The low-level helper observes right-button presses while click-through is
+// active and restores this window only when the press lands inside its bounds; the window-message hook
+// remains a same-process fallback for hosts that still deliver the native message.
+const RIGHT_CLICK_MESSAGES = [0x0204, 0x0205, 0x00a4, 0x00a5, 0x007b];
+let rightClickHooked = false, rightClickProcess = null, rightClickBuffer = '';
+function stopRightClickHook() {
+  if (!rightClickProcess) return;
+  rightClickProcess.kill(); rightClickProcess = null; rightClickBuffer = '';
+}
+function syncRightClickHookBounds() {
+  if (!rightClickProcess || !win || win.isDestroyed()) return;
+  const dip = win.getBounds();
+  const bounds = screen.dipToScreenRect ? screen.dipToScreenRect(win, dip) : dip;
+  try { rightClickProcess.stdin.write(`${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}\n`); } catch {}
+}
+function startRightClickHook() {
+  if (process.platform !== 'win32' || rightClickProcess || !win || win.isDestroyed()) return;
+  const hookFile = resolve(root, 'desktop/electron/right-click-hook.ps1');
+  rightClickProcess = spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', hookFile], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
+  rightClickProcess.stdin.on('error', () => {});
+  syncRightClickHookBounds();
+  rightClickProcess.stdout.setEncoding('utf8');
+  rightClickProcess.stdout.on('data', chunk => {
+    rightClickBuffer += chunk;
+    const lines = rightClickBuffer.split(/\r?\n/); rightClickBuffer = lines.pop() || '';
+    for (const line of lines) {
+      const match = /^R (-?\d+) (-?\d+)$/.exec(line.trim());
+      if (!match || !clickThrough || !win || win.isDestroyed()) continue;
+      const rawX = Number(match[1]), rawY = Number(match[2]);
+      const point = screen.screenToDipPoint ? screen.screenToDipPoint({ x: rawX, y: rawY }) : { x: rawX, y: rawY };
+      const x = point.x, y = point.y, bounds = win.getBounds();
+      if (x < bounds.x || y < bounds.y || x >= bounds.x + bounds.width || y >= bounds.y + bounds.height) continue;
+      setClickThrough(false, true);
+      deliver('rightClickRestore', { x: x - bounds.x, y: y - bounds.y });
+    }
+  });
+  rightClickProcess.once('error', () => { rightClickProcess = null; rightClickBuffer = ''; });
+  rightClickProcess.once('exit', () => { rightClickProcess = null; rightClickBuffer = ''; });
+}
+function setClickThrough(enabled, focusOnRestore = false) {
+  clickThrough = enabled === true;
+  if (!win || win.isDestroyed()) return;
+  win.setIgnoreMouseEvents(clickThrough, { forward: true });
+  if (clickThrough) startRightClickHook(); else stopRightClickHook();
+  if (!clickThrough && focusOnRestore) { win.show(); win.focus(); }
+  deliver('clickThroughChanged', { enabled: clickThrough });
+}
 
 ipcMain.on('pet:desktop', (event, value) => {
   if (!trusted(event) || !value || value.generation !== connection.generation || connection.state !== 'ready' || !value.message || typeof value.message !== 'object') return;
@@ -86,6 +136,8 @@ ipcMain.on('pet:shell', async (event, value) => {
       if (Number.isFinite(value.dx) && Number.isFinite(value.dy) && Math.abs(value.dx) < 2000 && Math.abs(value.dy) < 2000) {
         anchor.x += value.dx; anchor.y += value.dy; layout(); savePreferences();
       } break;
+    case 'set_click_through':
+      setClickThrough(value.enabled); break;
     case 'set_display': if (['full', 'half'].includes(value.mode)) { prefs.mode = value.mode; layout(); savePreferences(); } break;
     case 'resize_model':
       if (value.phase === 'begin') beforeResize ??= prefs.width;
@@ -134,7 +186,7 @@ ipcMain.on('pet:shell', async (event, value) => {
 ipcMain.on('pet:diagnostic', (event, value) => {
   if (!trusted(event) || !value) return;
   // Don't copy arbitrary renderer text, chat or media into diagnostic logs.
-  if (['model-ready', 'model-error', 'script-error', 'promise-error'].includes(value.type)) process.stderr.write(`Renderer: ${value.type}\n`);
+  if (['model-ready', 'model-error', 'script-error', 'promise-error'].includes(value.type)) process.stderr.write(`Renderer: ${value.type}: ${value.message || ""}\n`);
 });
 
 // Do not await readiness at module scope: Electron must finish loading this ESM
@@ -158,8 +210,12 @@ win = new BrowserWindow({ title: preview ? 'AAAAGENT · Offline preview' : 'AAAA
     partition: 'aaaagent-desktop', backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required' } });
 Menu.setApplicationMenu(Menu.buildFromTemplate([{ label: 'AAAAGENT', submenu: [
   { label: 'Reload', accelerator: 'Ctrl+R', click: () => { connection.close(); ready = false; win.webContents.reload(); } },
-  { label: 'Developer tools', accelerator: 'Ctrl+Shift+I', click: () => win.webContents.toggleDevTools() }, { role: 'quit' }
+  { label: 'Developer tools', accelerator: 'Ctrl+Shift+I', click: () => win.webContents.toggleDevTools() },
+  { label: 'Toggle click-through', click: () => setClickThrough(!clickThrough, true) },
+  { role: 'quit' }
 ] }, { role: 'editMenu' }]));
+if (!globalShortcut.register(CLICK_THROUGH_SHORTCUT, () => setClickThrough(!clickThrough, true)))
+  process.stderr.write('Click-through shortcut could not be registered.\n');
 await win.webContents.session.protocol.handle('pet', request => assetResponse(root, request.url));
 // FIX61-11 / FIX61-07: a microphone test is a separate, explicit lease (`mic_test_request`). It grants
 // AUDIO only — `video` still requires a real voice turn, so a mic test can never light the camera — and
@@ -175,6 +231,12 @@ win.webContents.on('will-navigate', event => event.preventDefault());
 win.webContents.on('will-attach-webview', event => event.preventDefault());
 win.webContents.on('render-process-gone', () => { ready = false; connection.close(); });
 win.on('blur', () => { if (beforeResize !== undefined) { prefs.width = beforeResize; beforeResize = undefined; layout(); } deliver('hotkeyEvent', { type: 'cancel' }); });
+for (const message of RIGHT_CLICK_MESSAGES) {
+  win.hookWindowMessage(message, () => {
+    if (clickThrough) setClickThrough(false, true);
+  });
+}
+rightClickHooked = true;
 screen.on('display-metrics-changed', layout); screen.on('display-removed', layout);
 app.on('second-instance', () => { win.show(); win.focus(); });
 let quitDrained = false, quitPending = false;
@@ -186,6 +248,12 @@ app.on('before-quit', event => {
   // Keep pipes and the Electron event loop alive until backend EOF cleanup
   // finishes. Otherwise Windows can leave backend.lock after the window closes.
   void connection.close().then(() => writes).finally(() => { quitDrained = true; app.quit(); });
+});
+app.on('will-quit', () => {
+  globalShortcut.unregister(CLICK_THROUGH_SHORTCUT);
+  stopRightClickHook();
+  if (rightClickHooked && win && !win.isDestroyed()) for (const message of RIGHT_CLICK_MESSAGES) win.unhookWindowMessage(message);
+  rightClickHooked = false;
 });
 app.on('window-all-closed', () => app.quit());
 layout();
@@ -206,6 +274,9 @@ if (smoke) {
     await new Promise(done => setTimeout(done, 400));
     const echoed = await win.webContents.executeJavaScript("document.getElementById('reply').textContent.includes('Offline preview received')");
     if (!echoed) throw Error('Text did not complete a backend round trip');
+    await win.webContents.executeJavaScript("window.desktopHost.postMessage('shell',{type:'set_click_through',enabled:true})");
+    await new Promise(done => setTimeout(done, 300));
+    await win.webContents.executeJavaScript("window.desktopHost.postMessage('shell',{type:'set_click_through',enabled:false})");
     console.log('WINDOWS_SMOKE_OK: Live2D renderer, isolated preload, backend round trip, panel layout.');
     if (option('--screenshot')) {
       win.showInactive();

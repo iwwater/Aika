@@ -48,6 +48,8 @@ export async function startRuntimeManagement(base: TrialConfiguration, configFil
   aika?: { store: AikaProfileStore; timeline: AikaTimelineStore; turn?: NextTurnPort },
   /** FIX61-06: knowledge library management for the same console; absent leaves the section unavailable. */
   knowledge?: import('../contracts/knowledge.js').KnowledgeManagement,
+  /** N07-05: pair-scoped User Soul/Wiki and relationship management; absent leaves the optional package unloaded. */
+  continuity?: import('./continuity-routes.js').ContinuityManagement,
   /** FIX61-07: microphone preference is machine-local; the desktop renderer owns the device itself. */
   microphone?: import('../media/microphone-preference.js').MicrophonePreferenceStore,
   /** FIX61-11: the FIX61-05 model-pack registry, opened by the composition root over real pack directories. */
@@ -103,7 +105,7 @@ export async function startRuntimeManagement(base: TrialConfiguration, configFil
   const aikaPort = aika ? aikaManagement(aika.store, aika.timeline, aikaDiscovery) : undefined;
   const aikaRecorder = aika?.turn ? new AikaTimelineRecorder(aika.turn, aika.timeline) : undefined;
   const stopRecorder = aikaRecorder?.start();
-  try { server = await startManagementServer({ ...(emotion?{emotion}:{}), selfSetup, ...(memoryImport?{memoryImport}:{}), balances, ...(wake?{wake}:{}), uiRoot: resolve(base.projectRoot, 'code/desktop-pet/management/ui'), settings, memory, ...(aikaPort?{aika:aikaPort}:{}), ...(knowledge?{knowledge}:{}), health: healthManagement(runtime.health),
+  try { server = await startManagementServer({ ...(emotion?{emotion}:{}), selfSetup, ...(memoryImport?{memoryImport}:{}), balances, ...(wake?{wake}:{}), uiRoot: resolve(base.projectRoot, 'code/desktop-pet/management/ui'), settings, memory, ...(aikaPort?{aika:aikaPort}:{}), ...(knowledge?{knowledge}:{}), ...(continuity?{continuity}:{}), health: healthManagement(runtime.health),
       ...(microphone?{microphone: microphoneManagement(microphone)}:{}), ...(skins?{skins}:{}), ...(wechat?{wechat}:{}), ...(projects ? { projects } : {}), ...(tasks ? { tasks } : {}), ...(pendingMemory?{pendingMemory}:{}), ...(presentation ? { presentation, presentationAssets: await presentationAssetRoutes(base.projectRoot) } : {}),
     snapshot: async () => ({ apiVersion: 1, balances:balances.snapshot(), accounting:await accountingSnapshot(base), runtime: runtime.identity(), modules: runtime.modules(), events: runtime.recentEvents(),
       settings: settings.snapshot(), adapters: availableAdapters(base, settings.registeredVoices), credentials: credentialRegistry(base).list(), characters: memory.characters() }) });

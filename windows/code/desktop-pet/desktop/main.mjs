@@ -64,19 +64,38 @@ let panelOpen = false, panelEpoch = 0, panelAnimation, panelCloseTimer;
 let lastUI = '';
 let awaitingTextTurn = false;
 let bindingKey = false;
-let managementOpening = false;
+let managementOpening = false, managementSource = 'top';
+function requestManagement(path, source = 'top') {
+  if (managementOpening) return;
+  managementOpening = true;
+  managementSource = source;
+  if (source === 'top') {
+    $('management').disabled = true; $('management').textContent = '打开中…';
+    $('management-notice').hidden = true;
+  } else {
+    $('function-notice').textContent = '正在打开控制台…';
+  }
+  native('shell', { type:'open_management', ...(path ? { path } : {}) });
+}
 function managementResult(result) {
   if (!managementOpening || typeof result?.ok !== 'boolean') return;
-  managementOpening = false; $('management').disabled = false; $('management').textContent = '控制台';
-  $('management-notice').hidden = result.ok;
-  $('management-notice').textContent = result.ok ? '' : '暂时无法打开控制台，请确认桌宠服务已启动后重试。';
+  const source = managementSource;
+  managementOpening = false;
+  if (source === 'top') {
+    $('management').disabled = false; $('management').textContent = '控制台';
+    $('management-notice').hidden = result.ok;
+    $('management-notice').textContent = result.ok ? '' : '暂时无法打开控制台，请确认桌宠服务已启动后重试。';
+    if (!result.ok) showToast('控制台暂不可用，请启动真实桌宠服务后重试。');
+  } else if (result.ok) {
+    $('function-notice').textContent = '';
+    functionPanel(false);
+  } else {
+    const message = '当前为离线预览，控制台暂不可用；请启动真实桌宠服务后重试。';
+    $('function-notice').textContent = message;
+    showToast(message);
+  }
 }
-$('management').onclick = () => {
-  if (managementOpening) return;
-  managementOpening = true; $('management').disabled = true; $('management').textContent = '打开中…';
-  $('management-notice').hidden = true;
-  native('shell', { type:'open_management' });
-};
+$('management').onclick = () => requestManagement('', 'top');
 const display = installDisplayControls({ get: $, shell: value => native('shell', value), setFraming: mode => renderer?.setFraming(mode) });
 const hold = new PressToTalk({
   start() {
@@ -238,6 +257,19 @@ function fitComposer() {
 }
 // FIX61-04: the function panel is its own view, separate from the chat drawer. It shares no state with
 // the conversation, so opening it never clears a draft, an active turn or the reading position.
+let toastTimer, lastReportedError = '', clickThrough = false;
+function showToast(message) {
+  const toast = $('toast');
+  if (!toast) return;
+  toast.textContent = message;
+  toast.hidden = false;
+  requestAnimationFrame(() => toast.classList.add('visible'));
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toast.classList.remove('visible');
+    setTimeout(() => { toast.hidden = true; }, 260);
+  }, 3000);
+}
 let functionPanelOpen = false;
 // FIX61-11: both view entries are now backed by real production objects (the skin console page and the
 // desktop mic-test controller), so the function panel offers them instead of rendering them disabled.
@@ -256,7 +288,7 @@ function functionPanel(open) {
 function openConsole(target) {
   // The console is a local page served by this same backend. Only a same-origin path is passed; the
   // shell resolves it against the management origin and refuses anything else.
-  native('shell', { type: 'open_management', path: target });
+  requestManagement(target, 'function');
 }
 function renderFunctionPanel() {
   const entries = $('function-entries');
@@ -270,7 +302,13 @@ function renderFunctionPanel() {
     if (entry.note) button.title = wired ? entry.note : `${entry.note}（已在开发计划中，尚未接通）`;
     button.addEventListener('click', () => {
       if (entry.kind === 'shell' && entry.action === 'open_chat') { functionPanel(false); panel(true); return; }
-      if (entry.kind === 'shell' && entry.action === 'open_management') { openConsole('/'); return; }
+      if (entry.kind === 'shell' && entry.action === 'toggle_click_through') {
+        functionPanel(false);
+        clickThrough = !clickThrough;
+        native('shell', { type: 'set_click_through', enabled: clickThrough });
+        return;
+      }
+      if (entry.kind === 'shell' && entry.action === 'open_management') { openConsole(''); return; }
       if (entry.kind === 'console') { openConsole(entry.target); return; }
       // FIX61-11: "外观 / 换肤" is a console page (the registry is backend-owned), "麦克风" is a desktop
       // view (FIX61-07 §2 requires the trusted renderer to own the device, not the console page).
@@ -513,7 +551,16 @@ function micTestPanel(open) { microphoneTest?.open(open); }
 window.petBridge = { receive, connectionChanged, hotkeyConfig, hotkeyEvent, displayConfig: display.receive, managementResult,
   // FIX61-11: the shell owns the microphone preference file; it reports the stored device id here so the
   // renderer never needs a path (and never imports the Node-only preference store).
-  microphonePreference: deviceId => microphoneTest?.setStoredDevice(deviceId) };
+  microphonePreference: deviceId => microphoneTest?.setStoredDevice(deviceId),
+  clickThroughChanged: ({ enabled }) => {
+    clickThrough = enabled === true;
+    showToast(clickThrough ? '已开启鼠标穿透（快捷键 Ctrl+Shift+M 关闭）' : '已关闭鼠标穿透模式');
+  },
+  rightClickRestore: ({ x, y }) => {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    const hit = document.elementFromPoint(x, y);
+    if (hit?.closest?.('#character')) pointerRouter.contextMenu({ target: { id: 'character' } });
+  } };
 window.desktopHost?.subscribe((method, ...args) => window.petBridge[method]?.(...args));
 $('function-close').onclick = () => functionPanel(false);
 renderFunctionPanel();
@@ -539,8 +586,8 @@ $('invitation').onclick = () => { if (view.invitation) { const id = view.invitat
 // panel. The routing decision lives in pointer-router.ts so the same production object is unit-tested.
 // A stroke never sends a command, never writes Memory and never calls the model.
 const pointerRouter = new CharacterPointerRouter({
-  panel: open => panel(open),
-  panelOpen: () => panelOpen,
+  panel: open => functionPanel(open),
+  panelOpen: () => functionPanelOpen,
   drag: (dx, dy) => native('shell', { type: 'drag', dx, dy }),
   stroke: at => {
     // Respect the display toggle and reduced-motion; a model without those parameters reports why.
@@ -553,7 +600,7 @@ $('character').onpointermove = e => pointerRouter.pointerMove(e);
 $('character').onpointercancel = $('character').onlostpointercapture = e => pointerRouter.pointerCancel(e);
 $('character').onpointerup = e => pointerRouter.pointerUp(e);
 $('character').oncontextmenu = e => { e.preventDefault(); pointerRouter.contextMenu(e); };
-const editing = target => ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName) || target?.isContentEditable || ['view-full', 'view-half', 'model-resize', 'management'].includes(target?.id);
+const editing = target => ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName) || target?.isContentEditable || ['view-full', 'view-half', 'model-resize', 'model-size', 'management'].includes(target?.id);
 document.addEventListener('keydown', e => {
   const receivedAt=performance.now();
   if(e.key==='Tab'&&records.isOpen){records.tab(e);return;}
@@ -570,8 +617,8 @@ document.addEventListener('keydown', e => {
 }, true);
 document.addEventListener('keyup', e => { if (hold.up(e.code)) { e.preventDefault(); e.stopPropagation(); } }, true);
 document.addEventListener('focusin', e => { if (editing(e.target)) hold.cancel(); });
-window.addEventListener('blur', () => { hold.cancel(); display.cancel(); pointer = null; });
-document.addEventListener('visibilitychange', () => { introductionEpoch++; introductionFramePending = false; if (document.hidden) { hold.cancel(); display.cancel(); pointer = null; } else scheduleIntroductionAck(); });
+window.addEventListener('blur', () => { hold.cancel(); display.cancel(); pointerRouter.pointerCancel(); });
+document.addEventListener('visibilitychange', () => { introductionEpoch++; introductionFramePending = false; if (document.hidden) { hold.cancel(); display.cancel(); pointerRouter.pointerCancel(); } else scheduleIntroductionAck(); });
 window.addEventListener('pagehide', () => { display.cancel(); void microphoneTest?.close(); connectionChanged({ generation: connection.generation, state: 'disconnected' }); void stopPlayback(); stopCapture(); renderer?.dispose(); });
 window.addEventListener('error', e => report({ type: 'script-error', message: e.message }));
 window.addEventListener('unhandledrejection', e => report({ type: 'promise-error', message: String(e.reason) }));

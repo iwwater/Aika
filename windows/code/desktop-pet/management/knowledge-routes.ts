@@ -29,8 +29,8 @@ async function snapshot(store: KnowledgeLibraryStore): Promise<KnowledgeSnapshot
 export function knowledgeManagement(store: KnowledgeLibraryStore): KnowledgeManagement {
   return {
     snapshot: () => safe(() => snapshot(store)),
-    create: name => safe(async () => { store.create(name); return snapshot(store); }),
-    rename: (libraryId, name, expectedRevision) => safe(async () => { store.rename(libraryId, name, expectedRevision); return snapshot(store); }),
+    create: name => safe(async () => { await store.create(name); return snapshot(store); }),
+    rename: (libraryId, name, expectedRevision) => safe(async () => { await store.rename(libraryId, name, expectedRevision); return snapshot(store); }),
     importDocuments: (libraryId, files) => safe(async () => { await store.importDocuments(libraryId, files); return snapshot(store); }),
     documents: libraryId => safe(() => store.documents(libraryId)),
     removeDocument: (libraryId, documentId, expectedRevision) => safe(async () => { await store.removeDocument(libraryId, documentId, expectedRevision); return snapshot(store); }),

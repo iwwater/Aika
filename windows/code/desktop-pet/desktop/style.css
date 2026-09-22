@@ -1,4 +1,4 @@
-:root{font:14px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:#334968;color-scheme:light}
+﻿:root{font:14px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:#334968;color-scheme:light}
 *{box-sizing:border-box}html,body{padding:0;margin:0;background:transparent;overflow:hidden}
 button,input,textarea{font:inherit}button{cursor:pointer;border:0;color:inherit;background:transparent}
 button:disabled{cursor:default;opacity:.48}button:focus-visible,textarea:focus-visible{outline:2px solid #527db7;outline-offset:3px}
@@ -11,7 +11,7 @@ button:disabled{cursor:default;opacity:.48}button:focus-visible,textarea:focus-v
 #drawer{width:min(480px,calc(100% - 20px));height:540px;margin:0 auto;padding:18px 20px 14px;display:flex;flex-direction:column;gap:10px;overflow:hidden;background:linear-gradient(145deg,#fbfdfff9,#edf3fdf8);border:1px solid #c3d3e9;border-radius:24px;box-shadow:0 5px 16px #29476a1a;position:relative}
 #drawer header{display:flex;align-items:center;gap:10px;flex:0 0 auto;min-height:30px}
 /* FIX61-04: the function panel is a peer view of the chat drawer, not a replacement for it. */
-#function-panel{width:min(320px,calc(100% - 20px));margin:0 auto;padding:14px 16px 12px;display:flex;flex-direction:column;gap:8px;background:linear-gradient(145deg,#fbfdfff9,#edf3fdf8);border:1px solid #c3d3e9;border-radius:18px;box-shadow:0 5px 16px #29476a1a}
+#function-panel{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:1000;width:min(320px,calc(100% - 20px));max-height:calc(100% - 20px);margin:0 auto;padding:14px 16px 12px;display:flex;flex-direction:column;gap:8px;background:linear-gradient(145deg,#ffffffff,#edf3fdfa);border:1.5px solid #a8c4ea;border-radius:18px;box-shadow:0 10px 36px rgba(25,45,80,.35);overflow-y:auto;pointer-events:auto}
 #function-panel header{display:flex;align-items:center;gap:10px;min-height:28px}
 #function-panel header .panel-title{flex:1;display:flex;align-items:center;gap:8px}
 #function-entries{display:flex;flex-direction:column;gap:6px}
@@ -46,6 +46,9 @@ button:disabled{cursor:default;opacity:.48}button:focus-visible,textarea:focus-v
 #display-controls{display:flex;flex:0 0 auto;gap:2px;background:#dfe8f580;padding:3px;border-radius:12px;font-size:12px}
 #display-controls button{padding:5px 9px;border-radius:9px;white-space:nowrap}
 #display-controls button[aria-pressed="true"]{background:#fff;color:#416491;box-shadow:0 1px 4px #405c8520}
+#model-size-control{display:flex;align-items:center;gap:4px;flex:0 1 112px;min-width:82px;color:#597496;font-size:11px;white-space:nowrap}
+#model-size{width:64px;min-width:40px;accent-color:#6e9ace;cursor:ew-resize}
+#model-size-value{min-width:32px;text-align:right;color:#6c83a0;font-variant-numeric:tabular-nums}
 #close{flex:0 0 28px;width:28px;height:28px;font-size:25px;line-height:24px;color:#7588a2;border-radius:9px}
 #close:hover,#quit:hover{background:#dfe8f5}
 #management{flex:0 0 auto;min-width:58px;padding:6px 8px;font-size:12px;white-space:nowrap;border:1px solid #d1deef;border-radius:10px;background:#f8fbff;color:#526e95}
@@ -78,7 +81,7 @@ footer{display:flex;flex:0 0 auto;flex-wrap:wrap;gap:7px;align-items:center}
 #model-resize,#model-resize:hover,#model-resize:active,#model-resize:focus-visible{color:transparent;background:transparent;border:0;outline:none;box-shadow:none}
 .introduction{padding:4px 8px 14px;color:#667d9a;overflow-wrap:anywhere}.introduction-label{display:block;font-size:11px;color:#91a0b6;margin-bottom:5px}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
-@media(max-width:380px){#drawer{padding:14px 12px 12px;gap:8px}#drawer header{gap:5px}.panel-title{font-size:13px;gap:5px}#display-controls button{padding:5px 7px}#hotkey-settings .input-tip{flex-basis:100%;margin-left:0}}
+@media(max-width:380px){#drawer{padding:14px 12px 12px;gap:8px}#drawer header{gap:5px}.panel-title{font-size:13px;gap:5px}#display-controls button{padding:5px 7px}#model-size-control{flex-basis:76px;min-width:58px}#model-size{width:42px}#model-size-value{display:none}#hotkey-settings .input-tip{flex-basis:100%;margin-left:0}}
 @media(prefers-reduced-motion:reduce){#drawer{scroll-behavior:auto}}
 
 /* A separate waiting cue inside the existing model area; never a hit target. */
@@ -167,3 +170,9 @@ footer{display:flex;flex:0 0 auto;flex-wrap:wrap;gap:7px;align-items:center}
 #capture-wave svg{display:block;width:100%;height:100%}
 
 #capture-feedback[data-mode="wake"]{display:flex;align-items:center;justify-content:center;gap:7px;width:190px}#capture-feedback[data-mode="wake"] #capture-wave{width:84px}#capture-feedback[data-mode="wake"] #capture-connecting{white-space:nowrap}
+
+#toast{position:fixed;top:16px;left:50%;transform:translateX(-50%) translateY(-6px);background:#1e293be6;color:#f8fafc;border:1px solid #ffffff26;border-radius:9999px;padding:7px 16px;font-size:12px;line-height:1.4;box-shadow:0 6px 20px #00000033;backdrop-filter:blur(10px);z-index:10000;pointer-events:none;transition:opacity .22s ease,transform .22s ease;white-space:nowrap;opacity:0}
+#toast.visible{opacity:1;transform:translateX(-50%) translateY(0)}
+
+#voice.recording{background:#f87171 !important;color:#fff !important;animation:voice-pulse 1.5s infinite ease-in-out}
+@keyframes voice-pulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.5)}50%{box-shadow:0 0 0 6px rgba(239,68,68,0)}}

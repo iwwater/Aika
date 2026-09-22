@@ -18,6 +18,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { PROVIDER_SLOTS } from '../../management/settings.js';
 import { validateSourceInstance } from '../../plugins/manifest.js';
 import { matchSlotBinding } from '../../providers/slot-registry.js';
 import type { SlotBinding, SlotCapabilities } from '../../providers/slot-registry.js';
@@ -112,8 +113,20 @@ test('ruling: the capability→slot bridge is total over the required ids that h
 test('ruling: the bridge is a pure read-only mapping over the existing settings authority', () => {
   // The bridge must not rebuild or extend the seven-slot vocabulary; if management/settings.ts ever
   // changes, HOST_PROVIDER_SLOTS changes with it (single authority), never the reverse.
+  // Intentional: settings.ts does NOT Object.freeze(PROVIDER_SLOTS), so `isFrozen === false` is the
+  // truth today — but it is also the truth of a [...PROVIDER_SLOTS] copy, which is exactly why this
+  // assertion alone was vacuous. The real property is identity, asserted just below.
   assert.equal(Object.isFrozen(HOST_PROVIDER_SLOTS), false, 'the array is the settings export itself, not a rebuilt copy');
   assert.equal(HOST_PROVIDER_SLOTS.length, 7);
+  assert.ok(
+    Object.is(HOST_PROVIDER_SLOTS, PROVIDER_SLOTS),
+    'the bridge must be the settings export itself: expected HOST_PROVIDER_SLOTS to be the same array object as PROVIDER_SLOTS, not an equal copy',
+  );
+  const hostExternal = new WeakSet([HOST_PROVIDER_SLOTS as object]);
+  assert.ok(
+    hostExternal.has(PROVIDER_SLOTS as object),
+    'the bridge must be the settings export itself: expected HOST_PROVIDER_SLOTS to be the same array object as PROVIDER_SLOTS, not an equal copy',
+  );
 });
 
 test('ruling: the fixture side of the bridge stays inside the SDK-only project', () => {

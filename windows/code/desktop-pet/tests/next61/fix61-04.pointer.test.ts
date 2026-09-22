@@ -3,10 +3,11 @@
 // No stroke may reach the backend, Memory or the LLM.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CharacterPointerRouter, PANEL_ENTRIES, strokePlan } from '../../desktop/pointer-router.js';
+import { CharacterPointerRouter, PANEL_ENTRIES, directStrokePlan, strokePlan } from '../../desktop/pointer-router.js';
 import type { PointerHandlers } from '../../desktop/pointer-router.js';
 
 const character = () => ({ id: 'character' });
+const modelCanvas = () => ({ id: 'model' });
 interface Calls { panel: boolean[]; stroke: unknown[]; drag: number[][] }
 function recorder(overrides: Partial<PointerHandlers> = {}): { calls: Calls; handlers: PointerHandlers } {
   const calls: Calls = { panel: [], stroke: [], drag: [] };
@@ -27,6 +28,17 @@ test('04-A a left short tap strokes exactly once and never opens the chat panel'
   assert.equal(calls.stroke.length, 1, 'one short left tap is one stroke');
   assert.equal(calls.panel.length, 0, 'a left tap must not open the chat drawer');
   assert.equal(calls.drag.length, 0, 'a short tap is not a drag');
+});
+
+test('04-A a small Windows pointer jitter stays a tap instead of becoming a drag', () => {
+  const { calls, handlers } = recorder();
+  const router = new CharacterPointerRouter(handlers);
+  router.pointerDown({ button: 0, pointerId: 11, screenX: 100, screenY: 100, target: character() });
+  router.pointerMove({ pointerId: 11, screenX: 105, screenY: 105 });
+  router.pointerMove({ pointerId: 11, screenX: 103, screenY: 104 });
+  router.pointerUp({ button: 0, pointerId: 11, screenX: 103, screenY: 104 });
+  assert.equal(calls.drag.length, 0, 'click jitter below the slop must not move the window');
+  assert.equal(calls.stroke.length, 1, 'click jitter still produces one local stroke');
 });
 
 test('04-A a left drag moves the pet and never opens the panel or strokes', () => {
@@ -77,6 +89,17 @@ test('04-A the right button closes an already-open panel, and a right click outs
   assert.deepEqual(calls.panel, [false], 'a right click outside the character changes nothing');
 });
 
+test('04-A right click and left tap on the model canvas work identically to character container', () => {
+  const { calls, handlers } = recorder();
+  const router = new CharacterPointerRouter(handlers);
+  router.contextMenu({ target: modelCanvas(), screenX: 50, screenY: 60 });
+  assert.deepEqual(calls.panel, [true], 'right clicking the model canvas opens the function panel');
+
+  router.pointerDown({ button: 0, pointerId: 10, screenX: 100, screenY: 100, target: modelCanvas() });
+  router.pointerUp({ button: 0, pointerId: 10, screenX: 101, screenY: 100 });
+  assert.equal(calls.stroke.length, 1, 'left tapping the model canvas triggers a local stroke');
+});
+
 // 04-B -----------------------------------------------------------------------------------------
 test('04-B a stroke produces head/body parameter movement when the model supports it, and stays inert when it does not', () => {
   const full = strokePlan({ head: true, body: true, blink: true, reducedMotion: false });
@@ -92,6 +115,13 @@ test('04-B a stroke produces head/body parameter movement when the model support
   const reduced = strokePlan({ head: true, body: true, blink: true, reducedMotion: true });
   assert.equal(reduced.values.pitch, 0, 'reduced motion suppresses the stroke movement');
   assert.equal(reduced.applicable, false);
+});
+
+test('04-B a rig-owned tap motion stays available when autonomous head/body animation is disabled', () => {
+  const authored = directStrokePlan({ head: false, body: false, blink: false, reducedMotion: false }, true);
+  assert.equal(authored.applicable, true, 'direct input must not depend on autonomous animation toggles');
+  const reduced = directStrokePlan({ head: false, body: false, blink: false, reducedMotion: true }, true);
+  assert.equal(reduced.applicable, false, 'reduced motion still suppresses the direct tap');
 });
 
 // 04-C -----------------------------------------------------------------------------------------

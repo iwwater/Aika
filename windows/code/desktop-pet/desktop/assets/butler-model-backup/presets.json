@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "modelId": "local-model",
+  "modelFingerprint": "c7f92105040f0a240b98153f469d57d591ef7f555f05514bd2233e3328023d83",
+  "items": [
+    {
+      "id": "local-unmapped",
+      "label": "Map your licensed model first",
+      "category": "idle",
+      "source": "procedural",
+      "availability": "unavailable",
+      "defaultEnabled": false,
+      "previewable": false
+    }
+  ]
+}

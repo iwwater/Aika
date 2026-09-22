@@ -351,6 +351,8 @@ export interface CapabilityProviderRef {
   readonly adapterVersion: Semver;
   readonly pluginId: string;
   readonly packageId: string;
+  /** Executable adapter entry exposed by a package artifact. The host still chooses the binding. */
+  readonly execute?: (input: unknown, signal?: AbortSignal) => unknown | Promise<unknown>;
 }
 
 export interface CapabilityResolutionRequest {
@@ -459,7 +461,7 @@ export function missingRequiredCategoryCoverage(declarations: readonly Capabilit
 export const PLUGIN_SDK_SURFACE = [
   'AdapterDescriptor', 'SourceInstance', 'ModelProfile', 'Binding', 'ResolvedBinding',
   'CapabilityDeclaration', 'CapabilityId', 'SideEffectCategory',
-  'PackageManifest', 'PluginEntryDeclaration', 'PluginHandle', 'PluginActivation', 'HostContext', 'SecretStore',
+  'PackageManifest', 'PluginEntryDeclaration', 'PluginHandle', 'PluginActivation', 'CapabilityProviderRef', 'HostContext', 'SecretStore',
   'PluginError', 'PluginErrorCategory', 'PluginIssue', 'ValidationResult',
   'validatePackageManifest', 'validateManifestFile', 'validateAdapterDescriptor', 'validateSourceInstance',
   'validateModelProfile', 'validateBinding', 'validateResolvedBinding',

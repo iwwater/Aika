@@ -129,6 +129,22 @@ test('the two IPC contract versions are distinct and frozen', async () => {
   const main = read('desktop/electron/main.mjs');
   assert.match(main, /contextIsolation: true, nodeIntegration: false, sandbox: true/);
   assert.match(main, /pet:\/\/app\/index\.html/);
+  assert.match(main, /RIGHT_CLICK_MESSAGES/);
+  assert.match(main, /hookWindowMessage/);
+});
+
+test('the desktop surface exposes a real size control and a right-click restore bridge', () => {
+  const index = read('desktop/index.html');
+  const controls = read('desktop/display-controls.mjs');
+  const preload = read('desktop/electron/preload.cjs');
+  const helper = read('desktop/electron/right-click-hook.ps1');
+  assert.match(index, /id="model-size" type="range"/);
+  assert.match(index, /id="model-size-value"/);
+  assert.match(controls, /phase: 'commit', width/);
+  assert.match(controls, /sizeSlider\.oninput/);
+  assert.match(preload, /rightClickRestore/);
+  assert.match(helper, /WH_MOUSE_LL/);
+  assert.match(helper, /WM_RBUTTONDOWN/);
 });
 
 test('the built renderer is a self-contained browser artifact with no node or native reference', () => {

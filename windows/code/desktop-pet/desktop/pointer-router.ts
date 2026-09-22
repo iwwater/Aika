@@ -6,7 +6,7 @@
 // decision pure lets the real renderer call it while the tests drive the same production object.
 
 /** Movement below this many device-independent pixels is a tap, not a drag. */
-export const TAP_SLOP_PX = 3;
+export const TAP_SLOP_PX = 8;
 
 export interface PointerSample {
   readonly button?: number;
@@ -26,9 +26,17 @@ export interface PointerHandlers {
   readonly panelOpen?: () => boolean;
 }
 
-const onCharacter = (target: PointerSample['target']): boolean => target?.id === 'character';
+const onCharacter = (target: PointerSample['target']): boolean => target?.id === 'character' || target?.id === 'model';
 
-interface ActivePointer { readonly id: number | undefined; x: number; y: number; moved: boolean; readonly button: number }
+interface ActivePointer {
+  readonly id: number | undefined;
+  readonly startX: number;
+  readonly startY: number;
+  x: number;
+  y: number;
+  moved: boolean;
+  readonly button: number;
+}
 
 /**
  * Routes pointer events on the character. The right button opens the function panel exactly once per
@@ -44,18 +52,22 @@ export class CharacterPointerRouter {
   constructor(handlers: PointerHandlers) { this.handlers = handlers; }
 
   pointerDown(event: PointerSample): void {
-    this.#pointer = { id: event.pointerId, x: event.screenX ?? 0, y: event.screenY ?? 0, moved: false, button: event.button ?? 0 };
+    const x = event.screenX ?? 0, y = event.screenY ?? 0;
+    this.#pointer = { id: event.pointerId, startX: x, startY: y, x, y, moved: false, button: event.button ?? 0 };
     this.#rightConsumed = false;
   }
 
   pointerMove(event: PointerSample): void {
     const pointer = this.#pointer;
     if (!pointer || event.pointerId !== pointer.id) return;
-    const dx = (event.screenX ?? 0) - pointer.x, dy = (event.screenY ?? 0) - pointer.y;
-    if (Math.abs(dx) + Math.abs(dy) > TAP_SLOP_PX || pointer.moved) {
+    const x = event.screenX ?? pointer.x, y = event.screenY ?? pointer.y;
+    const dx = x - pointer.x, dy = y - pointer.y;
+    const fromStartX = x - pointer.startX, fromStartY = y - pointer.startY;
+    const beyondTapSlop = Math.hypot(fromStartX, fromStartY) > TAP_SLOP_PX;
+    if (beyondTapSlop || pointer.moved) {
       // A right-button drag is not a window drag: the right button owns the panel, not the window.
       if (pointer.button !== 2) { pointer.moved = true; this.handlers.drag(dx, dy); }
-      pointer.x = event.screenX ?? 0; pointer.y = event.screenY ?? 0;
+      pointer.x = x; pointer.y = y;
     }
   }
 
@@ -113,6 +125,16 @@ export function strokePlan(capabilities: StrokeCapabilities): StrokePlan {
   } };
 }
 
+/**
+ * A direct user tap is independent from autonomous presentation toggles. A rig may implement the
+ * response as an authored TapBody motion even when it has no procedural head/body parameters.
+ */
+export function directStrokePlan(capabilities: StrokeCapabilities, hasAuthoredTapMotion = false): StrokePlan {
+  const plan = strokePlan(capabilities);
+  if (capabilities.reducedMotion || plan.applicable || !hasAuthoredTapMotion) return plan;
+  return { ...plan, applicable: true, reason: '' };
+}
+
 export type PanelEntryKind = 'view' | 'shell' | 'console';
 export interface PanelEntry {
   readonly id: string;
@@ -130,11 +152,12 @@ export interface PanelEntry {
 export const PANEL_ENTRIES: readonly PanelEntry[] = Object.freeze([
   { id: 'chat', label: '聊天', kind: 'shell', action: 'open_chat' },
   { id: 'skin', label: '外观 / 换肤', kind: 'view', target: 'skin', note: '更换外观不会改变角色人格、记忆或知识库。' },
-  { id: 'knowledge', label: '知识库', kind: 'console', target: '/knowledge-view.mjs' },
+  { id: 'knowledge', label: '知识库', kind: 'console', target: '/#page=knowledge' },
   { id: 'settings', label: '配置', kind: 'shell', action: 'open_management' },
-  { id: 'memory', label: '记忆', kind: 'console', target: '/#section=records' },
-  { id: 'timeline', label: 'Timeline', kind: 'console', target: '/#section=timeline' },
-  { id: 'diagnostics', label: '日志 / 诊断', kind: 'console', target: '/#section=diagnostics' },
+  { id: 'memory', label: '记忆', kind: 'console', target: '/#page=memory&section=records' },
+  { id: 'timeline', label: 'Timeline', kind: 'console', target: '/#page=timeline' },
+  { id: 'diagnostics', label: '日志 / 诊断', kind: 'console', target: '/#page=events' },
   { id: 'microphone', label: '麦克风', kind: 'view', target: 'microphone', note: '可选择输入设备并本地试录回放；不会上传录音。' },
-  { id: 'status', label: '模块状态', kind: 'console', target: '/#section=runtime' },
+  { id: 'status', label: '模块状态', kind: 'console', target: '/#page=health' },
+  { id: 'click_through', label: '鼠标穿透', kind: 'shell', action: 'toggle_click_through', note: '开启后鼠标穿透桌宠点击下方窗口；右键桌宠可恢复交互，快捷键 Ctrl+Shift+M 也可切换。' },
 ]);

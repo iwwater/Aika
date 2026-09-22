@@ -100,19 +100,115 @@ export function providerForm(a,slot,label){const {s}=a,current=s.snapshot.settin
  el('details',{},el('summary',{},'用量与费用详情（只读）'),definition([['输出计费范围',current.outputTokenLimit+' token；不代表回复硬截断'],['单次预留',current.reservationMicros+' 微元'],['输入单价',current.inputMicrosPerToken+' 微元 / token'],['输出单价',current.outputMicrosPerToken+' 微元 / token'],['字符单价',current.characterMicros==null?'不适用':current.characterMicros+' 微元 / 字符']]),el('small',{},'可切换型号以已登记的支持列表为准；保存时由服务校验型号与费用范围。')));return panel;
 }
 export function eventsView(a) {
-  const {s}=a;
-  const events=s.snapshot.events.filter(e=>(!s.eventModule||e.moduleId===s.eventModule)&&(!s.eventKind||e.kind===s.eventKind));
-  const kind={started:'开始',completed:'完成',failed:'失败',cancelled:'取消',state:'状态'};
-  const filters=el('div',{class:'form-grid'},
-    select('模块','event-module',s.eventModule,[{value:'',label:'全部模块'},...s.snapshot.modules.map(m=>({value:m.id,label:m.label}))],v=>{s.eventModule=v;a.render()}),
-    select('事件','event-kind',s.eventKind,[{value:'',label:'全部事件'},...options(kind)],v=>{s.eventKind=v;a.render()}));
-  const rows=[...events].reverse().map(e=>el('article',{class:'event'},
-    el('small',{},time(e.at)),
-    el('div',{},badge(kind[e.kind]||e.kind,e.kind==='failed'?'error':'muted'),el('small',{},s.snapshot.modules.find(m=>m.id===e.moduleId)?.label||e.moduleId)),
-    el('div',{},el('p',{},e.message),el('small',{},[
-      e.characterId?s.snapshot.characters.find(c=>c.id===e.characterId)?.label||e.characterId:null,
-      e.elapsedMs==null?null:e.elapsedMs+' ms'].filter(Boolean).join(' · ')))));
-  return card('实际运行记录',filters,
-    el('p',{class:'subtle section-gap'},'显示最近的运行记录；点击顶部刷新查看更新。'),
-    rows.length?rows:el('p',{class:'empty section-gap'},'当前筛选下没有运行事件。'));
+  const { s } = a;
+  s.eventTab = s.eventTab || 'traces';
+
+  const tabStrip = el('div', { class: 'tab-actions md-tabs', style: 'margin-bottom: 20px;' },
+    button('⚡ 全链路 Trace 调用链', () => { s.eventTab = 'traces'; a.render(); }, { id: 'tab-traces', 'aria-pressed': s.eventTab === 'traces' }),
+    button('📋 底层运行事件日志', () => { s.eventTab = 'raw'; a.render(); }, { id: 'tab-raw', 'aria-pressed': s.eventTab === 'raw' })
+  );
+
+  if (s.eventTab === 'traces') {
+    if (!s.traceResult && !s.traceLoading && a.client?.token) {
+      s.traceLoading = true;
+      a.client.request('/api/traces?limit=30')
+        .then(res => {
+          s.traceResult = res;
+          s.traceLoading = false;
+          a.render();
+        })
+        .catch(err => {
+          s.traceError = err.message;
+          s.traceLoading = false;
+          a.render();
+        });
+    }
+
+    const summary = s.traceResult?.summary || { totalCount: 0, avgElapsedMs: 0, successRate: 100, totalTokens: 0 };
+    const kpi = el('div', { class: 'trace-kpi-grid' },
+      el('div', { class: 'trace-kpi-card' },
+        el('span', { class: 'trace-kpi-label' }, '总对话轮次'),
+        el('span', { class: 'trace-kpi-val' }, String(summary.totalCount))
+      ),
+      el('div', { class: 'trace-kpi-card' },
+        el('span', { class: 'trace-kpi-label' }, '平均响应耗时'),
+        el('span', { class: 'trace-kpi-val' }, `${summary.avgElapsedMs} ms`)
+      ),
+      el('div', { class: 'trace-kpi-card' },
+        el('span', { class: 'trace-kpi-label' }, '调用成功率'),
+        el('span', { class: 'trace-kpi-val' }, `${summary.successRate}%`)
+      ),
+      el('div', { class: 'trace-kpi-card' },
+        el('span', { class: 'trace-kpi-label' }, '累计消耗 Token'),
+        el('span', { class: 'trace-kpi-val' }, summary.totalTokens.toLocaleString())
+      )
+    );
+
+    const toolbar = el('div', { class: 'actions', style: 'margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;' },
+      el('span', { class: 'subtle' }, '追踪每一次对话从意图准入、上下文检索、大模型回复到记忆提炼的完整流水线。'),
+      button('🔄 刷新 Trace', () => {
+        s.traceResult = null;
+        s.traceLoading = false;
+        a.render();
+      })
+    );
+
+    const traces = s.traceResult?.traces || [];
+    const traceCards = traces.length ? el('div', {}, traces.map(t => {
+      const stageElements = (t.stages || []).map((stage, idx, arr) => {
+        const pill = el('span', { class: `trace-stage-pill stage-${stage.name} ${stage.status === 'failed' ? 'stage-failed' : ''}` },
+          el('strong', {}, stage.label),
+          el('span', {}, `${stage.elapsedMs}ms`)
+        );
+        if (idx < arr.length - 1) {
+          return [pill, el('span', { class: 'trace-arrow' }, '→')];
+        }
+        return [pill];
+      }).flat();
+
+      const detailsToggle = el('details', { class: 'trace-details-toggle' },
+        el('summary', {}, '查看该轮调用阶段明细与 Token 数据'),
+        el('pre', { class: 'trace-details-content' }, JSON.stringify({
+          turnId: t.turnId,
+          tokens: t.tokens,
+          stages: t.stages
+        }, null, 2))
+      );
+
+      return el('div', { class: 'trace-card' },
+        el('div', { class: 'trace-card-top' },
+          el('div', { class: 'trace-meta-left' },
+            badge(t.status === 'ok' ? '成功' : '失败', t.status === 'ok' ? 'success' : 'error'),
+            el('span', { class: 'trace-time' }, time(t.createdAt)),
+            el('span', { class: 'trace-turn-id' }, `轮次: ${t.turnId.slice(0, 8)}...`)
+          ),
+          badge(`总耗时 ${t.totalElapsedMs} ms`, 'muted')
+        ),
+        el('div', { class: 'trace-dialogue-snippet' },
+          el('div', { class: 'trace-msg-user' }, el('strong', {}, '用户：'), t.userText),
+          el('div', { class: 'trace-msg-asst' }, el('strong', {}, 'Aika：'), t.replyText)
+        ),
+        el('div', { class: 'trace-waterfall' }, ...stageElements),
+        detailsToggle
+      );
+    })) : el('div', { class: 'card empty' }, s.traceLoading ? '正在加载调用链数据…' : '暂无对话 Trace 记录。在桌宠或测试中发起对话即可实时生成！');
+
+    return el('div', {}, tabStrip, kpi, toolbar, traceCards);
+  }
+
+  // Raw Events Tab
+  const events = s.snapshot.events.filter(e => (!s.eventModule || e.moduleId === s.eventModule) && (!s.eventKind || e.kind === s.eventKind));
+  const kind = { started: '开始', completed: '完成', failed: '失败', cancelled: '取消', state: '状态' };
+  const filters = el('div', { class: 'form-grid' },
+    select('模块', 'event-module', s.eventModule, [{ value: '', label: '全部模块' }, ...s.snapshot.modules.map(m => ({ value: m.id, label: m.label }))], v => { s.eventModule = v; a.render(); }),
+    select('事件', 'event-kind', s.eventKind, [{ value: '', label: '全部事件' }, ...options(kind)], v => { s.eventKind = v; a.render(); }));
+  const rows = [...events].reverse().map(e => el('article', { class: 'event' },
+    el('small', {}, time(e.at)),
+    el('div', {}, badge(kind[e.kind] || e.kind, e.kind === 'failed' ? 'error' : 'muted'), el('small', {}, s.snapshot.modules.find(m => m.id === e.moduleId)?.label || e.moduleId)),
+    el('div', {}, el('p', {}, e.message), el('small', {}, [
+      e.characterId ? s.snapshot.characters.find(c => c.id === e.characterId)?.label || e.characterId : null,
+      e.elapsedMs == null ? null : e.elapsedMs + ' ms'].filter(Boolean).join(' · ')))));
+  return el('div', {}, tabStrip, card('实际运行记录', filters,
+    el('p', { class: 'subtle section-gap' }, '显示最近的运行记录；点击顶部刷新查看更新。'),
+    rows.length ? rows : el('p', { class: 'empty section-gap' }, '当前筛选下没有运行事件。')));
 }

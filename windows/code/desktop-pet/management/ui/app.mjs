@@ -14,85 +14,817 @@ import {createProjectsView} from './projects-view.mjs';
 import {createPresentationView} from './presentation-view.mjs';
 import {createSkinView} from './skin-view.mjs';
 import {createHealthView} from './health-view.mjs';
+import {ICONS, svgIcon} from './icons.mjs';
+import {createModernOverview} from './modern-overview.mjs';
+import {parseConsoleRoute} from './routes.mjs';
+
 const sessionKey='pet-management-session-v1';
-// The page catalog is the single list of routable pages: the sidebar, the heading lookup and the deep
-// link all read it, so a `#page=` id that is not in here can never select a page that does not exist.
-const PAGE_LABELS={overview:'运行总览',memory:'记忆与对话',projects:'项目索引',tasks:'任务转发',wechat:'微信连接',models:'模型与声音',presentation:'表情与动作',skins:'外观 / 换肤',health:'模块状态',events:'运行记录'};
-const PAGES=Object.keys(PAGE_LABELS);
-// The memory sub-tabs that `#section=` may name come from the view that renders them, so an id can never
-// point at a sub-section the memory page does not have.
-const SECTIONS=MEMORY_SECTIONS.map(([key])=>key);
-let token='';try{token=new URLSearchParams(location.hash.slice(1)).get('token')||sessionStorage.getItem(sessionKey)||'';if(token)sessionStorage.setItem(sessionKey,token)}catch{}
-// FIX61-11: the desktop function panel opens the console with a real deep link (`/#page=skins`), and the
-// pre-existing panel entries use `/#section=records` etc. The route is therefore read from the hash BEFORE
-// the hash is erased for the token's sake — erasing first is exactly what made every one of those entries
-// land on 运行总览. An entry in `#section=` also selects the memory page, because that is the only page
-// with sub-sections; an unknown page id falls back to the default page instead of rendering nothing.
-let route={page:'overview',section:null};
-try{const hash=new URLSearchParams(location.hash.slice(1));
- const page=hash.get('page'),section=hash.get('section');
- if(SECTIONS.includes(section)){route.page='memory';route.section=section;}
- if(PAGES.includes(page))route.page=page;}catch{}
-if(location.hash)history.replaceState(null,'',location.pathname+location.search);
-const app=document.getElementById('app'),client=new ManagementClient(token);
-const s={page:route.page,setupMode:null,providerSlot:null,connection:'locked',error:'',message:'',snapshot:null,character:'companion',section:route.section??'dynamics',kind:'memory',query:'',recordState:'active',offset:0,pageData:null,selected:null,prompt:null,context:null,contextQuery:'',drafts:new Map(),prompts:new Map(),pending:new Set(),settingsDraft:null,settingsBase:null,settingsRevision:null,settingsConflict:false,settingsLatest:null,eventModule:'',eventKind:'',auto:false};
-const presentation=createPresentationView(client,render);
-const skin=createSkinView(client,render,()=>({page:s.page,connection:s.connection,instanceId:s.snapshot?.runtime.instanceId,authEpoch}));
-const health=createHealthView(client,render,()=>({page:s.page,connection:s.connection,instanceId:s.snapshot?.runtime.instanceId,authEpoch}));
-const pendingMemory=createPendingMemoryView(client,render,()=>s);
-window.addEventListener('pagehide',()=>{balances.deactivate();selfSetup.dispose();emotion.dispose();memoryImport.dispose();presentation.dispose();memoryDynamics.dispose();projects.dispose();tasks.dispose();skin.dispose();health.dispose();});
-let authEpoch=0,snapshotSequence=0;const reads=new Map();
-const id=()=>crypto.randomUUID();
-const recordKey=r=>r.characterId+'/'+r.kind+'/'+r.id;
-const currentDraft=()=>s.selected&&s.drafts.get(recordKey(s.selected));
-function invalidateRead(kind){reads.set(kind,(reads.get(kind)||0)+1);s.pending.delete(kind);}
-const memoryDynamics=createMemoryDynamicsView(client,render,()=>({connection:s.connection,character:s.character,instanceId:s.snapshot?.runtime.instanceId,authEpoch,snapshot:s.snapshot,onError:error,openRecord:r=>{s.section='records';s.kind=r.kind;s.query='';s.offset=0;selectRecord(r);loadRecords();},showSection:section=>{s.section=section;render();},openSection:section=>{s.section=section;render();loadMemorySection();},openMaintenanceSettings:()=>{s.providerSlot='memory_turn';selectPage('models');},openEvents:()=>selectPage('events')}));
-const projects=createProjectsView(client,render,()=>({connection:s.connection,instanceId:s.snapshot?.runtime.instanceId,authEpoch,onError:error}));
-const tasks=createTasksView(client,render,()=>({connection:s.connection,instanceId:s.snapshot?.runtime.instanceId,authEpoch,onError:error}));
-const wechat=createWeChatView(client,render,()=>({page:s.page,connection:s.connection,instanceId:s.snapshot?.runtime.instanceId,authEpoch,onError:error}));
-const wake=createWakeView(client,render,()=>({page:s.page,connection:s.connection,instanceId:s.snapshot?.runtime.instanceId,authEpoch,onError:error}));
-const memoryImport=createMemoryImportView(client,render,()=>({page:s.page,section:s.section,connection:s.connection,instanceId:s.snapshot?.runtime.instanceId,authEpoch,onError:error}));
-const balances=createBalancesView(client,render,()=>s);
-const selfSetup=createSelfSetupView(client,render,()=>({page:s.page,connection:s.connection,authEpoch,onError:error,onMode:mode=>{s.setupMode=mode;if(mode==='first-run')s.connection='online';}}));
-const emotion=createEmotionView(client,render,()=>({page:s.page,section:s.section,connection:s.connection,character:s.character,instanceId:s.snapshot?.runtime.instanceId,authEpoch,onError:error}));
-const actions={emotion,selfSetup,balances,wake,memoryImport,memoryDynamics,s,render,currentDraft,selectPage,loadRecords,loadPrompt,loadContext,selectRecord,saveRecord,savePrompt,saveSettings,rollbackSettings,refreshSnapshot,editSetting,reviewSettings,reviewPrompt,reviewRecord};
-function error(e){if(e.name==='AbortError')return;if(e.status===401||e.status===403){s.connection='locked';s.error='本机会话已失效，请从本机管理入口重新打开，或重新连接。未保存编辑仍保留。'}else{s.error=e.message;if(!e.status||e.status>=500)s.connection='offline'}render()}
-async function write(key,fn,role=null){const auth=authEpoch;if(s.pending.has(key))return;s.pending.add(key);s.error='';s.message='';render();try{await fn()}catch(e){if(auth===authEpoch&&(!role||role===s.character))error(e)}finally{s.pending.delete(key);render()}}
-async function read(kind,url,accept){const seq=(reads.get(kind)||0)+1;reads.set(kind,seq);const auth=authEpoch;s.pending.add(kind);render();try{const data=await client.request(url);if(reads.get(kind)!==seq||auth!==authEpoch)return;if(data.characterId!==s.character)throw Error('服务返回的角色与本次查询不一致，内容未显示。');accept(data)}catch(e){if(reads.get(kind)===seq&&auth===authEpoch)error(e)}finally{if(reads.get(kind)===seq){s.pending.delete(kind);render()}}}
-async function refreshSnapshot(){if(!client.token)return;const seq=++snapshotSequence,auth=authEpoch;s.pending.add('snapshot');render();try{const setup=await selfSetup.refresh();if(seq!==snapshotSequence||auth!==authEpoch)return;if(setup?.mode==='first-run'){s.connection='online';s.error='';return;}const snap=await client.request('/api/snapshot');if(seq!==snapshotSequence||auth!==authEpoch)return;if(snap.apiVersion!==1||snap.runtime?.online!==true)throw Error('当前服务不支持这版管理界面。');
-  if(snap.runtime.characterId!=='companion'||!Array.isArray(snap.characters)||snap.characters.length!==1||snap.characters[0].id!=='companion')throw Error('当前服务与单角色版本不匹配，请从新版管理入口重新打开。');
-  if(s.snapshot&&s.snapshot.runtime.instanceId!==snap.runtime.instanceId){s.message='连接已更新。未保存编辑已保留，请读取最新内容并核对。';for(const d of s.drafts.values())d.conflict=true;for(const d of s.prompts.values())d.conflict=true;if(s.settingsDraft)s.settingsConflict=true;}
-  s.snapshot=snap;s.connection='online';s.error='';if(!s.settingsDraft){s.settingsDraft=clone(snap.settings.saved);s.settingsBase=clone(snap.settings.saved);s.settingsRevision=snap.settings.revision;}else if(s.settingsRevision!==snap.settings.revision)s.settingsConflict=true;s.settingsLatest=snap.settings;if(s.page==='memory')loadMemorySection();if(s.page==='projects')projects.refresh();if(s.page==='tasks')tasks.refresh();if(s.page==='wechat')wechat.refresh();
- }catch(e){if(seq===snapshotSequence&&auth===authEpoch)error(e)}finally{if(seq===snapshotSequence){s.pending.delete('snapshot');render()}}}
-function selectPage(page){if(page!=='overview')balances.deactivate();if(page!=='presentation')presentation.deactivate();if(page!=='skins')skin.dispose();if(page!=='health')health.dispose();s.page=page;s.error='';s.message='';render();if(page==='tasks')tasks.refresh();if(page==='projects')projects.refresh();if(page==='memory'){loadMemorySection();pendingMemory.load()}}
-function loadMemorySection(){if(!client.token)return;if(s.section==='records')loadRecords();else if(s.section==='prompt')loadPrompt();else if(s.section==='context')loadContext();else if(s.section==='emotion')emotion.refresh();else if(s.section==='import')memoryImport.refresh();else memoryDynamics.load(s.section)}
-function loadRecords(){const q={characterId:s.character,kind:s.kind,query:s.query,offset:s.offset,limit:25,state:s.recordState};return read('records',query('/api/records',q),data=>{if(data.records.some(r=>r.characterId!==s.character))throw Error('查询结果包含其他角色，已拒绝显示。');s.pageData=data;if(s.selected){const latest=data.records.find(r=>r.id===s.selected.id&&r.kind===s.selected.kind);const draft=currentDraft();if(latest&&draft){draft.latest=latest;if(latest.version!==draft.version)draft.conflict=true;}if(latest)s.selected=latest;}})}
-function loadPrompt(){return read('prompt',query('/api/prompt',{characterId:s.character}),data=>{s.prompt=data;let d=s.prompts.get(data.characterId);if(!d){d={text:data.text,original:data.text,version:data.revision,operationId:id(),conflict:false};s.prompts.set(data.characterId,d)}else if(d.version!==data.revision)d.conflict=true;d.latest=data;})}
-function loadContext(){return read('context',query('/api/context',{characterId:s.character,query:s.contextQuery}),data=>{if([...data.recent,...data.summaries,...data.memories].some(r=>r.characterId!==s.character))throw Error('上下文包含其他角色，已拒绝显示。');s.context=data})}
-function selectRecord(record){s.selected=record;const key=recordKey(record);let d=s.drafts.get(key);if(!d){d={text:record.text,reason:'',version:record.version,original:record.text,operationId:id(),conflict:false};s.drafts.set(key,d)}d.latest=record;if(d.version!==record.version)d.conflict=true;render()}
-function reviewRecord(){const d=currentDraft();if(!d?.latest||!d.latest.editable)return;d.version=d.latest.version;d.original=d.latest.text;d.conflict=false;d.operationId=id();render()}
-function saveRecord(){const record=s.selected,d=currentDraft();if(!record||!d||d.conflict||!record.editable||s.connection!=='online')return;const role=record.characterId,key='edit/'+recordKey(record),text=d.text,operationId=d.operationId,auth=authEpoch;
- invalidateRead('records');return write(key,async()=>{try{const result=await client.request('/api/records/edit',{method:'POST',body:{characterId:role,id:record.id,expectedVersion:d.version,operationId,text,reason:d.reason}});if(result.status!=='applied'||result.characterId!==role||result.operationId!==operationId||result.record.characterId!==role)throw Error('保存回执不匹配，请读取最新记录核对。');d.version=result.record.version;d.latest=result.record;d.original=text;d.conflict=false;d.operationId=id();if(auth===authEpoch&&role===s.character){if(s.selected&&recordKey(s.selected)===recordKey(record))s.selected=result.record;s.message=`记录已更新；${result.invalidatedIds.length} 条关联检索或上下文记录已失效。`;await loadRecords()}}catch(e){if(e.status===409){d.conflict=true;if(role===s.character){s.message='记录已在其他位置变化。草稿已保留，请读取最新列表，找到同一记录后对比。';await loadRecords()}}else throw e;}},role)}
-function reviewPrompt(){const d=s.prompts.get(s.character);if(!d?.latest)return;d.version=d.latest.revision;d.original=d.latest.text;d.conflict=false;d.operationId=id();render()}
-function savePrompt(){const role=s.character,d=s.prompts.get(role);if(!d||d.conflict||s.connection!=='online')return;const text=d.text,operationId=d.operationId,auth=authEpoch;
- invalidateRead('prompt');return write('prompt-save/'+role,async()=>{try{const result=await client.request('/api/prompt',{method:'PUT',body:{characterId:role,expectedRevision:d.version,text,operationId}});if(result.characterId!==role)throw Error('角色设定保存回执不匹配。');d.version=result.revision;d.original=text;d.latest=result;d.operationId=id();d.conflict=false;if(auth===authEpoch&&role===s.character){s.prompt=result;s.message='角色设定已更新；后续上下文使用新版本。'}}catch(e){if(e.status===409){d.conflict=true;if(role===s.character){s.message='角色设定发生版本冲突，草稿已保留。';await loadPrompt()}}else throw e;}},role)}
-function editSetting(path,value){let target=s.settingsDraft;for(const key of path.slice(0,-1))target=target[key];if(value===undefined)delete target[path.at(-1)];else target[path.at(-1)]=value;}
-function reviewSettings(){if(!s.settingsLatest)return;s.settingsDraft=rebase(s.settingsBase,s.settingsDraft,s.settingsLatest.saved);s.settingsBase=clone(s.settingsLatest.saved);s.settingsRevision=s.settingsLatest.revision;s.settingsConflict=false;render()}
-function acceptSettings(settings){s.snapshot.settings=settings;s.settingsLatest=settings;s.settingsDraft=clone(settings.saved);s.settingsBase=clone(settings.saved);s.settingsRevision=settings.revision;s.settingsConflict=false;s.message=settings.pending?`配置已保存为版本 ${settings.revision}，当前仍运行版本 ${settings.effectiveRevision}。重新启动桌宠后生效。`:`配置已保存，当前有效版本 ${settings.effectiveRevision}。`;}
-function saveSettings(){if(s.settingsConflict||s.connection!=='online'||!selfSetup.validBindings(s.settingsDraft))return;return write('settings',async()=>{try{acceptSettings(await client.request('/api/settings',{method:'PUT',body:{expectedRevision:s.settingsRevision,settings:clone(s.settingsDraft)}}))}catch(e){if(e.status===409){s.settingsConflict=true;s.message='配置已在其他位置更新。草稿已保留，请核对差异后再保存。';await refreshSnapshot()}else throw e;}})}
-function rollbackSettings(targetRevision){if(s.connection!=='online'||s.settingsConflict)return;return write('settings',async()=>{try{acceptSettings(await client.request('/api/settings/rollback',{method:'POST',body:{expectedRevision:s.settingsRevision,targetRevision}}))}catch(e){if(e.status===409){s.settingsConflict=true;s.message='回滚前配置已变化，本次没有覆盖新版本。';await refreshSnapshot()}else throw e;}})}
-function connect(value){client.token=value.trim();try{sessionStorage.setItem(sessionKey,client.token)}catch{}authEpoch++;s.error='';refreshSnapshot()}
-function render(){captureView(app);emotion.sync();selfSetup.sync();if(selfSetup.isComposing())return;if(s.setupMode==='first-run'&&s.connection!=='locked'){app.replaceChildren(el('main',{class:'main setup-first-run'},el('header',{class:'topbar'},el('div',{},el('p',{class:'page-eyebrow'},'AAAAGENT / 本机设置'),el('h1',{},'准备你的桌宠'),el('p',{class:'subtle'},'先完成配置，再启动陪伴。'))),selfSetup.view()));restoreView(app,'first-run');return;}balances.sync();pendingMemory.sync();memoryImport.sync();wake.sync();memoryDynamics.sync();projects.sync();tasks.sync();wechat.sync();skin.sync();health.sync();if(s.page!=='presentation'||s.connection!=='online')presentation.deactivate();
- const sidebar=el('aside',{class:'sidebar'},el('div',{class:'brand'},'AAAAGENT',el('small',{},'运行控制台 · 本机')),el('nav',{class:'nav',role:'tablist','aria-label':'控制台页面'},PAGES.map(key=>button(PAGE_LABELS[key],()=>selectPage(key),{role:'tab','aria-selected':s.page===key,id:'nav-'+key}))),el('p',{class:'sidebar-note'},'检查当前运行状态，调整角色与模型设置。'));
- const connection=s.connection==='online'?badge('管理服务已连接','success'):s.connection==='offline'?badge('连接中断','error'):badge('等待本机授权','warning');
- const top=el('header',{class:'topbar'},el('div',{},el('p',{class:'page-eyebrow'},'AAAAGENT / 本机管理'),el('h1',{},PAGE_LABELS[s.page]),el('p',{class:'subtle'},s.snapshot?'快照时间：'+time(s.snapshot.runtime.observedAt):'通过本机入口连接正在运行的桌宠')),el('div',{class:'toolbar'},connection,button(s.pending.has('snapshot')?'刷新中…':'刷新状态',refreshSnapshot,{id:'refresh',disabled:!client.token||s.pending.has('snapshot')})));
- const main=el('main',{class:'main'},top,s.error&&notice(s.error,'error'),s.message&&notice(s.message,'success'));
- if(s.connection==='locked'){
-  const form=el('form',{class:'card login',onSubmit:e=>{e.preventDefault();connect(e.target.elements.session.value)}},el('h2',{},'连接本机管理会话'),el('p',{class:'subtle'},'请从桌宠的本机管理入口打开此页。会话失效后重新打开即可；如需手动连接，可粘贴该入口提供的会话口令。'),field('本机会话口令','session','',()=>{},{type:'password',required:true,autocomplete:'off'}),el('div',{class:'actions'},el('button',{type:'submit',class:'primary'},'连接')));main.append(form);
- }
- if(s.snapshot){if(s.connection!=='online')main.append(notice('以下保留上次快照及本页草稿，暂时无法确认实时状态；保存已停用。','warning'));
- if(s.page==='wechat'){main.append(el('div',{class:'page-content'},wechat.view()));}else if(s.page==='tasks'){main.append(el('div',{class:'page-content'},tasks.view()));}else if(s.page==='projects'){main.append(el('div',{class:'page-content'},projects.view()));}else if(s.page==='skins'){if(s.connection==='online')main.append(el('div',{class:'page-content'},skin.view()));}else if(s.page==='health'){if(s.connection==='online')main.append(el('div',{class:'page-content'},health.view()));}else if(s.page==='presentation'){if(s.connection==='online')main.append(el('div',{class:'page-content'},presentation.view()));}else main.append(el('div',{class:'page-content'},({overview:overviewView,memory:memoryView,models:modelsView,events:eventsView})[s.page](actions)));if(s.page==='memory')main.append(el('div',{class:'page-content'},pendingMemory.view()));}
- else if(s.connection!=='locked')main.append(notice('正在读取运行状态…'));
- app.replaceChildren(el('div',{class:'shell'},sidebar,main));restoreView(app,s.page+'/'+(s.page==='memory'?s.section:''));tasks.afterRender();pendingMemory.afterRender();
+
+// Top-level module and page definitions
+export const MODULES = Object.freeze([
+  { id: 'ops', label: '运行', icon: ICONS.ops, defaultPage: 'overview' },
+  { id: 'character', label: '角色', icon: ICONS.character, defaultPage: 'memory' },
+  { id: 'config', label: '配置', icon: ICONS.config, defaultPage: 'models' },
+  { id: 'connect', label: '连接', icon: ICONS.connect, defaultPage: 'wechat' },
+  { id: 'extensions', label: '扩展', icon: ICONS.extensions, defaultPage: 'knowledge' },
+  { id: 'work', label: '工作', icon: ICONS.work, defaultPage: 'projects' },
+]);
+
+export const SUBTABS_BY_MODULE = Object.freeze({
+  ops: [
+    { id: 'overview', label: '总览', page: 'overview' },
+    { id: 'health', label: '模块状态', page: 'health' },
+    { id: 'events', label: 'Trace', page: 'events' },
+  ],
+  character: [
+    { id: 'characters', label: '角色与 Pack', page: 'characters' },
+    { id: 'memory', label: '记忆', page: 'memory' },
+    { id: 'timeline', label: '时间线', page: 'timeline' },
+    { id: 'presentation', label: '表情与动作', page: 'presentation' },
+  ],
+  config: [
+    { id: 'models', label: 'API 与模型', page: 'models' },
+    { id: 'voice', label: '语音与设备', page: 'voice' },
+    { id: 'skins', label: '外观 / 换肤', page: 'skins' },
+  ],
+  connect: [
+    { id: 'wechat', label: '微信连接', page: 'wechat' },
+  ],
+  extensions: [
+    { id: 'knowledge', label: '知识库', page: 'knowledge' },
+    { id: 'packages', label: '插件包与 Flow', page: 'packages' },
+  ],
+  work: [
+    { id: 'projects', label: '项目索引', page: 'projects' },
+    { id: 'tasks', label: '任务调度', page: 'tasks' },
+  ],
+});
+
+export const PAGE_LABELS = {
+  overview: '运行总览',
+  memory: '记忆与对话',
+  projects: '项目索引',
+  tasks: '任务转发',
+  wechat: '微信连接',
+  models: '模型与声音',
+  presentation: '表情与动作',
+  skins: '外观 / 换肤',
+  health: '模块状态',
+  events: '运行记录'
+};
+const PAGES = Object.keys(PAGE_LABELS);
+
+export const PAGE_TITLES = {
+  overview: '运行 / 总览',
+  health: '运行 / 模块状态',
+  events: '运行 / Trace 调用链追踪',
+  characters: '角色 / 角色与 Pack 管理',
+  memory: '角色 / 记忆记录与维护',
+  timeline: '角色 / 双时间线 (Canon vs Companion)',
+  presentation: '角色 / 表情与动作策略',
+  models: '配置 / API 与模型绑定',
+  voice: '配置 / 语音与设备设置',
+  skins: '配置 / 外观与换肤',
+  wechat: '连接 / 微信连接与通知',
+  knowledge: '扩展 / 知识库与文档管理',
+  packages: '扩展 / 插件包与 Flow 流程',
+  projects: '工作 / 项目工作区索引',
+  tasks: '工作 / 任务调度中心',
+};
+
+export const PAGE_DESCS = {
+  overview: '系统运行状态与关键指标概览，帮助你快速掌握 Aika-Next 的当前情况。',
+  health: '底层模块就绪状况与设备通信诊断。',
+  events: '追踪和分析每一次对话请求的完整调用链，帮助你定位问题与优化性能。',
+  characters: '管理角色底色、导入资料快照、提炼草稿与版本升级。',
+  memory: '管理角色的记忆记录，支持检索、筛选与维护，让每一次相遇都有迹可循。',
+  timeline: '查看原作叙事时间线与当前陪伴经历时间线。',
+  presentation: '配置 Live2D 动作反应、表情映射与视觉表现策略。',
+  models: '管理模型供应商端点、API 凭据引用与多源槽位绑定。',
+  voice: '设置麦克风输入、试音回放与本地语音唤醒配置。',
+  skins: '浏览、导入与激活桌宠外观皮肤，调整窗口尺寸与缩放。',
+  wechat: '配置微信连接与消息通知通道。',
+  knowledge: '管理和组织你的知识库，支持多源数据与文本切片。',
+  packages: '管理 0.65 插件包状态与编排流程。',
+  projects: '本地工作项目索引与代码目录映射。',
+  tasks: '自动化任务转发、执行队列与状态监控。',
+};
+
+function findModuleForPage(page) {
+  for (const [modId, tabs] of Object.entries(SUBTABS_BY_MODULE)) {
+    if (tabs.some(t => t.page === page)) return modId;
+  }
+  return 'ops';
 }
-render();if(token)refreshSnapshot();
+
+const SECTIONS = MEMORY_SECTIONS.map(([key]) => key);
+
+let storedSessionToken = '';
+try {
+  storedSessionToken = sessionStorage.getItem(sessionKey) || '';
+} catch {}
+
+const parsedRoute = parseConsoleRoute(location.hash, storedSessionToken);
+let token = parsedRoute.token;
+if (token) {
+  try { sessionStorage.setItem(sessionKey, token); } catch {}
+}
+
+let route = { page: parsedRoute.page, section: parsedRoute.section };
+
+if (location.hash) {
+  history.replaceState(null, '', location.pathname + location.search);
+}
+
+const app = document.getElementById('app');
+const client = new ManagementClient(token);
+
+const s = {
+  page: route.page,
+  activeModule: findModuleForPage(route.page),
+  setupMode: null,
+  providerSlot: null,
+  connection: 'locked',
+  error: '',
+  message: '',
+  snapshot: null,
+  character: parsedRoute.pairing.characterId || 'companion',
+  pairing: parsedRoute.pairing,
+  section: route.section ?? 'dynamics',
+  kind: 'memory',
+  query: '',
+  recordState: 'active',
+  offset: 0,
+  pageData: null,
+  selected: null,
+  prompt: null,
+  context: null,
+  contextQuery: '',
+  drafts: new Map(),
+  prompts: new Map(),
+  pending: new Set(),
+  settingsDraft: null,
+  settingsBase: null,
+  settingsRevision: null,
+  settingsConflict: false,
+  settingsLatest: null,
+  eventModule: '',
+  eventKind: '',
+  auto: false,
+};
+
+const presentation = createPresentationView(client, render);
+const skin = createSkinView(client, render, () => ({ page: s.page, connection: s.connection, instanceId: s.snapshot?.runtime.instanceId, authEpoch }));
+const health = createHealthView(client, render, () => ({ page: s.page, connection: s.connection, instanceId: s.snapshot?.runtime.instanceId, authEpoch }));
+const pendingMemory = createPendingMemoryView(client, render, () => s);
+
+window.addEventListener('pagehide', () => {
+  balances.deactivate();
+  selfSetup.dispose();
+  emotion.dispose();
+  memoryImport.dispose();
+  presentation.dispose();
+  memoryDynamics.dispose();
+  projects.dispose();
+  tasks.dispose();
+  skin.dispose();
+  health.dispose();
+});
+
+let authEpoch = 0, snapshotSequence = 0;
+const reads = new Map();
+const id = () => crypto.randomUUID();
+const recordKey = r => r.characterId + '/' + r.kind + '/' + r.id;
+const currentDraft = () => s.selected && s.drafts.get(recordKey(s.selected));
+
+function invalidateRead(kind) {
+  reads.set(kind, (reads.get(kind) || 0) + 1);
+  s.pending.delete(kind);
+}
+
+const memoryDynamics = createMemoryDynamicsView(client, render, () => ({
+  connection: s.connection,
+  character: s.character,
+  instanceId: s.snapshot?.runtime.instanceId,
+  authEpoch,
+  snapshot: s.snapshot,
+  onError: error,
+  openRecord: r => { s.section = 'records'; s.kind = r.kind; s.query = ''; s.offset = 0; selectRecord(r); loadRecords(); },
+  showSection: section => { s.section = section; render(); },
+  openSection: section => { s.section = section; render(); loadMemorySection(); },
+  openMaintenanceSettings: () => { s.providerSlot = 'memory_turn'; selectPage('models'); },
+  openEvents: () => selectPage('events'),
+}));
+
+const projects = createProjectsView(client, render, () => ({ connection: s.connection, instanceId: s.snapshot?.runtime.instanceId, authEpoch, onError: error }));
+const tasks = createTasksView(client, render, () => ({ connection: s.connection, instanceId: s.snapshot?.runtime.instanceId, authEpoch, onError: error }));
+const wechat = createWeChatView(client, render, () => ({ page: s.page, connection: s.connection, instanceId: s.snapshot?.runtime.instanceId, authEpoch, onError: error }));
+const wake = createWakeView(client, render, () => ({ page: s.page, connection: s.connection, instanceId: s.snapshot?.runtime.instanceId, authEpoch, onError: error }));
+const memoryImport = createMemoryImportView(client, render, () => ({ page: s.page, section: s.section, connection: s.connection, instanceId: s.snapshot?.runtime.instanceId, authEpoch, onError: error }));
+const balances = createBalancesView(client, render, () => s);
+const selfSetup = createSelfSetupView(client, render, () => ({ page: s.page, connection: s.connection, authEpoch, onError: error, onMode: mode => { s.setupMode = mode; if (mode === 'first-run') s.connection = 'online'; } }));
+const emotion = createEmotionView(client, render, () => ({ page: s.page, section: s.section, connection: s.connection, character: s.character, instanceId: s.snapshot?.runtime.instanceId, authEpoch, onError: error }));
+
+const actions = {
+  client,
+  emotion, selfSetup, balances, wake, memoryImport, memoryDynamics,
+  s, render, currentDraft, selectPage, selectModule, loadRecords, loadPrompt, loadContext,
+  selectRecord, saveRecord, savePrompt, saveSettings, rollbackSettings, refreshSnapshot,
+  editSetting, reviewSettings, reviewPrompt, reviewRecord,
+};
+
+function error(e) {
+  if (e.name === 'AbortError') return;
+  if (e.status === 401 || e.status === 403) {
+    s.connection = 'locked';
+    s.error = '本机会话已失效，请从本机管理入口重新打开，或重新连接。未保存编辑仍保留。';
+  } else {
+    s.error = e.message;
+    if (!e.status || e.status >= 500) s.connection = 'offline';
+  }
+  render();
+}
+
+async function write(key, fn, role = null) {
+  const auth = authEpoch;
+  if (s.pending.has(key)) return;
+  s.pending.add(key);
+  s.error = '';
+  s.message = '';
+  render();
+  try {
+    await fn();
+  } catch (e) {
+    if (auth === authEpoch && (!role || role === s.character)) error(e);
+  } finally {
+    s.pending.delete(key);
+    render();
+  }
+}
+
+async function read(kind, url, accept) {
+  const seq = (reads.get(kind) || 0) + 1;
+  reads.set(kind, seq);
+  const auth = authEpoch;
+  s.pending.add(kind);
+  render();
+  try {
+    const data = await client.request(url);
+    if (reads.get(kind) !== seq || auth !== authEpoch) return;
+    if (data.characterId !== s.character) throw Error('服务返回的角色与本次查询不一致，内容未显示。');
+    accept(data);
+  } catch (e) {
+    if (reads.get(kind) === seq && auth !== authEpoch) error(e);
+  } finally {
+    if (reads.get(kind) === seq) {
+      s.pending.delete(kind);
+      render();
+    }
+  }
+}
+
+async function refreshSnapshot() {
+  if (!client.token) return;
+  const seq = ++snapshotSequence, auth = authEpoch;
+  s.pending.add('snapshot');
+  render();
+  try {
+    const setup = await selfSetup.refresh();
+    if (seq !== snapshotSequence || auth !== authEpoch) return;
+    if (setup?.mode === 'first-run') {
+      s.connection = 'online';
+      s.error = '';
+      return;
+    }
+    const snap = await client.request('/api/snapshot');
+    if (seq !== snapshotSequence || auth !== authEpoch) return;
+    if (snap.apiVersion !== 1 || snap.runtime?.online !== true) throw Error('当前服务不支持这版管理界面。');
+    if (snap.runtime.characterId !== 'companion' || !Array.isArray(snap.characters) || snap.characters.length !== 1 || snap.characters[0].id !== 'companion') {
+      throw Error('当前服务与单角色版本不匹配，请从新版管理入口重新打开。');
+    }
+    if (s.snapshot && s.snapshot.runtime.instanceId !== snap.runtime.instanceId) {
+      s.message = '连接已更新。未保存编辑已保留，请读取最新内容并核对。';
+      for (const d of s.drafts.values()) d.conflict = true;
+      for (const d of s.prompts.values()) d.conflict = true;
+      if (s.settingsDraft) s.settingsConflict = true;
+    }
+    s.snapshot = snap;
+    s.connection = 'online';
+    s.error = '';
+    if (!s.settingsDraft) {
+      s.settingsDraft = clone(snap.settings.saved);
+      s.settingsBase = clone(snap.settings.saved);
+      s.settingsRevision = snap.settings.revision;
+    } else if (s.settingsRevision !== snap.settings.revision) {
+      s.settingsConflict = true;
+    }
+    s.settingsLatest = snap.settings;
+    if (s.page === 'memory') loadMemorySection();
+    if (s.page === 'projects') projects.refresh();
+    if (s.page === 'tasks') tasks.refresh();
+    if (s.page === 'wechat') wechat.refresh();
+  } catch (e) {
+    if (seq === snapshotSequence && auth === authEpoch) error(e);
+  } finally {
+    if (seq === snapshotSequence) {
+      s.pending.delete('snapshot');
+      render();
+    }
+  }
+}
+
+function selectModule(moduleId) {
+  const mod = MODULES.find(m => m.id === moduleId);
+  if (!mod) return;
+  s.activeModule = moduleId;
+  selectPage(mod.defaultPage);
+}
+
+function selectPage(page) {
+  if (page !== 'overview') balances.deactivate();
+  if (page !== 'presentation') presentation.deactivate();
+  if (page !== 'skins') skin.dispose();
+  if (page !== 'health') health.dispose();
+  s.page = page;
+  s.activeModule = findModuleForPage(page);
+  s.error = '';
+  s.message = '';
+  render();
+  if (page === 'tasks') tasks.refresh();
+  if (page === 'projects') projects.refresh();
+  if (page === 'memory') {
+    loadMemorySection();
+    pendingMemory.load();
+  }
+}
+
+function loadMemorySection() {
+  if (!client.token) return;
+  if (s.section === 'records') loadRecords();
+  else if (s.section === 'prompt') loadPrompt();
+  else if (s.section === 'context') loadContext();
+  else if (s.section === 'emotion') emotion.refresh();
+  else if (s.section === 'import') memoryImport.refresh();
+  else memoryDynamics.load(s.section);
+}
+
+function loadRecords() {
+  const q = { characterId: s.character, kind: s.kind, query: s.query, offset: s.offset, limit: 25, state: s.recordState };
+  return read('records', query('/api/records', q), data => {
+    if (data.records.some(r => r.characterId !== s.character)) throw Error('查询结果包含其他角色，已拒绝显示。');
+    s.pageData = data;
+    if (s.selected) {
+      const latest = data.records.find(r => r.id === s.selected.id && r.kind === s.selected.kind);
+      const draft = currentDraft();
+      if (latest && draft) {
+        draft.latest = latest;
+        if (latest.version !== draft.version) draft.conflict = true;
+      }
+      if (latest) s.selected = latest;
+    }
+  });
+}
+
+function loadPrompt() {
+  return read('prompt', query('/api/prompt', { characterId: s.character }), data => {
+    s.prompt = data;
+    let d = s.prompts.get(data.characterId);
+    if (!d) {
+      d = { text: data.text, original: data.text, version: data.revision, operationId: id(), conflict: false };
+      s.prompts.set(data.characterId, d);
+    } else if (d.version !== data.revision) {
+      d.conflict = true;
+    }
+    d.latest = data;
+  });
+}
+
+function loadContext() {
+  return read('context', query('/api/context', { characterId: s.character, query: s.contextQuery }), data => {
+    if ([...data.recent, ...data.summaries, ...data.memories].some(r => r.characterId !== s.character)) {
+      throw Error('上下文包含其他角色，已拒绝显示。');
+    }
+    s.context = data;
+  });
+}
+
+function selectRecord(record) {
+  s.selected = record;
+  const key = recordKey(record);
+  let d = s.drafts.get(key);
+  if (!d) {
+    d = { text: record.text, reason: '', version: record.version, original: record.text, operationId: id(), conflict: false };
+    s.drafts.set(key, d);
+  }
+  d.latest = record;
+  if (d.version !== record.version) d.conflict = true;
+  render();
+}
+
+function reviewRecord() {
+  const d = currentDraft();
+  if (!d?.latest || !d.latest.editable) return;
+  d.version = d.latest.version;
+  d.original = d.latest.text;
+  d.conflict = false;
+  d.operationId = id();
+  render();
+}
+
+function saveRecord() {
+  const record = s.selected, d = currentDraft();
+  if (!record || !d || d.conflict || !record.editable || s.connection !== 'online') return;
+  const role = record.characterId, key = 'edit/' + recordKey(record), text = d.text, operationId = d.operationId, auth = authEpoch;
+  invalidateRead('records');
+  return write(key, async () => {
+    try {
+      const result = await client.request('/api/records/edit', {
+        method: 'POST',
+        body: { characterId: role, id: record.id, expectedVersion: d.version, operationId, text, reason: d.reason },
+      });
+      if (result.status !== 'applied' || result.characterId !== role || result.operationId !== operationId || result.record.characterId !== role) {
+        throw Error('保存回执不匹配，请读取最新记录核对。');
+      }
+      d.version = result.record.version;
+      d.latest = result.record;
+      d.original = text;
+      d.conflict = false;
+      d.operationId = id();
+      if (auth === authEpoch && role === s.character) {
+        if (s.selected && recordKey(s.selected) === recordKey(record)) s.selected = result.record;
+        s.message = `记录已更新；${result.invalidatedIds.length} 条关联检索或上下文记录已失效。`;
+        await loadRecords();
+      }
+    } catch (e) {
+      if (e.status === 409) {
+        d.conflict = true;
+        if (role === s.character) {
+          s.message = '记录已在其他位置变化。草稿已保留，请读取最新列表，找到同一记录后对比。';
+          await loadRecords();
+        }
+      } else throw e;
+    }
+  }, role);
+}
+
+function reviewPrompt() {
+  const d = s.prompts.get(s.character);
+  if (!d?.latest) return;
+  d.version = d.latest.revision;
+  d.original = d.latest.text;
+  d.conflict = false;
+  d.operationId = id();
+  render();
+}
+
+function savePrompt() {
+  const role = s.character, d = s.prompts.get(role);
+  if (!d || d.conflict || s.connection !== 'online') return;
+  const text = d.text, operationId = d.operationId, auth = authEpoch;
+  invalidateRead('prompt');
+  return write('prompt-save/' + role, async () => {
+    try {
+      const result = await client.request('/api/prompt', {
+        method: 'PUT',
+        body: { characterId: role, expectedRevision: d.version, text, operationId },
+      });
+      if (result.characterId !== role) throw Error('角色设定保存回执不匹配。');
+      d.version = result.revision;
+      d.original = text;
+      d.latest = result;
+      d.operationId = id();
+      d.conflict = false;
+      if (auth === authEpoch && role === s.character) {
+        s.prompt = result;
+        s.message = '角色设定已更新；后续上下文使用新版本。';
+      }
+    } catch (e) {
+      if (e.status === 409) {
+        d.conflict = true;
+        if (role === s.character) {
+          s.message = '角色设定发生版本冲突，草稿已保留。';
+          await loadPrompt();
+        }
+      } else throw e;
+    }
+  }, role);
+}
+
+function editSetting(path, value) {
+  let target = s.settingsDraft;
+  for (const key of path.slice(0, -1)) target = target[key];
+  if (value === undefined) delete target[path.at(-1)];
+  else target[path.at(-1)] = value;
+}
+
+function reviewSettings() {
+  if (!s.settingsLatest) return;
+  s.settingsDraft = rebase(s.settingsBase, s.settingsDraft, s.settingsLatest.saved);
+  s.settingsBase = clone(s.settingsLatest.saved);
+  s.settingsRevision = s.settingsLatest.revision;
+  s.settingsConflict = false;
+  render();
+}
+
+function acceptSettings(settings) {
+  s.snapshot.settings = settings;
+  s.settingsLatest = settings;
+  s.settingsDraft = clone(settings.saved);
+  s.settingsBase = clone(settings.saved);
+  s.settingsRevision = settings.revision;
+  s.settingsConflict = false;
+  s.message = settings.pending
+    ? `配置已保存为版本 ${settings.revision}，当前仍运行版本 ${settings.effectiveRevision}。重新启动桌宠后生效。`
+    : `配置已保存，当前有效版本 ${settings.effectiveRevision}。`;
+}
+
+function saveSettings() {
+  if (s.settingsConflict || s.connection !== 'online' || !selfSetup.validBindings(s.settingsDraft)) return;
+  return write('settings', async () => {
+    try {
+      acceptSettings(await client.request('/api/settings', {
+        method: 'PUT',
+        body: { expectedRevision: s.settingsRevision, settings: clone(s.settingsDraft) },
+      }));
+    } catch (e) {
+      if (e.status === 409) {
+        s.settingsConflict = true;
+        s.message = '配置已在其他位置更新。草稿已保留，请核对差异后再保存。';
+        await refreshSnapshot();
+      } else throw e;
+    }
+  });
+}
+
+function rollbackSettings(targetRevision) {
+  if (s.connection !== 'online' || s.settingsConflict) return;
+  return write('settings', async () => {
+    try {
+      acceptSettings(await client.request('/api/settings/rollback', {
+        method: 'POST',
+        body: { expectedRevision: s.settingsRevision, targetRevision },
+      }));
+    } catch (e) {
+      if (e.status === 409) {
+        s.settingsConflict = true;
+        s.message = '回滚前配置已变化，本次没有覆盖新版本。';
+        await refreshSnapshot();
+      } else throw e;
+    }
+  });
+}
+
+function connect(value) {
+  client.token = value.trim();
+  try { sessionStorage.setItem(sessionKey, client.token); } catch {}
+  authEpoch++;
+  s.error = '';
+  refreshSnapshot();
+}
+
+function render() {
+  captureView(app);
+  emotion.sync();
+  selfSetup.sync();
+
+  if (selfSetup.isComposing()) return;
+  if (s.setupMode === 'first-run' && s.connection !== 'locked') {
+    app.replaceChildren(
+      el(
+        'main',
+        { class: 'main-canvas setup-first-run' },
+        el(
+          'header',
+          { class: 'page-header' },
+          el('h1', { class: 'page-title' }, '准备你的桌宠'),
+          el('p', { class: 'page-desc' }, '先完成配置，再启动陪伴。'),
+        ),
+        selfSetup.view(),
+      ),
+    );
+    restoreView(app, 'first-run');
+    return;
+  }
+
+  balances.sync();
+  pendingMemory.sync();
+  memoryImport.sync();
+  wake.sync();
+  memoryDynamics.sync();
+  projects.sync();
+  tasks.sync();
+  wechat.sync();
+  skin.sync();
+  health.sync();
+
+  if (s.page !== 'presentation' || s.connection !== 'online') presentation.deactivate();
+
+  // 1. Top Navbar
+  const currentMod = findModuleForPage(s.page);
+  const navbarBrand = el(
+    'div',
+    { class: 'navbar-brand-group' },
+    svgIcon(ICONS.logo, 'brand-logo-svg'),
+    el(
+      'div',
+      { class: 'brand-titles' },
+      el('span', { class: 'brand-name' }, 'Aika-Next'),
+      el('span', { class: 'brand-sub' }, 'AI 工作伙伴'),
+    ),
+  );
+
+  const navModules = el(
+    'nav',
+    { class: 'navbar-nav', role: 'tablist', 'aria-label': '模块导航' },
+    MODULES.map(mod =>
+      el(
+        'button',
+        {
+          type: 'button',
+          class: `nav-module-btn ${mod.id === currentMod ? 'is-active' : ''}`,
+          onClick: () => selectModule(mod.id),
+        },
+        svgIcon(mod.icon, 'module-icon'),
+        el('span', {}, mod.label),
+      ),
+    ),
+  );
+
+  const navbarUtils = el(
+    'div',
+    { class: 'navbar-utils' },
+    el(
+      'div',
+      { class: 'scope-pill' },
+      el('span', {}, `作用域: ${s.pairing?.characterId === 'companion' ? '本机' : s.pairing?.characterId || '本机'}`),
+      el('span', { style: 'font-size: 10px; color: #94a3b8;' }, '▼'),
+    ),
+    el(
+      'div',
+      { class: 'cmd-pill' },
+      svgIcon(ICONS.search),
+      el('span', {}, 'Ctrl + K'),
+    ),
+    el(
+      'button',
+      { type: 'button', class: 'icon-btn theme-btn', title: '切换主题' },
+      svgIcon(ICONS.sun),
+    ),
+    el(
+      'button',
+      { type: 'button', class: 'icon-btn bell-btn', title: '通知' },
+      svgIcon(ICONS.bell),
+      el('span', { class: 'bell-dot' }),
+    ),
+    el(
+      'div',
+      { class: 'avatar-badge-wrap', title: 'Aika 在线' },
+      el('img', {
+        src: './assets/aika-avatar.png',
+        class: 'user-avatar-img',
+        alt: 'User',
+        onError: e => {
+          e.target.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 34 34"><rect width="34" height="34" rx="17" fill="%23e0e7ff"/><text x="50%" y="54%" font-size="16" text-anchor="middle" dominant-baseline="middle" fill="%234f46e5">A</text></svg>';
+        },
+      }),
+      el('span', { class: 'avatar-online-dot' }),
+    ),
+  );
+
+  const navbar = el('header', { class: 'app-navbar' }, navbarBrand, navModules, navbarUtils);
+
+  // 2. Sub-Header Bar
+  const subtabs = SUBTABS_BY_MODULE[currentMod] || SUBTABS_BY_MODULE.ops;
+  const subnav = el(
+    'div',
+    { class: 'sub-nav-tabs', role: 'tablist', 'aria-label': '子页面导航' },
+    subtabs.map(tab =>
+      el(
+        'button',
+        {
+          type: 'button',
+          class: `sub-nav-tab ${tab.page === s.page ? 'is-active' : ''}`,
+          onClick: () => selectPage(tab.page),
+        },
+        tab.label,
+      ),
+    ),
+  );
+
+  const submeta = el(
+    'div',
+    { class: 'sub-nav-meta' },
+    el(
+      'span',
+      {},
+      `最后更新时间：${s.snapshot ? time(s.snapshot.runtime.observedAt) : time(Date.now())}`,
+    ),
+    button(
+      '刷新',
+      refreshSnapshot,
+      {
+        class: 'refresh-btn',
+        id: 'refresh',
+        disabled: !client.token || s.pending.has('snapshot'),
+      },
+    ),
+  );
+
+  const subHeader = el('nav', { class: 'sub-header-bar' }, subnav, submeta);
+
+  // 3. Main Content Area
+  const sidebarNav = el(
+    'nav',
+    { class: 'nav sidebar-nav-compat', role: 'tablist', 'aria-label': '控制台页面', style: 'display:none;' },
+    PAGES.map(key =>
+      button(PAGE_LABELS[key], () => selectPage(key), {
+        role: 'tab',
+        'aria-selected': s.page === key,
+        id: 'nav-' + key,
+      }),
+    ),
+  );
+
+  const pageHeader = el(
+    'header',
+    { class: 'page-header topbar' },
+    el('p', { class: 'page-eyebrow' }, PAGE_TITLES[s.page] || s.page),
+    el('h1', { class: 'page-title' }, PAGE_LABELS[s.page] || PAGE_TITLES[s.page] || s.page),
+    el('p', { class: 'page-desc' }, PAGE_DESCS[s.page] || ''),
+  );
+
+  const main = el(
+    'main',
+    { class: 'main-canvas' },
+    pageHeader,
+    s.error && notice(s.error, 'error'),
+    s.message && notice(s.message, 'success'),
+  );
+
+  if (s.connection === 'locked') {
+    const form = el(
+      'form',
+      {
+        class: 'card login',
+        onSubmit: e => {
+          e.preventDefault();
+          connect(e.target.elements.session.value);
+        },
+      },
+      el('h2', {}, '连接本机管理会话'),
+      el('p', { class: 'subtle' }, '请从桌宠的本机管理入口打开此页。会话失效后重新打开即可；如需手动连接，可粘贴该入口提供的会话口令。'),
+      field('本机会话口令', 'session', '', () => {}, { type: 'password', required: true, autocomplete: 'off' }),
+      el('div', { class: 'actions' }, el('button', { type: 'submit', class: 'primary' }, '连接')),
+    );
+    main.append(form);
+  } else if (s.snapshot) {
+    if (s.connection !== 'online') {
+      main.append(notice('以下保留上次快照及本页草稿，暂时无法确认实时状态；保存已停用。', 'warning'));
+    }
+
+    if (s.page === 'overview') {
+      main.append(createModernOverview(actions));
+    } else if (s.page === 'wechat') {
+      main.append(el('div', { class: 'page-content' }, wechat.view()));
+    } else if (s.page === 'tasks') {
+      main.append(el('div', { class: 'page-content' }, tasks.view()));
+    } else if (s.page === 'projects') {
+      main.append(el('div', { class: 'page-content' }, projects.view()));
+    } else if (s.page === 'skins') {
+      if (s.connection === 'online') main.append(el('div', { class: 'page-content' }, skin.view()));
+    } else if (s.page === 'health') {
+      if (s.connection === 'online') main.append(el('div', { class: 'page-content' }, health.view()));
+    } else if (s.page === 'presentation') {
+      if (s.connection === 'online') main.append(el('div', { class: 'page-content' }, presentation.view()));
+    } else if (s.page === 'events') {
+      main.append(el('div', { class: 'page-content' }, eventsView(actions)));
+    } else if (s.page === 'models') {
+      main.append(el('div', { class: 'page-content' }, modelsView(actions)));
+    } else if (s.page === 'memory') {
+      main.append(el('div', { class: 'page-content' }, memoryView(actions)));
+      main.append(el('div', { class: 'page-content' }, pendingMemory.view()));
+    } else if (s.page === 'timeline') {
+      main.append(el('div', { class: 'page-content' }, memoryDynamics.view()));
+    } else {
+      main.append(el('div', { class: 'card empty' }, `页面 "${s.page}" 正在准备中...`));
+    }
+  } else if (s.connection !== 'locked') {
+    main.append(notice('正在读取运行状态…'));
+  }
+
+  // 4. Footer
+  const footer = el(
+    'footer',
+    { class: 'app-footer' },
+    el('span', {}, 'Aika-Next v0.8.0 | Be with you, always.'),
+    el('span', {}, '与你在一起，就是最好的未来。 ♡'),
+  );
+
+  app.replaceChildren(el('div', { class: 'app-shell' }, navbar, subHeader, sidebarNav, main, footer));
+  restoreView(app, s.page + '/' + (s.page === 'memory' ? s.section : ''));
+  tasks.afterRender();
+  pendingMemory.afterRender();
+}
+
+render();
+if (token) refreshSnapshot();
