@@ -33,9 +33,15 @@ export const CAPABILITIES_WITHOUT_LEGACY_SLOT: readonly RequiredCapabilityId[] =
 ];
 
 /** The one-way capability name used when an old seven-slot record is migrated. */
-const CAPABILITY_BY_SLOT: Readonly<Partial<Record<ProviderSlot, CapabilityId>>> = Object.fromEntries(
-  Object.entries(LEGACY_SLOT_BY_CAPABILITY).map(([capabilityId, slot]) => [slot, capabilityId]),
-) as Partial<Record<ProviderSlot, CapabilityId>>;
+const CAPABILITY_BY_SLOT: Readonly<Record<ProviderSlot, CapabilityId>> = {
+  dialogue: 'llm.chat',
+  asr: 'stt.transcribe',
+  tts: 'tts.synthesize',
+  summary: 'context.source',
+  perception: 'input.capture',
+  memory_turn: 'background.lifecycle',
+  admission: 'llm.chat',
+};
 
 export interface LegacySlotMigration {
   readonly source: SourceInstance;

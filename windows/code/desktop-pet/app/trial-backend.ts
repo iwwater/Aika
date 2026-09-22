@@ -71,6 +71,7 @@ import { ContinuityMemoryStore } from '../memory/continuity-memory-store.js';
 import { ProductionContinuityContext, productionPairingResolver } from '../memory/continuity-production.js';
 import { continuityManagement } from '../management/continuity-routes.js';
 import { RuntimeTraceStore } from '../core/trace-store.js';
+import { LegacyProviderRuntimeAdapter } from '../plugins/legacy-provider-adapter.js';
 // Health is derived from the runtime's own observations, so no extra probe is started here.
 
 /** Keep production trial calls within the reviewed text bounds without truncating user content or replies. */
@@ -258,10 +259,14 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
   try {
     const authorizer = new TrialAuthorizer(configuration, configFile, activationFile, registeredConfiguration);
     const transport = new TrialTransport(configuration, fetch, runtime, settings.effective.providers.dialogue.temperature);
-    const endpoint = (operation: TrialOperation): EndpointConfig => {
-      const model=configuration.models[operation];if(!model)throw Error('Requested provider is not configured');
-      return {model:model.model,endpoint:model.endpoint,apiKey:keyReader(model.credentialFile,registeredConfiguration,configFile,activationFile),authorizer};
-    };
+    // N075-01/R7: adapt the legacy TrialConfiguration onto the frozen ProviderRuntime.
+    // Callers requesting endpoint(operation) resolve through ProviderRuntime.resolveBinding.
+    const legacyProviderAdapter = new LegacyProviderRuntimeAdapter(
+      configuration,
+      authorizer,
+      ref => keyReader(ref ?? '', registeredConfiguration, configFile, activationFile),
+    );
+    const endpoint = (operation: TrialOperation): EndpointConfig => legacyProviderAdapter.getEndpointConfig(operation);
     store = new SqliteMemoryStore({ filename: configuration.database, retention: CONFIRMED_RETENTION, invitations: confirmedInvitationPolicy('Asia/Shanghai') });
     const diagnostic = async (value: object) => appendFile(resolve(evidenceRoot, 'events.jsonl'), JSON.stringify(value) + '\n', { mode: 0o600 });
     const evidence = async (event: SemanticAttemptEvent) => {
