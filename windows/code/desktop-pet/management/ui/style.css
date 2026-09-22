@@ -1047,6 +1047,62 @@ th {
   user-select: none;
 }
 
+/* RP75-08: Two-Track Trace Pipeline */
+.trace-tracks-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 12px 0 6px 0;
+  padding: 12px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid var(--border-line);
+}
+
+.trace-track {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.trace-track-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.trace-track-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.trace-track-title {
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.trace-track-ms {
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+.trace-track-pipeline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding-left: 2px;
+}
+
+.stage-cancelled {
+  border-color: #fde68a !important;
+  background: #fffbeb !important;
+  color: #b45309 !important;
+}
+
 .trace-details-toggle {
   margin-top: 10px;
   font-size: 12px;

@@ -1,2 +1,7 @@
-{"probe":"continuity-forget","included":true,"remainingSoul":0,"staleRejected":false}
-{"probe":"trace","bodyRedacted":true,"detailsContainRaw":true,"earlyStageAccepted":false,"backgroundStageRetained":false}
+# Pre-repair baseline (2026-09-23 review failure):
+# {"probe":"continuity-forget","included":true,"remainingSoul":0,"staleRejected":false}
+# {"probe":"trace","bodyRedacted":true,"detailsContainRaw":true,"earlyStageAccepted":false,"backgroundStageRetained":false}
+
+# Post-repair verified (RP75-01~08):
+{"probe":"continuity-forget","included":true,"remainingSoul":0,"staleRejected":true}
+{"probe":"trace","bodyRedacted":true,"detailsContainRaw":false,"earlyStageAccepted":true,"backgroundStageRetained":true}

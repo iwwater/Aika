@@ -154,25 +154,58 @@ export function eventsView(a) {
     );
 
     const traces = s.traceResult?.traces || [];
-    const traceCards = traces.length ? el('div', {}, traces.map(t => {
-      const stageElements = (t.stages || []).map((stage, idx, arr) => {
-        const pill = el('span', { class: `trace-stage-pill stage-${stage.name} ${stage.status === 'failed' ? 'stage-failed' : ''}` },
-          el('strong', {}, stage.label),
-          el('span', {}, `${stage.elapsedMs}ms`)
+    const traceCards = traces.length ? el('div', { class: 'trace-cards-list' }, traces.map(t => {
+      // RP75-08: Split stages into Foreground Dialogue vs Background Lifecycle
+      const fgStages = (t.stages || []).filter(st => st.category !== 'background' && !['memory_enqueue', 'memory_plan', 'memory_commit', 'summary', 'distill'].includes(st.name));
+      const bgStages = (t.stages || []).filter(st => st.category === 'background' || ['memory_enqueue', 'memory_plan', 'memory_commit', 'summary', 'distill'].includes(st.name));
+
+      const renderPill = st => {
+        const isFailed = st.status === 'failed';
+        const isCancelled = st.status === 'cancelled';
+        return el('span', { class: `trace-stage-pill stage-${st.name} ${isFailed ? 'stage-failed' : isCancelled ? 'stage-cancelled' : ''}` },
+          el('strong', {}, st.label),
+          el('span', { class: 'stage-ms' }, `${st.elapsedMs}ms`),
         );
-        if (idx < arr.length - 1) {
-          return [pill, el('span', { class: 'trace-arrow' }, '→')];
-        }
-        return [pill];
-      }).flat();
+      };
+
+      const fgElapsed = fgStages.reduce((sum, st) => sum + (st.elapsedMs || 0), 0);
+      const bgElapsed = bgStages.reduce((sum, st) => sum + (st.elapsedMs || 0), 0);
+
+      const fgTrack = el('div', { class: 'trace-track fg-track' },
+        el('div', { class: 'trace-track-header' },
+          el('span', { class: 'trace-track-badge bg-blue' }, '⚡ 前台主链'),
+          el('span', { class: 'trace-track-title' }, '对话响应与语音播报'),
+          el('span', { class: 'trace-track-ms' }, `耗时 ${fgElapsed} ms`),
+        ),
+        el('div', { class: 'trace-track-pipeline' },
+          ...fgStages.map((st, i, arr) => {
+            const pill = renderPill(st);
+            return i < arr.length - 1 ? [pill, el('span', { class: 'trace-arrow' }, '→')] : [pill];
+          }).flat(),
+        ),
+      );
+
+      const bgTrack = el('div', { class: 'trace-track bg-track' },
+        el('div', { class: 'trace-track-header' },
+          el('span', { class: 'trace-track-badge bg-purple' }, '⏳ 后台异步'),
+          el('span', { class: 'trace-track-title' }, '记忆提炼与落库提交'),
+          el('span', { class: 'trace-track-ms' }, bgStages.length ? `耗时 ${bgElapsed} ms` : '无异步任务'),
+        ),
+        el('div', { class: 'trace-track-pipeline' },
+          ...(bgStages.length ? bgStages.map((st, i, arr) => {
+            const pill = renderPill(st);
+            return i < arr.length - 1 ? [pill, el('span', { class: 'trace-arrow' }, '→')] : [pill];
+          }).flat() : [el('span', { class: 'text-muted' }, '本轮无后台记忆写入或已跳过')]),
+        ),
+      );
 
       const detailsToggle = el('details', { class: 'trace-details-toggle' },
         el('summary', {}, '查看该轮调用阶段明细与 Token 数据'),
         el('pre', { class: 'trace-details-content' }, JSON.stringify({
           turnId: t.turnId,
           tokens: t.tokens,
-          stages: t.stages
-        }, null, 2))
+          stages: t.stages,
+        }, null, 2)),
       );
 
       return el('div', { class: 'trace-card' },
@@ -180,16 +213,19 @@ export function eventsView(a) {
           el('div', { class: 'trace-meta-left' },
             badge(t.status === 'ok' ? '成功' : '失败', t.status === 'ok' ? 'success' : 'error'),
             el('span', { class: 'trace-time' }, time(t.createdAt)),
-            el('span', { class: 'trace-turn-id' }, `轮次: ${t.turnId.slice(0, 8)}...`)
+            el('span', { class: 'trace-turn-id' }, `轮次: ${t.turnId.slice(0, 8)}...`),
           ),
-          badge(`总耗时 ${t.totalElapsedMs} ms`, 'muted')
+          badge(`总耗时 ${t.totalElapsedMs} ms`, 'muted'),
         ),
         el('div', { class: 'trace-dialogue-snippet' },
           el('div', { class: 'trace-msg-user' }, el('strong', {}, '用户：'), t.userText),
-          el('div', { class: 'trace-msg-asst' }, el('strong', {}, 'Aika：'), t.replyText)
+          el('div', { class: 'trace-msg-asst' }, el('strong', {}, 'Aika：'), t.replyText),
         ),
-        el('div', { class: 'trace-waterfall' }, ...stageElements),
-        detailsToggle
+        el('div', { class: 'trace-tracks-container' },
+          fgTrack,
+          bgTrack,
+        ),
+        detailsToggle,
       );
     })) : el('div', { class: 'card empty' }, s.traceLoading ? '正在加载调用链数据…' : '暂无对话 Trace 记录。在桌宠或测试中发起对话即可实时生成！');
 
