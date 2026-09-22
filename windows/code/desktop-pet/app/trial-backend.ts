@@ -303,10 +303,13 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
     // through the context assembly, so switching a library is visible to the next turn immediately.
     const knowledgeStore = await KnowledgeLibraryStore.open(store, resolve(configuration.projectRoot, '.local/data/knowledge'));
     const knowledge = knowledgeManagement(knowledgeStore);
-    // N07: continuity tables live beside History/Knowledge in the same companion database. The optional
-    // package is opened here but does not alter the ordinary text path until a caller supplies its context.
-    await CharacterPackStore.open(store);
-    const continuity = continuityManagement(await ContinuityMemoryStore.open(store));
+    // N07: continuity tables live beside History/Knowledge in the same companion database. N075-01/R1:
+    // both stores are retained as formal runtime dependencies — the pack store feeds the dialogue
+    // context composer below, the continuity store feeds both the composer and the management API.
+    // Neither instance is dropped after open; they are composition-root dependencies, not side effects.
+    const characterPacks = await CharacterPackStore.open(store);
+    const continuityStore = await ContinuityMemoryStore.open(store);
+    const continuity = continuityManagement(continuityStore);
     // The active library is read fresh per turn; the port never caches a selection across a switch.
     // A library read failure must never take the whole conversation store down with it.
     const knowledgeSelection = async () => {
