@@ -23,18 +23,32 @@ export function createModernOverview(actions) {
   const { s, client } = actions;
   const snap = s.snapshot;
 
+  // RV75-07: Invalidate overview cache if auth epoch or selected character changed
+  const currentAuthEpoch = actions.authEpoch ?? s.authEpoch;
+  const currentCharacter = s.character || 'companion';
+  if (s.overviewEpoch !== currentAuthEpoch || s.overviewCharacter !== currentCharacter) {
+    s.overviewData = null;
+    s.overviewLoading = false;
+    s.overviewEpoch = currentAuthEpoch;
+    s.overviewCharacter = currentCharacter;
+  }
+
   // Trigger loading real memory records asynchronously if not loaded yet
   if (!s.overviewData && !s.overviewLoading && client?.token) {
     s.overviewLoading = true;
+    const charParam = encodeURIComponent(currentCharacter);
     Promise.all([
-      client.request('/api/records?characterId=companion&kind=memory&state=active&limit=6').catch(() => ({ records: [] })),
-      client.request('/api/records?characterId=companion&kind=transcript&state=active&limit=10').catch(() => ({ records: [] })),
-      client.request('/api/records?characterId=companion&kind=summary&state=active&limit=2').catch(() => ({ records: [] })),
+      client.request(`/api/records?characterId=${charParam}&kind=memory&state=active&limit=6`).catch(() => ({ records: [], total: 0 })),
+      client.request(`/api/records?characterId=${charParam}&kind=transcript&state=active&limit=10`).catch(() => ({ records: [], total: 0 })),
+      client.request(`/api/records?characterId=${charParam}&kind=summary&state=active&limit=2`).catch(() => ({ records: [], total: 0 })),
     ]).then(([mems, trans, sums]) => {
       s.overviewData = {
         memories: mems.records || [],
+        totalMemories: typeof mems.total === 'number' ? mems.total : (mems.records?.length || 0),
         transcripts: trans.records || [],
+        totalTranscripts: typeof trans.total === 'number' ? trans.total : (trans.records?.length || 0),
         summaries: sums.records || [],
+        totalSummaries: typeof sums.total === 'number' ? sums.total : (sums.records?.length || 0),
       };
       s.overviewLoading = false;
       actions.render();
@@ -47,29 +61,34 @@ export function createModernOverview(actions) {
   const memList = s.overviewData?.memories || [];
   const transList = s.overviewData?.transcripts || [];
   const sumList = s.overviewData?.summaries || [];
-  const totalMemCount = memList.length + sumList.length;
-  const totalTransCount = transList.length;
+  const totalMemCount = (s.overviewData?.totalMemories ?? memList.length) + (s.overviewData?.totalSummaries ?? sumList.length);
+  const totalTransCount = s.overviewData?.totalTranscripts ?? transList.length;
+
+  // Real module health evaluation
+  const modulesList = Object.values(snap?.modules || {});
+  const hasFailedModule = modulesList.some(m => m.state === 'failed' || m.error);
+  const isHealthy = snap?.runtime?.status !== 'failed' && !hasFailedModule;
+  const heroTitle = isHealthy ? '系统运行正常 · 记忆就绪' : '部分模块未就绪 · 运行受限';
+  const heroSub = isHealthy
+    ? 'Aika 陪伴伙伴已接入本地真实记忆库，正在陪伴你 ✨'
+    : '存在未完全就绪的模块，请在健康与设置页面查看详情。';
 
   // 1. Hero Card
   const heroCard = el(
     'div',
-    { class: 'hero-status-card' },
+    { class: isHealthy ? 'hero-status-card' : 'hero-status-card hero-status-warning' },
     el(
       'div',
       { class: 'hero-status-top' },
       el(
         'div',
         { class: 'hero-status-left' },
-        svgIcon(ICONS.checkCircle, 'hero-check-icon'),
+        svgIcon(isHealthy ? ICONS.checkCircle : ICONS.alertCircle, 'hero-check-icon'),
         el(
           'div',
           { class: 'hero-status-titles' },
-          el('h2', { class: 'hero-status-title' }, '系统运行正常 · 记忆就绪'),
-          el(
-            'p',
-            { class: 'hero-status-sub' },
-            'Aika 陪伴伙伴已接入本地真实记忆库，正在陪伴你 ✨',
-          ),
+          el('h2', { class: 'hero-status-title' }, heroTitle),
+          el('p', { class: 'hero-status-sub' }, heroSub),
         ),
       ),
       el(
@@ -153,11 +172,11 @@ export function createModernOverview(actions) {
           'div',
           { class: 'metric-body' },
           el('span', { class: 'metric-label' }, '本地存储状态'),
-          el('strong', { class: 'metric-value' }, '已加密同步'),
+          el('strong', { class: 'metric-value' }, snap?.runtime?.pid ? '本地 SQLite 持久化' : '未连接'),
           el(
             'div',
             { class: 'metric-progress-bar' },
-            el('div', { class: 'metric-progress-fill', style: 'width: 100%' }),
+            el('div', { class: 'metric-progress-fill', style: `width: ${snap?.runtime?.pid ? '100%' : '0%'}` }),
           ),
         ),
       ),

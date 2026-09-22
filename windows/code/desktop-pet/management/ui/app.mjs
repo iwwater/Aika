@@ -274,7 +274,7 @@ async function read(kind, url, accept) {
     if (data.characterId !== s.character) throw Error('服务返回的角色与本次查询不一致，内容未显示。');
     accept(data);
   } catch (e) {
-    if (reads.get(kind) === seq && auth !== authEpoch) error(e);
+    if (reads.get(kind) === seq && auth === authEpoch) error(e);
   } finally {
     if (reads.get(kind) === seq) {
       s.pending.delete(kind);
