@@ -1,12 +1,32 @@
 // N075-12 / Trace Store: Persistent SQLite storage for end-to-end conversation call traces.
 import Database from 'better-sqlite3';
+import { createHash } from 'node:crypto';
+
+export type TraceStageName =
+  | 'admission'
+  | 'context'
+  | 'llm'
+  | 'assistant_persist'
+  | 'memory_enqueue'
+  | 'memory_plan'
+  | 'memory_commit'
+  | 'summary'
+  | 'tts'
+  | 'distill';
 
 export interface TraceStage {
-  name: 'admission' | 'context' | 'llm' | 'distill' | 'tts';
+  name: TraceStageName;
   label: string;
   elapsedMs: number;
   status: 'ok' | 'skipped' | 'failed';
   details?: Record<string, unknown>;
+}
+
+export function sanitizeTraceText(text: string): string {
+  if (!text) return '';
+  const len = [...text].length;
+  const digest = createHash('sha256').update(text).digest('hex').slice(0, 8);
+  return `[digest:${digest} len:${len}]`;
 }
 
 export interface RuntimeTrace {
@@ -69,11 +89,18 @@ export class RuntimeTraceStore {
       );
       CREATE INDEX IF NOT EXISTS idx_runtime_traces_created ON runtime_traces(created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_runtime_traces_char ON runtime_traces(character_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_runtime_traces_turn ON runtime_traces(turn_id);
     `);
     return new RuntimeTraceStore(db);
   }
 
-  record(trace: RuntimeTrace): void {
+  /**
+   * Records a complete turn trace.
+   * Privacy: by default (debugOptIn: false), user_text and reply_text are sanitized to
+   * cryptographic digests + length counters so the trace store does not become a second
+   * persistent chat transcript database. Full bodies are persisted only when debugOptIn: true.
+   */
+  record(trace: RuntimeTrace, debugOptIn = false): void {
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO runtime_traces (
         trace_id, turn_id, character_id, session_id, user_text, reply_text,
@@ -82,13 +109,16 @@ export class RuntimeTraceStore {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
+    const storedUserText = debugOptIn ? trace.userText : sanitizeTraceText(trace.userText);
+    const storedReplyText = debugOptIn ? trace.replyText : sanitizeTraceText(trace.replyText);
+
     stmt.run(
       trace.traceId,
       trace.turnId,
       trace.characterId,
       trace.sessionId,
-      trace.userText,
-      trace.replyText,
+      storedUserText,
+      storedReplyText,
       trace.totalElapsedMs,
       trace.status,
       trace.tokens?.inputTokens || 0,
@@ -97,6 +127,28 @@ export class RuntimeTraceStore {
       JSON.stringify(trace.stages || []),
       trace.createdAt || new Date().toISOString()
     );
+  }
+
+  /**
+   * Appends an asynchronous background stage (e.g. memory_plan, memory_commit, summary)
+   * to an existing foreground turn trace by turnId, updating elapsed time and stages list.
+   * Returns true if matching trace was found and updated, false otherwise.
+   */
+  appendStage(turnId: string, stage: TraceStage): boolean {
+    const row = this.db
+      .prepare('SELECT trace_id, stages_json, total_elapsed_ms FROM runtime_traces WHERE turn_id=? ORDER BY created_at DESC LIMIT 1')
+      .get(turnId) as { trace_id: string; stages_json: string; total_elapsed_ms: number } | undefined;
+    if (!row) return false;
+
+    let stages: TraceStage[] = [];
+    try { stages = JSON.parse(row.stages_json); } catch {}
+    stages.push(stage);
+
+    const updatedElapsed = Math.max(row.total_elapsed_ms, stage.elapsedMs);
+    this.db
+      .prepare('UPDATE runtime_traces SET stages_json=?, total_elapsed_ms=? WHERE trace_id=?')
+      .run(JSON.stringify(stages), updatedElapsed, row.trace_id);
+    return true;
   }
 
   list(options: TraceQueryOptions = {}): TraceListResult {

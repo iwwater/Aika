@@ -143,7 +143,7 @@ export class BackendSession {
     if (ports.backgroundMemory && ports.backgroundMemory !== ports.memory) throw new Error('Background and dialogue must share the same memory port');
     if (ports.isMemoryIndependent && !ports.backgroundMemory) throw new Error('Independent scheduling requires the background memory capability');
     const lifecyclePort = ports.backgroundMemory ?? ports.lifecycleMemory;
-    const lifecycle = lifecyclePort ? new RoleMemoryLifecycleQueue(lifecyclePort, (scope, _error, kind) => reportBackgroundFailure(scope, kind ?? 'summary')) : undefined;
+    const lifecycle = lifecyclePort ? new RoleMemoryLifecycleQueue(lifecyclePort, (scope, _error, kind) => reportBackgroundFailure(scope, kind ?? 'summary'), ports.traceStore) : undefined;
     this.maintenance = lifecycle ?? new RoleMaintenanceQueue(ports.memory, (scope, text) => ports.memory.maintenanceInput(scope, text), scope => reportBackgroundFailure(scope, 'memory'));
     const { backgroundMemory: _background, isMemoryIndependent, classifyMemoryRequest, createEmotion, createStreamingAsr, ...runtimePorts } = ports;
     const emotion=createEmotion?.()??ports.emotion;

@@ -70,6 +70,7 @@ import { CharacterPackStore } from '../memory/character-pack-store.js';
 import { ContinuityMemoryStore } from '../memory/continuity-memory-store.js';
 import { ProductionContinuityContext, productionPairingResolver } from '../memory/continuity-production.js';
 import { continuityManagement } from '../management/continuity-routes.js';
+import { RuntimeTraceStore } from '../core/trace-store.js';
 // Health is derived from the runtime's own observations, so no extra probe is started here.
 
 /** Keep production trial calls within the reviewed text bounds without truncating user content or replies. */
@@ -311,6 +312,9 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
     const characterPacks = await CharacterPackStore.open(store);
     const continuityStore = await ContinuityMemoryStore.open(store);
     const continuity = continuityManagement(continuityStore);
+    // N075-01/R5: open persistent trace store in the companion SQLite database and wire to both the
+    // production turn pipeline and the management server.
+    const traceStore = RuntimeTraceStore.open(store.rawDatabaseForKnowledge());
     // N075-01/R2: the continuity context source composes the pack store and the continuity memory
     // store into ONE production dialogue context. It is a read-only projection: no second pipeline,
     // no second store, one dialogue call. A compose failure fails the turn visibly; capability-off
@@ -366,6 +370,8 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
       // voice turn streams partials and commits the verified transcript; otherwise the batch ASR above
       // still transcribes the whole clip after release.
       ...(streamingModels ? { createStreamingAsr: () => new SherpaStreamingAsr(streamingModels) } : {}),
+      // N075-01/R5: real production trace store wired to dialogue pipeline and memory lifecycle queue
+      traceStore,
     };
     session = new BackendSession(sessionPorts, message => {
       runtime.observeDesktop(message);
@@ -438,7 +444,8 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
         // The preference is per-machine app data; the console only reads and writes it.
         continuity,
         await MicrophonePreferenceStore.open(resolve(configuration.projectRoot, '.local/data/microphone.json')),
-        skins);
+        skins,
+        traceStore);
     }
     if (configuration.purpose === 'user-trial') {
       const classifier = new WorkIntentClassifier(endpoint('admission'), transport);

@@ -9,7 +9,11 @@ export class RoleMemoryLifecycleQueue {
   private readonly states = new Map<CharacterId, MemoryPendingSnapshot>();
   private readonly lifetime = new AbortController();
   private readonly assistantMemory: AssistantMemoryPort;
-  constructor(private readonly memory: MemoryTurnPort & SummaryPort, private readonly reportFailure: (scope: TurnScope, error: unknown, kind?: 'memory' | 'summary') => void) {
+  constructor(
+    private readonly memory: MemoryTurnPort & SummaryPort,
+    private readonly reportFailure: (scope: TurnScope, error: unknown, kind?: 'memory' | 'summary') => void,
+    private readonly traceStore?: import('./trace-store.js').RuntimeTraceStore,
+  ) {
     this.assistantMemory = requireAssistantMemoryPort(memory);
   }
   private transition(characterId: CharacterId, queued: number, running: number): void {
@@ -59,7 +63,30 @@ export class RoleMemoryLifecycleQueue {
   }
   enqueueTurn(scope:TurnScope,currentMessageId:string,text:string):Promise<MemoryTurnOutcome> {
     const owned=Object.freeze({...scope});
-    const work=this.schedule(owned,(captured,signal)=>this.backgroundMemory().prepareBackgroundTurn(captured,currentMessageId,text,signal));
+    const planStart = performance.now();
+    const work=this.schedule(owned, async (captured,signal)=>{
+      const outcome = await this.backgroundMemory().prepareBackgroundTurn(captured,currentMessageId,text,signal);
+      const elapsedMs = Math.max(1, Math.round(performance.now() - planStart));
+      try {
+        this.traceStore?.appendStage(captured.turnId, {
+          name: 'memory_plan',
+          label: '后台记忆规划与提炼',
+          elapsedMs,
+          status: outcome.status === 'rejected' ? 'failed' : 'ok',
+          details: { request: outcome.request, outcomeStatus: outcome.status },
+        });
+        if (outcome.status === 'applied') {
+          this.traceStore?.appendStage(captured.turnId, {
+            name: 'memory_commit',
+            label: '后台记忆落库提交',
+            elapsedMs,
+            status: 'ok',
+            details: { affectedIds: outcome.affectedIds, retrievalInvalidated: outcome.retrievalInvalidated },
+          });
+        }
+      } catch {}
+      return outcome;
+    });
     const reported=work.then(outcome=>{
       if(outcome.status==='rejected'&&!this.lifetime.signal.aborted)this.reportFailure(owned,new Error(outcome.rejectionCode??'background_memory_rejected'),'memory');
     },error=>{if(!this.lifetime.signal.aborted)this.reportFailure(owned,error,'memory');});
@@ -105,7 +132,23 @@ export class RoleMemoryLifecycleQueue {
   afterConversationSaved(scope: TurnScope): void {
     if (this.lifetime.signal.aborted) return;
     const captured=Object.freeze({...scope});
-    void this.schedule(captured, (owned, signal) => this.memory.summarizePending(owned, signal)).catch(error => {
+    const summaryStart = performance.now();
+    void this.schedule(captured, async (owned, signal) => {
+      const result = await this.memory.summarizePending(owned, signal);
+      const elapsedMs = Math.max(1, Math.round(performance.now() - summaryStart));
+      try {
+        if (result.status === 'applied') {
+          this.traceStore?.appendStage(captured.turnId, {
+            name: 'summary',
+            label: '阶段对话摘要落库',
+            elapsedMs,
+            status: 'ok',
+            details: { summaryId: result.summaryId },
+          });
+        }
+      } catch {}
+      return result;
+    }).catch(error => {
       if (!this.lifetime.signal.aborted) this.reportFailure(captured, error,'summary');
     }).catch(()=>{});
   }
