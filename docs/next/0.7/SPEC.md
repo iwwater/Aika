@@ -2,6 +2,8 @@
 
 日期：2026-09-22；状态：N07-00～N07-05 已完成受控自动验收；版本人工验收仍暂缓。
 
+> **完成层级口径（2026-09-22）**：上述 AUTO_PASS 均为 **0.7 domain/core acceptance**（IMPLEMENTED：模块代码 + 受控自动测试 + 受控真实回放）。据此不得推导"正式桌面对话已完整消费连续性能力"（WIRED）；Production Dialogue Context integration 明确 deferred to N075-01（[SPEC N075-01](../0.75/SPEC.md)、[架构核对 AR-01～05](../ARCHITECTURE_REVIEW_20260922.md)）。完成度统一按 `IMPLEMENTED / WIRED / EXPOSED` 三态记录（[Runtime Maturity Matrix](../0.75/CONTRACTS.md#6-runtime-maturity-matrix)）。
+
 本索引把 [RPD](RPD.md) 拆成可逐步交付的执行 SPEC。本轮只推进文字链路：本地 TXT/Markdown 资料、角色包、双时间线/双 Wiki 的最小读取、上下文召回和真实 LLM 文本回复。鼠标、Live2D、麦克风、ASR、TTS、听感和 0.65 的 32 项人工验收继续后置。
 
 ## 1. 执行纪律

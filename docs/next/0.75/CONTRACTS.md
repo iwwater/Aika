@@ -49,6 +49,58 @@
 
 以上每项在开 UI 前记录：生产提供者、调用者、输入/输出 DTO、鉴权、版本冲突、幂等/重试、分页/订阅、错误码、测试、启动装配证据。没有端口的操作保持不可用和明确原因，不写假数据替代验收。
 
+## 6. Runtime Maturity Matrix
+
+2026-09-22 新增。术语：`IMPLEMENTED` = Domain/Core 代码存在且有单测/验收证据；`WIRED` = 正式 Production Runtime 实际消费该能力；`EXPOSED` = Management API / Console 可真实读取或控制。基线为当前 `aika-next` 工作树（de95e1d）；N075-01 完成后须复核此表。
+
+| Capability | IMPLEMENTED | WIRED | EXPOSED |
+| --- | :-: | :-: | :-: |
+| DialoguePipeline | ✅ | ✅ | — |
+| Strict Memory Lifecycle（plan/validate/commitTurn） | ✅ | ✅ | ✅ |
+| Knowledge Library | ✅ | ✅ | ✅ |
+| Skin | ✅ | ✅ | ✅ |
+| Character Pack | ✅ | 🟡 | 🟡 |
+| Continuity Memory（ContinuityMemoryStore 存储/纠正/遗忘） | ✅ | 🟡 | ✅ |
+| Continuity Context（Composer → 正式 Dialogue Context） | ✅ | ❌/🟡 | 🟡 |
+| Canon Timeline | ✅ | 🟡 | 🟡 |
+| Companion Timeline | ✅ | 🟡 | 🟡 |
+| Runtime Trace | ✅ | 🟡 | ✅ |
+| ProviderRuntime | ✅ | 🟡 | 🟡 |
+| PackageHost | ✅ | 🟡 | 🟡 |
+| FlowRuntime | ✅ | 🟡 | 🟡 |
+
+说明（与 [SOURCE_AUDIT](SOURCE_AUDIT.md) FE75-06～FE75-11、[架构核对](../ARCHITECTURE_REVIEW_20260922.md) AR-01～05 对应）：
+
+- `WIRED=🟡` 的各项均有生产打开/部分消费证据，但正式 Dialogue Context 或生产管线尚未完整消费；具体缺口见 SOURCE_AUDIT。
+- `Continuity Context` 的 `❌/🟡`：正式 DialoguePipeline 的 foreground context 尚未完整消费 Composer 输出（AR-01），管理 snapshot API 只覆盖显式 continuity 请求。
+- `Runtime Trace` 的 `WIRED=🟡`：Store/API/Console 已具备，但生产 trace producer 注入不完整（FE75-09）。
+- `FlowRuntime` 的 `WIRED=🟡`：已实现并有测试，但 Next65Management 用 `new FlowRuntime([])` 离线实例做管理投影，不代表运行真相（FE75-10）。
+
+## 7. Wiki 与 Context Inspector 契约
+
+### 7.1 Wiki Contract（禁止新增第二套 Wiki 存储）
+
+禁止新增：`wiki_entries`、`wiki_evidence`、第二个 wiki sqlite、第二套 correct/forget。定义：
+
+- **Character Wiki** = CharacterPack / Canon Facts / Soul / Timeline / Evidence 的 **Read Model**（产品投影，不拥有数据）。
+- **User Wiki** = ContinuityMemoryStore 中 `user_wiki` 层的 Read Model。
+- **User Soul** = ContinuityMemoryStore 中 `user_soul` 层。
+- **Relationship** = ContinuityMemoryStore 中 `relationship` 层。
+
+即：**Wiki 是产品投影，不是新的 System of Record。** Knowledge Library ≠ User Wiki：Knowledge 继续作为用户主动导入的参考资料（独立后端），Wiki 是长期结构化认知投影。
+
+### 7.2 Context Inspector Contract
+
+Management 查询必须展示**本轮真正被 LLM 消费的 Context Snapshot**（issued/consumed snapshot），包括 selected/omitted、source type、source id、version、score、token cost、budget reason、dedupe reason、privacy exclusion、stale/invalidation state。不得在管理页重新执行一次 retrieval 然后声称"这是当时 LLM 看见的内容"。现有 Memory Lifecycle 已保存 Context identity/source/revision；Context Inspector 应读取该 issued/consumed snapshot，而不是重新查询近似结果。
+
+**Acceptance**：Console 显示的 selected sources == 该 turn 真正发给 Dialogue LLM 的 sources。
+
+### 7.3 Trace 语义契约
+
+- Trace 来自真实 stage（admission / context / llm / assistant_persist / memory_enqueue / memory_plan / memory_commit / summary 等），不使用人工构造指标。
+- Async Memory 语义：foreground turn terminal 不等待普通 distillation；后台阶段以同一 `turnId` 关联（traceId/turnId → foreground stages + background child/update stages）。
+- Privacy：默认 Trace 只存 turnId、timings、tokens、selected source IDs、revisions、statuses、digest；完整 user/reply 正文仅 debug opt-in，默认不长期重复存第二份聊天正文库。
+
 ## 4. 桌面与表现边界
 
 现有命令见 [main.mjs](../../../windows/code/desktop-pet/desktop/main.mjs)、[display-controls.mjs](../../../windows/code/desktop-pet/desktop/display-controls.mjs) 与 [mic-test-panel.mjs](../../../windows/code/desktop-pet/desktop/mic-test-panel.mjs)。

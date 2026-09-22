@@ -269,6 +269,8 @@ Context Composer 是既有 Context 组装的扩展，不是第二条 Dialogue Pi
 
 ### 12.3 正式主链与后台接线
 
+2026-09-22 完成层级标注：本节描述的是**目标链路**。0.7 已完成 domain/core acceptance（存储、Composer、管理端口、受控回放，N07-00～05 AUTO_PASS）；正式桌面对话对该链路的完整 Production Wiring（AR-01/02/04：ObservedTrialMemory 仅 knowledge、Composer 生产消费未接线、后台沉淀投影缺口）由 N075-01 承接。0.7 验收结论不推翻，仅纠正"完成层级"：**0.7 domain/core acceptance complete; Production Dialogue Context integration is deferred to N075-01.** 完成度统一按 `IMPLEMENTED / WIRED / EXPOSED` 三态记录，见 [0.75 Runtime Maturity Matrix](../0.75/CONTRACTS.md#6-runtime-maturity-matrix)。
+
 目标链路：用户输入 → 既有轮次 → 固定配对/活动 Pack/来源修订 → 既有 Memory Context 加连续性来源 → 同一 DialogueProvider → 已提交消息事件 → 既有维护队列更新候选/投影。Composer 不直接调用模型，管理 API 不替代正常消息到后台的接线。
 
 活动配对在轮次开始固定；切换角色/实例时取消或失效旧轮，保持已提交历史归属。0.6 默认角色只映射到明确默认实例，不能将旧对话复制到每个新实例。后台提炼按来源消息和操作 ID 幂等，取消、关闭、重启与恢复使用既有队列。

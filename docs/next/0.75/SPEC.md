@@ -2,6 +2,8 @@
 
 状态：仅规划，所有步骤未实施。更新日期：2026-09-22。
 
+> **Runtime Truth 术语纪律（2026-09-22 起）**：本文档及 0.75 全部报告统一使用 `IMPLEMENTED`（Domain/Core 代码存在，并有单测或验收证据）、`WIRED`（正式 Production Runtime 实际消费该能力）、`EXPOSED`（Management API / Console 可以真实读取或控制该能力）三态描述完成度。禁止以下模糊表述："implemented therefore production-ready"、"accepted therefore runtime-wired"、"API exists therefore real runtime uses it"。当前正式启动装配点为 `windows/code/desktop-pet/app/trial-backend.ts`。
+
 入口：[计划书 / RPD](RPD.md) · [接口映射](CONTRACTS.md) · [源码核对](SOURCE_AUDIT.md)。本索引及下列逐步规格是后续执行依据，不是本轮启动开发的指令。
 
 目录：[执行规则](#1-执行规则) · [顺序](#2-步骤与依赖) · [逐步范围](#3-逐步规格) · [记录模板](#4-每个界面的实施记录模板) · [出口](#5-最终出口)
@@ -23,7 +25,7 @@
 | SPEC | 改造单元 | 依赖 | 当前状态 |
 | --- | --- | --- | --- |
 | N075-00 | 固定基线、全量入口/功能盘点 | 0.7 实际交付边界 | **AUTO_PASS（基线盘点完成）**（[报告](reports/N075-00.md)） |
-| N075-01 | 前端基础设施、API/Bridge/状态契约 | 00 | PLANNED；可见部分 WAIT_REQUIREMENTS |
+| N075-01 | 共享基础设施、运行时收口与后端契约 | 00 | PLANNED（Runtime Convergence 前置，见 N075-01 完成条件）；可见部分 WAIT_REQUIREMENTS |
 | N075-02 | 控制台外壳、启动与鉴权 | 01 | **ACCEPTED（用户已确认初稿；真实桌宠已接通；登记顶栏切侧边栏 TODO）**（[记录](reports/N075-02.md)） |
 | N075-03 | 桌宠右键减负与管理入口 | 02 | WAIT_REQUIREMENTS |
 | N075-04 | API、Provider、模型与绑定配置 | 02；真实 Provider 管理端口 | WAIT_REQUIREMENTS |
@@ -51,13 +53,41 @@
 - 接口：为 [CONTRACTS](CONTRACTS.md) 的接口族补实际 method、DTO、生产装配路径和能力可用条件。
 - 验收：每个旧入口均有负责人步骤；0.65 未验项与本次重写影响建立关联，不改成通过。没有代码删除或数据迁移。
 
-### N075-01：共享基础设施与契约
+### N075-01：共享基础设施、运行时收口与后端契约
 
-- 改造范围：`management/ui/api.mjs`、路由/页面生命周期、作用域状态、应用服务；`management/server.ts` 静态资源与构建接入；desktop Bridge 的 UI 适配。目录调整与框架选择在实施时写技术决策。
-- 复用边界：唯一配置/数据库/Runtime；管理请求与 desktop transport 分离。共享语义可复用，设备资源不能迁到普通浏览器控制台。
+2026-09-22 修订（Runtime Convergence / Backend Truth Repair）：N075-01 不再只是前端 API/routing 基建，而是 0.75 的运行时收口步骤。原前端基础工作全部保留，新增以下职责：
+
+- **A. Production Runtime truth**：正式装配点锁定 `app/trial-backend.ts` → `BackendSession` → `NextTurnPort/DialoguePipeline`；`tools/real-backend.mjs` 明确降级为 DEV/SMOKE/EFFECT VALIDATION harness，不承载唯一生产功能。
+- **B. Continuity → Dialogue Context 接线**：CharacterPackStore / ContinuityMemoryStore 成为正式 runtime dependency；ContinuityContextComposer 经只读适配进入正式 foreground context。
+- **C. Background Memory 正式化**：所有生产 Distillation 经 `MemoryTurnPlan → validation → commitTurn` 正式生命周期；禁止 Production direct SQL 写 `memory_records`。
+- **D. Runtime Trace 正式接线**：RuntimeTraceStore 由正式 Pipeline 产生真实 stage 记录；Context Inspector 读取真实 issued/consumed snapshot。
+- **E. Provider / Binding 正式运行时适配**：正式路径经 Legacy Adapter 接入现有 ProviderRuntime，不新增第二套 registry。
+- **F. Package / Flow live management projection**：Next65Management 读取正在运行的 PackageHost/FlowRuntime，消除 `loaded:false` 常量投影。
+- **G. 0.75 前端所需稳定 read model / contracts**：Character/User Wiki、Continuity Timeline、真实 Turn Context 的查询投影。
+
+同时保留原前端基础工作：`management/ui/api.mjs`、路由/页面生命周期、作用域状态、应用服务；`management/server.ts` 静态资源与构建接入；desktop Bridge 的 UI 适配；请求 epoch、cancellation、version conflict、error mapping。
+
+**正式 Turn Authority（文档口径）**：正式文本 Turn 主链为 `NextTurnPort → TurnController → DialoguePipeline → Memory/Context/DialogueProvider`。`FlowRuntime` 已实现，但当前不是取代 DialoguePipeline 的统一生产对话总调度器；`NextTurnPort` 源码仍是 `TurnController + DialoguePipeline` 的薄适配层。文档不得把 FlowRuntime 描述为已接管生产对话。
+
+- 复用边界：唯一配置/数据库/Runtime；管理请求与 desktop transport 分离。共享语义可复用，设备资源不能迁到普通浏览器控制台。禁止为 0.75 新建第二条 Dialogue Pipeline、第二套 Wiki 数据库或第二套 Memory 生命周期。
 - 接口：沿用同源鉴权；定义请求 epoch、配对/实例标识、取消、版本冲突、错误映射、能力状态。新 DTO 必须与后端共同验证，不仅写前端类型。
 - 参考门槛：本步不先画导航或通用弹窗。若要实现可见组件，按该组件索取参考并确认。
-- 验收：无硬编码 companion；保留旧校验语义并扩大作用域隔离；迟到响应/双页编辑冲突/鉴权失效可重现；构建后资源真实可加载。
+- 验收：无硬编码 companion；保留旧校验语义并扩大作用域隔离；迟到响应/双页编辑冲突/鉴权失效可重现；构建后资源真实可加载；运行时收口各项以下述完成条件为准。
+
+**N075-01 完成条件（Definition of Done）**：满足 [RPD 第 3 节](RPD.md#3-需求与完成标准) 之外，还必须同时满足 [Runtime Maturity Matrix](CONTRACTS.md#6-runtime-maturity-matrix) 与 [N075-01 DoD 清单](#n075-01-definition-of-done)。没有满足 DoD 前，`N075-01 != ACCEPTED`；文档与报告必须用 `IMPLEMENTED / WIRED / EXPOSED` 三态区分完成度，不得把"代码存在"等同于"正式可用"。
+
+#### N075-01 Definition of Done
+
+- [ ] `trial-backend → BackendSession → DialoguePipeline` 是唯一正式文本主链；`tools/real-backend.mjs` 仅作 dev/smoke harness。
+- [ ] CharacterPackStore、ContinuityMemoryStore 成为正式 runtime dependency（open 后持久持有并注入下游）。
+- [ ] ContinuityContextComposer 数据真实进入 Production Dialogue Context；User Soul / User Wiki / Relationship 至少能影响真实 Dialogue LLM Context；Character Soul / Canon Timeline / Companion Timeline 至少进入正式 ContextSource 管线。
+- [ ] 正常对话仍只有一次 Dialogue LLM Call；Raw Transcript 立即写入；普通 Distillation 后台执行不阻塞前台。
+- [ ] correction / forget / uncertain 的 privacy guard 不被 batching 破坏；自动 Distillation 不经 Production direct SQL 写 `memory_records`；长期 Memory 写入经 `MemoryTurnPlan → validation → commitTurn`。
+- [ ] RuntimeTraceStore 由正式 Pipeline 产生真实记录；Context Inspector 展示真实 issued/consumed Context。
+- [ ] ProviderRuntime、PackageHost / FlowRuntime 被复用，不存在第二套 registry/runtime；Next65Management 读取 live runtime。
+- [ ] Companion Timeline latest-N 修复；Skin / Knowledge Library 后端无回归；不新增 Wiki 数据库、不新增第二条 DialoguePipeline。
+- [ ] 文档统一 `IMPLEMENTED / WIRED / EXPOSED`；0.7 文档不再把 Core Acceptance 写成 Production Wiring。
+- [ ] 新增 integration tests 全绿；原有核心测试全绿（`test:next07`、memory lifecycle、knowledge、skin、0.65 package/provider/flow）。
 
 ### N075-02：控制台外壳与启动流程
 
