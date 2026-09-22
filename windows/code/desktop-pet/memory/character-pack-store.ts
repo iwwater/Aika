@@ -1004,12 +1004,14 @@ export class CharacterPackStore implements ContinuityReadPort {
     }
 
     // Retrieve companion timeline events (strictly scoped to pairing!)
+    // N075-01/R9: select the LATEST maxCompanion events (ORDER BY created_at DESC), then reverse to
+    // restore natural chronological order. The previous ORDER BY ASC selected the oldest historical events.
     const maxCompanion = options?.maxCompanionEvents ?? 50;
     const companionRows = this.db
       .prepare(
         `SELECT * FROM character_companion_timeline
          WHERE user_id=? AND character_id=? AND character_instance_id=?
-         ORDER BY created_at ASC
+         ORDER BY created_at DESC
          LIMIT ?`,
       )
       .all(pairing.userId, pairing.characterId, pairing.characterInstanceId, maxCompanion * 2) as CompanionEventRow[];
@@ -1031,7 +1033,7 @@ export class CharacterPackStore implements ContinuityReadPort {
         createdAt: r.created_at,
         ...(sourceIds.length > 0 ? { sourceIds: Object.freeze(sourceIds) } : {}),
       });
-    });
+    }).reverse();
 
     // Calculate revision number
     const packCount = (
