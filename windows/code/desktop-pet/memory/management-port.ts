@@ -82,23 +82,107 @@ export class SqliteManagementMemoryPort implements ManagementMemoryPort {
   }
   async context(characterId:CharacterId,query:string):Promise<ManagedContext> {
     try {
-      const scope=ownedScope(characterId,randomUUID());string(query);
-      const revision=this.store.revision(scope);
-      const context=await this.lifecycle.context(scope,query,null,new AbortController().signal);
-      if(!sameScope(context.scope,scope))throw new ManagementError('unavailable','上下文角色或轮次不匹配。');
+      string(query);
+      const scope=ownedScope(characterId);
+      // N075-01/R6: first inspect actual issued/consumed recall trace from live store.
+      // Management must show what the LLM genuinely consumed, never disguise a fresh re-query as history.
+      const rawDb = this.store.rawDatabaseForKnowledge();
+      const traceRow = rawDb.prepare(
+        "SELECT id, payload_json, sources_json FROM memory_recall_trace WHERE character_id=? ORDER BY rowid DESC LIMIT 1"
+      ).get(characterId) as { id: string; payload_json: string; sources_json: string } | undefined;
+
+      if (traceRow) {
+        let trace: import('../contracts/memory-dynamics.js').MemoryRecallTrace | undefined;
+        let sources: import('../contracts/memory-lifecycle.js').SourceVersion[] = [];
+        try {
+          trace = JSON.parse(traceRow.payload_json);
+          sources = JSON.parse(traceRow.sources_json);
+        } catch {}
+
+        if (trace && Array.isArray(sources)) {
+          const staleSourceIds: string[] = [...(trace.staleIds ?? [])];
+          for (const ref of sources) {
+            const rec = this.store.inspect(scope, ref.id);
+            if (!rec || rec.state !== 'active' || rec.version !== ref.version) {
+              if (!staleSourceIds.includes(ref.id)) staleSourceIds.push(ref.id);
+            }
+          }
+          const isStale = trace.status === 'invalidated' || staleSourceIds.length > 0;
+
+          const candidates = (trace.candidates ?? []).map(c => {
+            const rec = this.store.inspect(scope, c.source.id);
+            return {
+              id: c.source.id,
+              version: c.source.version,
+              text: rec?.text ?? '[已失效/已删除条目]',
+              selected: c.selected && !isStale,
+              score: c.relevance,
+              priority: c.priority,
+              omission: c.omission,
+              cueKind: c.cueKind,
+              matchedTerms: c.matchedTerms ?? [],
+            };
+          });
+
+          const selectedRecords = (trace.candidates ?? [])
+            .filter(c => c.selected)
+            .map(c => this.store.inspect(scope, c.source.id))
+            .filter((r): r is MemoryRecord => !!r && r.state === 'active')
+            .map(managed);
+
+          const recentRecords = (trace.recentContext?.messageIds ?? [])
+            .map(id => this.store.inspect(scope, id))
+            .filter((r): r is MemoryRecord => !!r)
+            .map(managed);
+
+          const promptSnapshot = this.store.promptSnapshot(scope);
+          return {
+            characterId,
+            revision: this.store.revision(scope),
+            query,
+            prompt: promptSnapshot.text,
+            recent: recentRecords,
+            summaries: [],
+            memories: selectedRecords,
+            note: isStale
+              ? '该轮真实 Context 中的部分来源已在后续操作中被纠正/遗忘/失效。'
+              : '真实发给 Dialogue LLM 的 Context 快照（来源与版本完全一致）。',
+            inspection: {
+              isIssuedSnapshot: true,
+              turnId: trace.scope?.turnId,
+              status: isStale ? 'invalidated' : trace.status,
+              evaluatedAt: trace.evaluatedAt,
+              countedInputTokens: trace.countedInputTokens,
+              inputTokenBudget: trace.inputTokenBudget,
+              candidates,
+              omittedRecentIds: trace.recentContext?.omittedIds ?? [],
+              isStale,
+              staleSourceIds,
+              privacyExcluded: trace.recentContext?.policy === 'post_privacy_boundary',
+            },
+          };
+        }
+      }
+
+      // Fallback preview mode when no actual dialogue turn has executed yet
+      const previewScope=ownedScope(characterId,randomUUID());
+      const revision=this.store.revision(previewScope);
+      const context=await this.lifecycle.context(previewScope,query,null,new AbortController().signal);
+      if(!sameScope(context.scope,previewScope))throw new ManagementError('unavailable','上下文角色或轮次不匹配。');
       this.lifecycle.assertContextCurrent(context);
       const refs=this.store.lifecycle.contextSources(context);
       const selected=new Map(refs.map(ref=>{
-        const record=this.store.inspect(scope,ref.id);
+        const record=this.store.inspect(previewScope,ref.id);
         if(!record||record.state!=='active'||record.version!==ref.version)throw new ManagementError('version_conflict','上下文已变化，请刷新。');
         return [ref.id,managed(record)];
       }));
       const summaries=[...selected.values()].filter(record=>record.kind==='summary');
       const recent=context.recent.map(record=>selected.get(record.id)!);
       const memories=context.memories.map(record=>selected.get(record.id)!);
-      this.store.assertContextCurrent(scope,revision);
-      return {characterId:scope.characterId,revision,query,prompt:context.characterPrompt,recent,summaries,memories,
-        note:'按当前生效的检索与上下文预算组装；人工修改保留来源标记，未调用对话或记忆维护模型。'};
+      this.store.assertContextCurrent(previewScope,revision);
+      return {characterId:previewScope.characterId,revision,query,prompt:context.characterPrompt,recent,summaries,memories,
+        note:'尚无已消费的对话轮次；展示当前生效的检索与上下文预算试算。',
+        inspection: { isIssuedSnapshot: false, note: '尚无对话记录，展示当前生效规则下的召回试算。' }};
     }catch(error){return translate(error);}
   }
 }

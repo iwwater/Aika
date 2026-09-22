@@ -134,6 +134,33 @@ export interface RecordEdit { characterId: CharacterId; id: string; expectedVers
 export interface RecordEditResult {
   status: 'applied'; characterId: CharacterId; operationId: string; revision: number; record: ManagedRecord; invalidatedIds: readonly string[];
 }
+/** N075-01/R6: explanation metadata for each evaluated candidate memory in the context inspector. */
+export interface ContextInspectorCandidate {
+  readonly id: string;
+  readonly version: number;
+  readonly text: string;
+  readonly selected: boolean;
+  readonly score: number;
+  readonly priority: number;
+  readonly omission: string | null;
+  readonly cueKind: string;
+  readonly matchedTerms: readonly string[];
+}
+/** N075-01/R6: actual issued/consumed context inspection explaining why Aika received these sources. */
+export interface ContextInspection {
+  readonly isIssuedSnapshot: boolean;
+  readonly turnId?: string;
+  readonly status?: 'consumed' | 'assembled' | 'invalidated';
+  readonly evaluatedAt?: string;
+  readonly countedInputTokens?: number;
+  readonly inputTokenBudget?: number;
+  readonly candidates?: readonly ContextInspectorCandidate[];
+  readonly omittedRecentIds?: readonly string[];
+  readonly isStale?: boolean;
+  readonly staleSourceIds?: readonly string[];
+  readonly privacyExcluded?: boolean;
+  readonly note?: string;
+}
 export interface ManagedContext {
   characterId: CharacterId;
   revision: number;
@@ -143,6 +170,7 @@ export interface ManagedContext {
   summaries: readonly ManagedRecord[];
   memories: readonly ManagedRecord[];
   note: string;
+  inspection?: ContextInspection;
 }
 /** Implemented by memory owner against the same live business store, never direct HTTP SQL. */
 export interface ManagementMemoryPort {

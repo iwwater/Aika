@@ -110,8 +110,10 @@ export class SqliteMemoryRecall {
     const rows=this.db.prepare('SELECT id,character_id,payload_json,sources_json FROM memory_recall_trace').all() as {id:string;character_id:TurnScope['characterId'];payload_json:string;sources_json:string}[];
     for(const row of rows) {
       const trace=JSON.parse(row.payload_json) as MemoryRecallTrace;if(trace.status==='invalidated')continue;
-      if((JSON.parse(row.sources_json) as SourceVersion[]).some(ref=>{const record=this.store.inspect(owned(row.character_id),ref.id);return !record||record.state!=='active'||record.version!==ref.version;}))
-        this.db.prepare('UPDATE memory_recall_trace SET payload_json=?,sources_json=? WHERE id=?').run(JSON.stringify({...trace,status:'invalidated',candidates:[]}), '[]',row.id);
+      const sourceRefs = JSON.parse(row.sources_json) as SourceVersion[];
+      const staleRefs = sourceRefs.filter(ref=>{const record=this.store.inspect(owned(row.character_id),ref.id);return !record||record.state!=='active'||record.version!==ref.version;});
+      if(staleRefs.length > 0)
+        this.db.prepare('UPDATE memory_recall_trace SET payload_json=?,sources_json=? WHERE id=?').run(JSON.stringify({...trace,status:'invalidated',candidates:[],staleIds:staleRefs.map(r=>r.id)}), '[]',row.id);
     }
   }
   traces(query:{characterId:TurnScope['characterId'];offset:number;limit:number}):MemoryRecallTracePage {

@@ -126,6 +126,8 @@ export interface MemoryRecallTrace {
   readonly recentContext?: { readonly messageIds: readonly string[]; readonly omittedIds: readonly string[]; readonly policy: 'normal' | 'post_privacy_boundary' };
   readonly inputTokenBudget: number;
   readonly status: 'assembled' | 'consumed' | 'invalidated';
+  /** N075-01/R6: source IDs whose modification or removal caused this trace to become stale. */
+  readonly staleIds?: readonly string[];
 }
 export interface MemoryRecallTracePage {
   readonly characterId: CharacterId;
