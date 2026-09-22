@@ -18,6 +18,7 @@
 | [Aika Next 0.65 RPD](next/0.65/RPD.md) | 插件化与包体化内核，六份子 RPD；已有 [13 步执行 SPEC](next/0.65/SPEC.md) 与实现报告，人工验收暂缓 |
 | [Aika Next 0.7 RPD](next/0.7/RPD.md) / [SPEC](next/0.7/SPEC.md) | Soul & Continuity；已有受控模块实现，第 12 节补正式接线、管理与产品验收 |
 | [Aika Next 0.75 计划书](next/0.75/RPD.md) / [逐步 SPEC](next/0.75/SPEC.md) | 全前端逐界面重写，保留桌宠表现；含源码与接口清单，每页实施前索取参考，本轮仅规划 |
+| [Aika Next 0.79 RPD](next/0.79/RPD.md) / [SPEC](next/0.79/SPEC.md) / [MVP 核对](next/0.79/SOURCE_AUDIT.md) | 0.8 前修复轮，10 个逐步 SPEC；核心模块存在，完整连续性闭环与现场修复待完成 |
 | [Aika Next 0.8 RPD](next/0.8/RPD.md) | 授权感知、主动陪伴、Work/ACP/MCP；需求已细化，未拆 SPEC |
 | [Aika Next 0.9 RPD](next/0.9/RPD.md) | 高级语音、Live2D/窗口和前台协作；需求已细化，未拆 SPEC |
 | [Aika Next 1.0 RPD](next/1.0/RPD.md) | 清洁安装、升级迁移、恢复、隐私诊断和集中交付；未拆 SPEC |
