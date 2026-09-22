@@ -47,3 +47,14 @@
 N075-00 为每个旧 page/section、独立 HTML、右键项、弹窗、桌面控件登记新逻辑目标、API/Bridge、参考状态、替换状态和测试。旧 URL、书签、带 token 启动链接要有明确兼容处理；token 只消费一次，不传播到导航。
 
 替换以单页为单位，允许短期切换回旧入口验证，但同一操作只能有一个后端权威。删除旧模块前搜索所有 import、静态文件表、shell 目标和测试消费者。现有工作树未提交修改必须保留，不能整目录覆盖。
+
+## 5. N075-01 修复决议与落地证据（2026-09-22 已解决）
+
+| 缺陷 ID | 修复阶段与 Commit | 落地事实与测试证据 | 状态 |
+| --- | --- | --- | --- |
+| FE75-06 / AR-01 | R1 (`6ce016f`), R2 (`a15f8ec`) | `CharacterPackStore` 与 `ContinuityMemoryStore` 持久驻留在 `trial-backend.ts`，经 `ProductionContinuityContext` 进入 `DialogueContext.continuity`。测试 T1、T2 通过。 | RESOLVED |
+| FE75-07 | R2 (`a15f8ec`) | 角色底色、关系、用户灵魂、用户 Wiki、正史/经历时间线在单次 `DialogueContext` 中组装并一次性传入 Dialogue LLM。测试 T1、T2 通过。 | RESOLVED |
+| FE75-08 | R3 (`05bc40e`), R4 (`cfb6d37`) | `real-backend.mjs` 标明 DEV/SMOKE 并改为调用 `memoryStore.lifecycle.commitTurn`；新增 `DistillationMemoryTurnProvider` 和 `DistillationScheduler`。测试 T3、T4 通过。 | RESOLVED |
+| FE75-09 | R5 (`caeff9d`) | `RuntimeTraceStore` 接入 `DialoguePipeline` 与 `RoleMemoryLifecycleQueue`，记录实际 admission、context、llm、assistant_persist、memory_plan/commit、summary 阶段；默认 digest 脱敏。测试 T7、T8 通过。 | RESOLVED |
+| FE75-10 | R8 (`2af02f4`) | `Next65Management` 接入 live `PackageHost` 和 `ProviderRuntime`，去除 `loaded: false` 硬编码。测试 `live-host-management.test.ts` 通过。 | RESOLVED |
+| FE75-11 | R9 (`b47cad6`) | `CharacterPackStore:1012` 改为 `ORDER BY created_at DESC LIMIT N` + `reverse()`。测试 T9 与 `companion-timeline-latest.test.ts` 通过。 | RESOLVED |

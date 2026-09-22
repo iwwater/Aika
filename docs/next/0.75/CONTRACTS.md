@@ -59,22 +59,26 @@
 | Strict Memory Lifecycle（plan/validate/commitTurn） | ✅ | ✅ | ✅ |
 | Knowledge Library | ✅ | ✅ | ✅ |
 | Skin | ✅ | ✅ | ✅ |
-| Character Pack | ✅ | 🟡 | 🟡 |
-| Continuity Memory（ContinuityMemoryStore 存储/纠正/遗忘） | ✅ | 🟡 | ✅ |
-| Continuity Context（Composer → 正式 Dialogue Context） | ✅ | ❌/🟡 | 🟡 |
-| Canon Timeline | ✅ | 🟡 | 🟡 |
-| Companion Timeline | ✅ | 🟡 | 🟡 |
-| Runtime Trace | ✅ | 🟡 | ✅ |
-| ProviderRuntime | ✅ | 🟡 | 🟡 |
-| PackageHost | ✅ | 🟡 | 🟡 |
-| FlowRuntime | ✅ | 🟡 | 🟡 |
+| Character Pack | ✅ | ✅ | ✅ |
+| Continuity Memory（ContinuityMemoryStore 存储/纠正/遗忘） | ✅ | ✅ | ✅ |
+| Continuity Context（Composer → 正式 Dialogue Context） | ✅ | ✅ | ✅ |
+| Canon Timeline | ✅ | ✅ | ✅ |
+| Companion Timeline（含 latest-N 修复） | ✅ | ✅ | ✅ |
+| Runtime Trace（真实 stage 注入与隐私脱敏） | ✅ | ✅ | ✅ |
+| ProviderRuntime（Legacy Adapter 桥接） | ✅ | ✅ | ✅ |
+| PackageHost（Live 状态投影） | ✅ | ✅ | ✅ |
+| FlowRuntime（Live 实例与 Profile 管理） | ✅ | ✅ | ✅ |
 
-说明（与 [SOURCE_AUDIT](SOURCE_AUDIT.md) FE75-06～FE75-11、[架构核对](../ARCHITECTURE_REVIEW_20260922.md) AR-01～05 对应）：
+说明（2026-09-22 N075-01 修复后状态）：
 
-- `WIRED=🟡` 的各项均有生产打开/部分消费证据，但正式 Dialogue Context 或生产管线尚未完整消费；具体缺口见 SOURCE_AUDIT。
-- `Continuity Context` 的 `❌/🟡`：正式 DialoguePipeline 的 foreground context 尚未完整消费 Composer 输出（AR-01），管理 snapshot API 只覆盖显式 continuity 请求。
-- `Runtime Trace` 的 `WIRED=🟡`：Store/API/Console 已具备，但生产 trace producer 注入不完整（FE75-09）。
-- `FlowRuntime` 的 `WIRED=🟡`：已实现并有测试，但 Next65Management 用 `new FlowRuntime([])` 离线实例做管理投影，不代表运行真相（FE75-10）。
+- N075-01 已通过 10 个核心集成测试（T1-T10，见 `tests/next075/runtimeConvergence.test.ts`）。
+- `Character Pack` & `Continuity Memory`：在 `trial-backend.ts` 中作为 formal dependency 持有，经 `ProductionContinuityContext` 进入生产前台对话。
+- `Continuity Context`：经只读适配层进入 `DialogueContext.continuity`，送入单一 Dialogue LLM 调用（T1、T2 证据）。
+- `Runtime Trace`：在 `DialoguePipeline` 与 `RoleMemoryLifecycleQueue` 中记录真实 stage 与时延，默认对正文进行 digest 脱敏（T7、T8 证据）。
+- `Context Inspector`：读取 `memory_recall_trace` 真实发出的快照，包含候选分数、排除原因和失效检测（T6 证据）。
+- `ProviderRuntime`：经 `LegacyProviderRuntimeAdapter` 将传统 7-slot 配置映射为 `ResolvedBinding`（T10 证据）。
+- `PackageHost / FlowRuntime`：`Next65Management` 接入 live runtime 实例，消除 `loaded: false` 写死投影。
+- `Companion Timeline`：修复 `ORDER BY created_at DESC LIMIT N` 并 reverse()，确保最新经历按自然时序组装（T9 证据）。
 
 ## 7. Wiki 与 Context Inspector 契约
 

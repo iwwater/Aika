@@ -25,7 +25,7 @@
 | SPEC | 改造单元 | 依赖 | 当前状态 |
 | --- | --- | --- | --- |
 | N075-00 | 固定基线、全量入口/功能盘点 | 0.7 实际交付边界 | **AUTO_PASS（基线盘点完成）**（[报告](reports/N075-00.md)） |
-| N075-01 | 共享基础设施、运行时收口与后端契约 | 00 | PLANNED（Runtime Convergence 前置，见 N075-01 完成条件）；可见部分 WAIT_REQUIREMENTS |
+| N075-01 | 共享基础设施、运行时收口与后端契约 | 00 | **ACCEPTED（Runtime Convergence 修复完毕，通过 T1-T10 验收测试矩阵）**（[报告](reports/N075-01.md)） |
 | N075-02 | 控制台外壳、启动与鉴权 | 01 | **ACCEPTED（用户已确认初稿；真实桌宠已接通；登记顶栏切侧边栏 TODO）**（[记录](reports/N075-02.md)） |
 | N075-03 | 桌宠右键减负与管理入口 | 02 | WAIT_REQUIREMENTS |
 | N075-04 | API、Provider、模型与绑定配置 | 02；真实 Provider 管理端口 | WAIT_REQUIREMENTS |
@@ -78,15 +78,15 @@
 
 #### N075-01 Definition of Done
 
-- [ ] `trial-backend → BackendSession → DialoguePipeline` 是唯一正式文本主链；`tools/real-backend.mjs` 仅作 dev/smoke harness。
-- [ ] CharacterPackStore、ContinuityMemoryStore 成为正式 runtime dependency（open 后持久持有并注入下游）。
-- [ ] ContinuityContextComposer 数据真实进入 Production Dialogue Context；User Soul / User Wiki / Relationship 至少能影响真实 Dialogue LLM Context；Character Soul / Canon Timeline / Companion Timeline 至少进入正式 ContextSource 管线。
-- [ ] 正常对话仍只有一次 Dialogue LLM Call；Raw Transcript 立即写入；普通 Distillation 后台执行不阻塞前台。
-- [ ] correction / forget / uncertain 的 privacy guard 不被 batching 破坏；自动 Distillation 不经 Production direct SQL 写 `memory_records`；长期 Memory 写入经 `MemoryTurnPlan → validation → commitTurn`。
-- [ ] RuntimeTraceStore 由正式 Pipeline 产生真实记录；Context Inspector 展示真实 issued/consumed Context。
-- [ ] ProviderRuntime、PackageHost / FlowRuntime 被复用，不存在第二套 registry/runtime；Next65Management 读取 live runtime。
-- [ ] Companion Timeline latest-N 修复；Skin / Knowledge Library 后端无回归；不新增 Wiki 数据库、不新增第二条 DialoguePipeline。
-- [ ] 文档统一 `IMPLEMENTED / WIRED / EXPOSED`；0.7 文档不再把 Core Acceptance 写成 Production Wiring。
+- [x] `trial-backend → BackendSession → DialoguePipeline` 是唯一正式文本主链；`tools/real-backend.mjs` 仅作 dev/smoke harness。（Commit 2 `6ce016f`, Commit 4 `05bc40e`）
+- [x] CharacterPackStore、ContinuityMemoryStore 成为正式 runtime dependency（open 后持久持有并注入下游）。（Commit 2 `6ce016f`）
+- [x] ContinuityContextComposer 数据真实进入 Production Dialogue Context；User Soul / User Wiki / Relationship 至少能影响真实 Dialogue LLM Context；Character Soul / Canon Timeline / Companion Timeline 至少进入正式 ContextSource 管线。（Commit 3 `a15f8ec`）
+- [x] 正常对话仍只有一次 Dialogue LLM Call；Raw Transcript 立即写入；普通 Distillation 后台执行不阻塞前台。（Commit 3 `a15f8ec`, Commit 4 `05bc40e`, Commit 5 `cfb6d37`, Test T1-T5）
+- [x] correction / forget / uncertain 的 privacy guard 不被 batching 破坏；自动 Distillation 不经 Production direct SQL 写 `memory_records`；长期 Memory 写入经 `MemoryTurnPlan → validation → commitTurn`。（Commit 4 `05bc40e`, Commit 5 `cfb6d37`）
+- [x] RuntimeTraceStore 由正式 Pipeline 产生真实记录；Context Inspector 展示真实 issued/consumed Context。（Commit 6 `caeff9d`, Commit 7 `cf414bf`, Test T7-T8）
+- [x] ProviderRuntime、PackageHost / FlowRuntime 被复用，不存在第二套 registry/runtime；Next65Management 读取 live runtime。（Commit 8 `f9d95bd`, Commit 9 `2af02f4`, Test T10）
+- [x] Companion Timeline latest-N 修复；Skin / Knowledge Library 后端无回归；不新增 Wiki 数据库、不新增第二条 DialoguePipeline。（Commit 10 `b47cad6`, Test T9）
+- [x] 文档统一 `IMPLEMENTED / WIRED / EXPOSED`；0.7 文档不再把 Core Acceptance 写成 Production Wiring。（Commit 1 `ae28876`, Commit 12）
 - [ ] 新增 integration tests 全绿；原有核心测试全绿（`test:next07`、memory lifecycle、knowledge、skin、0.65 package/provider/flow）。
 
 ### N075-02：控制台外壳与启动流程
