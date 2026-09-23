@@ -16,6 +16,7 @@ import { BrowserCaptureDriver } from '../media/browser-capture.ts';
 import { DESKTOP_BRIDGE_VERSION } from '../contracts/desktop-bridge.ts';
 import { PcmFrameAggregator } from '../media/voice-input-session.ts';
 import { installMicrophoneTest } from './mic-test-panel.mjs';
+import { LocalGreetingScheduler } from './local-greeting.ts';
 const $ = id => document.getElementById(id);
 const native = (name, value) => window.desktopHost ? window.desktopHost.postMessage(name, value) : window.webkit?.messageHandlers[name]?.postMessage(value);
 const report = value => native('diagnostic', value);
@@ -71,6 +72,9 @@ const THINKING_TIMEOUT_MS = 40000;
 let bubbleTimer = null;
 let thinkingTimeoutTimer = null;
 let currentBubbleState = 'idle';
+let thinkingTimerToken = 0;
+const localGreeting = new LocalGreetingScheduler({ idleAfterMs: 45 * 60 * 1000, cooldownMs: 6 * 60 * 60 * 1000 });
+let localGreetingEnabled = true;
 
 function showBubble(text, state = 'speaking', customDwellMs = null) {
   const bubble = $('speech-bubble');
@@ -84,7 +88,7 @@ function showBubble(text, state = 'speaking', customDwellMs = null) {
   bubbleText.textContent = text;
   bubble.hidden = false;
 
-  if (state === 'speaking') {
+  if (state === 'speaking' || state === 'greeting') {
     const dwellMs = customDwellMs ?? Math.max(6000, Math.min(10000, text.length * 150 + 4500));
     bubbleTimer = setTimeout(() => {
       dismissBubble();
@@ -107,17 +111,25 @@ function dismissBubble() {
 
 function startThinking() {
   clearTimeout(thinkingTimeoutTimer);
+  const token = ++thinkingTimerToken;
+  const requestId = textRequestId;
+  const scope = view.scope;
   showBubble('想一想… ✦', 'thinking');
   thinkingTimeoutTimer = setTimeout(() => {
-    if (currentBubbleState === 'thinking') {
-      showBubble('哎呀，想太久有点走神啦，请再问我一次吧～', 'error', 6000);
-      view.error = '模型思考超时';
-      renderUI();
-    }
+    const sameTurn = token === thinkingTimerToken && currentBubbleState === 'thinking'
+      && (requestId ? textRequestId === requestId : scopeEquals(scope, view.scope));
+    if (!sameTurn) return;
+    // The timeout is a real turn cancellation. The request id/scope check above prevents an old
+    // timer from cancelling a newer turn, and command(cancel) makes late provider output stale.
+    command({ type: 'cancel' });
+    view.error = '模型思考超时';
+    showBubble('哎呀，想太久有点走神啦，请再问我一次吧～', 'error', 6000);
+    renderUI();
   }, THINKING_TIMEOUT_MS);
 }
 
 function stopThinking() {
+  thinkingTimerToken++;
   clearTimeout(thinkingTimeoutTimer);
   thinkingTimeoutTimer = null;
 }
@@ -312,6 +324,7 @@ function panel(open) {
   if (open) { requestAnimationFrame(() => {
     if (panelOpen && epoch === panelEpoch && !document.hidden && document.hasFocus?.() !== false&&!records.isOpen) { fitComposer(); $('text').focus({ preventScroll: true }); }
   }); scheduleIntroductionAck(); }
+  publishInteractiveRegions();
 }
 function fitComposer() {
   const input = $('text'); input.style.height = 'auto';
@@ -333,6 +346,68 @@ function showToast(message) {
   }, 3000);
 }
 let functionPanelOpen = false;
+// UI-MAN-01: while click-through is active the window still receives forwarded mouse MOVEMENT but not
+// clicks. The renderer's job is therefore narrow: report which content-relative rectangles currently hold
+// real, visible, clickable UI, and report where the pointer is. The shell decides the actual OS hit policy,
+// which keeps a renderer bug from turning the whole desktop into a click sink.
+const INTERACTIVE_REGION_ROOT_SELECTOR = ['#drawer', '#function-panel', '#mic-test', '#work-records-dialog'].join(',');
+const CLICKABLE_SELECTOR = 'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [role="button"]:not([aria-disabled="true"]), [tabindex]:not([tabindex="-1"])';
+function visibleInteractiveRects() {
+  const rects = [];
+  for (const root of document.querySelectorAll(INTERACTIVE_REGION_ROOT_SELECTOR)) {
+    if (root.hidden || !root.getClientRects().length) continue;
+    const style = getComputedStyle(root);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.pointerEvents === 'none') continue;
+    if (Number(style.opacity) === 0) continue;
+    // A collapsing drawer still reports geometry mid-animation; only a settled surface may capture clicks.
+    const bounds = root.getBoundingClientRect();
+    if (bounds.width <= 0 || bounds.height <= 0) continue;
+    rects.push({ x: bounds.left, y: bounds.top, width: bounds.width, height: bounds.height });
+    // Popup layers inside a panel (an open <select>, a dialog) can extend past their root, so each visible
+    // interactive descendant contributes its own rectangle too.
+    for (const control of root.querySelectorAll(CLICKABLE_SELECTOR)) {
+      const rect = control.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) continue;
+      if (control.closest('[hidden]')) continue;
+      rects.push({ x: rect.left, y: rect.top, width: rect.width, height: rect.height });
+    }
+  }
+  return rects;
+}
+let lastRegionSignature = '';
+function publishInteractiveRegions() {
+  const rects = visibleInteractiveRects();
+  const signature = JSON.stringify(rects);
+  if (signature === lastRegionSignature) return;
+  lastRegionSignature = signature;
+  native('shell', { type: 'interactive_regions', regions: rects });
+}
+function reportPointerPosition(event) {
+  if (!clickThrough) return;
+  native('shell', { type: 'pointer_position', x: event.clientX, y: event.clientY, inside: true });
+}
+// Both the panel and the function panel are separate views, so both must refresh the report.
+function installRegionTracking() {
+  const refresh = () => { publishInteractiveRegions(); };
+  for (const root of ['#drawer', '#function-panel', '#mic-test', '#work-records-dialog']) {
+    const node = $(root);
+    if (!node) continue;
+    new MutationObserver(refresh).observe(node, { attributes: true, attributeFilter: ['hidden', 'class', 'style'] });
+  }
+  const observer = new MutationObserver(refresh);
+  observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['hidden', 'class', 'style', 'disabled', 'aria-disabled'] });
+  document.addEventListener('pointermove', event => { reportPointerPosition(event); }, true);
+  // Leaving the window must release capture immediately, otherwise the last region would keep the window
+  // intercepting clicks that the user is aiming at the desktop behind it.
+  document.addEventListener('pointerleave', () => { native('shell', { type: 'pointer_position', inside: false }); }, true);
+  window.addEventListener('blur', () => { native('shell', { type: 'pointer_position', inside: false }); });
+  window.addEventListener('resize', refresh);
+  publishInteractiveRegions();
+  // A read-only probe for the Windows smoke test: recomputes the report on demand so the harness can tell
+  // "the DOM has no visible controls" apart from "the observer never fired".
+  window.__aikaInteractiveRegionProbe = () => ({ current: visibleInteractiveRects().length, lastSignatureLength: lastRegionSignature.length });
+}
+
 // FIX61-11: both view entries are now backed by real production objects (the skin console page and the
 // desktop mic-test controller), so the function panel offers them instead of rendering them disabled.
 const FUNCTION_CAPABILITIES = { skin: true, microphone: true };
@@ -346,6 +421,44 @@ function functionPanel(open) {
     $('function-notice').textContent = '';
     $('function-entries').focus?.({ preventScroll: true });
   }
+  publishInteractiveRegions();
+}
+function setLocalGreetingPreference(enabled, persist = true) {
+  if (typeof enabled !== 'boolean') return;
+  const wasEnabled = localGreetingEnabled;
+  localGreetingEnabled = enabled;
+  localGreeting.setEnabled(enabled);
+  if (persist) native('shell', { type: 'local_greeting_preference', enabled });
+  renderFunctionPanel();
+  // ACCEPT-02: turning the switch on is the one moment the user expects to SEE the feature. A preview is
+  // scheduled only for an explicit off -> on transition, never for a repeat click on an already-on switch
+  // and never for a restored or console-echoed value (`persist === false`).
+  if (enabled && !wasEnabled && persist) scheduleLocalGreetingPreview();
+}
+let localGreetingPreviewToken = 0;
+/**
+ * ACCEPT-02: one immediate, non-persistent preview after the user enables local greetings.
+ *
+ * It does NOT touch the scheduler's real clock, cooldown or `lastShownAt`, so the normal 45-minute idle
+ * policy and the 6-hour cooldown are unaffected. The function panel itself counts as "busy", so the panel
+ * is closed first and the busy state is re-read on the next frame — the same sequence the ticker uses.
+ */
+function scheduleLocalGreetingPreview() {
+  const token = ++localGreetingPreviewToken;
+  functionPanel(false);
+  requestAnimationFrame(() => {
+    // The user may have switched it off again, or a reply may have started, in this same frame.
+    if (token !== localGreetingPreviewToken || !localGreetingEnabled) return;
+    if (localGreetingBusy()) return;
+    const decision = localGreeting.preview();
+    if (!decision) return;
+    showBubble(decision.text, 'greeting', 8000);
+    renderUI();
+  });
+}
+function localGreetingBusy() {
+  return !connection.connected || currentBubbleState !== 'idle' || !!capturing || voicePhase !== 'idle' || awaitingTextTurn || awaitingTranscript
+    || view.state !== 'idle' || !!workNotice || playback.busy || functionPanelOpen;
 }
 function openConsole(target) {
   // The console is a local page served by this same backend. Only a same-origin path is passed; the
@@ -354,7 +467,7 @@ function openConsole(target) {
 }
 function renderFunctionPanel() {
   const entries = $('function-entries');
-  entries.replaceChildren(...PANEL_ENTRIES.map(entry => {
+  const buttons = PANEL_ENTRIES.map(entry => {
     const button = document.createElement('button');
     button.type = 'button';
     button.id = `function-${entry.id}`;
@@ -380,7 +493,14 @@ function renderFunctionPanel() {
       if (!wired) { $('function-notice').textContent = `${entry.label}：${entry.note ?? ''}（尚未接通）`; return; }
     });
     return button;
-  }));
+  });
+  const greeting = document.createElement('button');
+  greeting.type = 'button'; greeting.id = 'function-local-greeting';
+  greeting.textContent = `本地时间问候：${localGreetingEnabled ? '已开启' : '已关闭'}`;
+  greeting.title = '只使用本机时钟和应用内空闲状态，不调用模型、语音或记忆。';
+  greeting.setAttribute('aria-pressed', String(localGreetingEnabled));
+  greeting.addEventListener('click', () => setLocalGreetingPreference(!localGreetingEnabled));
+  entries.replaceChildren(...buttons, greeting);
 }
 const playback = new DesktopPlaybackController(new BrowserPlaybackDriver(), scope => view.accepts(scope)||workSpeechView.accepts(scope), (requestId, event) => {
   const workOutput=workSpeechView.accepts(event.scope);
@@ -427,6 +547,9 @@ function answerVoiceFrame(message,generation){
 function command(cmd,{wakeInput=false}={}) {
   const commandEnteredAt=performance.now();
   if (!connection.connected) return;
+  localGreeting.markInteraction();
+  if (currentBubbleState === 'greeting') dismissBubble();
+  if (['start_voice', 'click_invitation', 'submit_text', 'cancel'].includes(cmd.type)) stopThinking();
   if(!wakeInput&&['start_voice','click_invitation','submit_text','cancel'].includes(cmd.type)){wake.pause();wakeRequestId=null;}
   if(['start_voice','submit_text'].includes(cmd.type)){const binding=displayedWorkBinding();cmd={...cmd,...(binding?{workBinding:binding}:{})};}
   if(['start_voice','click_invitation'].includes(cmd.type))voiceRequestAt=inputEventTiming?.at??commandEnteredAt;
@@ -619,11 +742,14 @@ const microphoneTest = installMicrophoneTest({
 });
 function micTestPanel(open) { microphoneTest?.open(open); }
 window.petBridge = { receive, connectionChanged, hotkeyConfig, hotkeyEvent, displayConfig: display.receive, managementResult,
+  localGreetingPreference: enabled => setLocalGreetingPreference(enabled, false),
+  localGreetingLastShownAt: at => localGreeting.restoreLastShownAt(at),
   // FIX61-11: the shell owns the microphone preference file; it reports the stored device id here so the
   // renderer never needs a path (and never imports the Node-only preference store).
   microphonePreference: deviceId => microphoneTest?.setStoredDevice(deviceId),
   clickThroughChanged: ({ enabled }) => {
     clickThrough = enabled === true;
+    window.__aikaClickThroughProbe = clickThrough;
     showToast(clickThrough ? '已开启鼠标穿透（快捷键 Ctrl+Shift+M 关闭）' : '已关闭鼠标穿透模式');
   },
   rightClickRestore: ({ x, y }) => {
@@ -637,7 +763,7 @@ renderFunctionPanel();
 $('speech-bubble')?.addEventListener('click', () => dismissBubble());
 $('speech-bubble-close')?.addEventListener('click', e => { e.stopPropagation(); dismissBubble(); });
 $('open').onclick = () => panel(true); $('close').onclick = () => panel(false); $('quit').onclick = () => { wake.disconnect();captureFeedback.stop();void stopPlayback(); stopCapture(); native('shell', { type: 'quit' }); };
-$('text').oninput = () => { clearWorkSpeech();workSpeechBlocked=true;interactionFocusEpoch++; work.input(!!displayedWorkBinding()); chat.setDraft(view.characterId, $('text').value); fitComposer(); };
+$('text').oninput = () => { localGreeting.markInteraction(); clearWorkSpeech();workSpeechBlocked=true;interactionFocusEpoch++; work.input(!!displayedWorkBinding()); chat.setDraft(view.characterId, $('text').value); fitComposer(); };
 $('text').oncompositionstart = () => { composing = true; };
 $('text').oncompositionend = () => { composing = false; };
 $('text').onkeydown = event => {
@@ -690,11 +816,21 @@ document.addEventListener('keydown', e => {
 document.addEventListener('keyup', e => { if (hold.up(e.code)) { e.preventDefault(); e.stopPropagation(); } }, true);
 document.addEventListener('focusin', e => { if (editing(e.target)) hold.cancel(); });
 window.addEventListener('blur', () => { hold.cancel(); display.cancel(); pointerRouter.pointerCancel(); });
-document.addEventListener('visibilitychange', () => { introductionEpoch++; introductionFramePending = false; if (document.hidden) { hold.cancel(); display.cancel(); pointerRouter.pointerCancel(); } else scheduleIntroductionAck(); });
+document.addEventListener('visibilitychange', () => { localGreeting.markInteraction(); introductionEpoch++; introductionFramePending = false; if (document.hidden) { hold.cancel(); display.cancel(); pointerRouter.pointerCancel(); } else scheduleIntroductionAck(); });
 window.addEventListener('pagehide', () => { display.cancel(); void microphoneTest?.close(); connectionChanged({ generation: connection.generation, state: 'disconnected' }); void stopPlayback(); stopCapture(); renderer?.dispose(); });
 window.addEventListener('error', e => report({ type: 'script-error', message: e.message }));
 window.addEventListener('unhandledrejection', e => report({ type: 'promise-error', message: String(e.reason) }));
+document.addEventListener('pointerdown', () => localGreeting.markInteraction(), true);
+setInterval(() => {
+  if (!localGreetingEnabled || document.hidden) return;
+  const decision = localGreeting.tick({ visible: true, busy: localGreetingBusy() });
+  if (!decision) return;
+  native('shell', { type: 'local_greeting_shown', occurredAt: decision.occurredAt });
+  showBubble(decision.text, 'greeting', 8000);
+  renderUI();
+}, 30000);
 renderUI(); native('shell', { type: 'ready' });
+installRegionTracking();
 let frame = 0, lastRender = 0;
 try {
   renderer = new JellyfishRenderer($('model'), report); await renderer.load(); applyPresentationPolicy(); renderer.setFraming(display.mode); $('loading').hidden = true;

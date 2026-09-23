@@ -42,13 +42,18 @@ function recordsView(a){const {s}=a;
  const queryForm=el('form',{class:'card searchbar',onSubmit:e=>{e.preventDefault();s.offset=0;a.loadRecords()}},el('div',{class:'form-grid'},select('记录类型','record-kind',s.kind,options(kinds),v=>{s.kind=v;s.offset=0;s.pageData=s.selected=null;a.loadRecords()}),field('搜索记录正文','record-query',s.query,v=>s.query=v,{placeholder:'输入关键词'}),select('记录状态','record-state',s.recordState,[{value:'active',label:'仅有效记录'},{value:'all',label:'全部状态'}],v=>{s.recordState=v;s.offset=0;a.loadRecords()})),el('div',{class:'actions'},el('button',{class:'primary',type:'submit',id:'record-search',disabled:s.pending.has('records')},s.pending.has('records')?'查询中…':'查询')));
  const data=s.pageData;
  const list=card(data?`${kinds[s.kind]} · ${data.total} 条`:'记录列表',data?el('div',{class:'record-list'},data.records.length?data.records.map(r=>button(el('div',{},el('div',{class:'record-meta'},badge(statuses[r.state]||r.state),r.role?el('span',{},({user:'用户',assistant:'角色'})[r.role]):'',el('span',{},`版本 ${r.version}`),el('span',{},time(r.createdAt))),el('p',{},r.text)),()=>a.selectRecord(r),{class:'record-row','aria-pressed':s.selected?.id===r.id,'data-record-id':r.id})):el('p',{class:'empty'},'没有符合条件的记录。')):el('p',{class:'empty'},'查询后查看该角色的记录。'),data&&el('div',{class:'actions'},button('上一页',()=>{s.offset=Math.max(0,s.offset-25);a.loadRecords()},{disabled:s.offset===0||s.pending.has('records')}),el('small',{},`${data.total?data.offset+1:0}–${Math.min(data.offset+data.records.length,data.total)} / ${data.total}`),button('下一页',()=>{s.offset+=25;a.loadRecords()},{disabled:data.offset+data.records.length>=data.total||s.pending.has('records')})));
- return el('div',{},queryForm,el('div',{class:'split'},list,recordEditor(a)));
+ return el('div',{},s.error&&notice(s.error,'error'),s.message&&notice(s.message,'success'),queryForm,el('div',{class:'split'},list,recordEditor(a)));
 }
 function recordEditor(a){const {s}=a,r=s.selected,d=a.currentDraft();if(!r||!d)return card('查看与编辑',el('p',{class:'empty'},'从左侧选择一条记录。'));
- const pending=s.pending.has('edit/'+r.characterId+'/'+r.kind+'/'+r.id);
+ const pending=s.pending.has('edit/'+r.characterId+'/'+r.kind+'/'+r.id)||s.pending.has('forget/'+r.characterId+'/'+r.kind+'/'+r.id);
  const panel=card(kinds[r.kind]+'详情',definition([['记录标识',r.id],['版本',d.version],['状态',statuses[r.state]||r.state],['来源',({manual:'手动更新',automatic:'自动维护',conversation:'对话'})[r.origin]],['关联来源',r.sources.length?r.sources.map(x=>x.id+' · v'+x.version).join('\n'):'无来源引用']]));
  if(d.conflict)panel.append(notice('记录已被更新，你的修改尚未保存。请读取最新记录并核对；本页草稿已保留。','warning'),el('div',{class:'conflict-comparison'},el('div',{},el('h3',{},'本页草稿'),block(d.text)),el('div',{},el('h3',{},'最近读到的记录 · v'+d.latest.version),block(d.latest.text))),button('读取最新列表',a.loadRecords,{id:'record-reload',disabled:s.pending.has('records')}),button('已核对，保留我的草稿',a.reviewRecord,{id:'record-review',disabled:pending||!d.latest?.editable}));
- if(r.editable){panel.append(field('记录正文','record-text',d.text,v=>{d.text=v;d.operationId=crypto.randomUUID()},{type:'textarea',disabled:pending}),field('修改原因','record-reason',d.reason,v=>{d.reason=v;d.operationId=crypto.randomUUID()},{placeholder:'说明需要纠正的内容',disabled:pending}),el('div',{class:'actions'},button(pending?'正在保存…':'保存这条记录',a.saveRecord,{id:'record-save',class:'primary',disabled:!canSave(a)||pending||d.conflict}),el('small',{},'保存后，后续对话会使用纠正后的内容。')))}else panel.append(notice('这类内容暂不能直接编辑，请修改对应的对话或记忆。'),block(r.text));return panel;
+ if(r.editable){
+  panel.append(field('记录正文','record-text',d.text,v=>{d.text=v;d.operationId=crypto.randomUUID()},{type:'textarea',disabled:pending}),field('修改原因','record-reason',d.reason,v=>{d.reason=v;d.operationId=crypto.randomUUID()},{placeholder:'说明需要纠正或遗忘的原因',disabled:pending}),el('div',{class:'actions',style:'display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px;'},button(pending?'正在保存…':'保存这条记录',a.saveRecord,{id:'record-save',class:'primary',disabled:!canSave(a)||pending||d.conflict}),r.state==='active'&&button('🗑️ 遗忘/删除此记忆',()=> { s.confirmForget = s.confirmForget === r.id ? null : r.id; a.render(); },{id:'record-forget',class:'danger',disabled:pending||d.conflict}),el('small',{},'保存后，后续对话会使用纠正后的内容。')));
+  if(s.confirmForget===r.id && r.state==='active'){
+   panel.append(el('div',{class:'confirm-box md-confirm',style:'margin-top:14px;padding:12px;border:1px solid #fecaca;border-radius:8px;background:var(--error-soft,#fff5f5);'},notice('确认遗忘此记录？遗忘后，该记录将不再用于对话上下文与记忆检索。','warning'),el('div',{class:'actions',style:'margin-top:10px;display:flex;gap:8px;'},button(pending?'正在遗忘…':'确认遗忘',()=>a.forgetRecord(),{id:'record-confirm-forget',class:'primary danger',disabled:pending}),button('取消',()=> { s.confirmForget = null; a.render(); },{id:'record-cancel-forget',disabled:pending}))));
+  }
+ }else panel.append(notice('这类内容暂不能直接编辑，请修改对应的对话或记忆。'),block(r.text));return panel;
 }
 function promptView(a){const {s}=a,d=s.prompts.get(s.character),pending=s.pending.has('prompt-save/'+s.character);
  const panel=card('角色设定 Prompt',el('p',{class:'subtle'},'这是青梅竹马的虚构角色设定，不代表真实用户事实。修改后后续上下文使用新设定。'),button('读取最新设定',a.loadPrompt,{id:'prompt-refresh',disabled:s.pending.has('prompt')}));
@@ -145,16 +150,46 @@ export function eventsView(a) {
     );
 
     const toolbar = el('div', { class: 'actions', style: 'margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;' },
-      el('span', { class: 'subtle' }, '追踪每一次对话从意图准入、上下文检索、大模型回复到记忆提炼的完整流水线。'),
+      el('span', { class: 'subtle' }, '追踪完整流水线；对话正文默认脱敏，查看时才从既有历史按轮次读取。'),
       button('🔄 刷新 Trace', () => {
         s.traceResult = null;
         s.traceLoading = false;
+        s.traceContent.clear();
         a.render();
       })
     );
 
+    const readTraceContent = t => {
+      const existing = s.traceContent.get(t.traceId);
+      if (existing?.status === 'available') { s.traceContent.delete(t.traceId); a.render(); return; }
+      if (existing?.status === 'loading') return;
+      const request = {};
+      s.traceContent.set(t.traceId, { status: 'loading', request });
+      a.render();
+      a.client.request(`/api/traces/${encodeURIComponent(t.traceId)}/content`).then(value => {
+        if (s.traceContent.get(t.traceId)?.request !== request) return;
+        s.traceContent.set(t.traceId, value);
+        a.render();
+      }).catch(error => {
+        if (s.traceContent.get(t.traceId)?.request !== request) return;
+        s.traceContent.set(t.traceId, { status: 'unavailable', reason: error.message });
+        a.render();
+      });
+    };
+
+    const TRACE_DIGEST_PATTERN = /^\[digest:[0-9a-f]{8} len:\d+\]$/;
+    const safeTraceSnippet = text => {
+      if (!text) return '';
+      if (TRACE_DIGEST_PATTERN.test(text)) return text;
+      return `[digest:masked len:${[...text].length}]`;
+    };
+
     const traces = s.traceResult?.traces || [];
     const traceCards = traces.length ? el('div', { class: 'trace-cards-list' }, traces.map(t => {
+      const content = s.traceContent.get(t.traceId);
+      const visibleContent = content?.status === 'available';
+      const userText = visibleContent ? content.userText : safeTraceSnippet(t.userText);
+      const replyText = visibleContent ? content.replyText : safeTraceSnippet(t.replyText);
       // RP75-08: Split stages into Foreground Dialogue vs Background Lifecycle
       const fgStages = (t.stages || []).filter(st => st.category !== 'background' && !['memory_enqueue', 'memory_plan', 'memory_commit', 'summary', 'distill'].includes(st.name));
       const bgStages = (t.stages || []).filter(st => st.category === 'background' || ['memory_enqueue', 'memory_plan', 'memory_commit', 'summary', 'distill'].includes(st.name));
@@ -218,8 +253,13 @@ export function eventsView(a) {
           badge(`总耗时 ${t.totalElapsedMs} ms`, 'muted'),
         ),
         el('div', { class: 'trace-dialogue-snippet' },
-          el('div', { class: 'trace-msg-user' }, el('strong', {}, '用户：'), t.userText),
-          el('div', { class: 'trace-msg-asst' }, el('strong', {}, 'Aika：'), t.replyText),
+          el('div', { class: 'trace-msg-user' }, el('strong', {}, '用户：'), userText),
+          el('div', { class: 'trace-msg-asst' }, el('strong', {}, 'Aika：'), replyText),
+        ),
+        el('div', { class: 'actions' },
+          button(content?.status === 'loading' ? '读取中…' : visibleContent ? '隐藏正文' : '查看本机历史正文', () => readTraceContent(t), { disabled: content?.status === 'loading' }),
+          content?.status === 'forgotten' && el('small', { class: 'subtle' }, content.reason || '对应历史已遗忘或清理。'),
+          content?.status === 'unavailable' && el('small', { class: 'subtle' }, content.reason || '正文暂不可用。'),
         ),
         el('div', { class: 'trace-tracks-container' },
           fgTrack,

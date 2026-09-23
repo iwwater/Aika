@@ -33,6 +33,10 @@ export function validateDraftEvidence(
   const errors: string[] = [];
   const validatedAt = new Date().toISOString();
 
+  if (options?.cutoffPoint !== undefined && options.cutoffPoint.trim() && options.allowedBlockIds?.size === 0) {
+    errors.push(`剧情截止点未能在来源区块中定位: "${options.cutoffPoint}"。为避免越界，草稿不能放行。`);
+  }
+
   // Index known blocks
   const knownBlocks = new Map<string, SourceBlock>();
   if (sources instanceof Map) {
@@ -211,8 +215,12 @@ export function computeCutoffAllowedBlockIds(
   const allowed = new Set<string>();
   const normalizedCutoff = cutoffPoint.trim().toLowerCase();
 
+  if (!normalizedCutoff) return allowed;
+
   for (const source of sources) {
     let cutoffReachedInSource = false;
+    let cutoffFoundInSource = false;
+    const sourceAllowed: string[] = [];
 
     for (const block of source.blocks) {
       if (cutoffReachedInSource) {
@@ -220,17 +228,19 @@ export function computeCutoffAllowedBlockIds(
         continue;
       }
 
-      allowed.add(block.id);
-
       // Check if this block marks the cutoff point
       const chapter = (block.locator.chapter || '').toLowerCase();
       const text = block.text.toLowerCase();
 
+      sourceAllowed.push(block.id);
+
       if (chapter.includes(normalizedCutoff) || text.includes(normalizedCutoff)) {
+        cutoffFoundInSource = true;
         // Cutoff point reached at the end of this block/chapter
         cutoffReachedInSource = true;
       }
     }
+    if (cutoffFoundInSource) for (const blockId of sourceAllowed) allowed.add(blockId);
   }
 
   return allowed;

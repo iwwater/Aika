@@ -40,7 +40,8 @@ export class StrictManagementForget {
   catch(error){if(!(error instanceof MemoryRuleError)||error.message!=='forget_requires_source_plan')throw error;}
   const ticket=this.lifecycle.readManagementForget(action,this.budget);
   try{
-   const plan=await this.plan(structuredClone(ticket.input),this.controller.signal,structuredClone(action));this.controller.signal.throwIfAborted();
+   const plan = await this.plan(structuredClone(ticket.input), this.controller.signal, structuredClone(action));
+   this.controller.signal.throwIfAborted();
    return this.lifecycle.commitManagementForget(ticket,plan);
   }finally{this.lifecycle.discardManagementForget(ticket);}
  }

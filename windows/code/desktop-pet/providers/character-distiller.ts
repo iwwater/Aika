@@ -217,7 +217,13 @@ export class CharacterDistiller {
       });
 
       if (validationResult.valid) {
-        draftPayload = parsed as unknown as CharacterPackDraftPayload;
+        // The model is not authoritative for request metadata. Preserve the
+        // local request even when a schema-valid response omits it.
+        draftPayload = {
+          ...(parsed as unknown as CharacterPackDraftPayload),
+          ...(input.workTitle !== undefined ? { workTitle: input.workTitle } : {}),
+          ...(input.cutoffPoint !== undefined ? { cutoffPoint: input.cutoffPoint } : {}),
+        };
       } else {
         draftPayload = {
           schemaVersion: typeof parsed.schemaVersion === 'string' ? parsed.schemaVersion : '0.7-draft-1',

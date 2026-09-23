@@ -55,6 +55,10 @@ function windowsAcl(filename: string, action: 'check' | 'restrict'): void {
     throw Error(`Windows could not verify or restrict this owned file (${reason}). Check its owner and access permissions.`);
   }
 }
+export function clearAclCache(): void {
+  // Maintained for backward compatibility; live checks are always verified synchronously.
+}
+
 /** Metadata only. No credential contents are read. Windows checks SID-based DACLs. */
 export function isPrivateFileSync(filename: string, opened?: Stats): boolean {
   try {

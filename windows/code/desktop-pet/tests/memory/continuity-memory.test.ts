@@ -103,3 +103,103 @@ test('N07-04 forgetting a fact removes linked companion timeline evidence from r
   continuity.forget({ pairing: A, operationId: 'timeline-forget', targetId: fact.fact.id, expectedVersion: fact.fact.version, reason: '用户要求遗忘称呼。' });
   assert.equal((await packs.getSnapshot(A, { maxCompanionEvents: 10 })).companionTimeline.length, 0);
 });
+
+test('P1 RV-03 derived facts exclude expired or ineligible parent facts from snapshot and reject late mutations', async t => {
+  const f = await fixture();
+  t.after(() => f.db.close());
+
+  // Parent fact in wiki initially valid
+  const parent = f.store.record({
+    pairing: A,
+    operationId: 'parent-1',
+    layer: 'user_wiki',
+    kind: 'fact',
+    text: '用户喜欢薄荷茶。',
+    origin: 'conversation',
+    sourceIds: ['conv:1'],
+    status: 'active',
+    validFrom: '2026-09-01T00:00:00.000Z',
+    validTo: '2026-09-30T00:00:00.000Z',
+  });
+
+  // Child fact in soul derived from parent
+  const child = f.store.record({
+    pairing: A,
+    operationId: 'child-1',
+    layer: 'user_soul',
+    kind: 'inference',
+    text: '用户偏好清凉饮品。',
+    origin: 'derived',
+    sourceIds: [parent.fact.id],
+    status: 'active',
+  });
+
+  // Grandchild fact derived from child
+  const grandchild = f.store.record({
+    pairing: A,
+    operationId: 'grandchild-1',
+    layer: 'user_soul',
+    kind: 'inference',
+    text: '用户夏天喝薄荷饮品。',
+    origin: 'derived',
+    sourceIds: [child.fact.id],
+    status: 'active',
+  });
+
+  // When parent was valid (2026-09-15), parent, child and grandchild are all active
+  const snapshotBefore = f.store.snapshot(A, { now: '2026-09-15T00:00:00.000Z' });
+  assert.equal(snapshotBefore.wiki.length, 1, 'parent was active in the valid window');
+  assert.equal(snapshotBefore.soul.length, 2, 'child and grandchild were active when parent was valid');
+
+  // Now simulate parent expiration by setting valid_to to 2026-09-20
+  f.db.prepare("UPDATE continuity_facts SET valid_to='2026-09-20T00:00:00.000Z' WHERE id=?").run(parent.fact.id);
+
+  // At query time 2026-09-22, parent is expired:
+  // Neither parent, child nor grandchild may appear in active snapshot
+  const snapshotLater = f.store.snapshot(A, { now: '2026-09-22T00:00:00.000Z' });
+  assert.equal(snapshotLater.wiki.length, 0, 'expired parent must not be in wiki');
+  assert.equal(snapshotLater.soul.length, 0, 'derived child and grandchild of expired parent must not be in soul');
+
+  // Reject new derivation from an already-expired parent fact
+  assert.throws(
+    () => f.store.record({
+      pairing: A,
+      operationId: 'child-expired-err',
+      layer: 'user_soul',
+      kind: 'inference',
+      text: '从已失效事实派生。',
+      origin: 'derived',
+      sourceIds: [parent.fact.id],
+      status: 'active',
+    }),
+    (error: unknown) => error instanceof ContinuityMemoryError && error.code === 'version_conflict',
+    'must reject derivation from expired parent fact',
+  );
+
+  // Ineligible parent (evidence_eligible = 0) is rejected as a derivation source at write time
+  const ineligibleParent = f.store.record({
+    pairing: A,
+    operationId: 'ineligible-parent',
+    layer: 'user_wiki',
+    kind: 'fact',
+    text: '草稿事实。',
+    origin: 'conversation',
+    sourceIds: ['conv:2'],
+    status: 'active',
+    evidenceEligible: false,
+  });
+  assert.throws(
+    () => f.store.record({
+      pairing: A,
+      operationId: 'child-ineligible-err',
+      layer: 'user_soul',
+      kind: 'inference',
+      text: '草稿推断。',
+      origin: 'derived',
+      sourceIds: [ineligibleParent.fact.id],
+      status: 'active',
+    }),
+    (error: unknown) => error instanceof ContinuityMemoryError && error.code === 'version_conflict',
+    'must reject derivation from ineligible evidence parent fact',
+  );
+});

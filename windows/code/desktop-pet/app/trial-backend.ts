@@ -22,7 +22,7 @@ import { assertCompanionDataConfiguration } from './companion-data.js';
 import { isOutside, isPrivateFileSync } from '../core/platform-files.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync, statSync, realpathSync } from 'node:fs';
-import { appendFile, mkdir, open, unlink } from 'node:fs/promises';
+import { appendFile, mkdir, open, unlink, readFile } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import {pendingMemoryManagement} from '../management/pending-memory.js';
@@ -68,7 +68,9 @@ import { MicrophonePreferenceStore } from '../media/microphone-preference.js';
 import { SkinStore } from '../management/skin-store.js';
 import { CharacterPackStore } from '../memory/character-pack-store.js';
 import { ContinuityMemoryStore } from '../memory/continuity-memory-store.js';
+import { readTraceContentFromHistory } from '../memory/trace-history-content.js';
 import { ProductionContinuityContext, productionPairingResolver } from '../memory/continuity-production.js';
+import { productionPairing, type PairingScope } from '../contracts/character-pack.js';
 import { continuityManagement } from '../management/continuity-routes.js';
 import { RuntimeTraceStore } from '../core/trace-store.js';
 import { LegacyProviderRuntimeAdapter } from '../plugins/legacy-provider-adapter.js';
@@ -247,7 +249,34 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
     await appendFile(resolve(evidenceRoot, 'voice-failures.jsonl'), JSON.stringify({sourceRevision:configuration.sourceRevision,
       instanceId:runtime.instanceId, ...diagnostic}) + '\n', {mode:0o600});
   });
-  const lockPath = resolve(evidenceRoot, '../backend.lock'), lock = await open(lockPath, 'wx', 0o600);
+  const lockPath = resolve(evidenceRoot, '../backend.lock');
+  let lock: import('node:fs/promises').FileHandle;
+  try {
+    lock = await open(lockPath, 'wx', 0o600);
+  } catch (lockError) {
+    if ((lockError as NodeJS.ErrnoException).code === 'EEXIST') {
+      try {
+        const rawLock = await readFile(lockPath, 'utf8');
+        const parsed = JSON.parse(rawLock);
+        if (typeof parsed?.pid === 'number') {
+          try {
+            process.kill(parsed.pid, 0);
+            throw Error('Another backend instance is currently running.');
+          } catch (killError) {
+            if ((killError as NodeJS.ErrnoException).code === 'ESRCH') {
+              await unlink(lockPath).catch(() => {});
+              lock = await open(lockPath, 'wx', 0o600);
+            } else throw killError;
+          }
+        } else {
+          await unlink(lockPath).catch(() => {});
+          lock = await open(lockPath, 'wx', 0o600);
+        }
+      } catch (checkError) {
+        throw lockError;
+      }
+    } else throw lockError;
+  }
   await lock.writeFile(JSON.stringify({ pid: process.pid, phaseId: configuration.phaseId, sourceRevision: configuration.sourceRevision, startedAt: new Date().toISOString() }) + '\n');
   let store: SqliteMemoryStore | undefined, session: BackendSession | undefined;
   let wechat: WeChatService | undefined;
@@ -351,6 +380,32 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
       summary: { inputTokenBudget: configuration.models.summary.inputTokenLimit, minMessages: settings.effective.context.summaryMinMessages, maxMessages: settings.effective.context.summaryMaxMessages,
         countTokens: summaryInputUpperBound, provider: new JsonSummaryProvider(endpoint('summary'), transport) },
     });
+    const pendingCompanionProjections: Array<{
+      readonly pairing: PairingScope;
+      readonly sessionId: string;
+      readonly turnId: string;
+    }> = [];
+
+    const drainCompanionProjection = () => {
+      if (pendingCompanionProjections.length > 0) {
+        const toRetry = [...pendingCompanionProjections];
+        pendingCompanionProjections.length = 0;
+        for (const item of toRetry) {
+          try {
+            characterPacks.stageCompanionProjection(item);
+          } catch {
+            pendingCompanionProjections.push(item);
+          }
+        }
+      }
+      return characterPacks.projectPendingCompanionEvents((scope, messageId) => {
+        const historyScope = { ...scope, generation: 0 } as TurnScope;
+        const record = store!.inspect(historyScope, messageId);
+        return record ? { state: record.state, role: record.message?.role, text: record.message?.text } : null;
+      });
+    };
+    // Recover turns staged immediately before a previous process exited.
+    drainCompanionProjection();
     if(configuration.purpose==='user-trial' && typeof (memory as import('../contracts/memory-lifecycle.js').BackgroundMemoryPort).beginPendingMutation!=='function')throw Error('Background privacy capability is required');
     const mediaStore = new MemoryMediaStore();
     const admission = new TrialAdmission(endpoint('admission'), transport,
@@ -365,6 +420,27 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
       await readPresentationCatalog(configuration.projectRoot), policy => process.stdout.write(JSON.stringify({ channel: 'presentation_policy', policy }) + '\n'));
     const streamingModels = streamingAsrConfiguration();
     const sessionPorts: BackendPorts = { memory, backgroundMemory: memory, mediaStore,
+      onConversationSaved: scope => {
+        const pairing = productionPairing('companion', configuration.purpose === 'user-trial' ? 'companion-default' : 'smoke-default');
+        const projectionItem = {
+          pairing,
+          sessionId: scope.sessionId,
+          turnId: scope.turnId,
+        };
+        try {
+          characterPacks.stageCompanionProjection(projectionItem);
+          drainCompanionProjection();
+        } catch (error) {
+          /* Projection failure is recoverable and must not undo a delivered reply. */
+          pendingCompanionProjections.push(projectionItem);
+          void diagnostic({
+            type: 'companion_projection_error',
+            sessionId: scope.sessionId,
+            turnId: scope.turnId,
+            error: error instanceof Error ? error.message : String(error),
+          }).catch(() => {});
+        }
+      },
       createEmotion:()=>new EmotionTurns(store!.emotion,store!),
       consumeWakeHit: hit => wake?.consumeHit(hit),
       companionProfile: store,
@@ -466,6 +542,7 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
         await MicrophonePreferenceStore.open(resolve(configuration.projectRoot, '.local/data/microphone.json')),
         skins,
         traceStore,
+        trace => readTraceContentFromHistory(store!, trace),
         new Next65Management({
           hostRoot: next65HostRoot,
           host: liveHost,
@@ -493,7 +570,7 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
       }
     }
     await wechat?.restore().catch(()=>{process.stderr.write('WeChat restore deferred; use connection page.\n');});
-    emitStartup('initializing', 4);
+    emitStartup('ready', 4);
     const cleanupTimer = setInterval(() => { try { store!.cleanup(); } catch { process.stderr.write('Local memory cleanup did not complete\n'); } }, 60_000);
     cleanupTimer.unref();
     const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });

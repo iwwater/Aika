@@ -171,6 +171,8 @@ const s = {
   settingsLatest: null,
   eventModule: '',
   eventKind: '',
+  // Trace正文默认保持摘要；只有用户逐条查看时才按本机 History 读取。
+  traceContent: new Map(),
   auto: false,
 };
 
@@ -178,6 +180,8 @@ const presentation = createPresentationView(client, render);
 const skin = createSkinView(client, render, () => ({ page: s.page, connection: s.connection, instanceId: s.snapshot?.runtime.instanceId, authEpoch }));
 const health = createHealthView(client, render, () => ({ page: s.page, connection: s.connection, instanceId: s.snapshot?.runtime.instanceId, authEpoch }));
 const pendingMemory = createPendingMemoryView(client, render, () => s);
+
+function invalidateTraceBodies() { s.traceContent.clear(); }
 
 window.addEventListener('pagehide', () => {
   balances.deactivate();
@@ -210,6 +214,7 @@ const memoryDynamics = createMemoryDynamicsView(client, render, () => ({
   authEpoch,
   snapshot: s.snapshot,
   onError: error,
+  onMemoryForgotten: invalidateTraceBodies,
   openRecord: r => { s.section = 'records'; s.kind = r.kind; s.query = ''; s.offset = 0; selectRecord(r); loadRecords(); },
   showSection: section => { s.section = section; render(); },
   openSection: section => { s.section = section; render(); loadMemorySection(); },
@@ -230,7 +235,7 @@ const actions = {
   client,
   emotion, selfSetup, balances, wake, memoryImport, memoryDynamics,
   s, render, currentDraft, selectPage, selectModule, loadRecords, loadPrompt, loadContext,
-  selectRecord, saveRecord, savePrompt, saveSettings, rollbackSettings, refreshSnapshot,
+  selectRecord, saveRecord, forgetRecord, savePrompt, saveSettings, rollbackSettings, refreshSnapshot,
   editSetting, reviewSettings, reviewPrompt, reviewRecord,
 };
 
@@ -468,6 +473,36 @@ function saveRecord() {
   }, role);
 }
 
+function forgetRecord() {
+  const record = s.selected, d = currentDraft();
+  if (!record || !d || d.conflict || s.connection !== 'online') return;
+  const role = record.characterId, key = 'forget/' + recordKey(record), operationId = id(), auth = authEpoch;
+  const reason = (d.reason && d.reason.trim()) || '用户在长期记忆详情界面要求删除/遗忘此记忆';
+  invalidateRead('records');
+  return write(key, async () => {
+    try {
+      const result = await client.request('/api/memory/forget', {
+        method: 'POST',
+        body: { characterId: role, id: record.id, expectedVersion: d.version, operationId, reason },
+      });
+      s.selected = null;
+      s.confirmForget = null;
+      s.message = `记忆已遗忘；服务报告 ${result.affectedIds?.length || 1} 条记录受影响。`;
+      await loadRecords();
+    } catch (e) {
+      if (e.status === 409) {
+        d.conflict = true;
+        s.message = '记录已在其他位置变化，请读取最新列表后核对。';
+        await loadRecords();
+      } else {
+        s.error = e.message || '遗忘操作失败，请重试。';
+        s.confirmForget = null;
+        render();
+      }
+    }
+  }, role);
+}
+
 function reviewPrompt() {
   const d = s.prompts.get(s.character);
   if (!d?.latest) return;
@@ -578,6 +613,7 @@ function rollbackSettings(targetRevision) {
 function connect(value) {
   client.token = value.trim();
   try { sessionStorage.setItem(sessionKey, client.token); } catch {}
+  invalidateTraceBodies();
   authEpoch++;
   s.error = '';
   refreshSnapshot();

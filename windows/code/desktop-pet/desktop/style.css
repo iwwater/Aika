@@ -122,6 +122,12 @@ footer{display:flex;flex:0 0 auto;flex-wrap:wrap;gap:7px;align-items:center}
   font-weight: 500;
 }
 
+#speech-bubble[data-state="greeting"] {
+  border-color: #c4b5fd;
+  background: rgba(250, 245, 255, 0.95);
+  color: #6d28d9;
+}
+
 #speech-bubble[data-state="error"] {
   border-color: #fca5a5;
   background: rgba(254, 242, 242, 0.95);

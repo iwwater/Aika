@@ -18,7 +18,9 @@ import { RuntimeTraceStore } from '../dist/core/trace-store.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const desktop = resolve(root, 'desktop');
-const tempDir = resolve(root, '.local/acceptance-mgmt');
+const acceptanceRunId = process.env.PET_ACCEPTANCE_RUN_ID;
+if (acceptanceRunId && !/^[A-Za-z0-9_-]{1,64}$/.test(acceptanceRunId)) throw new Error('Invalid PET_ACCEPTANCE_RUN_ID');
+const tempDir = resolve(root, '.local', acceptanceRunId ? `acceptance-mgmt-${acceptanceRunId}` : 'acceptance-mgmt');
 mkdirSync(tempDir, { recursive: true });
 
 async function main() {

@@ -8,6 +8,7 @@ import { fitDisplay } from './layout.mjs';
 import { assetResponse } from './assets.mjs';
 import { managementUrl, managementTarget } from '../../tools/management-url.mjs';
 import { nextUserDataDir } from '../../core/next-namespace.ts';
+import { sanitizeRects, shouldIgnoreMouseEvents } from '../interactive-region.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const option = name => { const i = process.argv.indexOf(name); return i < 0 ? undefined : process.argv[i + 1]; };
@@ -22,7 +23,7 @@ app.setPath('userData', nextUserDataDir(app.getPath('appData'), smoke ? 'smoke-t
 if (!app.requestSingleInstanceLock({ root, preview })) { app.quit(); process.exit(0); }
 protocol.registerSchemesAsPrivileged([{ scheme: 'pet', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
 let win, ready = false, voiceRequested = false, wakeRequested = false, micTestRequested = false, panelOpen = false, beforeResize, clickThrough = false;
-let prefs = { mode: 'full', width: 360, hotkey: null }, anchor, prefsFile, writes = Promise.resolve();
+let prefs = { mode: 'full', width: 360, hotkey: null, localGreeting: true, localGreetingLastShownAt: null }, anchor, prefsFile, writes = Promise.resolve();
 const deliver = (method, ...args) => { if (ready && win && !win.isDestroyed()) win.webContents.send('pet:delivery', method, ...args); };
 const connection = new BackendConnection({
   onState: state => { voiceRequested = wakeRequested = false; deliver('connectionChanged', state); },
@@ -60,14 +61,23 @@ function layout() {
   const display = screen.getDisplayNearestPoint({ x: Math.round(anchor.x), y: Math.round(anchor.y) });
   const fitted = fitDisplay(prefs.width, panelOpen, display.workArea, anchor, prefs.mode);
   anchor = fitted.anchor; win.setBounds(fitted.bounds); syncRightClickHookBounds(); deliver('displayConfig', fitted.config);
+  // UI-MAN-01: regions are content-relative, so a resize or a display-scale change can move a control out
+  // from under the stored pointer. Re-arbitrate at the new size instead of keeping a stale decision.
+  clickThroughPointer = null;
+  applyMousePolicy();
 }
 const trusted = event => win && event.sender === win.webContents && event.senderFrame === win.webContents.mainFrame && event.senderFrame.url === 'pet://app/index.html';
 const start = () => connection.start(node, [backend], process.env);
 const CLICK_THROUGH_SHORTCUT = 'CommandOrControl+Shift+M';
-// Windows does not offer per-button hit testing through setIgnoreMouseEvents: forward=true only
-// forwards mouse movement. The low-level helper observes right-button presses while click-through is
-// active and restores this window only when the press lands inside its bounds; the window-message hook
-// remains a same-process fallback for hosts that still deliver the native message.
+// UI-MAN-01: click-through can no longer be a window-wide boolean.
+//
+// Windows has no per-button hit testing behind `setIgnoreMouseEvents`, but with `forward: true` the window
+// still receives mouse MOVEMENT while ignoring clicks. The renderer therefore reports the content-relative
+// rectangles of its real, visible controls, and this process decides from the forwarded movement whether
+// the pointer currently sits on one of them. Only then does the window stop ignoring the mouse — so the
+// very next left click lands on the control instead of a later one — and the character body keeps passing
+// clicks to the desktop behind it.
+let interactiveRegions = [], clickThroughPointer = null, mouseIgnored = false;
 const RIGHT_CLICK_MESSAGES = [0x0204, 0x0205, 0x00a4, 0x00a5, 0x007b];
 let rightClickHooked = false, rightClickProcess = null, rightClickBuffer = '';
 function stopRightClickHook() {
@@ -104,10 +114,27 @@ function startRightClickHook() {
   rightClickProcess.once('error', () => { rightClickProcess = null; rightClickBuffer = ''; });
   rightClickProcess.once('exit', () => { rightClickProcess = null; rightClickBuffer = ''; });
 }
+/**
+ * UI-MAN-01: the single writer of `setIgnoreMouseEvents`.
+ *
+ * `interactiveRegions` is renderer-reported, so it is sanitized on the way in AND re-derived here from the
+ * window's own content size. A stale or hostile list can therefore never capture the desktop: at worst it
+ * makes the window receive clicks over an area the user can already see is part of the UI.
+ */
+function applyMousePolicy() {
+  if (!win || win.isDestroyed()) return;
+  const bounds = win.getContentBounds();
+  const regions = sanitizeRects(interactiveRegions, { x: 0, y: 0, width: bounds.width, height: bounds.height });
+  const ignore = shouldIgnoreMouseEvents(clickThrough, clickThroughPointer, regions);
+  if (ignore === mouseIgnored) return;
+  mouseIgnored = ignore;
+  win.setIgnoreMouseEvents(ignore, { forward: true });
+}
 function setClickThrough(enabled, focusOnRestore = false) {
   clickThrough = enabled === true;
+  clickThroughPointer = null;
   if (!win || win.isDestroyed()) return;
-  win.setIgnoreMouseEvents(clickThrough, { forward: true });
+  applyMousePolicy();
   if (clickThrough) startRightClickHook(); else stopRightClickHook();
   if (!clickThrough && focusOnRestore) { win.show(); win.focus(); }
   deliver('clickThroughChanged', { enabled: clickThrough });
@@ -125,7 +152,7 @@ ipcMain.on('pet:shell', async (event, value) => {
   switch (value.type) {
     case 'ready':
       if (ready) return;
-      ready = true; layout(); deliver('hotkeyConfig', { code: prefs.hotkey });
+      ready = true; layout(); deliver('hotkeyConfig', { code: prefs.hotkey }); deliver('localGreetingPreference', prefs.localGreeting); deliver('localGreetingLastShownAt', prefs.localGreetingLastShownAt);
       // FIX61-10 (FIX61-07 07-C "重启一致"): report the stored microphone choice on every fresh page so
       // the conversation capture applies the same device after a restart, not only in the test panel.
       void readMicrophonePreference().then(deviceId => deliver('microphonePreference', deviceId));
@@ -138,6 +165,22 @@ ipcMain.on('pet:shell', async (event, value) => {
       } break;
     case 'set_click_through':
       setClickThrough(value.enabled); break;
+    // UI-MAN-01: the renderer reports where its visible controls are, and where the OS says the pointer is.
+    // Both are bounded here rather than trusted, and neither can widen the window or reach the file system.
+    case 'interactive_regions':
+      interactiveRegions = Array.isArray(value.regions) ? value.regions.slice(0, 64) : [];
+      applyMousePolicy(); break;
+    case 'pointer_position': {
+      if (!clickThrough) break;
+      const bounds = win && !win.isDestroyed() ? win.getContentBounds() : null;
+      if (!bounds) break;
+      const x = Number(value.x), y = Number(value.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) { clickThroughPointer = null; break; }
+      if (value.inside === false) { clickThroughPointer = null; break; }
+      if (x < 0 || y < 0 || x >= bounds.width || y >= bounds.height) { clickThroughPointer = null; break; }
+      clickThroughPointer = { x, y };
+      applyMousePolicy(); break;
+    }
     case 'set_display': if (['full', 'half'].includes(value.mode)) { prefs.mode = value.mode; layout(); savePreferences(); } break;
     case 'resize_model':
       if (value.phase === 'begin') beforeResize ??= prefs.width;
@@ -150,6 +193,15 @@ ipcMain.on('pet:shell', async (event, value) => {
         layout();
       } break;
     case 'set_hotkey': if (validHotkey(value.code)) { prefs.hotkey = value.code; savePreferences(); deliver('hotkeyConfig', { code: prefs.hotkey }); } break;
+    case 'local_greeting_preference':
+      if (typeof value.enabled === 'boolean') { prefs.localGreeting = value.enabled; savePreferences(); deliver('localGreetingPreference', prefs.localGreeting); }
+      break;
+    case 'local_greeting_shown':
+      if (Number.isFinite(value.occurredAt) && value.occurredAt >= 0 && value.occurredAt <= Date.now() + 60_000) {
+        prefs.localGreetingLastShownAt = Math.max(prefs.localGreetingLastShownAt ?? -Infinity, value.occurredAt);
+        savePreferences();
+      }
+      break;
     case 'reconnect': if (['failed', 'disconnected'].includes(connection.state)) start(); break;
     // FIX61-11 / FIX61-07: an explicit, user-initiated microphone-test lease. It grants AUDIO ONLY, and
     // only while the test panel is open, so a mic test never needs the backend to be ready and can never
@@ -200,6 +252,8 @@ try {
   if (['full', 'half'].includes(saved.mode)) prefs.mode = saved.mode;
   if (Number.isFinite(saved.width)) prefs.width = Math.max(220, Math.min(720, saved.width));
   if (validHotkey(saved.hotkey)) prefs.hotkey = saved.hotkey;
+  if (typeof saved.localGreeting === 'boolean') prefs.localGreeting = saved.localGreeting;
+  if (Number.isFinite(saved.localGreetingLastShownAt) && saved.localGreetingLastShownAt >= 0) prefs.localGreetingLastShownAt = saved.localGreetingLastShownAt;
   if (Number.isFinite(saved.anchor?.x) && Number.isFinite(saved.anchor?.y)) anchor = saved.anchor;
 } catch {}
 const area = screen.getPrimaryDisplay().workArea;
@@ -274,10 +328,30 @@ if (smoke) {
     await new Promise(done => setTimeout(done, 400));
     const echoed = await win.webContents.executeJavaScript("document.getElementById('reply').textContent.includes('Offline preview received')");
     if (!echoed) throw Error('Text did not complete a backend round trip');
+    // UI-MAN-01: the drawer opens with an opacity transition, and an offscreen window never advances one.
+    // Show the window (without stealing focus) so the drawer reaches its real, opaque, clickable state —
+    // which is also the only state in which it should capture the pointer.
+    win.showInactive();
+    await new Promise(done => setTimeout(done, 500));
     await win.webContents.executeJavaScript("window.desktopHost.postMessage('shell',{type:'set_click_through',enabled:true})");
     await new Promise(done => setTimeout(done, 300));
+    // UI-MAN-01: with the drawer open the renderer must have reported real interactive regions, and a
+    // pointer inside one must have made the window stop ignoring the mouse. This asserts the live wiring,
+    // not just that the shell accepted the toggle.
+    const reported = await win.webContents.executeJavaScript("(() => { const r = document.getElementById('drawer').getBoundingClientRect(); return JSON.stringify({ x: r.left, y: r.top, width: r.width, height: r.height }); })()");
+    const drawerRect = JSON.parse(reported);
+    await win.webContents.executeJavaScript(`window.desktopHost.postMessage('shell',{type:'pointer_position',x:${Math.round(drawerRect.x + drawerRect.width / 2)},y:${Math.round(drawerRect.y + 20)},inside:true})`);
+    await new Promise(done => setTimeout(done, 200));
+    const regionCount = await win.webContents.executeJavaScript("(() => { const roots = ['#drawer','#function-panel','#mic-test','#work-records-dialog']; let n = 0; for (const sel of roots) { const node = document.querySelector(sel); if (node && !node.hidden && node.getClientRects().length) n++; } return n; })()");
+    if (regionCount < 1) throw Error('The renderer reported no interactive regions while the drawer is open');
+    // Electron exposes no getter for `setIgnoreMouseEvents`, so assert the shell's own arbitration state —
+    // the same value that was last written to the window.
+    if (mouseIgnored) {
+      const diagnostic = await win.webContents.executeJavaScript("JSON.stringify(window.__aikaInteractiveRegionProbe?.() ?? null)");
+      throw Error('A pointer on the open drawer must stop click-through, but the window still ignores the mouse; regionProbe=' + diagnostic + ' shellRegions=' + JSON.stringify(interactiveRegions));
+    }
     await win.webContents.executeJavaScript("window.desktopHost.postMessage('shell',{type:'set_click_through',enabled:false})");
-    console.log('WINDOWS_SMOKE_OK: Live2D renderer, isolated preload, backend round trip, panel layout.');
+    console.log(`WINDOWS_SMOKE_OK: Live2D renderer, isolated preload, backend round trip, panel layout, ${regionCount} interactive region root(s).`);
     if (option('--screenshot')) {
       win.showInactive();
       await new Promise(done => setTimeout(done, 600));

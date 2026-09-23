@@ -33,6 +33,8 @@ import { continuityRoute, type ContinuityManagement } from './continuity-routes.
 
 interface RuntimeServerOptions { emotion?: EmotionManagement; aika?: import('./aika-routes.js').AikaManagement; knowledge?: import('../contracts/knowledge.js').KnowledgeManagement; continuity?: ContinuityManagement; health?: import('./health-routes.js').HealthManagement; microphone?: import('./health-routes.js').MicrophoneManagement; mode?: 'runtime'; selfSetup?:SelfSetupManagement; memoryImport?: MemoryImportManagement; balances?: BalanceManagement; wake?: WakeManagement; wechat?: WeChatManagement; uiRoot: string; memory: ManagementMemoryPort; settings: ManagementSettingsStore; snapshot(): ManagementSnapshot | Promise<ManagementSnapshot>; token?: string; port?: number; presentation?: PresentationControls; presentationAssets?: ReadonlyMap<string, string>; pendingMemory?:PendingMemoryManagement; projects?: ProjectIndexPort; tasks?: TaskManagement;
   traces?: import('../core/trace-store.js').RuntimeTraceStore;
+  /** Authenticated on-demand read from the existing History owner; never persisted in Trace. */
+  traceContent?: (trace: import('../core/trace-store.js').RuntimeTrace) => import('../core/trace-store.js').TraceContentResult | Promise<import('../core/trace-store.js').TraceContentResult>;
   /** FIX61-11: the FIX61-05 model-pack registry. Appearance only; absent leaves the skin section unavailable. */
   skins?: import('../contracts/skin.js').SkinManagement;
   /** N075-01/R8: live host and flow management projection. */
@@ -128,10 +130,23 @@ export async function startManagementServer(options: ServerOptions) {
         const offset = integer(q.get('offset'), 0, 0, 1000000);
         const charId = q.get('characterId') ? character(q.get('characterId')) : undefined;
         if (options.traces) {
-          json(res, 200, options.traces.list({ characterId: charId, limit, offset }));
+          json(res, 200, options.traces.list({ characterId: charId, limit, offset, debugOptIn: false }));
         } else {
           json(res, 200, { total: 0, offset, limit, traces: [], summary: { totalCount: 0, avgElapsedMs: 0, successRate: 100, totalTokens: 0 } });
         }
+        return;
+      }
+      if (req.method === 'GET' && url.pathname.startsWith('/api/traces/') && url.pathname.endsWith('/content')) {
+        const traceId = decodeURIComponent(url.pathname.slice('/api/traces/'.length, -'/content'.length));
+        if (!traceId || !options.traces) throw new ManagementError('not_found', 'Trace 不存在。');
+        const trace = options.traces.get(traceId);
+        if (!trace) throw new ManagementError('not_found', 'Trace 不存在。');
+        if (!options.traceContent) throw new ManagementError('unavailable', '当前实例没有接入历史正文读取。');
+        const content = options.traceContent(trace);
+        // The production History lookup is synchronous. Send it in the same event-loop turn so a
+        // concurrent forget cannot slip between validation and response serialization.
+        if (content && typeof (content as Promise<unknown>).then === 'function') json(res, 200, await content);
+        else json(res, 200, content);
         return;
       }
       if (req.method === 'GET' && url.pathname === '/api/records') {

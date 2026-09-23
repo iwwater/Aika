@@ -1,8 +1,15 @@
 import { app, BrowserWindow } from 'electron';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 // The two console pages are read-only presentation over HTTP routes; hardware acceleration is irrelevant
 // here and is disabled so the run is deterministic on a headless CI machine.
+const tempUserData = mkdtempSync(join(tmpdir(), 'electron-fix61-11-'));
+app.setPath('userData', tempUserData);
 app.disableHardwareAcceleration();
+app.commandLine.appendSwitch('disable-http-cache');
+app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
 void app.whenReady().then(async () => {
   const window = new BrowserWindow({
     show: false, paintWhenInitiallyHidden: true, width: 1280, height: 1000,
@@ -24,5 +31,10 @@ void app.whenReady().then(async () => {
   } finally {
     window.destroy();
     app.quit();
+    try { rmSync(tempUserData, { recursive: true, force: true }); } catch {}
   }
-}).catch(error => { console.error(error); app.exit(1); });
+}).catch(error => {
+  console.error(error);
+  try { rmSync(tempUserData, { recursive: true, force: true }); } catch {}
+  app.exit(1);
+});

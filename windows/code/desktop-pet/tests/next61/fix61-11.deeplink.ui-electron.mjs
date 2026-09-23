@@ -1,11 +1,18 @@
 import { app, BrowserWindow } from 'electron';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 // One real console window per hash, loaded in a REAL browser window with the production webPreferences.
 //
 // Electron itself receives a single base64 argument: Chromium mis-parses a second URL-shaped command-line
 // argument on Windows (the process dies before `ready`), and a quoted JSON argument loses its quotes in the
 // shell. The URL list therefore travels inside one quote-free token.
+const tempUserData = mkdtempSync(join(tmpdir(), 'electron-fix61-deeplink-'));
+app.setPath('userData', tempUserData);
 app.disableHardwareAcceleration();
+app.commandLine.appendSwitch('disable-http-cache');
+app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
 app.on('window-all-closed', () => { /* the next hash opens its own window; never quit between loads */ });
 
 const decode = value => JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
@@ -41,5 +48,10 @@ void app.whenReady().then(async () => {
     console.log('CONSOLE_DEEPLINK_RESULT=' + JSON.stringify(results));
   } finally {
     app.quit();
+    try { rmSync(tempUserData, { recursive: true, force: true }); } catch {}
   }
-}).catch(error => { console.error(error); app.exit(1); });
+}).catch(error => {
+  console.error(error);
+  try { rmSync(tempUserData, { recursive: true, force: true }); } catch {}
+  app.exit(1);
+});

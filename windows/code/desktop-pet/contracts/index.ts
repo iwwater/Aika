@@ -262,3 +262,5 @@ export type * from './continuity-memory.js';
 export type * from './continuity-context.js';
 
 export * from './character-pack.js';
+export * from './perception.js';
+

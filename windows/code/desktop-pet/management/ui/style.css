@@ -90,6 +90,30 @@ button.primary:hover {
   border-color: var(--primary-hover);
 }
 
+button.danger {
+  background: var(--error-soft, #fef2f2);
+  border-color: #fecaca;
+  color: #dc2626;
+  font-weight: 500;
+}
+
+button.danger:hover {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #b91c1c;
+}
+
+button.primary.danger {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #ffffff;
+}
+
+button.primary.danger:hover {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+
 button:not(:disabled):active {
   transform: scale(0.98);
 }
@@ -821,10 +845,121 @@ a:hover {
   color: var(--text-sub);
 }
 
+/* N079-06: provider endpoint text is untrusted-length configuration data. Keep it inside the
+   slot row without clipping the value or allowing it to cover the model input. */
+.aika-slot { min-width: 0; display: grid; grid-template-columns: minmax(120px, .6fr) minmax(0, 1fr); gap: 8px; align-items: center; }
+.aika-slot input, .aika-slot small { min-width: 0; }
+.aika-slot small { grid-column: 2; display: block; overflow-wrap: anywhere; word-break: break-word; line-height: 1.4; }
+@media (max-width: 720px) { .aika-slot { grid-template-columns: minmax(0, 1fr); gap: 4px; } .aika-slot small { grid-column: 1; } }
+
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 16px;
+  min-width: 0;
+}
+
+.form-grid > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.form-grid input,
+.form-grid select,
+.form-grid textarea,
+.form-grid .choice-trigger {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* Custom Choice Dropdown Controls */
+.choice-field {
+  min-width: 0;
+}
+.choice-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  height: var(--control, 36px);
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border-line, #e2e8f0);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-surface, #ffffff);
+  text-align: left;
+  line-height: 20px;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+.choice-trigger:hover:not(:disabled) {
+  border-color: var(--border-focus, #3b82f6);
+}
+.choice-trigger:active {
+  transform: none !important;
+}
+.choice-trigger[aria-expanded="true"] {
+  border-color: var(--primary, #3b82f6);
+  box-shadow: 0 0 0 2px var(--primary-soft, rgba(59, 130, 246, 0.15));
+}
+.choice-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
+}
+.choice-chevron {
+  flex: none;
+  color: var(--text-muted, #94a3b8);
+  font-size: 14px;
+  line-height: 14px;
+  margin-left: 4px;
+}
+.choice-menu {
+  position: fixed;
+  z-index: 9999;
+  padding: 6px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border-line, #e2e8f0);
+  border-radius: var(--radius-md, 8px);
+  background: var(--bg-surface, #ffffff);
+  color: var(--text-main, #0f172a);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+  font-size: 13px;
+  line-height: 20px;
+  box-sizing: border-box;
+}
+.choice-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.choice-option:hover:not([aria-disabled="true"]),
+.choice-option.is-active {
+  background: var(--bg-hover, #f1f5f9);
+}
+.choice-option[aria-selected="true"] {
+  font-weight: 600;
+  color: var(--primary, #3b82f6);
+}
+.choice-option[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.choice-check {
+  width: 16px;
+  flex: none;
 }
 
 .definitions {
@@ -1922,4 +2057,3 @@ th {
 .kb-btn-del-doc:hover {
   background: #dc2626;
 }
-

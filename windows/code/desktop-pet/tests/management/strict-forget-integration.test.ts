@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {resolve} from 'node:path';
-import {mkdir} from 'node:fs/promises';
-import {pathToFileURL} from 'node:url';
+import {spawn} from 'node:child_process';
+import {createRequire} from 'node:module';
 import {fixture} from './helpers.js';
 import {scope,message,change,NOW} from '../memory/sqlite-fixture.js';
 import {lifecycle} from '../memory/lifecycle-fixture.js';
@@ -43,7 +43,7 @@ async function setup(t:any){
  const server=await startManagementServer({uiRoot:resolve('management/ui'),settings,memory,snapshot:()=>({apiVersion:1,runtime:runtime.identity(),modules:runtime.modules(),events:[],settings:settings.snapshot(),adapters:[],credentials:[],characters:memory.characters()})});t.after(()=>server.close());
  const headers={Authorization:'Bearer '+server.token,Origin:server.origin,'Content-Type':'application/json'};
  const send=(a=action)=>fetch(server.origin+'/api/memory/forget',{method:'POST',headers,body:JSON.stringify(a)});
- return {store,forget,server,send,calls:()=>calls,mode:(m:string)=>{mode=m;}};
+ return {store,forget,server,projectRoot:f.c.projectRoot,send,calls:()=>calls,mode:(m:string)=>{mode=m;}};
 }
 test('real HTTP, strict semantic adapter and SQLite share one atomic mixed-source forget and model-free retry',async t=>{
  const f=await setup(t),before=f.store.revision(scope());
@@ -66,21 +66,118 @@ test('failed plan, racing source update and shutdown do not report successful fo
  // Explicit idempotent closes put the shared rm last in a safe order on every platform.
  await f.forget.drain();f.forget.close();await f.server.close();f.store.close();
 });
-test('actual memory page reads SQLite, previews now without mutation, then performs strict shared-source forgetting',{skip:!process.env.PLAYWRIGHT_MODULE},async t=>{
- const f=await setup(t);const {chromium}=await import(pathToFileURL(process.env.PLAYWRIGHT_MODULE!).href);const browser=await chromium.launch({headless:true});t.after(()=>browser.close());
- const page=await browser.newPage({viewport:{width:1280,height:960}});page.setDefaultTimeout(6000);const errors:string[]=[];page.on('pageerror',(e:Error)=>errors.push(e.message));
- await page.goto(f.server.url);await page.locator('#nav-memory').click();await page.locator('[data-md-record="tea"]').waitFor();
- const before=f.store.revision(scope());assert.equal(f.calls(),0);assert.equal(f.store.revision(scope()),before);
- await page.locator('#memory-policy').click();await page.locator('#md-preview-query').fill('红茶');await page.locator('#md-preview-horizon').click();await page.locator('#md-preview-horizon').press('Home');await page.locator('#md-preview-horizon').press('Enter');
- await page.locator('#md-preview-run').click();await page.locator('#md-preview-result').waitFor();assert.equal(f.store.revision(scope()),before);assert.equal(f.calls(),0);
- const output=resolve('../../.local/memory-dynamics-01');await mkdir(output,{recursive:true});await page.screenshot({path:resolve(output,'actual-sqlite-preview.png'),fullPage:true});
- await page.locator('#memory-dynamics').click();
- // Browser DOM drives the same HTTP and strict model adapter as the first test.
- await page.locator('[data-md-record="tea"]').click();
- const text=await page.locator('body').innerText();assert.match(text,/喜欢红茶/);assert.match(text,/未评估|未提供/);
- await page.locator('#md-reason').fill(action.reason);
- await page.locator('#md-record-action').click();
- await page.getByRole('button',{name:'确认遗忘',exact:true}).click();
- await page.waitForFunction(()=>document.body.textContent?.includes('遗忘已确认'));
- assert.equal(f.store.inspect(scope(),'tea')!.state,'deleted');assert.equal(f.store.inspect(scope(),'cat')!.state,'active');assert.equal(f.calls(),1);assert.deepEqual(errors,[]);await page.screenshot({path:resolve(output,'actual-sqlite-forgotten.png'),fullPage:true});
+test('S4 a cancelled forget request leaves the record active and reopens cleanly',async t=>{
+ const f=await setup(t),before=f.store.revision(scope());
+ // The management page's取消 button simply never issues the POST. The server contract that matters is that
+ // a request the client abandons before the model settles cannot half-apply.
+ const controller=new AbortController();
+ const pending=fetch(f.server.origin+'/api/memory/forget',{method:'POST',headers:{Authorization:'Bearer '+f.server.token,Origin:f.server.origin,'Content-Type':'application/json'},body:JSON.stringify(action),signal:controller.signal});
+ controller.abort();
+ await assert.rejects(pending);
+ await f.forget.drain();
+ assert.equal(f.store.revision(scope()),before,'an aborted request must not advance the revision');
+ assert.equal(f.store.inspect(scope(),'tea')!.state,'active','an aborted forget must leave the record active');
+ assert.equal(f.store.inspect(scope(),'cat')!.state,'active');
+ // The same action must still succeed afterwards: a cancelled request may not poison the operation id.
+ const after=await f.send();
+ assert.equal(after.status,200,JSON.stringify(await after.clone().json()));
+ assert.equal(f.store.inspect(scope(),'tea')!.state,'deleted');
+ await f.forget.drain();f.forget.close();await f.server.close();f.store.close();
+});
+test('S4 a forgotten record stays forgotten after the store is reopened and is not recalled',async t=>{
+ const f=await setup(t);
+ const done=await f.send();assert.equal(done.status,200);
+ assert.equal(f.store.inspect(scope(),'tea')!.state,'deleted');
+ assert.equal(f.store.search(scope(),'红茶',20,'lexical').length,0,'a forgotten record is not lexically recallable');
+ await f.forget.drain();f.forget.close();await f.server.close();f.store.close();
+ // Reopen the SAME database file: the deletion must be durable, not an in-memory tombstone.
+ const reopened=new SqliteMemoryStore({filename:resolve(f.projectRoot,'.local/data/companion.sqlite'),retention:CONFIRMED_RETENTION,invitations:confirmedInvitationPolicy('Asia/Shanghai'),clock:()=>NOW});
+ // Close inline rather than in a t.after hook: the fixture's own cleanup rm must run after every handle is
+ // released, and on Windows deleting an open SQLite file fails with EBUSY.
+ try{
+  assert.equal(reopened.inspect(scope(),'tea')!.state,'deleted','the forgotten record must stay deleted after a restart');
+  assert.equal(reopened.search(scope(),'红茶',20,'lexical').length,0,'a restarted process must not recall a forgotten record');
+  assert.equal(reopened.inspect(scope(),'cat')!.state,'active','an unrelated record survives the restart');
+  assert.equal(reopened.search(scope(),'团子',20,'lexical').length,1);
+ }finally{reopened.close();}
+});
+
+test('P0 RV-02 single target source forget fails-closed when planner throws, never creating fallback retain fragments', async t => {
+  const f = await fixture(t);
+  const store = new SqliteMemoryStore({
+    filename: f.c.database,
+    retention: CONFIRMED_RETENTION,
+    invitations: confirmedInvitationPolicy('Asia/Shanghai'),
+    clock: () => NOW,
+  });
+
+  store.append(scope(), [message('raw-single', '我喜欢红茶')]);
+  store.apply(change({ type: 'add', id: 'tea-only', text: '喜欢红茶', sourceIds: ['raw-single'] }, 'tea-only'));
+
+  const singleAction = {
+    characterId: 'companion' as const,
+    id: 'tea-only',
+    expectedVersion: 1,
+    operationId: 'single-forget-err',
+    reason: '请遗忘红茶',
+  };
+
+  const forget = new StrictManagementForget(
+    store,
+    store.lifecycle,
+    { inputTokenBudget: 32768, countTokens: i => buildMemorySemanticFormat(i, true).inputUpperBound + 1024 },
+    async () => { throw new Error('controlled single planner crash'); },
+  );
+
+  const memory = withStrictManagementForget(new SqliteManagementMemoryPort(store, lifecycle(store)), forget);
+  const settings = await ManagementSettingsStore.open(resolve(f.c.projectRoot, 'settings.json'), f.c);
+  const runtime = new ManagementRuntime(f.c.sourceRevision);
+  const server = await startManagementServer({
+    uiRoot: resolve('management/ui'),
+    settings,
+    memory,
+    snapshot: () => ({ apiVersion: 1, runtime: runtime.identity(), modules: runtime.modules(), events: [], settings: settings.snapshot(), adapters: [], credentials: [], characters: memory.characters() }),
+  });
+
+  try {
+    const headers = { Authorization: 'Bearer ' + server.token, Origin: server.origin, 'Content-Type': 'application/json' };
+    const beforeRev = store.revision(scope());
+
+    const resp = await fetch(server.origin + '/api/memory/forget', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(singleAction),
+    });
+
+    assert.equal(resp.status, 503, 'Must return 503 on planner error');
+    const body = await resp.json() as { error?: { code: string; message: string } | string };
+    const errorCode = typeof body.error === 'object' && body.error ? body.error.code : body.error;
+    assert.equal(errorCode, 'unavailable');
+
+    assert.equal(store.revision(scope()), beforeRev);
+    assert.equal(store.inspect(scope(), 'tea-only')!.state, 'active');
+
+    const fragments = store.visible(scope(), 'transcript').filter(r => r.fragment);
+    assert.equal(fragments.length, 0, 'No retain fragments may be created on failure');
+  } finally {
+    await forget.drain();
+    forget.close();
+    await server.close();
+    store.close();
+  }
+});
+
+test('actual memory page reads SQLite, previews without mutation, then performs strict shared-source forgetting in Windows Chromium',async t=>{
+ const f=await setup(t),env={...process.env};delete env.ELECTRON_RUN_AS_NODE;
+ try{
+  const harness=resolve(import.meta.dirname,'../../../tests/management/strict-forget-electron.mjs');
+  const url=f.server.origin+'/#token='+f.server.token+'&page=memory&section=dynamics';
+  const child=spawn(createRequire(import.meta.url)('electron'),[harness,url],{env,windowsHide:true,stdio:['ignore','pipe','pipe']});
+  t.after(()=>{if(child.exitCode===null)child.kill();});
+  let output='';child.stdout.on('data',bytes=>{output+=bytes;});child.stderr.on('data',bytes=>t.diagnostic(bytes.toString()));
+  await new Promise<void>((resolveExit,reject)=>{const timeout=setTimeout(()=>{child.kill();reject(Error('Electron memory UI scenario timed out'));},30000);child.once('error',error=>{clearTimeout(timeout);reject(error);});child.once('exit',code=>{clearTimeout(timeout);code===0?resolveExit():reject(Error('Electron exited '+code));});});
+  const line=output.split(/\r?\n/).find(value=>value.startsWith('STRICT_FORGET_UI_RESULT='));assert.ok(line,'Electron must return UI scenario results');
+  const result=JSON.parse(line.slice('STRICT_FORGET_UI_RESULT='.length));assert.equal(result.error,undefined);assert.equal(result.passed,1);assert.deepEqual(result.errors,[]);
+  assert.equal(f.store.inspect(scope(),'tea')!.state,'deleted');assert.equal(f.store.inspect(scope(),'cat')!.state,'active');assert.equal(f.calls(),1);
+ }finally{await f.forget.drain();f.forget.close();await f.server.close();f.store.close();}
 });

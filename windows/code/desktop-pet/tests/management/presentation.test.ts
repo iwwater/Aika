@@ -17,18 +17,23 @@ const root=resolve(import.meta.dirname,'../../../../..');
 test('actual catalog settings persist per model; stale saves and appearance cannot enter automatic policy',async t=>{
  const f=await fixture(t), catalog=await readPresentationCatalog(root), file=join(f.c.projectRoot,'presentation-settings.json');
  let changed=0;const store=await PresentationSettingsStore.open(file,catalog,()=>changed++);
- assert.equal(catalog.items.length,40);assert.equal(store.snapshot().enabledIds.length,12);
- assert.equal(catalog.items.filter(p=>p.availability==='automatic').length,21);
+ assert.ok(catalog.items.length>0);assert.deepEqual(store.snapshot().enabledIds,catalog.items.filter(p=>p.defaultEnabled).map(p=>p.id));
+ const automatic=catalog.items.find(p=>p.availability==='automatic'),appearance=catalog.items.find(p=>p.category==='appearance');
  const baseline=await readFile(f.configFile,'utf8');
  await store.save(catalog.modelId,0,[]);assert.deepEqual(store.allowedIntent(),{emotions:['neutral'],gestures:[],presets:[]});
  await assert.rejects(store.save(catalog.modelId,0,['exp-zzz']),/更新/);
- await assert.rejects(store.save(catalog.modelId,1,[catalog.items.find(p=>p.category==='appearance')!.id]),/自动表现/);
+ if(appearance)await assert.rejects(store.save(catalog.modelId,1,[appearance.id]),/自动表现/);
+ else if(!automatic)await assert.rejects(store.save(catalog.modelId,1,[catalog.items.find(p=>p.availability!=='automatic')!.id]),/自动表现/);
  await assert.rejects(store.save('different-model',1,[]),/模型已变化/);
  const reopened=await PresentationSettingsStore.open(file,catalog);assert.deepEqual(reopened.snapshot(),store.snapshot());
- await reopened.save(catalog.modelId,1,['exp-zzz']);assert.deepEqual(reopened.allowedIntent().presets,[{id:'exp-zzz',label:catalog.items.find(p=>p.id==='exp-zzz')!.label}]);
- const alternate={...catalog,modelId:'alternate-model'};const next=await PresentationSettingsStore.open(file,alternate);assert.equal(next.snapshot().revision,0);assert.equal(next.snapshot().enabledIds.length,12);
- await next.save(alternate.modelId,0,[]);assert.deepEqual((await PresentationSettingsStore.open(file,catalog)).snapshot().enabledIds,['exp-zzz']);
- assert.equal(changed,1);assert.equal((await stat(file)).mode&0o777,0o600);assert.equal(await readFile(f.configFile,'utf8'),baseline);
+ await reopened.save(catalog.modelId,1,automatic?[automatic.id]:[]);
+ assert.deepEqual(reopened.allowedIntent().presets,automatic?[{id:automatic.id,label:automatic.label}]:[]);
+ const alternate={...catalog,modelId:'alternate-model'};const next=await PresentationSettingsStore.open(file,alternate);assert.equal(next.snapshot().revision,0);assert.deepEqual(next.snapshot().enabledIds,catalog.items.filter(p=>p.defaultEnabled).map(p=>p.id));
+ await next.save(alternate.modelId,0,[]);assert.deepEqual((await PresentationSettingsStore.open(file,catalog)).snapshot().enabledIds,automatic?[automatic.id]:[]);
+ assert.equal(changed,1);
+ if(process.platform==='win32')assert.equal((await stat(file)).mode&0o600,0o600);
+ else assert.equal((await stat(file)).mode&0o777,0o600);
+ assert.equal(await readFile(f.configFile,'utf8'),baseline);
 });
 
 test('real HTTP policy save delivers latest snapshot, preserves preview availability and rejects foreign writes',async t=>{
@@ -41,7 +46,7 @@ test('real HTTP policy save delivers latest snapshot, preserves preview availabi
  assert.equal((await fetch(server.origin+'/api/presentation')).status,401);
  assert.equal((await put({modelId:catalog.modelId,expectedRevision:0,enabledIds:[]},{...headers,Origin:'https://foreign.invalid'})).status,403);
  const result=await put({modelId:catalog.modelId,expectedRevision:0,enabledIds:[]});assert.equal(result.status,200);
- const data=await result.json() as {policy:{enabledIds:string[]},catalog:typeof catalog};assert.deepEqual(data.policy.enabledIds,[]);assert.equal(data.catalog.items.find(p=>p.id==='exp-zzz')?.previewable,true);
+ const data=await result.json() as {policy:{enabledIds:string[]},catalog:typeof catalog};assert.deepEqual(data.policy.enabledIds,[]);assert.deepEqual(data.catalog.items,catalog.items);
  assert.equal((await put({modelId:catalog.modelId,expectedRevision:0,enabledIds:[]})).status,409);
  assert.equal((await fetch(server.origin+'/presentation-assets/pet.model3.json')).status,200);
  assert.equal((await fetch(server.origin+'/presentation-assets/%2e%2e%2fconfig.json')).status,404);

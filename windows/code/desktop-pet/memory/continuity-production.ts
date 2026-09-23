@@ -93,7 +93,7 @@ export class ProductionContinuityContext {
     }
     for (const segment of result.segments || []) {
       for (const evidenceId of segment.evidenceIds || []) {
-        const srcId = evidenceId.split(':')[0]!;
+        const srcId = evidenceId.startsWith('history:') ? evidenceId : evidenceId.split(':')[0]!;
         if (this.options.packs.isSourceRevoked(result.pairing.characterId, srcId)) {
           throw new MemoryRuleError('stale_context');
         }

@@ -41,7 +41,7 @@ export class StaleTurnError extends Error {
 }
 /** Executes one already-created turn; UI owns starting/stopping capture and serializing commands. */
 export class DialoguePipeline {
-  constructor(private readonly ports: DialoguePorts, private readonly controller: TurnController, private readonly emit: (event: DesktopEvent) => void, private readonly afterConversationSaved?: (scope: TurnScope, text: string) => void) {}
+  constructor(private readonly ports: DialoguePorts, private readonly controller: TurnController, private readonly emit: (event: DesktopEvent) => void, private readonly afterConversationSaved?: (scope: TurnScope, userText: string, assistantText: string) => void) {}
   private current(scope: TurnScope, signal: AbortSignal): void {
     if (signal.aborted || !this.controller.accepts(scope)) throw new StaleTurnError();
   }
@@ -170,7 +170,7 @@ export class DialoguePipeline {
       }
       stages.push({ name: 'assistant_persist', label: '助手回复持久化', elapsedMs: Math.max(1, Math.round(performance.now() - persistStart)), status: 'ok', category: 'foreground' });
       // The background owner captures this original role before frontend cancellation/switching.
-      this.afterConversationSaved?.(scope, text);
+      this.afterConversationSaved?.(scope, text, reply.text);
       this.current(scope, signal);
       validateContext();
       this.emit({type: 'reply', reply});

@@ -25,11 +25,23 @@ export interface TraceStage {
   details?: Record<string, unknown> | undefined;
 }
 
+export const TRACE_DIGEST_PATTERN = /^\[digest:[0-9a-f]{8} len:\d+\]$/;
+
+export function isSanitizedTraceText(text: string): boolean {
+  return TRACE_DIGEST_PATTERN.test(text);
+}
+
 export function sanitizeTraceText(text: string): string {
   if (!text) return '';
   const len = [...text].length;
   const digest = createHash('sha256').update(text).digest('hex').slice(0, 8);
   return `[digest:${digest} len:${len}]`;
+}
+
+export function ensureSanitizedTraceText(text: string): string {
+  if (!text) return '';
+  if (isSanitizedTraceText(text)) return text;
+  return sanitizeTraceText(text);
 }
 
 const SAFE_METRIC_KEYS = new Set([
@@ -39,6 +51,22 @@ const SAFE_METRIC_KEYS = new Set([
   'emotion', 'route', 'request', 'status', 'name', 'label', 'code', 'error',
   'model', 'provider', 'outcomeStatus', 'requestId', 'stage',
 ]);
+
+function sanitizeUnknownItem(item: unknown, debugOptIn = false): unknown {
+  if (item === null || item === undefined || typeof item === 'number' || typeof item === 'boolean') {
+    return item;
+  }
+  if (typeof item === 'string') {
+    return ensureSanitizedTraceText(item);
+  }
+  if (Array.isArray(item)) {
+    return item.map(subItem => sanitizeUnknownItem(subItem, debugOptIn));
+  }
+  if (typeof item === 'object') {
+    return sanitizeStageDetails(item as Record<string, unknown>, debugOptIn);
+  }
+  return undefined;
+}
 
 /**
  * RV75-03: Stage details whitelist sanitization.
@@ -62,7 +90,7 @@ export function sanitizeStageDetails(
       if (SAFE_METRIC_KEYS.has(key) && /^[a-zA-Z0-9_\-\.:]{1,64}$/.test(value)) {
         sanitized[key] = value;
       } else {
-        sanitized[key] = sanitizeTraceText(value);
+        sanitized[key] = ensureSanitizedTraceText(value);
       }
       continue;
     }
@@ -70,8 +98,8 @@ export function sanitizeStageDetails(
       if (key === 'affectedIds') {
         sanitized[key] = value.filter(v => typeof v === 'string' && /^[a-zA-Z0-9_\-\.:]{1,64}$/.test(v));
       } else {
-        // Redact any free-form text elements (such as retrievedMemories or prompts)
-        sanitized[key] = value.map(v => typeof v === 'string' ? sanitizeTraceText(v) : v);
+        // Redact any free-form text elements (such as retrievedMemories or prompts), recursively for nested objects
+        sanitized[key] = value.map(v => sanitizeUnknownItem(v, debugOptIn));
       }
       continue;
     }
@@ -104,6 +132,7 @@ export interface TraceQueryOptions {
   characterId?: string | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
+  debugOptIn?: boolean | undefined;
 }
 
 export interface TraceListResult {
@@ -117,6 +146,14 @@ export interface TraceListResult {
     successRate: number;
     totalTokens: number;
   };
+}
+
+/** Body lookup is deliberately separate from the trace row. The default trace row remains masked. */
+export interface TraceContentResult {
+  readonly status: 'available' | 'forgotten' | 'unavailable';
+  readonly userText?: string;
+  readonly replyText?: string;
+  readonly reason?: string;
 }
 
 export class RuntimeTraceStore {
@@ -170,8 +207,8 @@ export class RuntimeTraceStore {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    const storedUserText = debugOptIn ? trace.userText : sanitizeTraceText(trace.userText);
-    const storedReplyText = debugOptIn ? trace.replyText : sanitizeTraceText(trace.replyText);
+    const storedUserText = debugOptIn ? trace.userText : ensureSanitizedTraceText(trace.userText);
+    const storedReplyText = debugOptIn ? trace.replyText : ensureSanitizedTraceText(trace.replyText);
 
     let stages: TraceStage[] = (trace.stages || []).map(s => ({
       ...s,
@@ -315,19 +352,27 @@ export class RuntimeTraceStore {
         created_at: string;
       }>;
 
+    const debugOptIn = options.debugOptIn ?? false;
     const traces: RuntimeTrace[] = rows.map(r => {
-      let stages: TraceStage[] = [];
+      let rawStages: TraceStage[] = [];
       try {
-        stages = JSON.parse(r.stages_json);
+        rawStages = JSON.parse(r.stages_json);
       } catch {}
+      const stages: TraceStage[] = rawStages.map(s => ({
+        ...s,
+        details: sanitizeStageDetails(s.details, debugOptIn),
+      }));
+
+      const userText = debugOptIn ? r.user_text : ensureSanitizedTraceText(r.user_text);
+      const replyText = debugOptIn ? r.reply_text : ensureSanitizedTraceText(r.reply_text);
 
       return {
         traceId: r.trace_id,
         turnId: r.turn_id,
         characterId: r.character_id,
         sessionId: r.session_id,
-        userText: r.user_text,
-        replyText: r.reply_text,
+        userText,
+        replyText,
         totalElapsedMs: r.total_elapsed_ms,
         status: r.status,
         tokens: {
@@ -354,7 +399,7 @@ export class RuntimeTraceStore {
     };
   }
 
-  get(traceId: string): RuntimeTrace | null {
+  get(traceId: string, debugOptIn = false): RuntimeTrace | null {
     const row = this.db.prepare('SELECT * FROM runtime_traces WHERE trace_id = ?').get(traceId) as {
       trace_id: string;
       turn_id: string;
@@ -373,18 +418,22 @@ export class RuntimeTraceStore {
 
     if (!row) return null;
 
-    let stages: TraceStage[] = [];
+    let rawStages: TraceStage[] = [];
     try {
-      stages = JSON.parse(row.stages_json);
+      rawStages = JSON.parse(row.stages_json);
     } catch {}
+    const stages: TraceStage[] = rawStages.map(s => ({
+      ...s,
+      details: sanitizeStageDetails(s.details, debugOptIn),
+    }));
 
     return {
       traceId: row.trace_id,
       turnId: row.turn_id,
       characterId: row.character_id,
       sessionId: row.session_id,
-      userText: row.user_text,
-      replyText: row.reply_text,
+      userText: debugOptIn ? row.user_text : ensureSanitizedTraceText(row.user_text),
+      replyText: debugOptIn ? row.reply_text : ensureSanitizedTraceText(row.reply_text),
       totalElapsedMs: row.total_elapsed_ms,
       status: row.status,
       tokens: {

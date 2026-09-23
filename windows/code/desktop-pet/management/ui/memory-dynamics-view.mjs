@@ -121,6 +121,7 @@ export function createMemoryDynamicsView(client,render,getHost) {
     const r=item.record;
     return mutate('/api/memory/'+action,'POST',{characterId:r.characterId,id:r.id,expectedVersion:r.version,reason:s.reason.trim()},result=>{
       if(result?.status!=='applied'||result.characterId!==r.characterId||!validVersion(result.revision)||result.revision<=s.data.dataRevision||!Array.isArray(result.affectedIds)||!result.affectedIds.includes(r.id)||!result.affectedIds.every(x=>typeof x==='string'))throw new Error('处理回执不匹配，尚未确认成功，请刷新核对。');
+      if(action==='forget')host().onMemoryForgotten?.(result.affectedIds);
       s.selected=null;s.reason='';s.message=(action==='forget'?'遗忘已确认':'恢复已确认')+`，服务报告 ${result.affectedIds.length} 条记录受影响。`;
     });
   }

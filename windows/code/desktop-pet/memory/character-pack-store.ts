@@ -223,6 +223,20 @@ export class CharacterPackStore implements ContinuityReadPort {
       CREATE INDEX IF NOT EXISTS idx_companion_timeline 
         ON character_companion_timeline(user_id, character_id, character_instance_id, created_at);
 
+      -- The outbox stores only stable History identities. Conversation text is read from the
+      -- authoritative History store when the projection is drained, including after restart.
+      CREATE TABLE IF NOT EXISTS character_companion_projection_outbox (
+        event_id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        character_id TEXT NOT NULL,
+        character_instance_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        turn_id TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_companion_projection_outbox_created
+        ON character_companion_projection_outbox(created_at, event_id);
+
       CREATE TABLE IF NOT EXISTS character_source_revocations (
         id TEXT PRIMARY KEY,
         character_id TEXT NOT NULL,
@@ -235,6 +249,42 @@ export class CharacterPackStore implements ContinuityReadPort {
     `);
     const timelineColumns = db.pragma('table_info(character_companion_timeline)') as { name: string }[];
     if (!timelineColumns.some(column => column.name === 'source_ids_json')) db.exec("ALTER TABLE character_companion_timeline ADD COLUMN source_ids_json TEXT NOT NULL DEFAULT '[]'");
+    // Timeline projections cite History rows. Once a cited transcript is changed, forgotten,
+    // expired or purged, scrub the duplicate body in the same SQLite mutation boundary.
+    const hasHistory = Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='memory_records'").get());
+    if (hasHistory) db.exec(`
+      CREATE TRIGGER IF NOT EXISTS character_companion_history_redact_update
+      AFTER UPDATE OF state, text, version ON memory_records
+      WHEN old.kind='transcript' AND (new.state<>'active' OR new.text<>old.text OR new.version<>old.version)
+      BEGIN
+        UPDATE character_companion_timeline SET user_text='', assistant_text=''
+        WHERE character_id=old.character_id AND EXISTS (
+          SELECT 1 FROM json_each(CASE WHEN json_valid(character_companion_timeline.source_ids_json) THEN character_companion_timeline.source_ids_json ELSE '[]' END)
+          WHERE value='history:'||old.id
+        );
+      END;
+      CREATE TRIGGER IF NOT EXISTS character_companion_history_redact_delete
+      AFTER DELETE ON memory_records
+      WHEN old.kind='transcript'
+      BEGIN
+        UPDATE character_companion_timeline SET user_text='', assistant_text=''
+        WHERE character_id=old.character_id AND EXISTS (
+          SELECT 1 FROM json_each(CASE WHEN json_valid(character_companion_timeline.source_ids_json) THEN character_companion_timeline.source_ids_json ELSE '[]' END)
+          WHERE value='history:'||old.id
+        );
+      END;
+    `);
+    // Catch up old events on startup if History changed while this runtime was not open.
+    try {
+      db.exec(`UPDATE character_companion_timeline SET user_text='',assistant_text=''
+        WHERE EXISTS (
+          SELECT 1 FROM json_each(CASE WHEN json_valid(character_companion_timeline.source_ids_json) THEN character_companion_timeline.source_ids_json ELSE '[]' END) source
+          WHERE substr(source.value,1,8)='history:' AND NOT EXISTS (
+            SELECT 1 FROM memory_records history WHERE history.character_id=character_companion_timeline.character_id
+              AND history.id=substr(source.value,9) AND history.state='active'
+          )
+        )`);
+    } catch { /* Standalone Character Pack consumers may not own History. */ }
 
     return new CharacterPackStore(db);
   }
@@ -896,6 +946,7 @@ export class CharacterPackStore implements ContinuityReadPort {
   }
 
   isSourceRevoked(characterId: string, sourceId: string): boolean {
+    if (sourceId.startsWith('history:')) return this.isHistorySourceRevoked(characterId, sourceId.slice('history:'.length));
     const row = this.db
       .prepare(
         "SELECT id FROM character_source_revocations WHERE character_id=? AND target_type='source' AND target_id=?",
@@ -904,9 +955,92 @@ export class CharacterPackStore implements ContinuityReadPort {
     return row !== undefined;
   }
 
+  private isHistorySourceRevoked(characterId: string, messageId: string): boolean {
+    const row = this.db.prepare('SELECT state FROM memory_records WHERE character_id=? AND id=? LIMIT 1')
+      .get(characterId, messageId) as { state: string } | undefined;
+    return !row || row.state !== 'active';
+  }
+
+  /** Persist a recoverable projection marker without duplicating conversation text. */
+  stageCompanionProjection(input: {
+    readonly pairing: PairingScope;
+    readonly sessionId: string;
+    readonly turnId: string;
+    readonly createdAt?: string | undefined;
+  }): void {
+    const eventId = `cte-turn-${input.turnId}`;
+    const createdAt = input.createdAt || new Date().toISOString();
+    const projected = this.db.prepare('SELECT user_id,character_id,character_instance_id,session_id,turn_id FROM character_companion_timeline WHERE event_id=?').get(eventId) as {
+      user_id: string; character_id: string; character_instance_id: string; session_id: string; turn_id: string;
+    } | undefined;
+    if (projected) {
+      if (projected.user_id !== input.pairing.userId || projected.character_id !== input.pairing.characterId
+        || projected.character_instance_id !== input.pairing.characterInstanceId || projected.session_id !== input.sessionId || projected.turn_id !== input.turnId) {
+        throw new Error('companion_projection_identity_conflict');
+      }
+      return;
+    }
+    try {
+      this.db.prepare(`INSERT INTO character_companion_projection_outbox
+        (event_id,user_id,character_id,character_instance_id,session_id,turn_id,created_at) VALUES(?,?,?,?,?,?,?)`)
+        .run(eventId, input.pairing.userId, input.pairing.characterId, input.pairing.characterInstanceId, input.sessionId, input.turnId, createdAt);
+    } catch (error) {
+      const existing = this.db.prepare('SELECT * FROM character_companion_projection_outbox WHERE event_id=?').get(eventId) as {
+        event_id: string; user_id: string; character_id: string; character_instance_id: string;
+        session_id: string; turn_id: string; created_at: string;
+      } | undefined;
+      if (!existing || existing.user_id !== input.pairing.userId || existing.character_id !== input.pairing.characterId
+        || existing.character_instance_id !== input.pairing.characterInstanceId || existing.session_id !== input.sessionId
+        || existing.turn_id !== input.turnId) throw error;
+    }
+  }
+
+  /**
+   * Project staged turns from authoritative History. Invalidated/missing sources are discarded,
+   * while transient resolver failures leave the marker for a later retry. Replaying after a crash
+   * between event insertion and marker deletion is safe because eventId and payload are stable.
+   */
+  projectPendingCompanionEvents(
+    readHistory: (scope: { readonly characterId: string; readonly sessionId: string; readonly turnId: string }, messageId: string) =>
+      { readonly state: string; readonly role?: string | undefined; readonly text?: string | undefined } | null,
+  ): { readonly projected: number; readonly discarded: number; readonly pending: number } {
+    const rows = this.db.prepare('SELECT * FROM character_companion_projection_outbox ORDER BY created_at,event_id').all() as Array<{
+      event_id: string; user_id: string; character_id: string; character_instance_id: string;
+      session_id: string; turn_id: string; created_at: string;
+    }>;
+    let projected = 0, discarded = 0;
+    for (const row of rows) {
+      const scope = { characterId: row.character_id, sessionId: row.session_id, turnId: row.turn_id };
+      try {
+        const user = readHistory(scope, `${row.turn_id}:user`);
+        const assistant = readHistory(scope, `${row.turn_id}:assistant`);
+        if (!user || !assistant || user.state !== 'active' || assistant.state !== 'active'
+          || user.role !== 'user' || assistant.role !== 'assistant' || typeof user.text !== 'string' || typeof assistant.text !== 'string') {
+          this.db.prepare('DELETE FROM character_companion_projection_outbox WHERE event_id=?').run(row.event_id);
+          discarded++;
+          continue;
+        }
+        this.appendCompanionEvent({
+          eventId: row.event_id, userId: row.user_id, characterId: row.character_id,
+          characterInstanceId: row.character_instance_id, sessionId: row.session_id, turnId: row.turn_id,
+          userText: user.text, assistantText: assistant.text, createdAt: row.created_at,
+          sourceIds: [`history:${row.turn_id}:user`, `history:${row.turn_id}:assistant`],
+        });
+        this.db.prepare('DELETE FROM character_companion_projection_outbox WHERE event_id=?').run(row.event_id);
+        projected++;
+      } catch {
+        // Keep the durable marker. The next foreground turn or startup will retry it.
+      }
+    }
+    const pending = (this.db.prepare('SELECT COUNT(*) AS count FROM character_companion_projection_outbox').get() as { count: number }).count;
+    return Object.freeze({ projected, discarded, pending });
+  }
+
   // --- Companion Timeline ----------------------------------------------------
 
   appendCompanionEvent(event: {
+    /** Stable id supplied by the production projector for replay-safe writes. */
+    readonly eventId?: string | undefined;
     readonly userId: string;
     readonly characterId: string;
     readonly characterInstanceId: string;
@@ -917,27 +1051,24 @@ export class CharacterPackStore implements ContinuityReadPort {
     readonly createdAt?: string | undefined;
     readonly sourceIds?: readonly string[] | undefined;
   }): CompanionTimelineEvent {
-    const eventId = `cte-${randomUUID()}`;
+    const eventId = event.eventId?.trim() || `cte-${randomUUID()}`;
     const createdAt = event.createdAt || new Date().toISOString();
-
-    this.db
-      .prepare(
-        `INSERT INTO character_companion_timeline
-         (event_id, user_id, character_id, character_instance_id, session_id, turn_id, user_text, assistant_text, created_at, source_ids_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        eventId,
-        event.userId,
-        event.characterId,
-        event.characterInstanceId,
-        event.sessionId,
-        event.turnId,
-        event.userText,
-        event.assistantText,
-        createdAt,
-        JSON.stringify([...new Set(event.sourceIds ?? [])]),
-      );
+    const sourceIds = [...new Set(event.sourceIds ?? [])];
+    const insert = this.db.prepare(
+      `INSERT INTO character_companion_timeline
+       (event_id, user_id, character_id, character_instance_id, session_id, turn_id, user_text, assistant_text, created_at, source_ids_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    try {
+      insert.run(eventId, event.userId, event.characterId, event.characterInstanceId, event.sessionId, event.turnId, event.userText, event.assistantText, createdAt, JSON.stringify(sourceIds));
+    } catch (error) {
+      // Production replay uses the same event id. A byte-for-byte replay is a
+      // duplicate; a divergent replay is a real conflict and must not overwrite it.
+      const existing = this.db.prepare('SELECT * FROM character_companion_timeline WHERE event_id=?').get(eventId) as CompanionEventRow | undefined;
+      if (!existing || existing.user_id !== event.userId || existing.character_id !== event.characterId || existing.character_instance_id !== event.characterInstanceId
+        || existing.session_id !== event.sessionId || existing.turn_id !== event.turnId || existing.user_text !== event.userText || existing.assistant_text !== event.assistantText
+        || existing.created_at !== createdAt || existing.source_ids_json !== JSON.stringify(sourceIds)) throw error;
+    }
 
     return Object.freeze({
       eventId,
@@ -949,7 +1080,7 @@ export class CharacterPackStore implements ContinuityReadPort {
       userText: event.userText,
       assistantText: event.assistantText,
       createdAt,
-      ...(event.sourceIds && event.sourceIds.length > 0 ? { sourceIds: Object.freeze([...new Set(event.sourceIds)]) } : {}),
+      ...(sourceIds.length > 0 ? { sourceIds: Object.freeze(sourceIds) } : {}),
     });
   }
 
@@ -1018,7 +1149,12 @@ export class CharacterPackStore implements ContinuityReadPort {
 
     const companionTimeline: CompanionTimelineEvent[] = companionRows.filter(r => {
       const sourceIds = r.source_ids_json ? JSON.parse(r.source_ids_json) as string[] : [];
-      return sourceIds.every(id => !this.isContinuityFactRevoked(pairing, id));
+      const revoked = sourceIds.some(id => this.isContinuityFactRevoked(pairing, id));
+      if (revoked && sourceIds.some(id => id.startsWith('history:'))) {
+        // Also scrub eagerly if an old database predates the mutation triggers.
+        this.db.prepare("UPDATE character_companion_timeline SET user_text='',assistant_text='' WHERE event_id=?").run(r.event_id);
+      }
+      return !revoked;
     }).slice(0, maxCompanion).map(r => {
       const sourceIds = r.source_ids_json ? JSON.parse(r.source_ids_json) as string[] : [];
       return Object.freeze({
@@ -1099,6 +1235,7 @@ export class CharacterPackStore implements ContinuityReadPort {
   }
 
   private isContinuityFactRevoked(pairing: PairingScope, factId: string): boolean {
+    if (factId.startsWith('history:')) return this.isHistorySourceRevoked(pairing.characterId, factId.slice('history:'.length));
     try {
       const row = this.db.prepare('SELECT 1 AS found FROM continuity_tombstones WHERE user_id=? AND character_id=? AND instance_id=? AND fact_id=? LIMIT 1')
         .get(pairing.userId, pairing.characterId, pairing.characterInstanceId, factId) as { found: number } | undefined;

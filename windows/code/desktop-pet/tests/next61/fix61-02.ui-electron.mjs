@@ -1,6 +1,13 @@
 import { app, BrowserWindow } from 'electron';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
+const tempUserData = mkdtempSync(join(tmpdir(), 'electron-fix61-02-'));
+app.setPath('userData', tempUserData);
 app.disableHardwareAcceleration();
+app.commandLine.appendSwitch('disable-http-cache');
+app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
 // Electron must finish loading this ESM module before readiness can resolve.
 void app.whenReady().then(async () => {
   const window = new BrowserWindow({
@@ -23,5 +30,10 @@ void app.whenReady().then(async () => {
   } finally {
     window.destroy();
     app.quit();
+    try { rmSync(tempUserData, { recursive: true, force: true }); } catch {}
   }
-}).catch(error => { console.error(error); app.exit(1); });
+}).catch(error => {
+  console.error(error);
+  try { rmSync(tempUserData, { recursive: true, force: true }); } catch {}
+  app.exit(1);
+});

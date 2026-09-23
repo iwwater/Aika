@@ -124,6 +124,33 @@ export class SqliteContinuityMemoryStore implements ContinuityMemoryPort {
     } catch { return false; }
   }
 
+  /**
+   * A continuity fact may itself be the source of a derived fact.  A tombstone on the
+   * root is therefore not enough: every descendant must be excluded until it is rebuilt
+   * from a still-current source.  Unknown source ids are ordinary external evidence
+   * (message ids, imports, etc.) and remain governed by their owning store.
+   */
+  private invalidContinuitySource(pairing: PairingScope, sourceId: string, now: string, seen = new Set<string>()): boolean {
+    if (seen.has(sourceId)) return true;
+    seen.add(sourceId);
+    const row = this.db.prepare(
+      'SELECT status, evidence_eligible, valid_from, valid_to, source_ids_json FROM continuity_facts WHERE user_id=? AND character_id=? AND instance_id=? AND id=? LIMIT 1',
+    ).get(pairing.userId, pairing.characterId, pairing.characterInstanceId, sourceId) as {
+      status: FactRow['status'];
+      evidence_eligible: number;
+      valid_from: string | null;
+      valid_to: string | null;
+      source_ids_json: string;
+    } | undefined;
+    if (!row) return false;
+    if (row.status !== 'active' || row.evidence_eligible !== 1) return true;
+    if (row.valid_from && Date.parse(row.valid_from) > Date.parse(now)) return true;
+    if (row.valid_to && Date.parse(row.valid_to) <= Date.parse(now)) return true;
+    let parents: string[] = [];
+    try { parents = JSON.parse(row.source_ids_json) as string[]; } catch { return true; }
+    return parents.some(parent => this.invalidContinuitySource(pairing, parent, now, new Set(seen)));
+  }
+
   private hydrate(row: FactRow): ContinuityFact {
     const pairing = Object.freeze({ userId: row.user_id, characterId: row.character_id, characterInstanceId: row.instance_id });
     return Object.freeze({
@@ -145,7 +172,9 @@ export class SqliteContinuityMemoryStore implements ContinuityMemoryPort {
     if (row.status !== 'active' || row.evidence_eligible !== 1) return false;
     if (row.valid_from && Date.parse(row.valid_from) > Date.parse(now)) return false;
     if (row.valid_to && Date.parse(row.valid_to) <= Date.parse(now)) return false;
-    return (JSON.parse(row.source_ids_json) as string[]).every(id => !this.revokedSource(row.character_id, id));
+    const sourceIds = JSON.parse(row.source_ids_json) as string[];
+    const pairing = { userId: row.user_id, characterId: row.character_id, characterInstanceId: row.instance_id };
+    return sourceIds.every(id => !this.revokedSource(row.character_id, id) && !this.invalidContinuitySource(pairing, id, now));
   }
 
   snapshot(pairing: PairingScope, options: { readonly includeCandidates?: boolean; readonly now?: string } = {}): ContinuityMemorySnapshot {
@@ -172,10 +201,10 @@ export class SqliteContinuityMemoryStore implements ContinuityMemoryPort {
     const sourceIds = [...new Set(input.sourceIds ?? [])];
     if (input.kind === 'inference' && sourceIds.length === 0) throw new ContinuityMemoryError('invalid_request', '推断必须带证据来源。');
     if (sourceIds.some(id => typeof id !== 'string' || !id.trim())) throw new ContinuityMemoryError('invalid_request', '来源标识无效。');
-    if (sourceIds.some(id => this.revokedSource(input.pairing.characterId, id))) throw new ContinuityMemoryError('version_conflict', '事实引用了已撤销来源。');
+    const now = this.now();
+    if (sourceIds.some(id => this.revokedSource(input.pairing.characterId, id) || this.invalidContinuitySource(input.pairing, id, now))) throw new ContinuityMemoryError('version_conflict', '事实引用了已撤销或已失效来源。');
     const payload = { ...input, sourceIds, status: input.status ?? 'candidate', evidenceEligible: input.evidenceEligible ?? true };
     const existing = this.readOperation(input.pairing, input.operationId, payload); if (existing) return existing;
-    const now = this.now();
     const result = this.db.transaction(() => {
       const state = this.ensurePair(input.pairing);
       const revision = state.revision + 1;
@@ -218,8 +247,9 @@ export class SqliteContinuityMemoryStore implements ContinuityMemoryPort {
       if (!old) throw new ContinuityMemoryError('not_found', '连续性条目不存在。');
       if (old.version !== input.expectedVersion || old.status === 'revoked') throw new ContinuityMemoryError('version_conflict', '连续性条目已变化或已撤销。');
       const sourceIds = payload.sourceIds.length ? payload.sourceIds : JSON.parse(old.source_ids_json) as string[];
-      if (sourceIds.some(id => this.revokedSource(input.pairing.characterId, id))) throw new ContinuityMemoryError('version_conflict', '修正引用了已撤销来源。');
-      const now = this.now(), revision = this.ensurePair(input.pairing).revision + 1, id = `ctf-${randomUUID()}`;
+      const now = this.now();
+      if (sourceIds.some(id => this.revokedSource(input.pairing.characterId, id) || this.invalidContinuitySource(input.pairing, id, now))) throw new ContinuityMemoryError('version_conflict', '修正引用了已撤销或已失效来源。');
+      const revision = this.ensurePair(input.pairing).revision + 1, id = `ctf-${randomUUID()}`;
       this.db.prepare("UPDATE continuity_facts SET status='superseded', version=version+1, updated_at=?, revision=? WHERE id=?").run(now, revision, input.targetId);
       this.db.prepare('INSERT INTO continuity_facts (id,user_id,character_id,instance_id,layer,kind,status,text,source_ids_json,origin,evidence_eligible,created_at,updated_at,valid_from,valid_to,supersedes_id,version,revision) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
         .run(id, input.pairing.userId, input.pairing.characterId, input.pairing.characterInstanceId, old.layer, old.kind, 'active', input.text, JSON.stringify(sourceIds), 'manual', 1, old.created_at, now, old.valid_from, old.valid_to, input.targetId, 1, revision);

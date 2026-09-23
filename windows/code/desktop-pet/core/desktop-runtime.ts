@@ -25,7 +25,7 @@ export class DesktopRuntime {
   attachWork(work: import('../contracts/desktop-work.js').DesktopWorkPort) { this.ports.work = work; }
   identity() { return this.controller.identity(); }
   isBusy(): boolean { return !!this.active || !!this.cleanupPending; }
-  constructor(private readonly ports: RuntimePorts, private readonly emit: (event: DesktopEvent) => void, afterConversationSaved?: (scope: TurnScope, text: string) => void) {
+  constructor(private readonly ports: RuntimePorts, private readonly emit: (event: DesktopEvent) => void, afterConversationSaved?: (scope: TurnScope, userText: string, assistantText: string) => void) {
     this.pipeline = new DialoguePipeline(ports, this.controller, emit, afterConversationSaved);
   }
   private presentation(): void {

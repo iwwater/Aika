@@ -56,6 +56,8 @@ export interface BackendPorts extends Omit<DialoguePorts, 'playback' | 'memory' 
   classifyMemoryRequest?: (scope: TurnScope, text: string, signal: AbortSignal) => ForegroundMemoryRequest | Promise<ForegroundMemoryRequest>;
   /** Trusted application policy only; desktop commands cannot opt themselves into this path. */
   isMemoryIndependent?: (scope: TurnScope, text: string, signal: AbortSignal, pending: MemoryPendingObservation) => boolean | Promise<boolean>;
+  /** Called only after both History messages are saved. Consumers should resolve bodies by stable IDs. */
+  onConversationSaved?: (scope: TurnScope) => void;
 }
 export function parseWorkAction(value: unknown): DesktopWorkAction {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error('Invalid work action');
@@ -174,9 +176,10 @@ export class BackendSession {
         // bridge acknowledgement is exactly "the recognizer accepted this frame" (real backpressure).
         this.devices.openVoiceCapture(voiceScope.turnId, voiceScope, turn);
         return turn;
-      } } } : {}), capture: ports.outputMode==='text'?{start:async()=>{throw Error('Text channel cannot capture');},finish:async()=>{throw Error('Text channel cannot capture');},stop:async()=>{}}:this.devices.capture, playback: ports.outputMode==='text'?{play:async()=>{throw Error('Text channel cannot play');},stop:async()=>{}}:this.devices.playback }, event => send({ channel: 'event', event }), (scope, text) => {
+      } } } : {}), capture: ports.outputMode==='text'?{start:async()=>{throw Error('Text channel cannot capture');},finish:async()=>{throw Error('Text channel cannot capture');},stop:async()=>{}}:this.devices.capture, playback: ports.outputMode==='text'?{play:async()=>{throw Error('Text channel cannot play');},stop:async()=>{}}:this.devices.playback }, event => send({ channel: 'event', event }), (scope, userText, assistantText) => {
+      try { ports.onConversationSaved?.(scope); } catch { /* Durable outbox recovery must not undo the already-saved conversation. */ }
       if (this.maintenance instanceof RoleMemoryLifecycleQueue) this.maintenance.afterConversationSaved(scope);
-      else this.maintenance.enqueue(scope, text);
+      else this.maintenance.enqueue(scope, userText);
     });
     this.workSpeech = new WorkSpeech({ identity: () => this.runtime.identity(), busy: () => this.runtime.isBusy(), tts: ports.tts, playback: this.devices.playback, media: ports.mediaStore, emit: event => send({channel:'work_speech',event}) });
     const introduction = this.profile?.introduction();
