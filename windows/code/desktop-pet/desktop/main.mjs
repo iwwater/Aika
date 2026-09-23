@@ -760,7 +760,10 @@ window.petBridge = { receive, connectionChanged, hotkeyConfig, hotkeyEvent, disp
 window.desktopHost?.subscribe((method, ...args) => window.petBridge[method]?.(...args));
 $('function-close').onclick = () => functionPanel(false);
 renderFunctionPanel();
-$('speech-bubble')?.addEventListener('click', () => dismissBubble());
+$('speech-bubble')?.addEventListener('click', () => {
+  dismissBubble();
+  if ($('drawer')?.hidden) panel(true);
+});
 $('speech-bubble-close')?.addEventListener('click', e => { e.stopPropagation(); dismissBubble(); });
 $('open').onclick = () => panel(true); $('close').onclick = () => panel(false); $('quit').onclick = () => { wake.disconnect();captureFeedback.stop();void stopPlayback(); stopCapture(); native('shell', { type: 'quit' }); };
 $('text').oninput = () => { localGreeting.markInteraction(); clearWorkSpeech();workSpeechBlocked=true;interactionFocusEpoch++; work.input(!!displayedWorkBinding()); chat.setDraft(view.characterId, $('text').value); fitComposer(); };

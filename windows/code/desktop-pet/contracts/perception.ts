@@ -80,8 +80,8 @@ export interface CompanionEventEnvelope<T = unknown> {
   readonly domain: EventDomain;
   readonly type: string;
   readonly pairing: PairingScope;
-  readonly turnId?: string;
-  readonly sourceRef: { readonly id: string; readonly version: number; readonly revision?: number };
+  readonly turnId?: string | undefined;
+  readonly sourceRef: { readonly id: string; readonly version: number; readonly revision?: number | undefined };
   readonly occurredAt: string;
   readonly receivedAt: string;
   readonly payload: T;
