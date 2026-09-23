@@ -1,0 +1,42 @@
+- generic [ref=f1e1636]:
+  - banner [ref=f1e1637]:
+    - generic [ref=f1e1644]:
+      - generic [ref=f1e1645]: Aika-Next
+      - generic [ref=f1e1646]: AI 工作伙伴
+    - tablist "模块导航" [ref=f1e1647]:
+      - button "运行" [ref=f1e1648] [cursor=pointer]
+      - button "角色" [ref=f1e1654] [cursor=pointer]
+      - button "配置" [ref=f1e1660] [cursor=pointer]
+      - button "连接" [ref=f1e1666] [cursor=pointer]
+      - button "扩展" [ref=f1e1672] [cursor=pointer]
+      - button "工作" [ref=f1e1680] [cursor=pointer]
+    - generic [ref=f1e1686]:
+      - generic [ref=f1e1687] [cursor=pointer]:
+        - generic [ref=f1e1688]: "作用域: 本机"
+        - generic [ref=f1e1689]: ▼
+      - generic [ref=f1e1690] [cursor=pointer]: Ctrl + K
+      - button "切换主题" [ref=f1e1696] [cursor=pointer]
+      - button "通知" [ref=f1e1704] [cursor=pointer]
+      - generic "Aika 在线" [ref=f1e1710] [cursor=pointer]:
+        - img "User" [ref=f1e1711]
+  - navigation [ref=f1e1713]:
+    - tablist "子页面导航" [ref=f1e1714]:
+      - button "总览" [ref=f1e1715] [cursor=pointer]
+      - button "模块状态" [ref=f1e1716] [cursor=pointer]
+      - button "Trace" [ref=f1e1717] [cursor=pointer]
+    - generic [ref=f1e1718]:
+      - generic [ref=f1e1719]: 最后更新时间：2026/9/23 07:08:16
+      - button "刷新" [ref=f1e1720] [cursor=pointer]
+  - main [ref=f1e1721]:
+    - generic [ref=f1e1722]:
+      - paragraph [ref=f1e1723]: 运行 / 模块状态
+      - heading "模块状态" [level=1] [ref=f1e1724]
+      - paragraph [ref=f1e1725]: 底层模块就绪状况与设备通信诊断。
+    - generic [ref=f1e1728]:
+      - heading "模块状态" [level=2] [ref=f1e1729]
+      - paragraph [ref=f1e1730]: 这里的灯只反映后端已经真实观察到的事实。为了不给用户生成付费请求，本页不会主动探测任何端点——所以首次对话之前，多数模块显示为「尚未确认」或「部分可用」是预期的诚实状态，不代表故障。
+      - status [ref=f1e1731]: 当前后端尚未接入模块状态。
+      - button "刷新状态" [ref=f1e1733] [cursor=pointer]
+  - contentinfo [ref=f1e1734]:
+    - generic [ref=f1e1735]: Aika-Next v0.8.0 | Be with you, always.
+    - generic [ref=f1e1736]: 与你在一起，就是最好的未来。 ♡

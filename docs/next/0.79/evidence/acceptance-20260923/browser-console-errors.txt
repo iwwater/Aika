@@ -1,0 +1,26 @@
+Total messages: 23 (Errors: 23, Warnings: 0)
+
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:10158/assets/aika-avatar.png:0
+[ERROR] Failed to load resource: the server responded with a status of 503 (Service Unavailable) @ http://127.0.0.1:10158/api/self-setup:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:10158/assets/aika-avatar.png:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:10158/assets/aika-avatar.png:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:10158/assets/aika-avatar.png:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:10158/assets/aika-avatar.png:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:10158/assets/aika-avatar.png:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:10158/assets/aika-avatar.png:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:10158/assets/aika-avatar.png:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:10158/assets/aika-avatar.png:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:10158/assets/aika-avatar.png:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:10158/assets/aika-avatar.png:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:10158/assets/aika-avatar.png:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:10158/assets/aika-avatar.png:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:10158/assets/aika-avatar.png:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:10158/assets/aika-avatar.png:0
+[ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:10158/api/knowledge:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:10158/assets/aika-avatar.png:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:10158/assets/aika-avatar.png:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:10158/assets/aika-avatar.png:0
+[ERROR] Failed to load resource: the server responded with a status of 503 (Service Unavailable) @ http://127.0.0.1:10158/api/health:0
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:10158/assets/aika-avatar.png:0
+TypeError: actions.error is not a function
+    at http://127.0.0.1:10158/modern-knowledge-view.mjs:76:17
