@@ -57,9 +57,17 @@ export async function startRuntimeManagement(base: TrialConfiguration, configFil
   /** N075-01/R5: persistent turn trace store for management trace inspection. */
   traces?: import('../core/trace-store.js').RuntimeTraceStore,
   /** N079-02: authenticated, on-demand History lookup; Trace itself remains masked. */
-  traceContent?: (trace: import('../core/trace-store.js').RuntimeTrace) => import('../core/trace-store.js').TraceContentResult | Promise<import('../core/trace-store.js').TraceContentResult>,
+  traceContent?: (trace: import('../core/trace-store.js').RuntimeTrace) => import('../core/trace-store.js').TraceContentResult,
   /** N075-01/R8: live host and flow management. */
-  next65?: import('./next65-management.js').Next65Management) {
+  next65?: import('./next65-management.js').Next65Management,
+  /** 08-01: same-database cross-domain timeline with a composition-root-owned pairing. */
+  unifiedTimeline?: { service: import('../memory/unified-timeline.js').UnifiedTimelineService; pairing: import('../contracts/character-pack.js').PairingScope },
+  /** 08-05: explicit ACP/MCP protocol tasks, paired to the same live timeline identity. */
+  workProtocol?: import('../contracts/work-protocol.js').WorkProtocolManagement,
+  /** 08-04: opt-in source-based invitations share the existing delivery budget. */
+  proactiveInvitations?: import('./proactive-invitation-routes.js').ProactiveInvitationManagement,
+  /** 08-03: explicitly confirmed, pair-scoped screen capture and one-turn observation handoff. */
+  perception?: import('./perception-runtime.js').PerceptionManagementRuntime) {
   /** The registry already publishes which provider owns a reference; no key material is read here. */
   const credentialOwner = (ref: string, list: readonly { id: string; provider?: string }[]) => {
     const owner = list.find(entry => entry.id === ref)?.provider;
@@ -116,9 +124,13 @@ export async function startRuntimeManagement(base: TrialConfiguration, configFil
       ...(traces ? { traces } : {}),
       ...(traceContent ? { traceContent } : {}),
       ...(next65 ? { next65 } : {}),
+      ...(workProtocol ? { workProtocol } : {}),
+      ...(proactiveInvitations ? { proactiveInvitations } : {}),
+      ...(perception ? { perception } : {}),
+      ...(unifiedTimeline ? { unifiedTimeline: input => unifiedTimeline.service.queryTimeline({ pairing: unifiedTimeline.pairing, ...input }) } : {}),
     snapshot: async () => ({ apiVersion: 1, balances:balances.snapshot(), accounting:await accountingSnapshot(base), runtime: runtime.identity(), modules: runtime.modules(), events: runtime.recentEvents(),
       settings: settings.snapshot(), adapters: availableAdapters(base, settings.registeredVoices), credentials: credentialRegistry(base).list(), characters: memory.characters() }) });
-  } catch (error) { stopRecorder?.(); await selfSetup.close(); await tasks?.close(); await projects?.close(); throw error; }
+  } catch (error) { stopRecorder?.(); perception?.close(); await selfSetup.close(); await workProtocol?.close(); await tasks?.close(); await projects?.close(); throw error; }
   const file = resolve(dirname(configFile), 'management-session.json');
   const descriptor = { version: 1, pid: process.pid, instanceId: runtime.instanceId, sourceRevision: base.sourceRevision, url: server.url };
   const temporary = file + '.' + runtime.instanceId + '.next';
@@ -127,7 +139,7 @@ export async function startRuntimeManagement(base: TrialConfiguration, configFil
     await rename(temporary, file);
     // The console-open path rejects session files without private ACLs; mode 0o600 is a no-op on Windows.
     restrictPrivatePathSync(file);
-  } catch (error) { try { balances.close(); await selfSetup.close(); await server.close(); await memoryImport?.close(); } finally { await tasks?.close(); await projects?.close(); } throw error; }
+  } catch (error) { try { perception?.close(); balances.close(); await selfSetup.close(); await server.close(); await memoryImport?.close(); } finally { await workProtocol?.close(); await tasks?.close(); await projects?.close(); } throw error; }
   finally { await unlink(temporary).catch(error => { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }); }
   tasks?.startUsageObservation();
   return { ...server, tasks, projects, receipts, createWorkChannel(directory: string) {
@@ -137,7 +149,7 @@ export async function startRuntimeManagement(base: TrialConfiguration, configFil
     return {receipts:channelReceipts,forwarding,projects};
   }, async close() {
     stopRecorder?.();
-    try { balances.close(); await selfSetup.close(); await server.close(); await memoryImport?.close(); } finally { await tasks?.close(); await windowsCodex?.close(); await projects?.close(); }
+    try { perception?.close(); balances.close(); await selfSetup.close(); await server.close(); await memoryImport?.close(); } finally { await workProtocol?.close(); await tasks?.close(); await windowsCodex?.close(); await projects?.close(); }
     try { const current = JSON.parse(await readFile(file, 'utf8')); if (current.instanceId === runtime.instanceId) await unlink(file); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   } };

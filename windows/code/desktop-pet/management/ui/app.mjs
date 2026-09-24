@@ -17,6 +17,9 @@ import {createHealthView} from './health-view.mjs';
 import {ICONS, svgIcon} from './icons.mjs';
 import {createModernOverview} from './modern-overview.mjs';
 import {createModernKnowledgeView} from './modern-knowledge-view.mjs';
+import {createModernTimelineView} from './modern-timeline-view.mjs';
+import {createProactiveView} from './proactive-view.mjs';
+import {createPerceptionView} from './perception-view.mjs';
 import {parseConsoleRoute} from './routes.mjs';
 
 const sessionKey='pet-management-session-v1';
@@ -46,12 +49,14 @@ export const SUBTABS_BY_MODULE = Object.freeze({
   config: [
     { id: 'models', label: 'API 与模型', page: 'models' },
     { id: 'voice', label: '语音与设备', page: 'voice' },
+    { id: 'perception', label: '授权感知', page: 'perception' },
     { id: 'skins', label: '外观 / 换肤', page: 'skins' },
   ],
   connect: [
     { id: 'wechat', label: '微信连接', page: 'wechat' },
   ],
   extensions: [
+    { id: 'proactive', label: '主动陪伴', page: 'proactive' },
     { id: 'knowledge', label: '知识库', page: 'knowledge' },
     { id: 'packages', label: '插件包与 Flow', page: 'packages' },
   ],
@@ -71,7 +76,9 @@ export const PAGE_LABELS = {
   presentation: '表情与动作',
   skins: '外观 / 换肤',
   health: '模块状态',
-  events: '运行记录'
+  events: '运行记录',
+  proactive: '主动陪伴策略',
+  perception: '授权感知'
 };
 const PAGES = Object.keys(PAGE_LABELS);
 
@@ -88,6 +95,8 @@ export const PAGE_TITLES = {
   skins: '配置 / 外观与换肤',
   wechat: '连接 / 微信连接与通知',
   knowledge: '扩展 / 知识库与文档管理',
+  proactive: '扩展 / 主动陪伴策略',
+  perception: '配置 / 授权感知',
   packages: '扩展 / 插件包与 Flow 流程',
   projects: '工作 / 项目工作区索引',
   tasks: '工作 / 任务调度中心',
@@ -106,6 +115,8 @@ export const PAGE_DESCS = {
   skins: '浏览、导入与激活桌宠外观皮肤，调整窗口尺寸与缩放。',
   wechat: '配置微信连接与消息通知通道。',
   knowledge: '管理和组织你的知识库，支持多源数据与文本切片。',
+  proactive: '配置主动邀请开关、免打扰时间与共享频率上限。',
+  perception: '仅在你明确选择来源并确认后，临时分析单帧画面；截图不进入聊天历史。',
   packages: '管理 0.65 插件包状态与编排流程。',
   projects: '本地工作项目索引与代码目录映射。',
   tasks: '自动化任务转发、执行队列与状态监控。',
@@ -187,6 +198,8 @@ window.addEventListener('pagehide', () => {
   balances.deactivate();
   selfSetup.dispose();
   emotion.dispose();
+  proactive.dispose();
+  perception.dispose();
   memoryImport.dispose();
   presentation.dispose();
   memoryDynamics.dispose();
@@ -230,6 +243,8 @@ const memoryImport = createMemoryImportView(client, render, () => ({ page: s.pag
 const balances = createBalancesView(client, render, () => s);
 const selfSetup = createSelfSetupView(client, render, () => ({ page: s.page, connection: s.connection, authEpoch, onError: error, onMode: mode => { s.setupMode = mode; if (mode === 'first-run') s.connection = 'online'; } }));
 const emotion = createEmotionView(client, render, () => ({ page: s.page, section: s.section, connection: s.connection, character: s.character, instanceId: s.snapshot?.runtime.instanceId, authEpoch, onError: error }));
+const proactive = createProactiveView(client, render, () => ({ page: s.page, pairing: s.pairing, connection: s.connection }));
+const perception = createPerceptionView(client, render, () => ({ page: s.page, connection: s.connection }));
 
 const actions = {
   client,
@@ -329,6 +344,8 @@ async function refreshSnapshot() {
     if (s.page === 'projects') projects.refresh();
     if (s.page === 'tasks') tasks.refresh();
     if (s.page === 'wechat') wechat.refresh();
+    if (s.page === 'proactive') proactive.refresh();
+    if (s.page === 'perception') perception.refresh();
   } catch (e) {
     if (seq === snapshotSequence && auth === authEpoch) error(e);
   } finally {
@@ -351,6 +368,7 @@ function selectPage(page) {
   if (page !== 'presentation') presentation.deactivate();
   if (page !== 'skins') skin.dispose();
   if (page !== 'health') health.dispose();
+  if (page !== 'perception') void perception.leave();
   s.page = page;
   s.activeModule = findModuleForPage(page);
   s.error = '';
@@ -358,6 +376,8 @@ function selectPage(page) {
   render();
   if (page === 'tasks') tasks.refresh();
   if (page === 'projects') projects.refresh();
+  if (page === 'proactive') proactive.refresh();
+  if (page === 'perception') perception.refresh();
   if (page === 'memory') {
     loadMemorySection();
     pendingMemory.load();
@@ -841,9 +861,13 @@ function render() {
       main.append(el('div', { class: 'page-content' }, memoryView(actions)));
       main.append(el('div', { class: 'page-content' }, pendingMemory.view()));
     } else if (s.page === 'timeline') {
-      main.append(el('div', { class: 'page-content' }, memoryDynamics.view()));
+      main.append(createModernTimelineView(actions));
     } else if (s.page === 'knowledge') {
       main.append(createModernKnowledgeView(actions));
+    } else if (s.page === 'proactive') {
+      main.append(proactive.view());
+    } else if (s.page === 'perception') {
+      if (s.connection === 'online') main.append(perception.view());
     } else {
       main.append(el('div', { class: 'card empty' }, `页面 "${s.page}" 正在准备中...`));
     }

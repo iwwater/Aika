@@ -18,6 +18,8 @@ export const CONSOLE_PAGES = Object.freeze([
   'tasks',        // 任务调度中心 (N075-13)
   'wechat',       // 微信连接 (N075-14)
   'presentation', // 表情与动作策略 (N075-14)
+  'proactive',    // 主动陪伴策略 (08-04)
+  'perception',   // 授权感知 (08-03)
 ]);
 
 export const DEFAULT_PAGE = 'overview';

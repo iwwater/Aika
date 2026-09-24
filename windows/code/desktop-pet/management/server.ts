@@ -12,7 +12,7 @@ import type { WeChatManagement } from '../contracts/wechat.js';
 import { wechatRoute } from './wechat-routes.js';
 import { isProductCharacter } from '../contracts/character.js';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -25,20 +25,34 @@ import type {PendingMemoryManagement} from './pending-memory.js';
 import type { ProjectIndexPort } from '../contracts/projects.js';
 import { projectRoute } from './project-routes.js';
 import { taskRoute, type TaskManagement } from './task-routes.js';
+import { workProtocolRoute } from './work-protocol-routes.js';
 import { aikaRoute } from './aika-routes.js';
 import { knowledgeRoute } from './knowledge-routes.js';
 import { healthRoute, microphoneRoute } from './health-routes.js';
 import { skinRoute } from './skin-routes.js';
 import { continuityRoute, type ContinuityManagement } from './continuity-routes.js';
+import type { FlowProfile } from '../contracts/flow-profile.js';
+import type { EventDomain } from '../contracts/perception.js';
+import type { TimelineQueryResult } from '../memory/unified-timeline.js';
+import type { WorkProtocolManagement } from '../contracts/work-protocol.js';
+import { proactiveInvitationRoute, type ProactiveInvitationManagement } from './proactive-invitation-routes.js';
+import { perceptionRoute } from './perception-routes.js';
+import type { PerceptionManagementPort } from './perception-routes.js';
 
 interface RuntimeServerOptions { emotion?: EmotionManagement; aika?: import('./aika-routes.js').AikaManagement; knowledge?: import('../contracts/knowledge.js').KnowledgeManagement; continuity?: ContinuityManagement; health?: import('./health-routes.js').HealthManagement; microphone?: import('./health-routes.js').MicrophoneManagement; mode?: 'runtime'; selfSetup?:SelfSetupManagement; memoryImport?: MemoryImportManagement; balances?: BalanceManagement; wake?: WakeManagement; wechat?: WeChatManagement; uiRoot: string; memory: ManagementMemoryPort; settings: ManagementSettingsStore; snapshot(): ManagementSnapshot | Promise<ManagementSnapshot>; token?: string; port?: number; presentation?: PresentationControls; presentationAssets?: ReadonlyMap<string, string>; pendingMemory?:PendingMemoryManagement; projects?: ProjectIndexPort; tasks?: TaskManagement;
+  /** Pairing is fixed by the runtime composition root; callers can filter domains, never change tenant scope. */
+  unifiedTimeline?: (query: { readonly domains?: readonly EventDomain[]; readonly limit?: number; readonly cursor?: string }) => Promise<TimelineQueryResult>;
   traces?: import('../core/trace-store.js').RuntimeTraceStore;
   /** Authenticated on-demand read from the existing History owner; never persisted in Trace. */
-  traceContent?: (trace: import('../core/trace-store.js').RuntimeTrace) => import('../core/trace-store.js').TraceContentResult | Promise<import('../core/trace-store.js').TraceContentResult>;
+  traceContent?: (trace: import('../core/trace-store.js').RuntimeTrace) => import('../core/trace-store.js').TraceContentResult;
   /** FIX61-11: the FIX61-05 model-pack registry. Appearance only; absent leaves the skin section unavailable. */
   skins?: import('../contracts/skin.js').SkinManagement;
   /** N075-01/R8: live host and flow management projection. */
-  next65?: import('./next65-management.js').Next65Management; }
+  next65?: import('./next65-management.js').Next65Management;
+  /** 08-05: explicit, versioned ACP/MCP work cards and durable forget lifecycle. */
+  workProtocol?: WorkProtocolManagement;
+  /** 08-04: opt-in continuity-sourced invitations and shared quota/DND controls. */
+  proactiveInvitations?: ProactiveInvitationManagement; perception?: PerceptionManagementPort; }
 type ServerOptions = RuntimeServerOptions | { mode:'setup'; selfSetup:SelfSetupManagement; uiRoot:string; token?:string; presentationAssets?:undefined };
 const character = (value: unknown): CharacterId => { if (!isProductCharacter(value)) throw new ManagementError('invalid_request', '仅可访问当前陪伴角色。'); return value; };
 const integer = (value: unknown, fallback: number, min: number, max: number) => { const n = value === null || value === undefined ? fallback : Number(value); if (!Number.isSafeInteger(n) || n < min || n > max) throw new ManagementError('invalid_request', '数值范围无效。'); return n; };
@@ -57,7 +71,7 @@ export async function startManagementServer(options: ServerOptions) {
   const json = (res: ServerResponse, status: number, value: unknown) => { res.statusCode = status; res.setHeader('Content-Type', 'application/json; charset=utf-8'); res.end(JSON.stringify(value)); };
   const server = createServer({ requestTimeout: 10000, headersTimeout: 10000, keepAliveTimeout: 1000 }, (req, res) => {
     res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Referrer-Policy', 'no-referrer');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; media-src 'self' blob:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+    res.setHeader('Content-Security-Policy', "default-src 'self'; media-src 'self' blob:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
     void (async () => {
       if (req.headers.host !== new URL(origin).host || (req.headers.origin !== undefined && req.headers.origin !== origin)) throw new ManagementError('forbidden', '仅接受本机管理页面的同源请求。');
       const url = new URL(req.url ?? '/', origin);
@@ -70,7 +84,7 @@ export async function startManagementServer(options: ServerOptions) {
           const type = asset.endsWith('.png') ? 'image/png' : asset.endsWith('.json') ? 'application/json' : asset.endsWith('.js') ? 'text/javascript' : 'application/octet-stream';
           res.setHeader('Content-Type', type); res.end(req.method === 'HEAD' ? undefined : data); return;
         }
-        const names = new Map([['/emotion-view.mjs','emotion-view.mjs'],['/self-setup-view.mjs','self-setup-view.mjs'],['/memory-import-view.mjs','memory-import-view.mjs'],['/balances-view.mjs','balances-view.mjs'],['/wake-view.mjs','wake-view.mjs'],['/wechat-view.mjs','wechat-view.mjs'],['/skin-view.mjs','skin-view.mjs'],['/health-view.mjs','health-view.mjs'],['/', 'index.html'], ['/index.html', 'index.html'], ['/app.mjs', 'app.mjs'], ['/routes.mjs', 'routes.mjs'], ['/icons.mjs', 'icons.mjs'], ['/modern-overview.mjs', 'modern-overview.mjs'], ['/modern-knowledge-view.mjs', 'modern-knowledge-view.mjs'], ['/pending-memory-view.mjs','pending-memory-view.mjs'], ['/api.mjs', 'api.mjs'], ['/projects-view.mjs', 'projects-view.mjs'], ['/tasks-view.mjs', 'tasks-view.mjs'], ['/dom.mjs', 'dom.mjs'], ['/views.mjs', 'views.mjs'], ['/style.css', 'style.css'], ['/presentation-view.mjs', 'presentation-view.mjs'], ['/memory-dynamics-view.mjs','memory-dynamics-view.mjs'], ['/presentation-preview.js', 'presentation-preview.js'], ['/aika-view.mjs', 'aika-view.mjs'], ['/aika.html', 'aika.html'], ['/knowledge-view.mjs', 'knowledge-view.mjs']]);
+        const names = new Map([['/emotion-view.mjs','emotion-view.mjs'],['/self-setup-view.mjs','self-setup-view.mjs'],['/memory-import-view.mjs','memory-import-view.mjs'],['/balances-view.mjs','balances-view.mjs'],['/wake-view.mjs','wake-view.mjs'],['/wechat-view.mjs','wechat-view.mjs'],['/skin-view.mjs','skin-view.mjs'],['/health-view.mjs','health-view.mjs'],['/', 'index.html'], ['/index.html', 'index.html'], ['/app.mjs', 'app.mjs'], ['/routes.mjs', 'routes.mjs'], ['/icons.mjs', 'icons.mjs'], ['/modern-overview.mjs', 'modern-overview.mjs'], ['/modern-knowledge-view.mjs', 'modern-knowledge-view.mjs'], ['/modern-timeline-view.mjs', 'modern-timeline-view.mjs'], ['/pending-memory-view.mjs','pending-memory-view.mjs'], ['/api.mjs', 'api.mjs'], ['/projects-view.mjs', 'projects-view.mjs'], ['/tasks-view.mjs', 'tasks-view.mjs'], ['/dom.mjs', 'dom.mjs'], ['/views.mjs', 'views.mjs'], ['/style.css', 'style.css'], ['/presentation-view.mjs', 'presentation-view.mjs'], ['/memory-dynamics-view.mjs','memory-dynamics-view.mjs'], ['/presentation-preview.js', 'presentation-preview.js'], ['/aika-view.mjs', 'aika-view.mjs'], ['/aika.html', 'aika.html'], ['/knowledge-view.mjs', 'knowledge-view.mjs']]);
         let name = names.get(url.pathname);
         if (!name && /^\/[a-zA-Z0-9_\-]+\.(mjs|js|css|html)$/.test(url.pathname)) {
           const candidate = url.pathname.slice(1);
@@ -86,10 +100,31 @@ export async function startManagementServer(options: ServerOptions) {
       if(await selfSetupRoute(req,url,options.selfSetup,limit=>body(req,limit),value=>json(res,200,value),(bytes,mime)=>{res.setHeader('Content-Type',mime);res.end(bytes);}))return;
       if(options.mode==='setup')throw new ManagementError('unavailable','当前为首次设置，桌宠尚未运行。');
       const q = url.searchParams;
+      if (url.pathname === '/api/unified-timeline') {
+        if (req.method !== 'GET') throw new ManagementError('not_found', '没有这个管理操作。');
+        if (!options.unifiedTimeline) throw new ManagementError('unavailable', '统一时间线尚未接入当前运行实例。');
+        const rawDomains = q.get('domains');
+        const domains = rawDomains === null ? undefined : rawDomains.split(',').filter(Boolean);
+        if (domains?.some(domain => !['canon', 'companion', 'work'].includes(domain))) throw new ManagementError('invalid_request', '时间线领域筛选无效。');
+        const rawCursor = q.get('cursor');
+        const cursor = rawCursor === null ? undefined : str(rawCursor, 240);
+        const input = {
+          ...(domains ? { domains: domains as EventDomain[] } : {}),
+          limit: integer(q.get('limit'), 50, 1, 200),
+          ...(cursor ? { cursor } : {}),
+        };
+        json(res, 200, await options.unifiedTimeline(input));
+        return;
+      }
       if(url.pathname==='/api/emotion' && await emotionRoute(req,url,options.emotion,(await options.snapshot()).runtime.instanceId,value=>json(res,200,value)))return;
       if (await memoryImportRoute(req,url,options.memoryImport,()=>body(req),value=>json(res,200,value))) return;
       if(await balanceRoute(req,url,options.balances,()=>body(req),value=>json(res,200,value)))return;
       if (await taskRoute(req, url, options.tasks, () => body(req), value => json(res, 200, value))) return;
+      if (await workProtocolRoute(req, url, options.workProtocol, () => body(req), value => json(res, 200, value))) return;
+      if (url.pathname.startsWith('/api/perception')) {
+        if (await perceptionRoute(req.method, options.perception, url.pathname,
+          () => body(req, url.pathname === '/api/perception/captures' ? 2_100_000 : 256 * 1024), value => json(res, 200, value))) return;
+      }
       if (await projectRoute(req, url, options.projects, () => body(req), value => json(res, 200, value))) return;
       if(url.pathname==='/api/memory-pending'&&req.method==='GET'){json(res,200,options.pendingMemory?.list()??{instanceId:(await options.snapshot()).runtime.instanceId,requests:[],busy:false});return;}
       if(['/api/memory-pending/retry','/api/memory-pending/cancel'].includes(url.pathname)&&req.method==='POST'){
@@ -109,6 +144,7 @@ export async function startManagementServer(options: ServerOptions) {
       }
       if (options.aika && url.pathname.startsWith('/api/aika/')) { json(res, 200, await aikaRoute(req.method, options.aika, url.pathname, url.searchParams, () => body(req))); return; }
       if (url.pathname.startsWith('/api/continuity/')) { json(res, 200, await continuityRoute(req.method, options.continuity, url.pathname, () => body(req))); return; }
+      if (url.pathname.startsWith('/api/proactive/')) { json(res, 200, await proactiveInvitationRoute(req.method, options.proactiveInvitations, url.pathname, () => body(req))); return; }
       if (url.pathname.startsWith('/api/knowledge')) { json(res, 200, await knowledgeRoute(req.method, options.knowledge, url.pathname, () => body(req))); return; }
       if (req.method === 'GET' && url.pathname === '/api/next65/packages') {
         if (!options.next65) throw new ManagementError('unavailable', '0.65 包管理未接入。');
@@ -119,6 +155,23 @@ export async function startManagementServer(options: ServerOptions) {
         if (!options.next65) throw new ManagementError('unavailable', '0.65 运行时未接入。');
         json(res, 200, options.next65.runtimeTruth());
         return;
+      }
+      if (url.pathname === '/api/next65/profiles') {
+        if (!options.next65) throw new ManagementError('unavailable', '0.65 Flow 管理未接入。');
+        if (req.method === 'GET') { json(res, 200, { profiles: options.next65.profiles(), active: options.next65.activeProfile() }); return; }
+        if (req.method === 'PUT') {
+          const value = await body(req);
+          if (!value.profile || typeof value.profile !== 'object' || Array.isArray(value.profile)) throw new ManagementError('invalid_request', 'Flow profile 格式无效。');
+          const saved = options.next65.saveProfile(value.profile as FlowProfile, integer(value.expectedRevision, -1, 0, Number.MAX_SAFE_INTEGER));
+          json(res, 200, { profile: saved, active: options.next65.activeProfile() }); return;
+        }
+      }
+      const activateProfile = /^\/api\/next65\/profiles\/([^/]+)\/activate$/.exec(url.pathname);
+      if (activateProfile && req.method === 'POST') {
+        if (!options.next65) throw new ManagementError('unavailable', '0.65 Flow 管理未接入。');
+        const value = await body(req);
+        const active = options.next65.activateProfile(decodeURIComponent(activateProfile[1]!), integer(value.expectedRevision, -1, 1, Number.MAX_SAFE_INTEGER));
+        json(res, 200, active); return;
       }
       if (url.pathname.startsWith('/api/health')) { json(res, 200, await healthRoute(req.method, options.health, url.pathname)); return; }
       if (url.pathname.startsWith('/api/microphone')) { json(res, 200, await microphoneRoute(req.method, options.microphone, url.pathname, () => body(req))); return; }
@@ -142,11 +195,9 @@ export async function startManagementServer(options: ServerOptions) {
         const trace = options.traces.get(traceId);
         if (!trace) throw new ManagementError('not_found', 'Trace 不存在。');
         if (!options.traceContent) throw new ManagementError('unavailable', '当前实例没有接入历史正文读取。');
-        const content = options.traceContent(trace);
-        // The production History lookup is synchronous. Send it in the same event-loop turn so a
-        // concurrent forget cannot slip between validation and response serialization.
-        if (content && typeof (content as Promise<unknown>).then === 'function') json(res, 200, await content);
-        else json(res, 200, content);
+        // Read both rows from one SQLite snapshot and serialize synchronously so an in-flight
+        // forget cannot return only one side of the turn or race a stale asynchronous result.
+        json(res, 200, options.traceContent(trace));
         return;
       }
       if (req.method === 'GET' && url.pathname === '/api/records') {
@@ -179,24 +230,30 @@ export async function startManagementServer(options: ServerOptions) {
   });
   const desiredPort = ('port' in options && typeof options.port === 'number') ? options.port : 0;
   await new Promise<void>((done, reject) => {
-    server.once('error', (err: NodeJS.ErrnoException) => {
-      if (desiredPort !== 0 && err.code === 'EADDRINUSE') {
-        server.listen(0, '127.0.0.1', () => {
-          const address = server.address();
-          if (!address || typeof address === 'string') { reject(new Error('No local address')); return; }
-          origin = 'http://127.0.0.1:' + address.port;
-          done();
-        });
-      } else {
+    let randomPortAttempts = 0;
+    const listen = (port: number, randomPort: boolean): void => {
+      const onError = (err: NodeJS.ErrnoException): void => {
+        server.off('error', onError);
+        if (err.code === 'EADDRINUSE' && randomPortAttempts < 16 && (randomPort || desiredPort !== 0)) {
+          randomPortAttempts += 1;
+          listen(randomInt(49152, 65536), true);
+          return;
+        }
         reject(err);
-      }
-    });
-    server.listen(desiredPort, '127.0.0.1', () => {
-      const address = server.address();
-      if (!address || typeof address === 'string') { reject(new Error('No local address')); return; }
-      origin = 'http://127.0.0.1:' + address.port;
-      done();
-    });
+      };
+      server.once('error', onError);
+      server.listen(port, '127.0.0.1', () => {
+        server.off('error', onError);
+        const address = server.address();
+        if (!address || typeof address === 'string') { reject(new Error('No local address')); return; }
+        origin = 'http://127.0.0.1:' + address.port;
+        done();
+      });
+    };
+    // Browser and Fetch implementations reject a small set of reserved ports. A random OS port
+    // can land there on hosts with a broad dynamic-port range, so choose from the safe high range.
+    if (desiredPort === 0) listen(randomInt(49152, 65536), true);
+    else listen(desiredPort, false);
   });
   return { origin, token, url: origin + '/#token=' + token,
     async close() {

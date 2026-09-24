@@ -2,7 +2,7 @@ import {el,button,badge,notice,card,field,select,definition,time,statuses,slots,
 import {changes,providerChoice} from './api.mjs';
 const options=map=>Object.entries(map).map(([value,label])=>({value,label}));
 const canSave=a=>a.s.connection==='online';
-const moduleDetail=m=>m.id==='invitations'?'暂未开放':m.detail;
+const moduleDetail=m=>m.detail;
 const tone=status=>['error','unavailable'].includes(status)?'error':status==='ready'?'success':'muted';
 const versionStrip=settings=>el('div',{class:'version-strip'},el('div',{},el('span',{},'当前运行配置'),el('strong',{},'版本 '+settings.effectiveRevision)),el('div',{},el('span',{},'最近保存配置'),el('strong',{},'版本 '+settings.revision)),el('div',{},el('span',{},'生效方式'),el('strong',{},settings.pending?'等待重启':'已生效')));
 const block=text=>el('div',{class:'text-block'},text||'（空）');
@@ -116,7 +116,7 @@ export function eventsView(a) {
   if (s.eventTab === 'traces') {
     if (!s.traceResult && !s.traceLoading && a.client?.token) {
       s.traceLoading = true;
-      a.client.request('/api/traces?limit=30')
+      a.client.request(`/api/traces?characterId=${encodeURIComponent(s.character || 'companion')}&limit=${s.traceFocusTurnId ? 100 : 30}`)
         .then(res => {
           s.traceResult = res;
           s.traceLoading = false;
@@ -184,7 +184,14 @@ export function eventsView(a) {
       return `[digest:masked len:${[...text].length}]`;
     };
 
-    const traces = s.traceResult?.traces || [];
+    const allTraces = s.traceResult?.traces || [];
+    const traces = s.traceFocusTurnId
+      ? allTraces.filter(t => t.turnId === s.traceFocusTurnId)
+      : allTraces;
+    const traceFocus = s.traceFocusTurnId && el('div', { class: 'trace-focus-bar', role: 'status' },
+      el('span', {}, '来自会话历史 · 回合 ', s.traceFocusTurnId),
+      button('显示全部 Trace', () => { s.traceFocusTurnId = ''; a.render(); }, { class: 'trace-focus-clear' }),
+    );
     const traceCards = traces.length ? el('div', { class: 'trace-cards-list' }, traces.map(t => {
       const content = s.traceContent.get(t.traceId);
       const visibleContent = content?.status === 'available';
@@ -267,9 +274,9 @@ export function eventsView(a) {
         ),
         detailsToggle,
       );
-    })) : el('div', { class: 'card empty' }, s.traceLoading ? '正在加载调用链数据…' : '暂无对话 Trace 记录。在桌宠或测试中发起对话即可实时生成！');
+    })) : el('div', { class: 'card empty' }, s.traceLoading ? '正在加载调用链数据…' : s.traceFocusTurnId ? '这个回合没有可用的 Trace 记录。' : '暂无对话 Trace 记录。在桌宠或测试中发起对话即可实时生成！');
 
-    return el('div', {}, tabStrip, kpi, toolbar, traceCards);
+    return el('div', {}, tabStrip, kpi, toolbar, traceFocus, traceCards);
   }
 
   // Raw Events Tab

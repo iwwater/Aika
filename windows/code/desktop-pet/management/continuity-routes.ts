@@ -25,13 +25,14 @@ const safe = <T>(work: () => T): T => {
   }
 };
 
-export function continuityManagement(store: ContinuityMemoryPort): ContinuityManagement {
+export function continuityManagement(store: ContinuityMemoryPort, afterMutation?: (pairing: PairingScope) => void): ContinuityManagement {
+  const changed = (pairing: PairingScope) => { try { afterMutation?.(pairing); } catch { /* Revision cursors recover committed facts after restart. */ } };
   return {
     snapshot: (pairing, includeCandidates = false) => safe(() => store.snapshot(pairing, { includeCandidates })),
-    record: input => safe(() => store.record(input)),
-    promote: (pairing, operationId, targetId, expectedVersion) => safe(() => store.promote(pairing, operationId, targetId, expectedVersion)),
-    correct: input => safe(() => store.correct(input)),
-    forget: input => safe(() => store.forget(input)),
+    record: input => safe(() => { const result = store.record(input); changed(input.pairing); return result; }),
+    promote: (pairing, operationId, targetId, expectedVersion) => safe(() => { const result = store.promote(pairing, operationId, targetId, expectedVersion); changed(pairing); return result; }),
+    correct: input => safe(() => { const result = store.correct(input); changed(input.pairing); return result; }),
+    forget: input => safe(() => { const result = store.forget(input); changed(input.pairing); return result; }),
   };
 }
 

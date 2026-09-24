@@ -1,5 +1,6 @@
 import {query} from './api.mjs';
 import {el,button,badge,notice,field,select,definition,time} from './dom.mjs';
+import {createWorkProtocolView} from './work-protocol-view.mjs';
 
 // Forwarding with explicit Codex/Harness executors: this page only prepares, confirms and reads server-owned receipts.
 const phases={awaiting_confirmation:'待确认',forwarding:'转发中',accepted:'已接收 · 尚未确认完成',completed:'已完成',unknown:'结果未知',unavailable:'不可用'};
@@ -16,6 +17,7 @@ export function createTasksView(client,render,getHost){
  let epoch=0,identity=null,connection=null,returnFocus='tasks-prepare';
  const reads=new Map(),uncertain=new Set();
  const host=()=>getHost(),online=()=>host().connection==='online';
+ const protocolWork=createWorkProtocolView(client,render,online);
  const ready=()=>online()&&!s.stale&&s.snapshot?.connection.harness==='ready'&&s.snapshot.connection.codex==='compatible'&&s.snapshot.connection.preset==='ready';
  const canReview=r=>online()&&!s.stale&&s.snapshot?.connection.harness==='ready'&&s.snapshot.connection.preset==='ready'&&(executor(r)==='harness'||s.snapshot.connection.codex==='compatible');
  const selected=()=>s.requests.find(r=>r.id===s.selected);
@@ -54,7 +56,7 @@ export function createTasksView(client,render,getHost){
    if(s.target){const current=data.items.find(t=>targetKey(t)===targetKey(s.target));if(current)s.target=current;else{s.target=null;invalidateConfirmation();}}
   });
  }
- async function refresh(){sync();if(!online()||s.busy)return;s.error='';await Promise.all([loadSnapshot(),loadTargets()]);}
+ async function refresh(){sync();if(!online()||s.busy)return;s.error='';await Promise.all([loadSnapshot(),loadTargets(),protocolWork.refresh()]);}
  function invalidateConfirmation(){s.revision++;s.confirmation=null;}
  function editText(value){const wasPrepared=!!prior();s.text=value;const open=!!s.confirmation;invalidateConfirmation();s.message='';if(open||wasPrepared)render();}
  function chooseTarget(t){if(s.busy)return;s.target=t;invalidateConfirmation();s.error='';s.message='';render();}
@@ -123,7 +125,7 @@ export function createTasksView(client,render,getHost){
    el('div',{class:'actions'},button('准备发送',prepare,{id:'tasks-prepare',class:'primary',disabled:!allowedPrepare()})));
   const history=el('section',{class:'task-history'},el('h2',{},'最近转发'),el('p',{class:'subtle'},'最多显示 50 条回执；已接收不代表任务完成。'),
    el('div',{class:'record-list task-request-list',tabIndex:0,'data-scroll-key':'task-requests','aria-label':'最近转发记录'},s.requests.length?s.requests.map(r=>button(el('div',{},el('div',{class:'section-head'},badge(phases[effectivePhase(r)]),el('small',{},time(r.createdAt))),el('p',{},r.text),el('small',{},executionName(r)+(executor(r)==='codex'?' · '+titleFor(r.target):''))),()=>{s.selected=r.id;s.confirmation=null;render();},{id:'task-request-'+r.id,'data-task-request':r.id,class:'record-row','aria-pressed':s.selected===r.id})):el('p',{class:'empty'},'暂无转发记录。')),receiptDetail());
-  return el('div',{class:'tasks-page'},el('p',{class:'subtle'},'查看 Codex 与 Harness 的任务回执，也可在此手动发送到已有 Codex 任务。'),s.error&&notice(s.error,'error'),s.message&&notice(s.message),connections,s.stale&&notice('连接状态尚未更新，暂时不能发送。保留本页草稿与上次回执。','warning'),el('div',{class:'task-workspace'},composer,history),confirmation());
+  return el('div',{class:'tasks-page'},el('p',{class:'subtle'},'查看 Codex 与 Harness 的任务回执，也可在此手动发送到已有 Codex 任务。'),s.error&&notice(s.error,'error'),s.message&&notice(s.message),connections,s.stale&&notice('连接状态尚未更新，暂时不能发送。保留本页草稿与上次回执。','warning'),el('div',{class:'task-workspace'},composer,history),confirmation(),protocolWork.view());
  }
- return {sync,refresh,view,afterRender,dispose(){epoch++;cancelReads();}};
+ return {sync,refresh,view,afterRender(){afterRender();protocolWork.afterRender();},dispose(){epoch++;cancelReads();protocolWork.dispose();}};
 }

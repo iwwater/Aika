@@ -32,6 +32,14 @@ export class ManagementRuntime {
   /** FIX61-07: health is derived from real observations, never from a timer or a paid probe. */
   readonly health: ModuleHealthRegistry;
   observeMemoryQueue(reader: () => readonly MemoryPendingSnapshot[]): void { this.pendingReader = reader; }
+  observeModuleState(id: string, status: RuntimeModule['status'], detail: string): void {
+    const current = this.states.get(id);
+    if (!current) return;
+    current.status = status;
+    current.detail = detail;
+    current.lastError = null;
+    current.lastObservedAt = new Date().toISOString();
+  }
   constructor(readonly sourceRevision: string, private readonly failureSink?: (diagnostic: {event: RuntimeEvent; stage: 'provider_request'; httpStatus: number | null; requestId: string | null}) => Promise<void>,
     /** FIX61-07: the config revision health observations are tied to. Absent means revision 0. */
     configRevision = 0) {
@@ -44,7 +52,7 @@ export class ManagementRuntime {
       ['capture', '麦克风与摄像头', 'unknown', '由原生桌面按用户操作采集；管理页不启用设备。'],
       ['playback', '音频播放', 'unknown', '由原生桌面播放；管理页不自动播放或测试声音。'],
       ['presentation', '角色表情与口型', 'unknown', '已接原生桌面表达通道；本接口不接收逐帧绘制确认。'],
-      ['invitations', '主动关心', 'unavailable', '持久额度规则已有，实际事件生成与点击接线尚未完成。'],
+      ['invitations', '主动关心', 'unavailable', '当前组合根尚未装配持久候选生产、桌面忙闲/DND 仲裁与邀请展示。'],
     ] as const) this.states.set(id, { id, label, status, detail, activeJobs: 0, calls: 0, lastElapsedMs: null, lastError: null, lastObservedAt: this.startedAt });
   }
   identity(): ManagementSnapshot['runtime'] { return { instanceId: this.instanceId, pid: process.pid, sourceRevision: this.sourceRevision,
