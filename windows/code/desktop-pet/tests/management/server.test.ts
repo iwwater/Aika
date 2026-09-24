@@ -38,7 +38,7 @@ test('local HTTP authorization, host, origin and routing reject foreign access b
   assert.equal(state.modules.find(x => x.id === 'dialogue')?.status, 'unknown');
   const invitations = state.modules.find(x => x.id === 'invitations');
   assert.equal(invitations?.status, 'unavailable');
-  assert.match(invitations?.detail ?? '', /显式接受消费；候选生产、忙闲\/DND 仲裁和桌面展示尚未接入/);
+  assert.match(invitations?.detail ?? '', /当前组合根尚未装配持久候选生产、桌面忙闲\/DND 仲裁与邀请展示/);
   const missingOrigin = { Authorization: headers.Authorization, 'Content-Type': 'application/json' };
   assert.equal((await fetch(server.origin + '/api/settings', { method: 'PUT', headers: missingOrigin, body: JSON.stringify({ expectedRevision: 0, settings: settings.snapshot().saved }) })).status, 403);
   const changed = settings.snapshot().saved; changed.context.maxMemories = 5;
