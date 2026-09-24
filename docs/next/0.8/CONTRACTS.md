@@ -179,7 +179,7 @@ export interface InvitationCandidate {
   /** 触发原因码 (例如 morning_greeting, screen_context_activity, idle_checkin) */
   readonly reasonCode: string;
   /** 来源引用（例如关联的有效 ObservationId 或 ContinuityFactId） */
-  readonly sourceRef?: { readonly kind: 'observation' | 'continuity_fact' | 'schedule'; readonly id: string; readonly version?: number };
+  readonly sourceRef: { readonly kind: 'observation' | 'continuity_fact' | 'schedule'; readonly id: string; readonly version: number };
   /** 建议展示的轻量提示文案 */
   readonly text: string;
   /** 用户点击后的动作语义：纯文本交流 ('text')、打开语音 ('voice_start')、任务确认 ('clarify') */
@@ -195,14 +195,17 @@ export interface InvitationCandidate {
 }
 ```
 
-- **Scope 作用域**：严格绑定角色配对与桌面状态机，统一复用现有 `companion/invitations.ts` 中的配额策略与免打扰逻辑；
+- **Scope 作用域**：候选与主动策略严格绑定用户×角色配对；展示时复用现有 `companion/invitations.ts` 投递记录，同一本地安装内的每日配额与冷却由所有角色共享；
 - **来源修订**：如果候选条目引用的 Observation 或连续性事实被撤销，该候选立即变为 `expired`；
-- **数据目的地**：内存候选队列，状态变更记入 SQLite `invitations` 审计表；
+- **数据目的地**：已接入的 Continuity 候选、策略和状态保存在 SQLite `proactive_invitation_candidates` / `proactive_invitation_policy`；展示投递记入既有 SQLite `invitation_deliveries`；事件只存通用邀请摘要与来源 ID/version，不复制事实正文；Observation 与 Schedule producer 尚未接入；
 - **保留时间 (TTL)**：提示气泡展示 8 秒自动淡出（置为 `ignored`），候选有效期最长 15 分钟；
 - **动作与权限隔离**：
   - 呈现形式为桌面轻量气泡，**绝不自动打开麦克风录音**；
   - 只有在 `actionKind === 'voice_start'` 且用户**明确主动点击气泡**时，才向渲染进程派发开麦指令；
+  - `actionKind === 'text'` 点击走已有普通文本 `TurnScope`；不会启动麦克风或屏幕采集；
   - 用户忽略或关闭气泡触发 3 小时以上（或配置值）冷却期，不得连续轰炸用户。
+
+当前正式生产接线仅将明确晋升且仍有效、证据合格的 Continuity fact/milestone 转为短期通用文本邀请；普通对话 candidate 不会自动晋升为事实。`trial-backend` 默认关闭主动策略，开启时以 revision checkpoint 避免历史回填；候选有效期 15 分钟，当前 renderer 气泡显示 8 秒后启动 180 毫秒淡出并提交忽略，尊重系统减少动态效果设置。以上软件自动化不替代 Electron 实际窗口验收。
 
 ---
 
@@ -215,14 +218,20 @@ export type WorkExecutionStatus = 'prepared' | 'dispatched' | 'running' | 'succe
 export interface WorkRequest {
   /** 幂等操作标识符，由调用方指定，重试不得变更 */
   readonly operationId: string;
+  /** 单调递增的审阅版本；派发/取消必须提交与确认卡一致的版本 */
+  readonly revision: number;
   /** 协议适配器类型 */
   readonly protocol: WorkProtocol;
+  /** 准备请求时审阅的本地执行器 profile revision；profile 变化后旧卡不能切换到新命令 */
+  readonly executorRevision?: number;
   /** 目标服务/执行器标识（如 codex-agent, filesystem-mcp） */
   readonly executorId: string;
   /** 目标项目或工作区上下文 */
   readonly target: { readonly projectId?: string; readonly directory?: string; readonly title: string };
   /** 经过用户明确确认的输入与指令摘要 */
   readonly instruction: string;
+  /** MCP 将已发现工具和确切参数绑定到本次确认 revision */
+  readonly toolCall?: { readonly name: string; readonly arguments: Readonly<Record<string, unknown>> };
   /** 权限范围白名单（如 read_only, workspace_write, dangerous_exec） */
   readonly permissionGrant: readonly string[];
   /** 发起时间戳 (ISO-8601 UTC) */
@@ -245,10 +254,12 @@ export interface WorkReceipt {
 ```
 
 - **Scope 作用域**：属于工程协作面板与独立的 `DesktopWork` 系统，在控制台的“项目与任务”视图呈现；
-- **来源修订**：当用户修改任务指令或目标工程时，原有草稿作废并分配新 `operationId`，严禁复用旧确认；
-- **数据目的地**：任务状态保存在 `desktop-work` 任务存储中；执行结果以任务卡（Work Card）形式供用户查看，**绝不作为用户第一人称真实经历写入伴侣连续性记忆**；
-- **保留时间 (TTL)**：已完成任务在任务列表中持久化供审计，未确认草稿在会话结束时释放；
+- **来源修订**：当用户修改任务指令或目标工程时，`revision` 单调递增；旧版确认必须失败关闭，不能派发新内容。`operationId` 保持稳定以维持幂等与审计关联；
+- **数据目的地**：既有 `DesktopWork/ForwardReceipts` 与 ACP/MCP journal 分开保存；ACP/MCP profile 和 `work-protocol.sqlite` 位于产品数据目录 `.local/data/` 并要求私有文件权限。执行结果以 Work Card/Timeline 供用户查看，**绝不作为用户第一人称真实经历写入伴侣连续性记忆**；
+- **保留时间 (TTL)**：ACP/MCP 已确认任务回执跨进程持久化，缺少终态的已派发任务恢复为 `uncertain` 且不可自动重派。显式遗忘会清除请求参数/回执正文并撤销同源 Timeline 内容；保留最小 tombstone 阻止副作用重放；
 - **撤销与超时保障**：网络超时或远端无应答时，必须置为 `uncertain`（“回执未知”），**严禁在未确认结果前盲目重发带副作用的操作**。
+
+ACP/MCP profile 通过认证的 Work 管理 API 编辑，profile revision 变更会使旧草稿失效；密钥只写私有 profile 文件，API 仅显示环境变量名称。MCP read-only 与 required grant 来自本地可信策略，远端 annotation 不能授予权限。当前 ACP server 的额外 permission request 默认拒绝，不存在隐式授权。
 
 ---
 

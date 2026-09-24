@@ -36,11 +36,12 @@
 | [Aika Next 0.65 RPD](next/0.65/RPD.md) | 插件化与包体化内核，六份子 RPD；已有 [13 步执行 SPEC](next/0.65/SPEC.md) 与实现报告，人工验收暂缓 |
 | [Aika Next 0.7 RPD](next/0.7/RPD.md) / [SPEC](next/0.7/SPEC.md) | Soul & Continuity；已有受控模块实现，第 12 节补正式接线、管理与产品验收 |
 | [Aika Next 0.75 计划书](next/0.75/RPD.md) / [逐步 SPEC](next/0.75/SPEC.md) | 全前端逐界面重写，保留桌宠表现；含源码与接口清单，每页实施前索取参考，本轮仅规划 |
-| [Aika Next 0.79 RPD](next/0.79/RPD.md) / [SPEC](next/0.79/SPEC.md) / [MVP 核对](next/0.79/SOURCE_AUDIT.md) | 0.8 前修复轮正在实施；模块级页面/数据测试已通过，事实候选接线与兼容准入门槛仍未完成 |
-| [Aika Next 0.8 RPD](next/0.8/RPD.md) / [源码映射](next/0.8/SOURCE_MAPPING.md) / [代码审查与开发计划](next/0.8/CODE_REVIEW_DEVELOPMENT_PLAN_20260923.md) | 授权感知、事件时间线、主动陪伴、气泡/展开聊天与控制台；保留 Work/ACP/MCP，未拆 SPEC；审查计划列出 0.79 修复门槛和后续前端大修 |
+| [Aika Next 0.79 RPD](next/0.79/RPD.md) / [SPEC](next/0.79/SPEC.md) / [MVP 核对](next/0.79/SOURCE_AUDIT.md) | 自动开发收口完成；N079-08 候选写入与 N079-09 Host/Flow 回放自动通过，旧库恢复、Electron UI 与跨日/长时仍为发布准入 BLOCKED/NOT RUN |
+| [Aika Next 0.8 RPD](next/0.8/RPD.md) / [SPEC](next/0.8/SPEC.md) / [源码映射](next/0.8/SOURCE_MAPPING.md) | 08-01 Timeline 与 08-05 ACP/MCP 正式 fixture 运行链自动验收通过；授权感知、主动候选生产、真实外部服务及 Electron/人工验收仍 BLOCKED/NOT RUN |
 | [Aika Next 0.85 RPD](next/0.85/RPD.md) / [SPEC](next/0.85/SPEC.md) | 陪伴 Wiki 编纂与检索质量；N085-00～06 已写规格，尚未实施 |
 | [Aika Next 0.9 RPD](next/0.9/RPD.md) | 高级语音、Live2D/窗口和前台协作；需求已细化，未拆 SPEC |
 | [Aika Next 1.0 RPD](next/1.0/RPD.md) | 清洁安装、升级迁移、恢复、隐私诊断和集中交付；未拆 SPEC |
+| [Companion Capability Runtime RPD](next/plugin-ecosystem/RPD.md) | 长期架构改造：插件/Hook、动态 UI、逻辑资源、事件触发、后台维护及后续市场；未排入现有版本 SPEC |
 | [后续版本架构核对](next/ARCHITECTURE_REVIEW_20260922.md) | 源码与生产接线差距、复用边界、后续依赖门槛及本轮测试证据 |
 | [SPEC 索引](next/0.6/SPEC.md) | 开发顺序、依赖与状态 |
 | [共享接口设计](next/0.6/CONTRACTS.md) | 逻辑接口和生命周期保证 |
