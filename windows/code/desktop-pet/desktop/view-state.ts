@@ -25,7 +25,7 @@ export class DesktopViewState {
   }
   command(command: DesktopCommand): void {
     if (command.type === 'finish_voice' && this.state === 'listening') this.state = 'thinking';
-    if (command.type === 'cancel' || command.type === 'submit_text' || command.type === 'start_voice' || command.type === 'click_invitation') {
+    if (command.type === 'cancel' || command.type === 'submit_text' || command.type === 'start_voice' || command.type === 'click_invitation' || command.type === 'ignore_invitation') {
       this.reset();
       this.invitation = null;
     }

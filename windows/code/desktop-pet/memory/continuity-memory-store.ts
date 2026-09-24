@@ -88,6 +88,31 @@ export class SqliteContinuityMemoryStore implements ContinuityMemoryPort {
         PRIMARY KEY(user_id, character_id, instance_id, operation_id)
       );
     `);
+    const hasHistory = Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='memory_records'").get());
+    if (hasHistory) db.exec(`
+      CREATE TRIGGER IF NOT EXISTS continuity_history_revoke_update
+      AFTER UPDATE OF state, text, message_role ON memory_records
+      WHEN OLD.state='active' AND (NEW.state<>'active' OR OLD.text IS NOT NEW.text OR OLD.message_role IS NOT NEW.message_role)
+      BEGIN
+        UPDATE continuity_pair_state SET revision=revision+1, epoch=epoch+1
+        WHERE EXISTS (SELECT 1 FROM continuity_facts fact WHERE fact.user_id=continuity_pair_state.user_id AND fact.character_id=continuity_pair_state.character_id AND fact.instance_id=continuity_pair_state.instance_id AND fact.status<>'revoked' AND EXISTS (SELECT 1 FROM json_each(fact.source_ids_json) source WHERE source.value='history:' || OLD.id));
+        UPDATE continuity_facts
+        SET status='revoked', text='', version=version+1, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+            revision=(SELECT revision FROM continuity_pair_state WHERE user_id=continuity_facts.user_id AND character_id=continuity_facts.character_id AND instance_id=continuity_facts.instance_id)
+        WHERE status<>'revoked' AND EXISTS (SELECT 1 FROM json_each(source_ids_json) source WHERE source.value='history:' || OLD.id);
+      END;
+      CREATE TRIGGER IF NOT EXISTS continuity_history_revoke_delete
+      AFTER DELETE ON memory_records
+      WHEN OLD.state='active'
+      BEGIN
+        UPDATE continuity_pair_state SET revision=revision+1, epoch=epoch+1
+        WHERE EXISTS (SELECT 1 FROM continuity_facts fact WHERE fact.user_id=continuity_pair_state.user_id AND fact.character_id=continuity_pair_state.character_id AND fact.instance_id=continuity_pair_state.instance_id AND fact.status<>'revoked' AND EXISTS (SELECT 1 FROM json_each(fact.source_ids_json) source WHERE source.value='history:' || OLD.id));
+        UPDATE continuity_facts
+        SET status='revoked', text='', version=version+1, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+            revision=(SELECT revision FROM continuity_pair_state WHERE user_id=continuity_facts.user_id AND character_id=continuity_facts.character_id AND instance_id=continuity_facts.instance_id)
+        WHERE status<>'revoked' AND EXISTS (SELECT 1 FROM json_each(source_ids_json) source WHERE source.value='history:' || OLD.id);
+      END;
+    `);
     return new SqliteContinuityMemoryStore(db);
   }
 
@@ -109,7 +134,25 @@ export class SqliteContinuityMemoryStore implements ContinuityMemoryPort {
     if (!prior) return null;
     const current = signature(payload);
     if (prior.signature !== current || !prior.result_json) throw new ContinuityMemoryError('version_conflict', '同一 operationId 已用于其他内容。');
-    return JSON.parse(prior.result_json) as ContinuityMutationResult;
+    const replay = JSON.parse(prior.result_json) as ContinuityMutationResult;
+    if (!replay.fact) return replay;
+    const row = this.row(pairing, replay.fact.id);
+    if (!row) throw new ContinuityMemoryError('version_conflict', '该操作引用的事实已失效。');
+    if (row.status === 'revoked' && replay.fact.status === 'revoked') {
+      // A repeated forget remains idempotent, but the receipt is rebuilt from the scrubbed row.
+      return Object.freeze({ ...replay, fact: this.hydrate(row) });
+    }
+    const now = this.now();
+    const activeCandidate = row.status === 'candidate' && row.evidence_eligible === 1
+      && (!row.valid_from || Date.parse(row.valid_from) <= Date.parse(now))
+      && (!row.valid_to || Date.parse(row.valid_to) > Date.parse(now))
+      && this.sourcesCurrent(row, now);
+    if (!this.activeFact(row, now) && !activeCandidate) {
+      // Operation receipts are durable, while forget/correction/source expiry can happen later.
+      // Never let an old successful response resurrect text that is no longer readable.
+      throw new ContinuityMemoryError('version_conflict', '该操作引用的事实已失效。');
+    }
+    return Object.freeze({ ...replay, fact: this.hydrate(row) });
   }
 
   private saveOperation(pairing: PairingScope, operationId: string, payload: unknown, result: ContinuityMutationResult): void {
@@ -133,6 +176,15 @@ export class SqliteContinuityMemoryStore implements ContinuityMemoryPort {
   private invalidContinuitySource(pairing: PairingScope, sourceId: string, now: string, seen = new Set<string>()): boolean {
     if (seen.has(sourceId)) return true;
     seen.add(sourceId);
+    if (sourceId.startsWith('history:')) {
+      const historyId = sourceId.slice('history:'.length);
+      if (!historyId) return true;
+      try {
+        const source = this.db.prepare('SELECT state, kind, message_role, evidence_eligible FROM memory_records WHERE character_id=? AND id=? LIMIT 1')
+          .get(pairing.characterId, historyId) as { state: string; kind: string; message_role: string | null; evidence_eligible: number } | undefined;
+        if (!source || source.state !== 'active' || source.kind !== 'transcript' || source.message_role !== 'user' || source.evidence_eligible !== 1) return true;
+      } catch { return true; }
+    }
     const row = this.db.prepare(
       'SELECT status, evidence_eligible, valid_from, valid_to, source_ids_json FROM continuity_facts WHERE user_id=? AND character_id=? AND instance_id=? AND id=? LIMIT 1',
     ).get(pairing.userId, pairing.characterId, pairing.characterInstanceId, sourceId) as {
@@ -172,6 +224,10 @@ export class SqliteContinuityMemoryStore implements ContinuityMemoryPort {
     if (row.status !== 'active' || row.evidence_eligible !== 1) return false;
     if (row.valid_from && Date.parse(row.valid_from) > Date.parse(now)) return false;
     if (row.valid_to && Date.parse(row.valid_to) <= Date.parse(now)) return false;
+    return this.sourcesCurrent(row, now);
+  }
+
+  private sourcesCurrent(row: FactRow, now: string): boolean {
     const sourceIds = JSON.parse(row.source_ids_json) as string[];
     const pairing = { userId: row.user_id, characterId: row.character_id, characterInstanceId: row.instance_id };
     return sourceIds.every(id => !this.revokedSource(row.character_id, id) && !this.invalidContinuitySource(pairing, id, now));
@@ -185,7 +241,7 @@ export class SqliteContinuityMemoryStore implements ContinuityMemoryPort {
     const soul: ContinuityFact[] = [], wiki: ContinuityFact[] = [], relationship: ContinuityFact[] = [], candidates: ContinuityFact[] = [];
     for (const row of rows) {
       const fact = this.hydrate(row);
-      if (row.status === 'candidate' && options.includeCandidates && row.evidence_eligible === 1) candidates.push(fact);
+      if (row.status === 'candidate' && options.includeCandidates && row.evidence_eligible === 1 && this.sourcesCurrent(row, now)) candidates.push(fact);
       if (!this.activeFact(row, now)) continue;
       if (row.layer === 'user_soul') soul.push(fact);
       else if (row.layer === 'user_wiki') wiki.push(fact);

@@ -2,9 +2,10 @@ import { WorkSpeech, type WorkStatusNotice } from '../core/work-speech.js';
 import type { DesktopWorkAction, DesktopWorkPort, WorkInputBinding } from '../contracts/desktop-work.js';
 import { PRODUCT_CHARACTERS, type CompanionProfilePort } from '../contracts/character.js';
 import { DESKTOP_BRIDGE_VERSION, type BackendToDesktop } from '../contracts/desktop-bridge.js';
-import type { DesktopCommand, MemoryMaintenanceInput, MemoryPort, TurnScope } from '../contracts/index.js';
+import type { DesktopCommand, MemoryMaintenanceInput, MemoryPort, ProactiveInvitation, TurnScope } from '../contracts/index.js';
 import type { DialoguePorts } from '../core/dialogue-pipeline.js';
 import { DesktopRuntime } from '../core/desktop-runtime.js';
+import type { UserBusyState } from '../core/proactive-companion.js';
 import { RoleMaintenanceQueue } from '../core/maintenance-queue.js';
 import { RoleMemoryLifecycleQueue } from '../core/memory-lifecycle-queue.js';
 import type { BackgroundMemoryPort, MemoryPendingObservation, MemoryTurnPort, SummaryPort, ForegroundMemoryRequest } from '../contracts/memory-lifecycle.js';
@@ -58,6 +59,14 @@ export interface BackendPorts extends Omit<DialoguePorts, 'playback' | 'memory' 
   isMemoryIndependent?: (scope: TurnScope, text: string, signal: AbortSignal, pending: MemoryPendingObservation) => boolean | Promise<boolean>;
   /** Called only after both History messages are saved. Consumers should resolve bodies by stable IDs. */
   onConversationSaved?: (scope: TurnScope) => void;
+  /** Drain saved-conversation projections after the current foreground turn stops validating its issued Context. */
+  onConversationIdle?: () => void;
+  /** Consumes only a previously shown, still-valid persisted invitation. The returned command runs through the sole DesktopRuntime. */
+  acceptInvitation?: (invitationId: string) => Extract<DesktopCommand, { type: 'submit_text' | 'start_voice' }> | null;
+  /** Ignores only a previously shown, still-valid persisted invitation and records the source-linked audit. */
+  ignoreInvitation?: (invitationId: string) => boolean;
+  /** Runs arbitration only from fresh renderer presence or a completed foreground turn. */
+  onProactiveOpportunity?: (busy: UserBusyState) => void;
 }
 export function parseWorkAction(value: unknown): DesktopWorkAction {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error('Invalid work action');
@@ -120,6 +129,7 @@ export function parseDesktopCommand(value: unknown): DesktopCommand {
     }
     case 'finish_voice': case 'cancel': return { type: command.type };
     case 'click_invitation': if (typeof command.invitationId !== 'string' || !command.invitationId) throw new Error('Missing invitation ID'); return { type: command.type, invitationId: command.invitationId };
+    case 'ignore_invitation': if (typeof command.invitationId !== 'string' || !command.invitationId) throw new Error('Missing invitation ID'); return { type: command.type, invitationId: command.invitationId };
     default: throw new Error('Unsupported desktop command');
   }
 }
@@ -134,12 +144,32 @@ export class BackendSession {
   private readonly workSpeech: WorkSpeech;
   notifyWork(notice: WorkStatusNotice) { this.workSpeech.notify(notice); }
   attachWork(work: DesktopWorkPort) { this.work = work; this.runtime.attachWork(work); }
+  /** Replays only a still-shown, unexpired invitation for this product session after backend restart. */
+  presentInvitation(invitation: ProactiveInvitation): boolean {
+    const expiresAt = Date.parse(invitation.expiresAt);
+    if (invitation.characterId !== this.runtime.identity().characterId || invitation.status !== 'shown'
+      || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) return false;
+    this.send({ channel: 'event', event: { type: 'invitation', invitation } });
+    return true;
+  }
+  withdrawInvitation(invitation: ProactiveInvitation): void {
+    const { responseText: _responseText, ...safe } = invitation;
+    this.send({ channel: 'event', event: { type: 'invitation', invitation: { ...safe, status: 'expired', text: '' } } });
+  }
   private readonly profile: CompanionProfilePort | undefined;
   private readonly streamingAsr: SherpaStreamingAsr | undefined;
   private readonly consumeWakeHit: BackendPorts['consumeWakeHit'];
+  private readonly acceptInvitation: BackendPorts['acceptInvitation'];
+  private readonly ignoreInvitation: BackendPorts['ignoreInvitation'];
+  private readonly onProactiveOpportunity: BackendPorts['onProactiveOpportunity'];
+  private desktopPresence: UserBusyState = { isTyping: true };
+  private desktopPresenceAt = 0;
   constructor(ports: BackendPorts, private readonly send: (message: BackendToDesktop) => void, private readonly closeStore: () => void, reportBackgroundFailure: (scope: TurnScope, kind: 'memory' | 'summary') => void = () => {}) {
     this.profile = ports.companionProfile;
     this.consumeWakeHit = ports.consumeWakeHit;
+    this.acceptInvitation = ports.acceptInvitation;
+    this.ignoreInvitation = ports.ignoreInvitation;
+    this.onProactiveOpportunity = ports.onProactiveOpportunity;
     this.devices = new DesktopDeviceBridge(ports.mediaStore, send);
     if (ports.lifecycleMemory && ports.lifecycleMemory !== ports.memory) throw new Error('Lifecycle and dialogue must share the same memory port');
     if (ports.backgroundMemory && ports.backgroundMemory !== ports.memory) throw new Error('Background and dialogue must share the same memory port');
@@ -165,7 +195,11 @@ export class BackendSession {
         beginPendingMutation:lifecycle.beginPendingMutation.bind(lifecycle),
         enqueueTurn: lifecycle.enqueueTurn.bind(lifecycle), foregroundContext: lifecycle.foregroundContext.bind(lifecycle),
         appendForegroundAssistant: lifecycle.appendForegroundAssistant.bind(lifecycle), assertContextCurrent: lifecycle.assertContextCurrent.bind(lifecycle),
-      } } : {}), onInputRoute: (scope, route) => send({ channel: 'input_route', scope, route }), onForegroundIdle: () => this.workSpeech.flush(),
+      } } : {}), onInputRoute: (scope, route) => send({ channel: 'input_route', scope, route }), onForegroundIdle: () => {
+        this.workSpeech.flush();
+        try { ports.onConversationIdle?.(); } catch { /* A durable outbox remains for the next foreground idle or restart. */ }
+        this.evaluateProactiveOpportunity();
+      },
       ...(streamingAsr ? { liveVoice: { open: (voiceScope: TurnScope) => {
         const turn = new LiveVoiceTurn(voiceScope, { asr: streamingAsr,
           // Live partial text is display only; it is never written to Memory or the Timeline.
@@ -185,11 +219,31 @@ export class BackendSession {
     const introduction = this.profile?.introduction();
     send({ channel: 'backend_ready', bridgeVersion: DESKTOP_BRIDGE_VERSION, ...this.runtime.identity(), ...(introduction ? { introduction } : {}) });
   }
+  /** Stale/missing renderer state is treated as busy so an invitation can never interrupt an unknown UI state. */
+  private currentBusyState(): UserBusyState {
+    const fresh = Date.now() - this.desktopPresenceAt <= 3_000;
+    return fresh
+      ? { ...this.desktopPresence, isTurnActive: this.desktopPresence.isTurnActive === true || this.runtime.isBusy() }
+      : { isTyping: true, isTurnActive: true };
+  }
+  private evaluateProactiveOpportunity(): void {
+    try { this.onProactiveOpportunity?.(this.currentBusyState()); } catch { /* A pending durable candidate is retried by the next presence update. */ }
+  }
+  requestProactiveEvaluation(): void { this.evaluateProactiveOpportunity(); }
   async receiveLine(line: string): Promise<void> {
     try {
       const raw: unknown = JSON.parse(line);
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid desktop message');
       const message = raw as Record<string, unknown>;
+      if (message.channel === 'presence') {
+        const values = [message.isTyping, message.isSpeaking, message.isTurnActive, message.isWorkPendingConfirmation];
+        if (values.some(value => typeof value !== 'boolean')) throw new Error('Invalid desktop presence');
+        this.desktopPresence = { isTyping: message.isTyping as boolean, isSpeaking: message.isSpeaking as boolean,
+          isTurnActive: message.isTurnActive as boolean, isWorkPendingConfirmation: message.isWorkPendingConfirmation as boolean };
+        this.desktopPresenceAt = Date.now();
+        this.evaluateProactiveOpportunity();
+        return;
+      }
       if (message.channel === 'command') {
         let command = parseDesktopCommand(message.command);
         if(command.type==='start_voice'){
@@ -200,10 +254,18 @@ export class BackendSession {
             command={...command,wakeKeyword:keyword};
           }
         }
-        if (['cancel','submit_text','start_voice','click_invitation'].includes(command.type)) this.workSpeech.onInput();
+        if (['cancel','submit_text','start_voice','click_invitation','ignore_invitation'].includes(command.type)) this.workSpeech.onInput();
         if (command.type === 'acknowledge_introduction') {
           if (!this.profile) throw new Error('Companion profile unavailable');
           this.profile.acknowledgeIntroduction(command.introductionId);
+        } else if (command.type === 'click_invitation') {
+          const accepted = this.acceptInvitation?.(command.invitationId);
+          if (!accepted) throw new Error('Invitation is no longer available');
+          // Acceptance is an explicit user gesture. Text invitations enter the ordinary text turn;
+          // voice invitations enter the ordinary microphone authorization path.
+          await this.runtime.dispatch(accepted);
+        } else if (command.type === 'ignore_invitation') {
+          if (!this.ignoreInvitation?.(command.invitationId)) throw new Error('Invitation is no longer available');
         } else await this.runtime.dispatch(command);
       }
       else if (message.channel === 'work_action') { if (!this.work) throw Error('Work routing unavailable'); await this.work.action(parseWorkAction(message.action)); }

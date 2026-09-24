@@ -4,6 +4,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
+import type { CompanionEventEnvelope } from '../contracts/perception.js';
 import type {
   CanonAwareness,
   CanonTimelineEvent,
@@ -1003,6 +1004,7 @@ export class CharacterPackStore implements ContinuityReadPort {
   projectPendingCompanionEvents(
     readHistory: (scope: { readonly characterId: string; readonly sessionId: string; readonly turnId: string }, messageId: string) =>
       { readonly state: string; readonly role?: string | undefined; readonly text?: string | undefined } | null,
+    publishEvent?: (event: CompanionEventEnvelope) => void,
   ): { readonly projected: number; readonly discarded: number; readonly pending: number } {
     const rows = this.db.prepare('SELECT * FROM character_companion_projection_outbox ORDER BY created_at,event_id').all() as Array<{
       event_id: string; user_id: string; character_id: string; character_instance_id: string;
@@ -1020,12 +1022,39 @@ export class CharacterPackStore implements ContinuityReadPort {
           discarded++;
           continue;
         }
-        this.appendCompanionEvent({
-          eventId: row.event_id, userId: row.user_id, characterId: row.character_id,
-          characterInstanceId: row.character_instance_id, sessionId: row.session_id, turnId: row.turn_id,
-          userText: user.text, assistantText: assistant.text, createdAt: row.created_at,
-          sourceIds: [`history:${row.turn_id}:user`, `history:${row.turn_id}:assistant`],
-        });
+        const sourceIds = [`history:${row.turn_id}:user`, `history:${row.turn_id}:assistant`];
+        if (publishEvent) {
+          publishEvent({
+            eventId: row.event_id,
+            schemaVersion: 1,
+            domain: 'companion',
+            type: 'companion.turn.saved',
+            pairing: {
+              userId: row.user_id,
+              characterId: row.character_id,
+              characterInstanceId: row.character_instance_id,
+            },
+            turnId: row.turn_id,
+            sourceRef: { id: sourceIds[0]!, version: 1 },
+            occurredAt: row.created_at,
+            receivedAt: new Date().toISOString(),
+            payload: {
+              userText: user.text,
+              assistantText: assistant.text,
+              sessionId: row.session_id,
+              turnId: row.turn_id,
+              sourceIds,
+            },
+            summary: user.text.slice(0, 40),
+          });
+        } else {
+          this.appendCompanionEvent({
+            eventId: row.event_id, userId: row.user_id, characterId: row.character_id,
+            characterInstanceId: row.character_instance_id, sessionId: row.session_id, turnId: row.turn_id,
+            userText: user.text, assistantText: assistant.text, createdAt: row.created_at,
+            sourceIds,
+          });
+        }
         this.db.prepare('DELETE FROM character_companion_projection_outbox WHERE event_id=?').run(row.event_id);
         projected++;
       } catch {

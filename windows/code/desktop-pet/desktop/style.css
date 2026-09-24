@@ -76,7 +76,11 @@ footer{display:flex;flex:0 0 auto;flex-wrap:wrap;gap:7px;align-items:center}
 #hotkey-settings button{border-radius:7px;padding:4px 6px;background:#e4ecf7;white-space:nowrap;font-size:11px}
 #hotkey-settings .input-tip{font-size:10px;margin-left:auto;color:#98a7bb;white-space:nowrap}
 #reconnect{align-self:flex-start;flex:0 0 auto;font-size:12px;background:#dae7fd;border-radius:9px;padding:5px 10px}
-#invitation{position:absolute;right:18px;top:40px;max-width:185px;padding:12px;border:1px solid #bfd1ef;background:#f3f7fff5;box-shadow:0 4px 12px #728ba933;border-radius:15px;font-size:12px;text-align:left;line-height:1.6}
+#invitation-card{position:absolute;right:18px;top:40px;width:min(185px,calc(100% - 36px));display:flex;flex-direction:column;align-items:stretch;gap:3px;z-index:3;opacity:1;transform:translateY(0);transition:opacity 180ms ease,transform 180ms ease}
+#invitation-card.is-dismissing{opacity:0;transform:translateY(-4px);pointer-events:none}
+@media(prefers-reduced-motion:reduce){#invitation-card{transition:none}}
+#invitation{width:100%;padding:12px;border:1px solid #bfd1ef;background:#f3f7fff5;box-shadow:0 4px 12px #728ba933;border-radius:15px;font-size:12px;text-align:left;line-height:1.6}
+#invitation-ignore{align-self:flex-end;padding:3px 8px;border:1px solid #d2dced;border-radius:10px;background:#f7f9fcf2;color:#566c89;font-size:11px}
 #model-resize{position:absolute;right:10px;bottom:36px;width:28px;height:28px;padding:0;cursor:nwse-resize;touch-action:none;user-select:none;border-radius:8px}
 #model-resize,#model-resize:hover,#model-resize:active,#model-resize:focus-visible{color:transparent;background:transparent;border:0;outline:none;box-shadow:none}
 .introduction{padding:4px 8px 14px;color:#667d9a;overflow-wrap:anywhere}.introduction-label{display:block;font-size:11px;color:#91a0b6;margin-bottom:5px}

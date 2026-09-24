@@ -181,6 +181,11 @@ export class SqliteMemoryStore implements CompanionProfilePort {
     });
   }
   inspect(scope: TurnScope, id: string): MemoryRecord | null { return this.#ledger(scope).inspect(scope, id); }
+  inspectMany(scope: TurnScope, ids: readonly string[]): readonly (MemoryRecord | null)[] {
+    this.#open();
+    const owned = bindScope(scope, scope.characterId);
+    return Object.freeze(this.#db.transaction(() => ids.map(id => this.#ledger(owned).inspect(owned, id)))());
+  }
   visible(scope: TurnScope, kind: MemoryRecord['kind']): readonly MemoryRecord[] { return this.#ledger(scope).visible(scope, kind); }
   revision(scope: TurnScope): number { bindScope(scope, scope.characterId); return this.#backing(scope.characterId).revision; }
   queryRecords(scope:TurnScope, input:{kind:MemoryRecord['kind'];query:string;offset:number;limit:number;state:'active'|'all'}):{revision:number;records:readonly MemoryRecord[];total:number} {

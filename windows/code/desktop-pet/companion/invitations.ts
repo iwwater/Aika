@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3';
 import type { CharacterId, InvitationPolicy, ProactiveInvitation, TurnScope } from '../contracts/index.js';
 import type { MemoryRecord } from '../memory/ledger.js';
-import { bindScope, timestamp } from '../memory/scope.js';
+import { assertCharacter, bindScope, timestamp } from '../memory/scope.js';
 
 export const confirmedInvitationPolicy = (timezone: string): InvitationPolicy => ({ quotaScope: 'all_characters', dailyMax: 2, minIntervalMs: 3 * 60 * 60 * 1000, timezone });
 export interface InvitationCandidate {
@@ -12,7 +12,9 @@ interface InvitationRow {
   character_id: CharacterId; id: string; event_id: string; event_version: number; text: string; gesture: string;
   eligible_at: string; expires_at: string; status: ProactiveInvitation['status'];
 }
-export interface VoiceInvitationIntent { readonly type: 'start_voice'; readonly scope: TurnScope; readonly invitationId: string; readonly eventId: string }
+export interface VoiceInvitationIntent { readonly type: 'start_voice'; readonly scope: TurnScope; readonly invitationId: string; readonly eventId: string; readonly sourceVersion: number }
+export interface InvitationAcceptance { readonly type: 'start_voice'; readonly invitationId: string; readonly eventId: string; readonly sourceVersion: number }
+export interface InvitationDismissal { readonly invitationId: string; readonly eventId: string; readonly sourceVersion: number }
 const policyKey = 'invitation_policy';
 
 /** No media dependencies: showing an invitation can only return text/gesture; voice requires click(). */
@@ -67,6 +69,25 @@ export class InvitationStore {
     const source = this.memory(row.character_id, row.event_id);
     return !!source && source.kind === 'memory' && source.state === 'active' && source.version === row.event_version;
   }
+  #shown(characterId: CharacterId, now: number): ProactiveInvitation | null {
+    this.#expire(now);
+    const rows = this.db.prepare("SELECT * FROM companion_invitations WHERE character_id=? AND status='shown' ORDER BY rowid")
+      .all(characterId) as InvitationRow[];
+    for (const row of rows) {
+      if (!this.#valid(row)) {
+        this.db.prepare("UPDATE companion_invitations SET status='expired',text='',gesture='' WHERE character_id=? AND id=?")
+          .run(characterId, row.id);
+        continue;
+      }
+      return this.#decode(row);
+    }
+    return null;
+  }
+  /** Returns the still-current visible card so a restarted backend can restore it without spending quota again. */
+  shownForCharacter(characterId: CharacterId): ProactiveInvitation | null {
+    assertCharacter(characterId);
+    return this.db.transaction(() => this.#shown(characterId, timestamp(this.clock()))).immediate();
+  }
   register(scope: TurnScope, candidate: InvitationCandidate): ProactiveInvitation {
     bindScope(scope, scope.characterId);
     if (!candidate.id || !candidate.text.trim() || !candidate.gesture.trim() || timestamp(candidate.eligibleAt) >= timestamp(candidate.expiresAt)) throw new Error('invalid_invitation');
@@ -89,7 +110,9 @@ export class InvitationStore {
   showNext(activeScope: TurnScope): ProactiveInvitation | null {
     const scope = bindScope(activeScope, activeScope.characterId);
     return this.db.transaction(() => {
-      const now = timestamp(this.clock()); const policy = this.policy(); this.#expire(now);
+      const now = timestamp(this.clock()); const policy = this.policy();
+      const alreadyShown = this.#shown(scope.characterId, now);
+      if (alreadyShown) return alreadyShown;
       const last = this.db.prepare('SELECT max(shown_ms) AS at FROM invitation_deliveries').get() as {at: number | null};
       if (last.at !== null && now - last.at < policy.minIntervalMs) return null;
       const day = this.#day(now, policy.timezone);
@@ -111,23 +134,41 @@ export class InvitationStore {
   }
   ignore(activeScope: TurnScope, id: string): boolean {
     const scope = bindScope(activeScope, activeScope.characterId);
+    return this.#consumeIgnore(scope.characterId, id) !== null;
+  }
+  /** Product entry point for an explicit "later" action from the renderer. */
+  ignoreForCharacter(characterId: CharacterId, id: string): InvitationDismissal | null {
+    assertCharacter(characterId);
+    return this.#consumeIgnore(characterId, id);
+  }
+  #consumeIgnore(characterId: CharacterId, id: string): InvitationDismissal | null {
     return this.db.transaction(() => {
       const now = timestamp(this.clock()); this.#expire(now);
-      const row = this.db.prepare('SELECT * FROM companion_invitations WHERE character_id=? AND id=?').get(scope.characterId, id) as InvitationRow | undefined;
-      if (!row || row.status !== 'shown' || !this.#valid(row)) return false;
-      this.db.prepare("UPDATE companion_invitations SET status='ignored' WHERE character_id=? AND id=?").run(scope.characterId, id);
-      this.db.prepare('INSERT OR IGNORE INTO invitation_ignored(character_id,event_id,local_day) VALUES(?,?,?)').run(scope.characterId, row.event_id, this.#day(now, this.policy().timezone));
-      return true;
+      const row = this.db.prepare('SELECT * FROM companion_invitations WHERE character_id=? AND id=?').get(characterId, id) as InvitationRow | undefined;
+      if (!row || row.status !== 'shown' || !this.#valid(row)) return null;
+      this.db.prepare("UPDATE companion_invitations SET status='ignored' WHERE character_id=? AND id=?").run(characterId, id);
+      this.db.prepare('INSERT OR IGNORE INTO invitation_ignored(character_id,event_id,local_day) VALUES(?,?,?)')
+        .run(characterId, row.event_id, this.#day(now, this.policy().timezone));
+      return { invitationId: row.id, eventId: row.event_id, sourceVersion: row.event_version };
     }).immediate();
   }
   click(activeScope: TurnScope, id: string): VoiceInvitationIntent | null {
     const scope = bindScope(activeScope, activeScope.characterId);
+    const intent = this.#consumeClick(scope.characterId, id);
+    return intent ? { ...intent, scope } : null;
+  }
+  /** Product entry point for a user click; it returns no invented dialogue TurnScope. */
+  clickForCharacter(characterId: CharacterId, id: string): InvitationAcceptance | null {
+    assertCharacter(characterId);
+    return this.#consumeClick(characterId, id);
+  }
+  #consumeClick(characterId: CharacterId, id: string): InvitationAcceptance | null {
     return this.db.transaction(() => {
       this.#expire(timestamp(this.clock()));
-      const row = this.db.prepare('SELECT * FROM companion_invitations WHERE character_id=? AND id=?').get(scope.characterId, id) as InvitationRow | undefined;
+      const row = this.db.prepare('SELECT * FROM companion_invitations WHERE character_id=? AND id=?').get(characterId, id) as InvitationRow | undefined;
       if (!row || row.status !== 'shown' || !this.#valid(row)) return null;
-      this.db.prepare("UPDATE companion_invitations SET status='clicked' WHERE character_id=? AND id=?").run(scope.characterId, id);
-      return { type: 'start_voice' as const, scope, invitationId: id, eventId: row.event_id };
+      this.db.prepare("UPDATE companion_invitations SET status='clicked' WHERE character_id=? AND id=?").run(characterId, id);
+      return { type: 'start_voice' as const, invitationId: id, eventId: row.event_id, sourceVersion: row.event_version };
     }).immediate();
   }
 }

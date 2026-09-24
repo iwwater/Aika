@@ -88,6 +88,9 @@ export class DesktopRuntime {
         case 'click_invitation':
           // Invitation ownership, expiry and quota must be resolved by the persisted invitation service.
           throw new Error('Invitation service is not connected');
+        case 'ignore_invitation':
+          // Invitation dismissal ownership and source audit belong to the persisted invitation service.
+          throw new Error('Invitation service is not connected');
         case 'finish_voice': {
           const active = this.active;
           if (!active || active.input.kind !== 'voice' || active.finishing) return;

@@ -220,23 +220,28 @@ export function computeCutoffAllowedBlockIds(
   for (const source of sources) {
     let cutoffReachedInSource = false;
     let cutoffFoundInSource = false;
+    let cutoffChapter: string | undefined;
     const sourceAllowed: string[] = [];
 
     for (const block of source.blocks) {
-      if (cutoffReachedInSource) {
-        // Blocks past the cutoff point in this source are excluded
-        continue;
-      }
-
-      // Check if this block marks the cutoff point
       const chapter = (block.locator.chapter || '').toLowerCase();
       const text = block.text.toLowerCase();
 
+      if (cutoffReachedInSource) {
+        // A chapter can span several size-limited blocks. Keep the entire cutoff chapter, but do not
+        // admit any later chapter. A free-text marker has no chapter continuation.
+        if (cutoffChapter && chapter === cutoffChapter) sourceAllowed.push(block.id);
+        continue;
+      }
+
       sourceAllowed.push(block.id);
 
-      if (chapter.includes(normalizedCutoff) || text.includes(normalizedCutoff)) {
+      if (chapter.includes(normalizedCutoff)) {
         cutoffFoundInSource = true;
-        // Cutoff point reached at the end of this block/chapter
+        cutoffReachedInSource = true;
+        cutoffChapter = chapter;
+      } else if (text.includes(normalizedCutoff)) {
+        cutoffFoundInSource = true;
         cutoffReachedInSource = true;
       }
     }

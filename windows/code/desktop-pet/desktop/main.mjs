@@ -17,6 +17,8 @@ import { DESKTOP_BRIDGE_VERSION } from '../contracts/desktop-bridge.ts';
 import { PcmFrameAggregator } from '../media/voice-input-session.ts';
 import { installMicrophoneTest } from './mic-test-panel.mjs';
 import { LocalGreetingScheduler } from './local-greeting.ts';
+import { ThinkingTimeout } from './thinking-timeout.mjs';
+import { createInvitationAutoDismiss } from './invitation-auto-dismiss.mjs';
 const $ = id => document.getElementById(id);
 const native = (name, value) => window.desktopHost ? window.desktopHost.postMessage(name, value) : window.webkit?.messageHandlers[name]?.postMessage(value);
 const report = value => native('diagnostic', value);
@@ -25,6 +27,19 @@ const send = (value, generation = connection.generation) => {
   if (connection.current(generation) && connection.connected) native('desktop', { generation, message: value });
 };
 const view = new DesktopViewState();
+const invitationAutoDismiss = createInvitationAutoDismiss({
+  onFadeStart:id=>{if(view.invitation?.id===id)$('invitation-card').classList.add('is-dismissing');},
+  onTimeout:id=>{
+    if(view.invitation?.id!==id)return;
+    $('invitation-card').classList.remove('is-dismissing');
+    view.invitation=null;renderUI();
+    command({type:'ignore_invitation',invitationId:id});
+  },
+});
+const cancelInvitationAutoDismiss = id => {
+  invitationAutoDismiss.cancel(id);
+  $('invitation-card')?.classList.remove('is-dismissing');
+};
 const workSpeechView=new DesktopViewState();
 let workNotice=null,workSpeechBlocked=false,backendSessionId=null;
 const spokenNotices=new Set();
@@ -64,15 +79,15 @@ let introduction = null, introductionEpoch = 0, introductionFramePending = false
 let panelOpen = false, panelEpoch = 0, panelAnimation, panelCloseTimer;
 let lastUI = '';
 let awaitingTextTurn = false;
+let invitationTextPending = false, lastPresenceKey = '';
 let bindingKey = false;
 let managementOpening = false, managementSource = 'top';
 
 // RP75-07: Floating speech bubble & 40s thinking state machine
 const THINKING_TIMEOUT_MS = 40000;
 let bubbleTimer = null;
-let thinkingTimeoutTimer = null;
 let currentBubbleState = 'idle';
-let thinkingTimerToken = 0;
+const thinkingTimeout = new ThinkingTimeout({ timeoutMs: THINKING_TIMEOUT_MS });
 const localGreeting = new LocalGreetingScheduler({ idleAfterMs: 45 * 60 * 1000, cooldownMs: 6 * 60 * 60 * 1000 });
 let localGreetingEnabled = true;
 
@@ -110,28 +125,25 @@ function dismissBubble() {
 }
 
 function startThinking() {
-  clearTimeout(thinkingTimeoutTimer);
-  const token = ++thinkingTimerToken;
   const requestId = textRequestId;
   const scope = view.scope;
   showBubble('想一想… ✦', 'thinking');
-  thinkingTimeoutTimer = setTimeout(() => {
-    const sameTurn = token === thinkingTimerToken && currentBubbleState === 'thinking'
-      && (requestId ? textRequestId === requestId : scopeEquals(scope, view.scope));
-    if (!sameTurn) return;
+  thinkingTimeout.start(
+    () => currentBubbleState === 'thinking'
+      && (requestId ? textRequestId === requestId : scopeEquals(scope, view.scope)),
+    () => {
     // The timeout is a real turn cancellation. The request id/scope check above prevents an old
     // timer from cancelling a newer turn, and command(cancel) makes late provider output stale.
     command({ type: 'cancel' });
     view.error = '模型思考超时';
     showBubble('哎呀，想太久有点走神啦，请再问我一次吧～', 'error', 6000);
     renderUI();
-  }, THINKING_TIMEOUT_MS);
+    },
+  );
 }
 
 function stopThinking() {
-  thinkingTimerToken++;
-  clearTimeout(thinkingTimeoutTimer);
-  thinkingTimeoutTimer = null;
+  thinkingTimeout.stop();
 }
 function requestManagement(path, source = 'top') {
   if (managementOpening) return;
@@ -225,6 +237,7 @@ const features = { type: 'features', secureContext: isSecureContext, mediaDevice
 report(features);
 function renderUI() {
   wake.observe({busy:!!capturing||voicePhase!=='idle'||awaitingTextTurn||awaitingTranscript||['listening','thinking','speaking'].includes(view.state)||workSpeechView.state==='speaking',playing:playback.busy});
+  sendPresence();
   const uiKey = JSON.stringify([wakeUI.phase,wakeUI.detail,awaitingTextTurn, awaitingTranscript, work.expanded,work.state?.sourceInput?.draftId,workSpeechView.state, voicePhase, chat.revision, view.reply, view.error, view.state, view.characterId, view.invitation?.id, view.invitation?.text, connection.state, connection.reason, connection.canRetry, connection.phase, connection.sequence, connection.completed, connection.total, connection.elapsedMs, introduction?.id, introduction?.text]);
   if (uiKey === lastUI) return;
   lastUI = uiKey;
@@ -267,13 +280,28 @@ function renderUI() {
   startupCancel.hidden = connection.state !== 'connecting' || startupCancel.disabled;
   if (connection.state !== 'connecting') startupCancel.disabled = false;
   $('invitation').disabled = !connection.connected;
+  $('invitation-ignore').disabled = !connection.connected;
   $('voice').textContent = voicePhase === 'preparing' ? '取消准备' : voicePhase === 'recording' ? '说完了' : '开始语音';
   $('stop').hidden = (view.state === 'idle' || view.state === 'error')&&!workNotice;
   $('voice').disabled = !connection.connected || (voicePhase === 'idle' && !['idle', 'error'].includes(view.state));
   $('send').disabled = !connection.connected || chat.pending(view.characterId);
-  $('invitation').hidden = !view.invitation; $('invitation').textContent = view.invitation?.text ?? '';
+  $('invitation-card').hidden = !view.invitation; $('invitation').textContent = view.invitation?.text ?? '';
   if (panelOpen) fitComposer();
   scheduleIntroductionAck();
+}
+function sendPresence(force = false) {
+  if (!connection.connected) return;
+  const presence = {
+    channel: 'presence',
+    isTyping: document.activeElement === $('text'),
+    isSpeaking: playback.busy || workSpeechView.state === 'speaking',
+    isTurnActive: awaitingTextTurn || awaitingTranscript || invitationTextPending || voicePhase !== 'idle' || ['listening','thinking','speaking'].includes(view.state),
+    isWorkPendingConfirmation: !!work.state?.confirmation || work.state?.stage === 'confirming',
+  };
+  const key = JSON.stringify(presence);
+  if (!force && key === lastPresenceKey) return;
+  lastPresenceKey = key;
+  send(presence);
 }
 // This presentation is never appended to chat or submitted as user/model text.
 function scheduleIntroductionAck() {
@@ -350,7 +378,7 @@ let functionPanelOpen = false;
 // clicks. The renderer's job is therefore narrow: report which content-relative rectangles currently hold
 // real, visible, clickable UI, and report where the pointer is. The shell decides the actual OS hit policy,
 // which keeps a renderer bug from turning the whole desktop into a click sink.
-const INTERACTIVE_REGION_ROOT_SELECTOR = ['#drawer', '#function-panel', '#mic-test', '#work-records-dialog'].join(',');
+const INTERACTIVE_REGION_ROOT_SELECTOR = ['#drawer', '#function-panel', '#mic-test', '#work-records-dialog', '#invitation-card'].join(',');
 const CLICKABLE_SELECTOR = 'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [role="button"]:not([aria-disabled="true"]), [tabindex]:not([tabindex="-1"])';
 function visibleInteractiveRects() {
   const rects = [];
@@ -544,38 +572,43 @@ function answerVoiceFrame(message,generation){
   send({channel:'voice_chunk',requestId:message.requestId,inputSessionId:message.inputSessionId,generation:message.generation,
     index:message.index,sampleRate:message.sampleRate,sampleCount:message.sampleCount,pcm:base64(new Uint8Array(pcm.buffer,pcm.byteOffset,pcm.byteLength))},generation);
 }
-function command(cmd,{wakeInput=false}={}) {
+function command(cmd,{wakeInput=false,invitationResponseText}={}) {
   const commandEnteredAt=performance.now();
   if (!connection.connected) return;
+  const acceptedTextInvitation = cmd.type === 'click_invitation' && typeof invitationResponseText === 'string' && invitationResponseText.trim().length > 0;
   localGreeting.markInteraction();
   if (currentBubbleState === 'greeting') dismissBubble();
   if (['start_voice', 'click_invitation', 'submit_text', 'cancel'].includes(cmd.type)) stopThinking();
   if(!wakeInput&&['start_voice','click_invitation','submit_text','cancel'].includes(cmd.type)){wake.pause();wakeRequestId=null;}
   if(['start_voice','submit_text'].includes(cmd.type)){const binding=displayedWorkBinding();cmd={...cmd,...(binding?{workBinding:binding}:{})};}
-  if(['start_voice','click_invitation'].includes(cmd.type))voiceRequestAt=inputEventTiming?.at??commandEnteredAt;
+  if(cmd.type==='start_voice'||cmd.type==='click_invitation'&&!acceptedTextInvitation)voiceRequestAt=inputEventTiming?.at??commandEnteredAt;
 
   if (cmd.type === 'finish_voice' && voicePhase !== 'recording') {
     command({ type: 'cancel' }); view.error = '录音尚未就绪，已取消；请等到提示正在听再结束。'; renderUI(); return;
   }
   if (cmd.type === 'click_invitation' && voicePhase !== 'idle') return;
-  if(['start_voice','click_invitation'].includes(cmd.type))captureFeedbackToken=wakeInput?wakeFeedbackToken:captureFeedback.start();
+  if(cmd.type==='start_voice'||cmd.type==='click_invitation'&&!acceptedTextInvitation)captureFeedbackToken=wakeInput?wakeFeedbackToken:captureFeedback.start();
   else if(['finish_voice','cancel','submit_text'].includes(cmd.type)&&!wakeInput)captureFeedback.stop();
   if(['cancel','start_voice','click_invitation'].includes(cmd.type))textRequestId=null;
   if(cmd.type==='submit_text'){textRequestId=crypto.randomUUID();cmd={...cmd,clientRequestId:textRequestId};}
   if (cmd.type === 'start_voice') { voiceRequestId = crypto.randomUUID();wakeRequestId=wakeInput?voiceRequestId:null; cmd = { ...cmd, clientRequestId: voiceRequestId }; invitationPending = false; }
-  if (cmd.type === 'click_invitation') { voiceRequestId = null; invitationPending = true; }
+  if (cmd.type === 'click_invitation') { voiceRequestId = null; invitationPending = !acceptedTextInvitation; invitationTextPending = acceptedTextInvitation; }
   if (['cancel', 'submit_text'].includes(cmd.type)) { voiceRequestId = null; invitationPending = false; chat.cancelVoice(view.characterId); }
-  if (['start_voice', 'click_invitation'].includes(cmd.type)) { chat.failPending(view.characterId); chat.beginVoice(view.characterId, true); }
+  if (['start_voice', 'click_invitation'].includes(cmd.type)) {
+    chat.failPending(view.characterId);
+    if (!acceptedTextInvitation) chat.beginVoice(view.characterId, true);
+    else if (!chat.submit(view.characterId, invitationResponseText)) { invitationTextPending = false; invitationPending = false; return; }
+  }
   if (cmd.type === 'submit_text' && !chat.submit(view.characterId, cmd.text)) return;
   if (cmd.type === 'cancel') { work.forgetBinding();chat.failPending(view.characterId); $('text').value = chat.draft(view.characterId); }
   if (['cancel','submit_text'].includes(cmd.type)) hold.clear();
   if (['cancel','submit_text','start_voice','click_invitation'].includes(cmd.type)) {
     clearWorkSpeech();workSpeechBlocked=false;inputFocusEpoch++;inputScope=null;awaitingTranscript=false;work.input(!!cmd.workBinding); routeFocusEpoch=++interactionFocusEpoch; companionRoute=null; void stopPlayback(); stopCapture(); renderer?.reset();
   }
-  captureAllowed = cmd.type === 'start_voice' || cmd.type === 'click_invitation';
+  captureAllowed = cmd.type === 'start_voice' || cmd.type === 'click_invitation' && !acceptedTextInvitation;
   if (captureAllowed) { voicePhase = 'preparing'; }
   if (cmd.type === 'finish_voice') { awaitingTranscript=true;voicePhase = 'finishing'; captureAllowed = false; if (capturing) capturing.inputEndedAt = new Date().toISOString(); }
-  if (['cancel', 'submit_text', 'start_voice', 'click_invitation'].includes(cmd.type)) awaitingTextTurn = cmd.type === 'submit_text';
+  if (['cancel', 'submit_text', 'start_voice', 'click_invitation'].includes(cmd.type)) awaitingTextTurn = cmd.type === 'submit_text' || acceptedTextInvitation;
   view.command(cmd);
   if (cmd.type === 'start_voice') renderer?.beginAttention();
   // Dispatch explicit voice authorization before rebuilding the chat DOM.
@@ -587,9 +620,10 @@ const bytesFromBase64 = value => Uint8Array.from(atob(value), c => c.charCodeAt(
 function base64(bytes) { let text = ''; for (let at = 0; at < bytes.length; at += 32768) text += String.fromCharCode(...bytes.subarray(at, at + 32768)); return btoa(text); }
 function connectionChanged(value) {
   if (!connection.update(value)) return;
+  cancelInvitationAutoDismiss();
   wake.disconnect();wakeRequestId=null;
   captureFeedback.stop();
-  awaitingTextTurn = false;clearWorkSpeech();spokenNotices.clear();workSpeechBlocked=false;inputFocusEpoch=0;interactionFocusEpoch=0;routeFocusEpoch=0; inputScope=null;awaitingTranscript=false;work.reset(); companionRoute=null; textRequestId=null;
+  awaitingTextTurn = false;invitationTextPending=false;lastPresenceKey='';clearWorkSpeech();spokenNotices.clear();workSpeechBlocked=false;inputFocusEpoch=0;interactionFocusEpoch=0;routeFocusEpoch=0; inputScope=null;awaitingTranscript=false;work.reset(); companionRoute=null; textRequestId=null;
   presentationPolicy=null;applyPresentationPolicy();
   hold.clear(); voiceRequestId = null; invitationPending = false; chat.cancelVoice(view.characterId);
   introduction = null; introductionEpoch++; introductionFramePending = false; captureAllowed = false;
@@ -645,16 +679,21 @@ async function receive(message, generation) {
   }
   if (message.channel === 'event') {
     const e = message.event;
-    if(e.type==='turn'&&e.input.kind==='text'&&(!textRequestId||e.input.clientRequestId!==textRequestId))return;
+    if(e.type==='turn'&&e.input.kind==='text'&&((!textRequestId||e.input.clientRequestId!==textRequestId)&&!invitationTextPending))return;
     if(e.type==='reply'&&!scopeEquals(companionRoute,e.reply.scope))return;
     if (e.type === 'turn' && e.input.kind === 'voice' && !(invitationPending && !e.input.clientRequestId) && (!voiceRequestId || e.input.clientRequestId !== voiceRequestId)) return;
     // Work presentation may reset before a late ASR event; input identity is independent.
     const accepted = e.type==='transcript' ? scopeEquals(inputScope,e.scope) : view.receive(e);
+    if(accepted&&e.type==='invitation'){
+      if(view.invitation?.status==='shown')invitationAutoDismiss.schedule(view.invitation.id,view.invitation.expiresAt);
+      else cancelInvitationAutoDismiss();
+    }
+    if(accepted&&e.type==='turn')cancelInvitationAutoDismiss();
     if(accepted&&e.type==='turn')inputScope=e.input.scope;
     if(accepted&&e.type==='transcript'&&!e.interim)awaitingTranscript=false;
     if(accepted&&e.type==='error'){captureFeedback.stop();inputScope=null;awaitingTranscript=false;}
     if (accepted && ['turn', 'error'].includes(e.type)) awaitingTextTurn = false;
-    if (accepted && e.type === 'turn') { if (e.input.kind === 'text') chat.acknowledge(e.input.scope, true); else chat.bindVoice(e.input.scope); }
+    if (accepted && e.type === 'turn') { if (e.input.kind === 'text') { chat.acknowledge(e.input.scope, true); invitationTextPending = false; } else chat.bindVoice(e.input.scope); }
     if (accepted && e.type === 'transcript') { if (e.interim) chat.interim(e.scope, e.text); else chat.transcript(e.scope, e.text); }
     if (accepted && e.type === 'reply' && scopeEquals(companionRoute,e.reply.scope)) {
       stopThinking();
@@ -664,7 +703,7 @@ async function receive(message, generation) {
     if (accepted && e.type === 'error') {
       stopThinking();
       showBubble(e.message || '这一轮没有完成，请稍后再试～', 'error', 6000);
-      hold.clear(); voiceRequestId = null; invitationPending = false; chat.cancelVoice(view.characterId); chat.failPending(view.characterId); $('text').value = chat.draft(view.characterId);
+      hold.clear(); voiceRequestId = null; invitationPending = false; invitationTextPending = false; chat.cancelVoice(view.characterId); chat.failPending(view.characterId); $('text').value = chat.draft(view.characterId);
     }
     if (accepted && (e.type === 'error' || e.type === 'presentation' && e.presentation.state === 'error')) { captureFeedback.stop();void stopPlayback(); stopCapture(); renderer?.reset(); }
     if (accepted && e.type === 'turn') { if (playback.scope && !scopeEquals(playback.scope, e.input.scope)) void stopPlayback(); if (capturing && !scopeEquals(capturing.scope, e.input.scope)) stopCapture(); renderer?.reset({ preserveAttention: e.input.kind === 'voice' }); }
@@ -782,7 +821,9 @@ $('form').onsubmit = event => {
 $('text').onfocus = () => report({ type: 'input-focus', active: document.activeElement === $('text') });
 $('voice').onclick = () => timedVoiceInput(performance.now(),'voice-button',()=>command({ type: voicePhase !== 'idle' ? 'finish_voice' : 'start_voice' }));
 $('stop').onclick = () => command({ type: 'cancel' });
-$('invitation').onclick = () => { if (view.invitation) { const id = view.invitation.id; view.invitation = null; panel(true); command({ type: 'click_invitation', invitationId: id }); } };
+$('invitation').onclick = () => { if (view.invitation) { const invitation = view.invitation, id = invitation.id; cancelInvitationAutoDismiss(id); view.invitation = null; panel(true);
+  command({ type: 'click_invitation', invitationId: id }, invitation.actionKind === 'text' && invitation.responseText ? { invitationResponseText: invitation.responseText } : {}); } };
+$('invitation-ignore').onclick = () => { if (view.invitation) { const id = view.invitation.id; cancelInvitationAutoDismiss(id); view.invitation = null; renderUI(); command({ type: 'ignore_invitation', invitationId: id }); } };
 // FIX61-04: left short tap strokes locally, left drag moves the window, right button opens the function
 // panel. The routing decision lives in pointer-router.ts so the same production object is unit-tested.
 // A stroke never sends a command, never writes Memory and never calls the model.
@@ -833,6 +874,7 @@ setInterval(() => {
   renderUI();
 }, 30000);
 renderUI(); native('shell', { type: 'ready' });
+setInterval(() => sendPresence(true), 1_000);
 installRegionTracking();
 let frame = 0, lastRender = 0;
 try {

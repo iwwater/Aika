@@ -19,6 +19,7 @@ interface Options {
   plan?(scope:TurnScope,text:string,catalog:WorkPlanCatalog,signal:AbortSignal):Promise<WorkPlan>;
   emit(state: DesktopWorkState): void;
   notify?(notice: WorkStatusNotice): void;
+  onReceipt?(row: ForwardRequest): void;
 }
 type WorkInputSnapshot = { scope: TurnScope; draft?: StoredWorkDraft; request?: ForwardRequest; authorized: boolean; invalid: boolean };
 const phaseStage = (row?: ForwardRequest): WorkStage => !row ? 'idle' :
@@ -47,9 +48,17 @@ export class DesktopWork implements DesktopWorkPort {
   private latestCompletion: ForwardRequest | undefined;
   private notificationTimer: NodeJS.Timeout | undefined;
   private readonly seenPhases = new Map<string, string>();
+  private readonly timelineVersions = new Map<string, number>();
   private previous = '';
   private actions:Promise<void>=Promise.resolve();
   private boundInput: WorkInputSnapshot | undefined;
+  private publishTimelineReceipt(row: ForwardRequest): void {
+    if (!row.confirmedAt || !this.options.onReceipt || this.timelineVersions.get(row.id) === row.version) return;
+    try {
+      this.options.onReceipt(row);
+      this.timelineVersions.set(row.id, row.version);
+    } catch { /* Durable ForwardReceipts are replayed at startup and retried on later observation. */ }
+  }
   private localInput: {scope:TurnScope;epoch:number;records:{id:string;expectedVersion:number}[]} | undefined;
   constructor(private readonly options: Options) {}
   private track<T>(job: Promise<T>): Promise<T> {
@@ -115,7 +124,10 @@ export class DesktopWork implements DesktopWorkPort {
   }
 
   async start(intervalMs = 2000): Promise<void> {
-    for (const row of this.options.forwarding.records()) this.seenPhases.set(row.id, `${row.phase}:${row.nativeStatus??''}`);
+    for (const row of this.options.forwarding.records()) {
+      this.seenPhases.set(row.id, `${row.phase}:${row.nativeStatus??''}`);
+      this.publishTimelineReceipt(row);
+    }
     const drafts = this.options.receipts.drafts();
     const latest = drafts.find(d => ['open', 'prepared', 'confirming'].includes(d.status));
     if (latest) {
@@ -351,7 +363,7 @@ export class DesktopWork implements DesktopWorkPort {
           const sent = await this.options.forwarding.confirm(action.id, action.expectedVersion,()=>{assertCurrent?.();const latest=this.options.receipts.draft(claimed.id);if(latest.version!==claimed.version||latest.status!=='confirming')invalid('任务安排已变化，请重新核对。');});
           this.options.receipts.mutateDraft(claimed.id, claimed.version, row => { row.status = 'confirmed'; });
           if (this.draftId === claimed.id) this.draftId = undefined;
-          this.announce(sent); this.focusId = sent.id; if (epoch === this.epoch) this.stage = phaseStage(sent); this.publish();
+          this.announce(sent); this.publishTimelineReceipt(sent); this.focusId = sent.id; if (epoch === this.epoch) this.stage = phaseStage(sent); this.publish();
         } catch (error) {
           this.options.receipts.mutateDraft(claimed.id, claimed.version, row => { row.status = 'prepared'; });
           if (epoch === this.epoch) this.stage = 'confirming'; throw error;
@@ -386,11 +398,13 @@ export class DesktopWork implements DesktopWorkPort {
       const results = await Promise.allSettled(active.map(row => this.options.forwarding.refreshReceipt(row.id)));
       let terminal: ForwardRequest | undefined;
       for (const result of results) if (result.status === 'fulfilled') {
-        const row=result.value; if(row.phase==='unavailable'&&row.confirmedAt&&this.seenPhases.get(row.id)!==`${row.phase}:${row.nativeStatus??''}`)terminal=row;
+        const row=result.value; this.publishTimelineReceipt(row);
+        if(row.phase==='unavailable'&&row.confirmedAt&&this.seenPhases.get(row.id)!==`${row.phase}:${row.nativeStatus??''}`)terminal=row;
         if(this.seenPhases.has(row.id)) this.announce(row); else this.seenPhases.set(row.id,`${row.phase}:${row.nativeStatus??''}`);
         if(row.phase==='completed'){this.latestCompletion=row;terminal=row;}
       }
       for (const row of this.options.forwarding.records()) {
+        this.publishTimelineReceipt(row);
         if (row.phase === 'unavailable' && row.confirmedAt && this.seenPhases.get(row.id) !== `${row.phase}:${row.nativeStatus??''}`) terminal = row;
         if(this.seenPhases.has(row.id))this.announce(row);else this.seenPhases.set(row.id,`${row.phase}:${row.nativeStatus??''}`);
       }

@@ -50,29 +50,8 @@ export class CompanionEventHub implements HostEventChannel {
    * Publish a validated domain event envelope.
    */
   publishEnvelope(envelope: CompanionEventEnvelope): void {
-    if (!envelope || envelope.schemaVersion !== 1) {
-      throw new Error('Invalid event envelope: schemaVersion must be 1');
-    }
-    if (!envelope.eventId?.trim()) {
-      throw new Error('Invalid event envelope: missing eventId');
-    }
-    if (!['canon', 'companion', 'work'].includes(envelope.domain)) {
-      throw new Error(`Invalid event envelope: invalid domain ${envelope.domain}`);
-    }
-    if (!envelope.pairing?.userId || !envelope.pairing?.characterId || !envelope.pairing?.characterInstanceId) {
-      throw new Error('Invalid event envelope: invalid pairing scope');
-    }
-    if (Number.isNaN(Date.parse(envelope.occurredAt)) || Number.isNaN(Date.parse(envelope.receivedAt))) {
-      throw new Error('Invalid event envelope: timestamps must be ISO strings');
-    }
-
-    for (const listener of this.listeners.values()) {
-      if (listener.domains.length > 0 && !listener.domains.includes(envelope.domain)) {
-        continue;
-      }
-      if (listener.pairing && !isSamePairing(listener.pairing, envelope.pairing)) {
-        continue;
-      }
+    this.validateEnvelope(envelope);
+    for (const listener of this.matchingListeners(envelope)) {
       try {
         const result = listener.handler(envelope);
         if (result && typeof (result as Promise<void>).then === 'function') {
@@ -85,6 +64,45 @@ export class CompanionEventHub implements HostEventChannel {
         console.error(`[CompanionEventHub] Listener error on event ${envelope.eventId}:`, err);
       }
     }
+  }
+
+  /** Publish and wait for every matching projection to finish; reject if any listener fails. */
+  async publishEnvelopeAndWait(envelope: CompanionEventEnvelope): Promise<void> {
+    this.validateEnvelope(envelope);
+    const failures: unknown[] = [];
+    const pending: Promise<void>[] = [];
+    const listeners = this.matchingListeners(envelope);
+    if (listeners.length === 0) throw new Error('event_no_subscribers');
+    for (const listener of listeners) {
+      try {
+        const result = listener.handler(envelope);
+        if (result && typeof result.then === 'function') {
+          pending.push(Promise.resolve(result).catch(error => { failures.push(error); }));
+        }
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    await Promise.all(pending);
+    if (failures.length > 0) throw new Error('event_delivery_failed');
+  }
+
+  private validateEnvelope(envelope: CompanionEventEnvelope): void {
+    if (!envelope || envelope.schemaVersion !== 1) throw new Error('Invalid event envelope: schemaVersion must be 1');
+    if (!envelope.eventId?.trim()) throw new Error('Invalid event envelope: missing eventId');
+    if (!['canon', 'companion', 'work'].includes(envelope.domain)) throw new Error(`Invalid event envelope: invalid domain ${envelope.domain}`);
+    if (!envelope.pairing?.userId || !envelope.pairing?.characterId || !envelope.pairing?.characterInstanceId) {
+      throw new Error('Invalid event envelope: invalid pairing scope');
+    }
+    if (Number.isNaN(Date.parse(envelope.occurredAt)) || Number.isNaN(Date.parse(envelope.receivedAt))) {
+      throw new Error('Invalid event envelope: timestamps must be ISO strings');
+    }
+  }
+
+  private matchingListeners(envelope: CompanionEventEnvelope): CompanionEventListener[] {
+    return [...this.listeners.values()].filter(listener =>
+      (listener.domains.length === 0 || listener.domains.includes(envelope.domain)) &&
+      (!listener.pairing || isSamePairing(listener.pairing, envelope.pairing)));
   }
 
   /**

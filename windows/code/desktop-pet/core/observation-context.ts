@@ -9,6 +9,7 @@
 import type { Observation } from '../contracts/perception.js';
 import type { ScreenPerceptionService } from './screen-perception.js';
 import type { PairingScope } from '../contracts/character-pack.js';
+import type { DialogueProvider, DialogueRequest, DialogueReply } from '../contracts/index.js';
 
 export class ObservationContextAdapter {
   constructor(private readonly perceptionService: ScreenPerceptionService) {}
@@ -68,4 +69,75 @@ export class ObservationContextAdapter {
       dynamicSuffix,
     };
   }
+}
+
+/** Bounded one-turn handoff. It stores only an observation ID and revalidates before consumption. */
+export class ObservationTurnInbox {
+  private readonly pending = new Map<string, { observationId: string; expiresAt: number }>();
+
+  constructor(
+    private readonly perceptionService: ScreenPerceptionService,
+    private readonly formatter: ObservationContextAdapter,
+    private readonly now: () => number = Date.now,
+    private readonly ttlMs = 120_000,
+  ) {
+    if (!Number.isSafeInteger(ttlMs) || ttlMs <= 0 || ttlMs > 120_000) throw new Error('invalid_observation_inbox_ttl');
+  }
+
+  attach(observationId: string, pairing: PairingScope): void {
+    const observation = this.perceptionService.getObservation(observationId);
+    if (!observation || observation.state !== 'active' || !samePairing(observation.pairing, pairing)) {
+      throw new Error('observation_not_active_for_pairing');
+    }
+    const key = pairingKey(pairing);
+    this.pending.set(key, { observationId, expiresAt: this.now() + this.ttlMs });
+  }
+
+  consume(pairing: PairingScope): import('../contracts/perception.js').ObservationContextProjection | null {
+    const key = pairingKey(pairing);
+    const pending = this.pending.get(key);
+    if (!pending) return null;
+    this.pending.delete(key);
+    if (this.now() >= pending.expiresAt) return null;
+    const observation = this.perceptionService.getObservation(pending.observationId);
+    if (!observation || observation.state !== 'active' || !samePairing(observation.pairing, pairing)) return null;
+    const text = this.formatter.formatObservationSuffix(observation.observationId, pairing).slice(0, 6000);
+    if (!text) return null;
+    return {
+      observationId: observation.observationId,
+      grantRevision: observation.grantRevision,
+      frameHash: observation.frameHash,
+      capturedAt: observation.capturedAt,
+      text,
+    };
+  }
+
+  clear(pairing: PairingScope): void { this.pending.delete(pairingKey(pairing)); }
+  close(): void { this.pending.clear(); }
+}
+
+/** Adds a queued Observation only at the final dialogue boundary, never to admission or memory writes. */
+export class ObservationAwareDialogueProvider implements DialogueProvider {
+  constructor(private readonly next: DialogueProvider, private readonly inbox: ObservationTurnInbox,
+    private readonly pairing: PairingScope) {}
+
+  async reply(input: DialogueRequest, signal: AbortSignal): Promise<DialogueReply> {
+    const { screenObservation: _untrustedProjection, ...baseContext } = input.context;
+    const request: DialogueRequest = { ...input, context: baseContext };
+    const pending = request.memoryPending?.request;
+    const forgetting = request.memoryOutcome?.request === 'forget' || pending === 'forget' || pending === 'uncertain';
+    if (request.scope.characterId !== this.pairing.characterId || forgetting) {
+      if (forgetting) this.inbox.clear(this.pairing);
+      return this.next.reply(request, signal);
+    }
+    const projection = this.inbox.consume(this.pairing);
+    return this.next.reply(projection ? { ...request, context: { ...baseContext, screenObservation: projection } } : request, signal);
+  }
+}
+
+function samePairing(a: PairingScope, b: PairingScope): boolean {
+  return a.userId === b.userId && a.characterId === b.characterId && a.characterInstanceId === b.characterInstanceId;
+}
+function pairingKey(pairing: PairingScope): string {
+  return JSON.stringify([pairing.userId, pairing.characterId, pairing.characterInstanceId]);
 }

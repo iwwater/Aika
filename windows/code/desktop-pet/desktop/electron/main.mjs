@@ -1,7 +1,8 @@
 import { app, BrowserWindow, ipcMain, protocol, screen, Menu, shell, globalShortcut } from 'electron';
 import { spawn } from 'node:child_process';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { readFile, writeFile, mkdir, mkdtemp } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { BackendConnection } from './transport.mjs';
 import { fitDisplay } from './layout.mjs';
@@ -19,7 +20,8 @@ const preview = process.argv.includes('--preview');
 const inspect = process.argv.includes('--inspect');
 const smoke = process.argv.includes('--smoke-test');
 app.setName('AAAAGENT');
-app.setPath('userData', nextUserDataDir(app.getPath('appData'), smoke ? 'smoke-test' : preview ? 'preview' : 'desktop'));
+const smokeUserDataDir = smoke ? await mkdtemp(join(tmpdir(), 'aikanext-smoke-')) : undefined;
+app.setPath('userData', smokeUserDataDir ?? nextUserDataDir(app.getPath('appData'), preview ? 'preview' : 'desktop'));
 if (!app.requestSingleInstanceLock({ root, preview })) { app.quit(); process.exit(0); }
 protocol.registerSchemesAsPrivileged([{ scheme: 'pet', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
 let win, ready = false, voiceRequested = false, wakeRequested = false, micTestRequested = false, panelOpen = false, beforeResize, clickThrough = false;

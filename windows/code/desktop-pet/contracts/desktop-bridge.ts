@@ -54,6 +54,7 @@ export type BackendToDesktop =
       readonly generation: number; readonly index: number; readonly sampleRate: number; readonly sampleCount: number };
 export type DesktopToBackend =
   | import('./wake.js').WakeFromDesktop
+  | { readonly channel: 'presence'; readonly isTyping: boolean; readonly isSpeaking: boolean; readonly isTurnActive: boolean; readonly isWorkPendingConfirmation: boolean }
   | { readonly channel: 'work_action'; readonly action: import('./desktop-work.js').DesktopWorkAction }
   | { readonly channel: 'command'; readonly command: DesktopCommand }
   | BridgeVoiceChunk

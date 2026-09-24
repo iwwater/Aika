@@ -33,6 +33,23 @@ export interface CaptureGrant {
   readonly status: GrantStatus;
 }
 
+/**
+ * 08-04 Requirement: Continuous perception for proactive invitations requires an explicit,
+ * independent continuous grant. Single-use dialog capture grants (duration: 'single') MUST NEVER
+ * be escalated into background proactive triggers.
+ */
+export interface ContinuousPerceptionGrant {
+  readonly continuousGrantId: string;
+  readonly revision: number;
+  readonly pairing: PairingScope;
+  readonly scopeType: GrantScopeType;
+  readonly destination: 'local'; // Continuous background scanning is strictly restricted to local processing
+  readonly minPollIntervalMs: number;
+  readonly grantedAt: string;
+  readonly expiresAt: string;
+  readonly status: GrantStatus;
+}
+
 // --- 2. Observation ------------------------------------------------------------------------------
 
 export interface OcrTextBlock {
@@ -70,6 +87,16 @@ export interface Observation {
   readonly ttlMs: number;
 }
 
+/** Ephemeral, one-turn projection of an explicitly attached Observation. Never stored in History. */
+export interface ObservationContextProjection {
+  readonly observationId: string;
+  readonly grantRevision: number;
+  readonly frameHash: string;
+  readonly capturedAt: string;
+  /** Rendered as untrusted, time-sensitive data in the current dialogue request only. */
+  readonly text: string;
+}
+
 // --- 3. CompanionEventEnvelope -------------------------------------------------------------------
 
 export type EventDomain = 'canon' | 'companion' | 'work';
@@ -97,7 +124,7 @@ export interface InvitationCandidate {
   readonly id: string;
   readonly pairing: PairingScope;
   readonly reasonCode: string;
-  readonly sourceRef?: { readonly kind: 'observation' | 'continuity_fact' | 'schedule'; readonly id: string; readonly version?: number };
+  readonly sourceRef: { readonly kind: 'observation' | 'continuity_fact' | 'schedule'; readonly id: string; readonly version: number };
   readonly text: string;
   readonly actionKind: InvitationActionKind;
   readonly quotaDomain: 'greeting' | 'proactive_topic' | 'work_followup';
@@ -113,10 +140,16 @@ export type WorkExecutionStatus = 'prepared' | 'dispatched' | 'running' | 'succe
 
 export interface WorkRequest {
   readonly operationId: string;
+  /** Monotonic request revision; confirmation must name the exact reviewed revision. */
+  readonly revision: number;
   readonly protocol: WorkProtocol;
   readonly executorId: string;
+  /** Runtime profile revision reviewed when this request was prepared. */
+  readonly executorRevision?: number;
   readonly target: { readonly projectId?: string; readonly directory?: string; readonly title: string };
   readonly instruction: string;
+  /** MCP requests bind one discovered tool and exact reviewed arguments to the confirmation revision. */
+  readonly toolCall?: { readonly name: string; readonly arguments: Readonly<Record<string, unknown>> };
   readonly permissionGrant: readonly string[];
   readonly requestedAt: string;
 }

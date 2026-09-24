@@ -50,7 +50,9 @@ export interface InvitationDeliveryRecord {
   readonly id: string;
   readonly pairing: PairingScope;
   readonly invitationId: string;
-  readonly sourceId?: string | undefined;
+  readonly sourceKind: NonNullable<InvitationCandidate['sourceRef']>['kind'];
+  readonly sourceId: string;
+  readonly sourceVersion: number;
   readonly deliveredAtMs: number;
 }
 
@@ -74,7 +76,7 @@ export class ProactiveCompanionService {
     private readonly eventHub: CompanionEventHub,
     initialPolicy: ProactivePolicy,
     private readonly clock: () => string = () => new Date().toISOString(),
-    private readonly isSourceValid?: (sourceRef: NonNullable<InvitationCandidate['sourceRef']>) => boolean,
+    private readonly isSourceValid: (sourceRef: InvitationCandidate['sourceRef']) => boolean,
   ) {
     this.policyConfig = { ...initialPolicy };
   }
@@ -134,13 +136,24 @@ export class ProactiveCompanionService {
    * Register a new invitation candidate into the pool.
    */
   registerCandidate(candidate: InvitationCandidate): void {
+    if (!candidate.id.trim() || !candidate.text.trim() || !candidate.sourceRef?.id.trim() ||
+      !Number.isSafeInteger(candidate.sourceRef.version) || candidate.sourceRef.version < 1 ||
+      !Number.isFinite(Date.parse(candidate.createdAt)) || !Number.isFinite(Date.parse(candidate.validUntil)) ||
+      Date.parse(candidate.validUntil) <= Date.parse(candidate.createdAt)) {
+      throw new Error('invalid_invitation_candidate');
+    }
+    const current = this.candidates.get(candidate.id);
+    if (current && (!isSamePairing(current.pairing, candidate.pairing) ||
+      current.sourceRef.kind !== candidate.sourceRef.kind || current.sourceRef.id !== candidate.sourceRef.id ||
+      current.sourceRef.version !== candidate.sourceRef.version)) {
+      throw new Error('invitation_id_conflict');
+    }
+    // Registration/replay is idempotent. Never reset a delivered or terminal candidate.
+    if (current) return;
+
     // If source is already known as revoked, reject registration immediately
-    if (candidate.sourceRef?.id && this.revokedSources.has(candidate.sourceRef.id)) {
-      const expiredCandidate: InvitationCandidate = {
-        ...candidate,
-        status: 'expired',
-      };
-      this.candidates.set(candidate.id, expiredCandidate);
+    if (this.revokedSources.has(candidate.sourceRef.id)) {
+      this.#expireCandidate(candidate);
       return;
     }
 
@@ -231,31 +244,28 @@ export class ProactiveCompanionService {
     for (const cand of eligibleCandidates) {
       // Check expiration
       if (new Date(cand.validUntil).getTime() <= nowMs) {
-        this.candidates.set(cand.id, { ...cand, status: 'expired' });
-        this.publishAudit('companion.invitation.expired', cand, this.clock());
+        this.#expireCandidate(cand);
         continue;
       }
 
       // Check revoked source
-      if (cand.sourceRef?.id && this.revokedSources.has(cand.sourceRef.id)) {
-        this.candidates.set(cand.id, { ...cand, status: 'expired' });
-        this.publishAudit('companion.invitation.expired', cand, this.clock());
+      if (this.revokedSources.has(cand.sourceRef.id)) {
+        this.#expireCandidate(cand);
         continue;
       }
 
-      // Check external source validity callback if provided
-      if (cand.sourceRef && this.isSourceValid && !this.isSourceValid(cand.sourceRef)) {
-        this.candidates.set(cand.id, { ...cand, status: 'expired' });
-        this.publishAudit('companion.invitation.expired', cand, this.clock());
+      // The active source must still exist at arbitration time.
+      if (!this.#sourceIsValid(cand)) {
+        this.#expireCandidate(cand);
         continue;
       }
 
       // Check duplicate replay: same source ID already delivered today
-      if (cand.sourceRef?.id) {
-        const alreadyDelivered = deliveriesToday.some(d => d.sourceId === cand.sourceRef?.id);
-        if (alreadyDelivered) {
-          continue; // skip duplicate event on same day
-        }
+      const alreadyDelivered = deliveriesToday.some(d => d.sourceKind === cand.sourceRef.kind &&
+        d.sourceId === cand.sourceRef.id && d.sourceVersion === cand.sourceRef.version);
+      if (alreadyDelivered) {
+        this.#expireCandidate(cand);
+        continue;
       }
 
       return {
@@ -292,7 +302,9 @@ export class ProactiveCompanionService {
       id: `del-${randomUUID()}`,
       pairing,
       invitationId: cand.id,
-      ...(cand.sourceRef?.id ? { sourceId: cand.sourceRef.id } : {}),
+      sourceKind: cand.sourceRef.kind,
+      sourceId: cand.sourceRef.id,
+      sourceVersion: cand.sourceRef.version,
       deliveredAtMs: nowMs,
     };
     this.deliveries.push(deliveryRecord);
@@ -307,7 +319,14 @@ export class ProactiveCompanionService {
    */
   accept(invitationId: string, pairing: PairingScope): InvitationActionResult | null {
     const cand = this.candidates.get(invitationId);
-    if (!cand || !isSamePairing(cand.pairing, pairing) || cand.status === 'expired') {
+    if (!cand || !isSamePairing(cand.pairing, pairing) || cand.status !== 'pending' ||
+      !this.deliveries.some(delivery => delivery.invitationId === invitationId)) {
+      return null;
+    }
+
+    if (Date.parse(cand.validUntil) <= this.getNowMs() || this.revokedSources.has(cand.sourceRef.id) ||
+      !this.#sourceIsValid(cand)) {
+      this.#expireCandidate(cand);
       return null;
     }
 
@@ -332,7 +351,14 @@ export class ProactiveCompanionService {
    */
   dismiss(invitationId: string, pairing: PairingScope): boolean {
     const cand = this.candidates.get(invitationId);
-    if (!cand || !isSamePairing(cand.pairing, pairing)) {
+    if (!cand || !isSamePairing(cand.pairing, pairing) || cand.status !== 'pending' ||
+      !this.deliveries.some(delivery => delivery.invitationId === invitationId)) {
+      return false;
+    }
+
+    if (Date.parse(cand.validUntil) <= this.getNowMs() || this.revokedSources.has(cand.sourceRef.id) ||
+      !this.#sourceIsValid(cand)) {
+      this.#expireCandidate(cand);
       return false;
     }
 
@@ -347,6 +373,16 @@ export class ProactiveCompanionService {
     return true;
   }
 
+  #sourceIsValid(candidate: InvitationCandidate): boolean {
+    try { return this.isSourceValid(candidate.sourceRef) === true; } catch { return false; }
+  }
+
+  #expireCandidate(candidate: InvitationCandidate): void {
+    const expired: InvitationCandidate = { ...candidate, status: 'expired' };
+    this.candidates.set(candidate.id, expired);
+    this.publishAudit('companion.invitation.expired', expired, this.clock());
+  }
+
   private publishAudit(eventType: string, candidate: InvitationCandidate, nowIso: string): void {
     const envelope: CompanionEventEnvelope = {
       schemaVersion: 1,
@@ -354,10 +390,7 @@ export class ProactiveCompanionService {
       domain: 'companion',
       type: eventType,
       pairing: candidate.pairing,
-      sourceRef: {
-        id: candidate.id,
-        version: 1,
-      },
+      sourceRef: { id: candidate.sourceRef.id, version: candidate.sourceRef.version },
       occurredAt: nowIso,
       receivedAt: nowIso,
       payload: {

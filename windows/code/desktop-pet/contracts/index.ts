@@ -108,11 +108,15 @@ export interface DialogueContext extends Scoped {
    * distinct from "a pairing exists but contributed no segment". Data only, never an instruction.
    */
   readonly continuity?: import('./continuity-context.js').ContinuityContextResult;
+  /** K65 Flow output from an explicitly active local-read context source. Data only, never instructions. */
+  readonly flowContext?: { readonly profileId: string; readonly text: string };
   readonly characterPrompt: string;
   readonly recent: readonly ConversationMessage[];
   readonly summary: string;
   readonly memories: readonly MemoryReference[];
   readonly perception: PerceptionResult | null;
+  /** Explicitly attached, one-turn screen observation; omitted from durable conversation records. */
+  readonly screenObservation?: import('./perception.js').ObservationContextProjection;
   readonly inputTokenBudget: number;
 }
 export interface ExpressionIntent {
@@ -181,6 +185,11 @@ export interface ProactiveInvitation {
   readonly characterId: CharacterId;
   readonly id: string;
   readonly eventId: string;
+  readonly sourceKind?: 'memory' | 'continuity_fact';
+  readonly sourceVersion?: number;
+  readonly actionKind?: 'text' | 'voice_start' | 'clarify';
+  /** Backend-owned turn text for an explicitly accepted text invitation; never rendered. */
+  readonly responseText?: string;
   readonly text: string;
   readonly gesture: string;
   readonly eligibleAt: string;
@@ -230,7 +239,7 @@ export type DesktopCommand =
   | { readonly type: 'acknowledge_introduction'; readonly introductionId: string }
   | { readonly type: 'start_voice'; readonly clientRequestId?: string; readonly workBinding?: WorkInputBinding; readonly wakeKeyword?: string }
   | { readonly type: 'finish_voice' | 'cancel' }
-  | { readonly type: 'click_invitation'; readonly invitationId: string };
+  | { readonly type: 'click_invitation' | 'ignore_invitation'; readonly invitationId: string };
 export type DesktopEvent =
   | { readonly type: 'turn'; readonly input: TurnInput }
   /** Actual recognized voice text, emitted only after perception and current-scope validation. */
@@ -263,4 +272,6 @@ export type * from './continuity-context.js';
 
 export * from './character-pack.js';
 export * from './perception.js';
+export * from './schedule.js';
+
 

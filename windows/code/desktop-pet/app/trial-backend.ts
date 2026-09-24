@@ -31,6 +31,7 @@ import type { MemoryTurnInput, MemoryTurnPlan, MemoryTurnProvider, MemoryTurnOut
 import type { TurnScope, TtsProvider, MediaStorePort } from '../contracts/index.js';
 import type { ProviderSelection } from '../contracts/management.js';
 import { confirmedInvitationPolicy } from '../companion/invitations.js';
+import { ProactiveInvitationRuntime } from '../companion/proactive-invitation-runtime.js';
 import { SqliteMemoryStore, CONFIRMED_RETENTION } from '../memory/sqlite-store.js';
 import { SqliteLifecycleMemoryPort } from '../memory/sqlite-lifecycle-port.js';
 import { SqliteManagementMemoryPort } from '../memory/management-port.js';
@@ -68,13 +69,24 @@ import { MicrophonePreferenceStore } from '../media/microphone-preference.js';
 import { SkinStore } from '../management/skin-store.js';
 import { CharacterPackStore } from '../memory/character-pack-store.js';
 import { ContinuityMemoryStore } from '../memory/continuity-memory-store.js';
+import { ConversationCandidateWriter } from '../memory/conversation-candidate-writer.js';
 import { readTraceContentFromHistory } from '../memory/trace-history-content.js';
 import { ProductionContinuityContext, productionPairingResolver } from '../memory/continuity-production.js';
 import { productionPairing, type PairingScope } from '../contracts/character-pack.js';
 import { continuityManagement } from '../management/continuity-routes.js';
+import { proactiveInvitationManagement } from '../management/proactive-invitation-routes.js';
 import { RuntimeTraceStore } from '../core/trace-store.js';
 import { LegacyProviderRuntimeAdapter } from '../plugins/legacy-provider-adapter.js';
 import { Next65Management } from '../management/next65-management.js';
+import { FlowAwareDialogueProvider } from '../providers/flow-aware-dialogue.js';
+import { CompanionEventHub } from '../core/companion-event-hub.js';
+import { UnifiedTimelineService } from '../memory/unified-timeline.js';
+import { WorkProtocolRuntime } from '../management/work-protocol-runtime.js';
+import { CaptureGrantManager } from '../core/perception-grant.js';
+import { ScreenPerceptionService } from '../core/screen-perception.js';
+import { ObservationContextAdapter, ObservationTurnInbox, ObservationAwareDialogueProvider } from '../core/observation-context.js';
+import { PerceptionManagementRuntime } from '../management/perception-runtime.js';
+import { qwenCloudScreenObservation, SCREEN_OBSERVATION_PROMPT } from '../providers/qwen-screen-observation.js';
 // Health is derived from the runtime's own observations, so no extra probe is started here.
 
 /** Keep production trial calls within the reviewed text bounds without truncating user content or replies. */
@@ -93,7 +105,7 @@ export class TrialTransport extends ProviderTransport {
       const messages = body.messages as {role?:string;content?:Record<string,unknown>[]}[] | undefined;
       const content=messages?.[0]?.content;
       if(messages?.length!==1 || messages[0]?.role!=='user' || !Array.isArray(content) || content.length<2 || content.length>4
-        || JSON.stringify(content.at(-1))!==JSON.stringify({type:'text',text:VISUAL_EMOTION_PROMPT})
+        || ![{type:'text',text:VISUAL_EMOTION_PROMPT},{type:'text',text:SCREEN_OBSERVATION_PROMPT}].some(prompt=>JSON.stringify(content.at(-1))===JSON.stringify(prompt))
         || content.slice(0,-1).some(part=>part.type!=='image_url' || Object.keys(part).some(k=>!['type','image_url'].includes(k))
           || !/^data:image\/(jpeg|png);base64,/.test(String((part.image_url as {url?:string})?.url)))
         || JSON.stringify(body.modalities)!=='["text"]' || body.stream!==true
@@ -285,7 +297,10 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
   let memoryImport: SqliteMemoryImportManagement | undefined;
   let desktopWork: import('../contracts/desktop-work.js').DesktopWorkPort | undefined;
   let management: Awaited<ReturnType<typeof startRuntimeManagement>> | undefined;
+  let perceptionManagement: PerceptionManagementRuntime | undefined;
+  let protocolWork: WorkProtocolRuntime | undefined;
   let liveHost: import('../plugins/host-runtime.js').PackageHost | undefined;
+  let next65Runtime: Next65Management | undefined;
   const release = async () => { await lock.close(); await unlink(lockPath); };
   try {
     const authorizer = new TrialAuthorizer(configuration, configFile, activationFile, registeredConfiguration);
@@ -347,7 +362,58 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
     // Neither instance is dropped after open; they are composition-root dependencies, not side effects.
     const characterPacks = await CharacterPackStore.open(store);
     const continuityStore = await ContinuityMemoryStore.open(store);
-    const continuity = continuityManagement(continuityStore);
+    const candidatePairing = productionPairing('companion', configuration.purpose === 'user-trial' ? 'companion-default' : 'smoke-default');
+    const captureGrantManager = new CaptureGrantManager();
+    let cloudObservationEngine: ReturnType<typeof qwenCloudScreenObservation> | undefined;
+    try {
+      if (configuration.purpose === 'user-trial' && settings.effective.providers.perception?.credentialRef) {
+        cloudObservationEngine = qwenCloudScreenObservation(transport, endpoint('perception'));
+      }
+    } catch { /* The authenticated route remains unavailable without a registered provider binding. */ }
+    const screenPerception = new ScreenPerceptionService(captureGrantManager,
+      cloudObservationEngine ? { cloudVlmEngine: cloudObservationEngine } : {});
+    const observationContext = new ObservationContextAdapter(screenPerception);
+    const observationInbox = new ObservationTurnInbox(screenPerception, observationContext);
+    perceptionManagement = configuration.purpose === 'user-trial'
+      ? new PerceptionManagementRuntime(captureGrantManager, screenPerception, observationInbox, candidatePairing,
+        runtime.instanceId, { local: false, cloud: !!cloudObservationEngine }) : undefined;
+    const unifiedTimeline = new UnifiedTimelineService(store.rawDatabaseForKnowledge(), characterPacks);
+    const companionEventHub = new CompanionEventHub();
+    let timelineDispatchError: unknown;
+    companionEventHub.subscribeDomain(['canon', 'companion', 'work'], envelope => {
+      try { unifiedTimeline.recordEventSync(envelope); }
+      catch (error) { timelineDispatchError = error; throw error; }
+    }, candidatePairing);
+    const publishUnifiedTimelineEvent = (envelope: import('../contracts/perception.js').CompanionEventEnvelope): void => {
+      timelineDispatchError = undefined;
+      companionEventHub.publishEnvelope(envelope);
+      if (timelineDispatchError !== undefined) throw timelineDispatchError;
+    };
+    const proactiveInvitations = configuration.purpose === 'user-trial'
+      ? new ProactiveInvitationRuntime(store.rawDatabaseForKnowledge(), continuityStore, store.invitations, companionEventHub)
+      : undefined;
+    if (proactiveInvitations) {
+      const active = proactiveInvitations.policy(candidatePairing).enabled;
+      runtime.observeModuleState('invitations', active ? 'ready' : 'unknown', active
+        ? '主动陪伴已启用；来源限策略开启后新确认且证据有效的连续性事实/里程碑，展示受忙闲、勿扰与共享配额仲裁。'
+        : '正式候选、持久仲裁与桌面展示已接线；策略默认关闭，可在控制台启用。');
+    }
+    const conversationCandidates = configuration.purpose === 'user-trial'
+      ? new ConversationCandidateWriter(store, continuityStore, characterId => productionPairing(characterId, 'companion-default'))
+      : undefined;
+    if (conversationCandidates) {
+      conversationCandidates.initialize(candidatePairing);
+      conversationCandidates.recover(candidatePairing);
+    }
+    const syncProactiveInvitations = (pairing: PairingScope) => {
+      if (!proactiveInvitations) return;
+      const previous = proactiveInvitations.shown(pairing);
+      proactiveInvitations.sync(pairing);
+      if (previous && !proactiveInvitations.shown(pairing)) session?.withdrawInvitation(previous);
+      session?.requestProactiveEvaluation();
+    };
+    if (proactiveInvitations) proactiveInvitations.sync(candidatePairing);
+    const continuity = continuityManagement(continuityStore, syncProactiveInvitations);
     // N075-01/R5: open persistent trace store in the companion SQLite database and wire to both the
     // production turn pipeline and the management server.
     const traceStore = RuntimeTraceStore.open(store.rawDatabaseForKnowledge());
@@ -384,6 +450,7 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
       readonly pairing: PairingScope;
       readonly sessionId: string;
       readonly turnId: string;
+      readonly createdAt: string;
     }> = [];
 
     const drainCompanionProjection = () => {
@@ -402,7 +469,7 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
         const historyScope = { ...scope, generation: 0 } as TurnScope;
         const record = store!.inspect(historyScope, messageId);
         return record ? { state: record.state, role: record.message?.role, text: record.message?.text } : null;
-      });
+      }, publishUnifiedTimelineEvent);
     };
     // Recover turns staged immediately before a previous process exited.
     drainCompanionProjection();
@@ -426,12 +493,12 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
           pairing,
           sessionId: scope.sessionId,
           turnId: scope.turnId,
+          createdAt: new Date().toISOString(),
         };
         try {
           characterPacks.stageCompanionProjection(projectionItem);
-          drainCompanionProjection();
         } catch (error) {
-          /* Projection failure is recoverable and must not undo a delivered reply. */
+          /* Staging failure is recoverable and must not undo a delivered reply. */
           pendingCompanionProjections.push(projectionItem);
           void diagnostic({
             type: 'companion_projection_error',
@@ -440,12 +507,81 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
             error: error instanceof Error ? error.message : String(error),
           }).catch(() => {});
         }
+        try {
+          conversationCandidates?.afterConversationSaved(scope);
+        } catch (error) {
+          /* Candidate persistence is recoverable from its ID-only outbox and never delays the reply. */
+          void diagnostic({
+            type: 'conversation_candidate_error',
+            sessionId: scope.sessionId,
+            turnId: scope.turnId,
+            error: error instanceof Error ? error.message : String(error),
+          }).catch(() => {});
+        }
+      },
+      // Invitation clicks are consumed by the existing durable store; the returned command goes
+      // through DesktopRuntime so the explicit click, turn scope and microphone gate stay singular.
+      acceptInvitation: invitationId => {
+        const proactiveAccepted = proactiveInvitations?.accept(candidatePairing, invitationId);
+        if (proactiveAccepted) return { type: 'submit_text' as const, text: proactiveAccepted.text };
+        const accepted = store!.invitations.clickForCharacter(candidatePairing.characterId, invitationId);
+        if (!accepted) return null;
+        const occurredAt = new Date().toISOString();
+        companionEventHub.publishEnvelope({
+          eventId: `invitation-accepted-${accepted.invitationId}`,
+          schemaVersion: 1,
+          domain: 'companion',
+          type: 'companion.invitation.accepted',
+          pairing: candidatePairing,
+          sourceRef: { id: accepted.eventId, version: accepted.sourceVersion },
+          occurredAt,
+          receivedAt: occurredAt,
+          payload: { invitationId: accepted.invitationId, actionKind: accepted.type, status: 'accepted' },
+          summary: '接受了一条主动陪伴邀请',
+        });
+        return { type: 'start_voice' as const };
+      },
+      ignoreInvitation: invitationId => {
+        const proactiveDismissed = proactiveInvitations?.ignore(candidatePairing, invitationId);
+        if (proactiveDismissed) return true;
+        const dismissed = store!.invitations.ignoreForCharacter(candidatePairing.characterId, invitationId);
+        if (!dismissed) return false;
+        const occurredAt = new Date().toISOString();
+        companionEventHub.publishEnvelope({
+          eventId: `invitation-dismissed-${dismissed.invitationId}`,
+          schemaVersion: 1,
+          domain: 'companion',
+          type: 'companion.invitation.dismissed',
+          pairing: candidatePairing,
+          sourceRef: { id: dismissed.eventId, version: dismissed.sourceVersion },
+          occurredAt,
+          receivedAt: occurredAt,
+          payload: { invitationId: dismissed.invitationId, actionKind: 'start_voice', status: 'dismissed' },
+          summary: '暂不接受这条主动陪伴邀请',
+        });
+        return true;
+      },
+      onConversationIdle: () => {
+        try {
+          const result = drainCompanionProjection();
+          if (result.pending > 0) void diagnostic({ type: 'companion_projection_pending', pending: result.pending }).catch(() => {});
+        } catch (error) {
+          void diagnostic({ type: 'companion_projection_error', error: error instanceof Error ? error.message : String(error) }).catch(() => {});
+        }
+      },
+      onProactiveOpportunity: busy => {
+        if (!proactiveInvitations || store!.invitations.shownForCharacter(candidatePairing.characterId)) return;
+        const invitation = proactiveInvitations.showNext(candidatePairing, busy);
+        if (invitation) session?.presentInvitation(invitation);
       },
       createEmotion:()=>new EmotionTurns(store!.emotion,store!),
       consumeWakeHit: hit => wake?.consumeHit(hit),
       companionProfile: store,
       ...(configuration.purpose==='user-trial' ? {classifyMemoryRequest:admission.foregroundRequest.bind(admission)} : {isMemoryIndependent:admission.isIndependent.bind(admission)}),
-      dialogue: new JsonDialogueProvider(endpoint('dialogue'), transport, () => presentation.allowedIntent()),
+      dialogue: new FlowAwareDialogueProvider(new ObservationAwareDialogueProvider(
+        new JsonDialogueProvider(endpoint('dialogue'), transport, () => presentation.allowedIntent()), observationInbox, candidatePairing), {
+        runActiveConversationFlow: (scope, query, signal) => next65Runtime?.runActiveConversationFlow(scope, query, signal) ?? Promise.resolve(null),
+      }),
       perception: configuration.models.asr
         ? new SplitPerceptionProvider(new QwenAsrProvider(endpoint('asr'), mediaStore, transport),
           new QwenVisualEmotionProvider(endpoint('perception'), mediaStore, transport), { visualTimeoutMs: 1500 })
@@ -468,6 +604,9 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
       void diagnostic({ type: 'background_failure', scope, kind }).catch(() => {});
     });
     process.stdout.write(JSON.stringify({ channel: 'presentation_policy', policy: presentation.snapshot() }) + '\n');
+    const shownInvitation = store!.invitations.shownForCharacter(candidatePairing.characterId)
+      ?? proactiveInvitations?.shown(candidatePairing);
+    if (shownInvitation) session.presentInvitation(shownInvitation);
     emitStartup('initializing', 3);
     runtime.observeMemoryQueue(() => session!.pendingMemoryJobs());
     if (configuration.purpose === 'user-trial') {
@@ -530,6 +669,17 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
           secrets: secretStore(configuration),
         });
       } catch { /* Host stays unavailable if creation fails */ }
+      next65Runtime = new Next65Management({
+        hostRoot: next65HostRoot,
+        host: liveHost,
+        providerRuntime: legacyProviderAdapter.runtime,
+      });
+
+      if (configuration.purpose === 'user-trial') try {
+        protocolWork = await WorkProtocolRuntime.open({ profileFile: resolve(configuration.projectRoot, '.local/data/work-protocol-profiles.json'),
+          journalFile: resolve(configuration.projectRoot, '.local/data/work-protocol.sqlite'), eventHub: companionEventHub,
+          pairing: candidatePairing, characterPacks });
+      } catch { process.stderr.write('ACP/MCP work protocol unavailable; native work and companion chat remain available.\n'); }
 
       // The console reads and writes the same profile the composition root applies; nothing is duplicated.
       management = await startRuntimeManagement(registeredConfiguration, configFile, settings, runtime,
@@ -543,11 +693,16 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
         skins,
         traceStore,
         trace => readTraceContentFromHistory(store!, trace),
-        new Next65Management({
-          hostRoot: next65HostRoot,
-          host: liveHost,
-          providerRuntime: legacyProviderAdapter.runtime,
-        }));
+        next65Runtime,
+        { service: unifiedTimeline, pairing: candidatePairing }, protocolWork,
+        proactiveInvitations ? proactiveInvitationManagement(proactiveInvitations, (pairing, policy, previouslyShown) => {
+          runtime.observeModuleState('invitations', policy.enabled ? 'ready' : 'unknown', policy.enabled
+            ? '主动陪伴已启用；来源限策略开启后新确认且证据有效的连续性事实/里程碑，展示受忙闲、勿扰与共享配额仲裁。'
+            : '正式候选、持久仲裁与桌面展示已接线；策略默认关闭，可在控制台启用。');
+          if (!policy.enabled && previouslyShown) session?.withdrawInvitation(previouslyShown);
+          if (policy.enabled) syncProactiveInvitations(pairing);
+          session?.requestProactiveEvaluation();
+        }) : undefined, perceptionManagement);
     }
     if (configuration.purpose === 'user-trial') {
       const classifier = new WorkIntentClassifier(endpoint('admission'), transport);
@@ -555,6 +710,31 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
         const work = new DesktopWork({ receipts: management.receipts, projects: management.projects, forwarding: management.tasks,
           classify: classifier.classify.bind(classifier), interpret: classifier.interpret.bind(classifier),
           plan: (scope,text,catalog,signal)=>new WorkPlanner(endpoint('admission'),transport).plan(scope,text,catalog,signal),
+          onReceipt: row => {
+            if (!row.confirmedAt) return;
+            const status = row.phase === 'completed' || row.nativeStatus === 'completed' ? 'succeeded'
+              : row.phase === 'unknown' || row.nativeStatus === 'unknown' ? 'uncertain'
+              : row.phase === 'unavailable' || row.nativeStatus === 'failed' ? 'failed'
+              : row.phase === 'forwarding' ? 'dispatched'
+              : row.phase === 'accepted' ? 'running'
+              : undefined;
+            if (!status) return;
+            const title = row.plan?.title?.trim() || row.target?.title?.trim() || '工程任务';
+            const occurredAt = row.confirmedAt || row.createdAt;
+            publishUnifiedTimelineEvent({
+              eventId: `work-receipt-${row.id}-v${row.version}`,
+              schemaVersion: 1,
+              domain: 'work',
+              type: 'work.task.receipt',
+              pairing: candidatePairing,
+              turnId: row.appTurnId ?? row.harnessSessionId ?? row.id,
+              sourceRef: { id: `work-request:${row.id}`, version: row.version },
+              occurredAt,
+              receivedAt: new Date().toISOString(),
+              payload: { executorId: row.executor ?? 'codex', taskId: row.id, status, title, instruction: '', resultSummary: '' },
+              summary: `${title} (${status})`,
+            });
+          },
           emit: state => process.stdout.write(JSON.stringify({ channel: 'work_state', state }) + '\n'), notify: notice => session!.notifyWork(notice) });
         desktopWork = work; session.attachWork(work); await work.start();
       } else {
@@ -599,6 +779,7 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
     process.once('SIGTERM', () => { void close(); }); process.once('SIGINT', () => { void close(); });
   } catch (error) {
     managementForget?.close();
+    perceptionManagement?.close();
     await wake?.close(); await wechat?.close(); await liveHost?.close(); await management?.close(); await managementForget?.drain();
     await memoryImport?.close();
     if (session) await session.close(); else store?.close();
