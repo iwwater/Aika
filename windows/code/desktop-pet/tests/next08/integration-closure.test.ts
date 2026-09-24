@@ -1,13 +1,13 @@
 /**
  * tests/next08/integration-closure.test.ts
  *
- * 08-06 Acceptance Test Suite:
- * Validates Minimum Package Combinations (08-I), Console Routing & Deep-links (08-J),
+ * 08-06 module regression suite:
+ * Exercises in-process package fixtures (08-I), Console Routing & Deep-links (08-J),
  * Cross-domain Trace & Source Attribution (08-M, 08-K), and System-wide Invariants.
  *
  * AC-0806-1: Minimum package combinations and graceful degradation (08-I)
  * AC-0806-2: Route parsing, token desensitization, and legacy deep-link mapping (08-J)
- * AC-0806-3: Cross-domain trace, source attribution, and real data integration (08-M, 08-K)
+ * AC-0806-3: Cross-domain trace and source attribution in an in-process fixture (08-M, 08-K)
  */
 
 import test from 'node:test';
@@ -40,7 +40,7 @@ async function loadRoutesModule() {
   return import(pathToFileURL(target).href);
 }
 
-test('AC-0806-1: Minimum package combinations and graceful degradation (08-I)', async () => {
+test('AC-0806-1: In-process package fixture fails closed when optional executors are unavailable (08-I)', async () => {
   const pairing = productionPairing('companion', 'inst-alpha');
   const hub = new CompanionEventHub();
 
@@ -76,11 +76,13 @@ test('AC-0806-1: Minimum package combinations and graceful degradation (08-I)', 
     destination: 'local',
     duration: 'single',
   });
-  const obs = await perception.processCapture(
-    { grantId: grant.grantId, imageBytes: new Uint8Array([1, 2, 3]), mimeType: 'image/png' },
-    pairing,
+  await assert.rejects(
+    () => perception.processCapture(
+      { grantId: grant.grantId, imageBytes: new Uint8Array([1, 2, 3]), mimeType: 'image/png' },
+      pairing,
+    ),
+    /local_perception_engine_unavailable/,
   );
-  assert.equal(obs.state, 'active');
 
   // 3. Core + Proactive only (No Perception, No Work)
   const proactive = new ProactiveCompanionService(hub, {
@@ -88,11 +90,12 @@ test('AC-0806-1: Minimum package combinations and graceful degradation (08-I)', 
     dailyMax: 2,
     minIntervalMs: 0,
     timezone: 'Asia/Shanghai',
-  });
+  }, undefined, () => true);
   proactive.registerCandidate({
     id: 'cand-solo',
     pairing,
     reasonCode: 'schedule',
+    sourceRef: { kind: 'schedule', id: 'schedule-solo', version: 1 },
     text: '该喝水了~',
     actionKind: 'text',
     quotaDomain: 'greeting',
@@ -105,7 +108,7 @@ test('AC-0806-1: Minimum package combinations and graceful degradation (08-I)', 
 
   // 4. Core + Work only (No Perception, No Proactive)
   const workMgr = new WorkDispatchManager(hub, new AcpProtocolAdapter(), new McpToolProtocolAdapter());
-  workMgr.prepareRequest({
+  const workRequest = workMgr.prepareRequest({
     operationId: 'op-solo',
     protocol: 'internal_harness',
     executorId: 'codex',
@@ -113,8 +116,9 @@ test('AC-0806-1: Minimum package combinations and graceful degradation (08-I)', 
     instruction: 'build',
     permissionGrant: [],
   });
-  const receipt = await workMgr.dispatch('op-solo', pairing);
-  assert.equal(receipt.status, 'succeeded');
+  const receipt = await workMgr.dispatch('op-solo', pairing, workRequest.revision);
+  assert.equal(receipt.status, 'failed', 'A package fixture without a real executor must not claim successful work');
+  assert.match(receipt.error?.message ?? '', /executor is not configured/i);
 });
 
 test('AC-0806-2: Route parsing, token desensitization, and legacy deep-link mapping (08-J)', async () => {
@@ -157,7 +161,7 @@ test('AC-0806-2: Route parsing, token desensitization, and legacy deep-link mapp
   assert.ok(CONSOLE_PAGES.includes('events'));
 });
 
-test('AC-0806-3: Cross-domain trace, source attribution, and real data integration (08-M, 08-K)', async t => {
+test('AC-0806-3: Cross-domain trace and source attribution in an in-process fixture (08-M, 08-K)', async t => {
   const dir = mkdtempSync(join(tmpdir(), 'timeline-0806-test-'));
   const dbPath = join(dir, 'test.db');
   const db = new Database(dbPath);

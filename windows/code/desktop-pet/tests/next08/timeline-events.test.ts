@@ -136,6 +136,25 @@ test('AC-0801-2: Idempotent projection and conflict detection', async t => {
   );
 });
 
+test('Work timeline refuses a receipt without an explicit execution status', async t => {
+  const f = await createFixture();
+  t.after(f.cleanup);
+  const now = new Date('2026-09-23T12:00:00.000Z').toISOString();
+  const event: CompanionEventEnvelope = {
+    eventId: 'evt-work-missing-status',
+    schemaVersion: 1,
+    domain: 'work',
+    type: 'work.task.receipt',
+    pairing: productionPairing('companion', 'inst-alpha'),
+    sourceRef: { id: 'task-missing-status', version: 1 },
+    occurredAt: now,
+    receivedAt: now,
+    payload: { executorId: 'acp', taskId: 'task-missing-status', title: 'Unknown result' },
+    summary: 'Work result not supplied',
+  };
+  await assert.rejects(() => f.timelineService.recordEvent(event), /valid execution status is required/);
+});
+
 test('AC-0801-3: Out-of-order event ordering resilience', async t => {
   const f = await createFixture();
   t.after(f.cleanup);
@@ -206,25 +225,50 @@ test('AC-0801-5: Revocation and forgetting propagation', async t => {
 
   const pairing = productionPairing('companion', 'inst-alpha');
   const sourceId = 'source-secret-tea';
+  const workSourceId = 'op-secret-task';
+  const occurredAt = new Date().toISOString();
 
   await f.timelineService.recordEvent({
     eventId: 'evt-revoke-test', schemaVersion: 1, domain: 'companion', type: 'companion.turn.saved',
-    pairing, sourceRef: { id: sourceId, version: 1 }, occurredAt: new Date().toISOString(), receivedAt: new Date().toISOString(),
+    pairing, sourceRef: { id: sourceId, version: 1 }, occurredAt, receivedAt: occurredAt,
     payload: { userText: '我最喜欢喝红茶', assistantText: '记下了！', sourceIds: [sourceId] },
     summary: '喜欢红茶',
+  });
+  await f.timelineService.recordEvent({
+    eventId: 'evt-work-revoke-test', schemaVersion: 1, domain: 'work', type: 'work.task.receipt',
+    pairing, sourceRef: { id: workSourceId, version: 1 }, occurredAt, receivedAt: occurredAt,
+    payload: {
+      executorId: 'fixture', taskId: workSourceId, status: 'succeeded', title: 'Private task',
+      instruction: 'secret task instruction', resultSummary: 'private result',
+    },
+    summary: 'Private task',
   });
 
   // Verify visible before revocation
   const beforeRevoke = await f.timelineService.queryTimeline({ pairing });
-  assert.equal(beforeRevoke.items.length, 1);
-  assert.equal(beforeRevoke.items[0]?.companionDetails?.userText, '我最喜欢喝红茶');
+  assert.equal(beforeRevoke.items.length, 2);
+  assert.equal(beforeRevoke.items.find(item => item.domain === 'companion')?.companionDetails?.userText, '我最喜欢喝红茶');
+  assert.equal(beforeRevoke.items.find(item => item.domain === 'work')?.workDetails?.instruction, 'secret task instruction');
 
-  // Revoke the source
+  // Forget both source IDs. Work sourceRef.id is the operation ID.
   f.characterPacks.revokeSource(pairing.characterId, sourceId, '用户请求遗忘红茶');
+  f.characterPacks.revokeSource(pairing.characterId, workSourceId, '用户请求遗忘工作任务');
 
-  // Query again: revoked source item must be dynamically excluded!
+  // Query again: revoked source items from both domains must be dynamically excluded.
   const afterRevoke = await f.timelineService.queryTimeline({ pairing });
-  assert.equal(afterRevoke.items.length, 0, 'Revoked source must be omitted from timeline query');
+  assert.equal(afterRevoke.items.length, 0, 'Revoked Companion and Work sources must be omitted from timeline query');
+
+  // Reopen the actual SQLite file to ensure revocation remains effective after process restart.
+  f.db.close();
+  const reopenedDb = new Database(join(f.dir, 'test.db'));
+  try {
+    const reopenedPacks = await CharacterPackStore.open(reopenedDb);
+    const reopenedTimeline = new UnifiedTimelineService(reopenedDb, reopenedPacks);
+    const afterRestart = await reopenedTimeline.queryTimeline({ pairing });
+    assert.equal(afterRestart.items.length, 0, 'Forgotten Work content must not return after reopening the database');
+  } finally {
+    reopenedDb.close();
+  }
 });
 
 test('AC-0801-6: Restart recovery via outbox drainage', async t => {
@@ -232,6 +276,11 @@ test('AC-0801-6: Restart recovery via outbox drainage', async t => {
   t.after(f.cleanup);
 
   const pairing = productionPairing('companion', 'inst-alpha');
+  // The real History owner is a separate lifecycle concern; model its minimal source-state table so
+  // UnifiedTimeline can exercise the same history:<message-id> revocation check after recovery.
+  f.db.exec('CREATE TABLE memory_records(character_id TEXT NOT NULL, id TEXT NOT NULL, state TEXT NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL, version INTEGER NOT NULL, PRIMARY KEY(character_id,id))');
+  f.db.prepare('INSERT INTO memory_records(character_id,id,state,kind,text,version) VALUES(?,?,?,?,?,?)').run('companion', 'turn-staged-1:user', 'active', 'transcript', '崩溃前用户说的话', 1);
+  f.db.prepare('INSERT INTO memory_records(character_id,id,state,kind,text,version) VALUES(?,?,?,?,?,?)').run('companion', 'turn-staged-1:assistant', 'active', 'transcript', '崩溃前桌宠的回复', 1);
 
   // 1. Stage turn in outbox (as happens during crash before projection drain)
   f.characterPacks.stageCompanionProjection({

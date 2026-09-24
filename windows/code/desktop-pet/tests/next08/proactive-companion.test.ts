@@ -30,6 +30,7 @@ function createCandidate(
     id,
     pairing,
     reasonCode: 'idle_checkin',
+    sourceRef: { kind: 'continuity_fact', id: `source-${id}`, version: 1 },
     text: '要不要休息一下，喝杯热茶？',
     actionKind: 'text',
     quotaDomain: 'greeting',
@@ -55,7 +56,7 @@ test('AC-0804-1: Fake clock quota, minimum interval, and timezone daily limit', 
     dndEndHour: 7,
   };
 
-  const service = new ProactiveCompanionService(hub, policy, clock);
+  const service = new ProactiveCompanionService(hub, policy, clock, () => true);
 
   service.registerCandidate(createCandidate('c1', pairing));
   service.registerCandidate(createCandidate('c2', pairing, { createdAt: '2026-09-24T10:01:00.000Z' }));
@@ -112,7 +113,7 @@ test('AC-0804-2: DND window and user busy state interception', () => {
     dndEndHour: 7,
   };
 
-  const service = new ProactiveCompanionService(hub, policy, clock);
+  const service = new ProactiveCompanionService(hub, policy, clock, () => true);
   service.registerCandidate(createCandidate('cand-dnd', pairing));
 
   // 1. In normal hours (18:00), arbitration passes
@@ -146,7 +147,7 @@ test('AC-0804-3: Source revocation immediately invalidates candidate and emits a
     dailyMax: 5,
     minIntervalMs: 0,
     timezone: 'Asia/Shanghai',
-  }, clock);
+  }, clock, source => source.id === 'obs-win-999');
 
   const events: CompanionEventEnvelope[] = [];
   hub.subscribeDomain(['companion'], env => { events.push(env); });
@@ -171,7 +172,8 @@ test('AC-0804-3: Source revocation immediately invalidates candidate and emits a
   // Audit event was broadcast to hub
   const expiredEvent = events.find(e => e.type === 'companion.invitation.expired');
   assert.ok(expiredEvent);
-  assert.equal((expiredEvent.payload as any).invitationId, 'cand-obs');
+  assert.equal((expiredEvent.payload as { invitationId?: string }).invitationId, 'cand-obs');
+  assert.deepEqual(expiredEvent.sourceRef, { id: 'obs-win-999', version: 1 });
 });
 
 test('AC-0804-4: Action & permission isolation (text vs voice_start)', () => {
@@ -183,7 +185,7 @@ test('AC-0804-4: Action & permission isolation (text vs voice_start)', () => {
     dailyMax: 5,
     minIntervalMs: 0,
     timezone: 'Asia/Shanghai',
-  }, clock);
+  }, clock, () => true);
 
   // 1. Text invitation
   service.registerCandidate(createCandidate('cand-text', pairing, { actionKind: 'text', text: '来看看今日资讯' }));
@@ -195,6 +197,7 @@ test('AC-0804-4: Action & permission isolation (text vs voice_start)', () => {
   assert.ok(textResult);
   assert.equal(textResult.action, 'text');
   assert.equal(textResult.startVoice, false, 'Text invitation must not start voice/mic');
+  assert.equal(service.accept('cand-text', pairing), null, 'An invitation can only be accepted once');
 
   // 2. Voice start invitation
   service.registerCandidate(createCandidate('cand-voice', pairing, { actionKind: 'voice_start', text: '点击和我聊聊天？' }));
@@ -217,7 +220,7 @@ test('AC-0804-5: Duplicate event replay idempotency', () => {
     dailyMax: 5,
     minIntervalMs: 0,
     timezone: 'Asia/Shanghai',
-  }, clock);
+  }, clock, () => true);
 
   // Candidate 1 from event X
   service.registerCandidate(createCandidate('cand-replay-1', pairing, {
@@ -247,7 +250,7 @@ test('AC-0804-6: Pairing & tenant isolation between character instances', () => 
     dailyMax: 5,
     minIntervalMs: 0,
     timezone: 'Asia/Shanghai',
-  }, clock);
+  }, clock, () => true);
 
   // Register candidate for pairing A only
   service.registerCandidate(createCandidate('cand-for-a', pairingA));
@@ -264,4 +267,37 @@ test('AC-0804-6: Pairing & tenant isolation between character instances', () => 
   // Attempt to accept pairing A candidate from pairing B
   const crossAccept = service.accept('cand-for-a', pairingB);
   assert.equal(crossAccept, null, 'Accepting candidate from wrong pairing must fail');
+});
+
+test('08-04: candidates require a source and only displayed, still-valid invitations can be accepted', () => {
+  const clock = () => '2026-09-24T10:00:00.000Z';
+  const hub = new CompanionEventHub();
+  const pairing = productionPairing('companion', 'inst-alpha');
+  let sourceValid = true;
+  const service = new ProactiveCompanionService(hub, {
+    enabled: true, dailyMax: 5, minIntervalMs: 0, timezone: 'Asia/Shanghai',
+  }, clock, () => sourceValid);
+  const candidate = createCandidate('not-shown', pairing);
+
+  assert.throws(() => service.registerCandidate({ ...candidate, sourceRef: undefined } as unknown as InvitationCandidate), /invalid_invitation_candidate/);
+  service.registerCandidate(candidate);
+  assert.equal(service.accept(candidate.id, pairing), null, 'unshown candidates cannot be accepted');
+  assert.equal(service.dismiss(candidate.id, pairing), false, 'unshown candidates cannot be dismissed');
+  assert.equal(service.presentNext(pairing)?.id, candidate.id);
+
+  sourceValid = false;
+  assert.equal(service.accept(candidate.id, pairing), null, 'source revocation between display and click is honored');
+  assert.equal(service.accept(candidate.id, pairing), null, 'expired candidates stay terminal');
+});
+
+test('AC-0804-7: ScheduleSourcePort contract fails closed and observation without continuous grant is guarded', async () => {
+  const { UnavailableScheduleSourcePort } = await import('../../contracts/schedule.js');
+  const pairing = productionPairing('companion', 'inst-sched');
+  const schedulePort = new UnavailableScheduleSourcePort();
+
+  const status = await schedulePort.status(pairing);
+  assert.equal(status.available, false);
+  assert.equal(status.sourceKind, 'unconfigured');
+  const events = await schedulePort.getUpcomingEvents(pairing, '2026-09-25T00:00:00.000Z', '2026-09-25T23:59:59.000Z');
+  assert.deepEqual(events, []);
 });

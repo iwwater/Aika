@@ -56,6 +56,21 @@ test('real HTTP, strict semantic adapter and SQLite share one atomic mixed-sourc
  // FIX61-10: explicit idempotent teardown before the after-hooks (see the next test).
  await f.server.close();f.store.close();
 });
+test('a stale details-page version returns conflict without invoking the planner or changing the record',async t=>{
+ const f=await setup(t);
+ try {
+  f.store.apply(change({type:'update',id:'tea',expectedVersion:1,text:'喜欢乌龙茶',sourceIds:['raw']},'concurrent-edit'));
+  const before=f.store.revision(scope());
+  const response=await f.send({...action,operationId:'stale-details-page',expectedVersion:1});
+  const body=await response.json();
+  assert.equal(response.status,409,JSON.stringify(body));
+  assert.equal(f.calls(),0,'a stale UI snapshot must fail before semantic planning');
+  assert.equal(f.store.revision(scope()),before);
+  assert.equal(f.store.inspect(scope(),'tea')!.state,'active');
+  assert.equal(f.store.inspect(scope(),'tea')!.version,2);
+  assert.equal(f.store.inspect(scope(),'cat')!.state,'active');
+ } finally { await f.forget.drain();f.forget.close();await f.server.close();f.store.close(); }
+});
 test('failed plan, racing source update and shutdown do not report successful forgetting',async t=>{
  const f=await setup(t),before=f.store.revision(scope());f.mode('failure');assert.equal((await f.send()).status,503);assert.equal(f.store.revision(scope()),before);assert.equal(f.store.inspect(scope(),'tea')!.state,'active');
  f.mode('bad-dynamics');assert.equal((await f.send()).status,503);assert.equal(f.store.revision(scope()),before);assert.equal(f.store.inspect(scope(),'tea')!.state,'active');

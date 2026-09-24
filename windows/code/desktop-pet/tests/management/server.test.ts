@@ -34,8 +34,11 @@ test('local HTTP authorization, host, origin and routing reject foreign access b
   assert.equal((await fetch(server.origin + '/config.json', { headers })).status, 404);
   const snapshot = await fetch(server.origin + '/api/snapshot', { headers });
   assert.equal(snapshot.headers.get('cache-control'), 'no-store'); assert.match(snapshot.headers.get('content-security-policy')!, /frame-ancestors 'none'/);
-  const state = await snapshot.json() as { modules: { id: string; status: string }[] };
+  const state = await snapshot.json() as { modules: { id: string; status: string; detail: string }[] };
   assert.equal(state.modules.find(x => x.id === 'dialogue')?.status, 'unknown');
+  const invitations = state.modules.find(x => x.id === 'invitations');
+  assert.equal(invitations?.status, 'unavailable');
+  assert.match(invitations?.detail ?? '', /显式接受消费；候选生产、忙闲\/DND 仲裁和桌面展示尚未接入/);
   const missingOrigin = { Authorization: headers.Authorization, 'Content-Type': 'application/json' };
   assert.equal((await fetch(server.origin + '/api/settings', { method: 'PUT', headers: missingOrigin, body: JSON.stringify({ expectedRevision: 0, settings: settings.snapshot().saved }) })).status, 403);
   const changed = settings.snapshot().saved; changed.context.maxMemories = 5;

@@ -22,7 +22,9 @@ import type { OcrResult, VlmObservationResult } from '../../contracts/perception
 
 test('AC-0803-1: Grant validation and single-use expiration', async () => {
   const grantMgr = new CaptureGrantManager();
-  const service = new ScreenPerceptionService(grantMgr);
+  const service = new ScreenPerceptionService(grantMgr, {
+    localOcrEngine: async (): Promise<OcrResult> => ({ status: 'ok', engine: 'fixture', readingOrderText: 'ok', blocks: [] }),
+  });
   const pairing = productionPairing('companion', 'inst-alpha');
   const dummyImage = new Uint8Array([1, 2, 3, 4, 5]);
 
@@ -70,15 +72,39 @@ test('AC-0803-2: Destination change from local to cloud invalidates grant', () =
 
   // Verify same target and same local destination maintains grant
   const check1 = grantMgr.verifyOrReissue(initialGrant.grantId, 'hwnd-editor', 'local');
-  assert.equal(check1.reissued, false);
+  assert.equal(check1.status, 'valid');
+  if (check1.status !== 'valid') throw new Error('Expected the unchanged grant to remain valid');
   assert.equal(check1.grant.grantId, initialGrant.grantId);
 
-  // Switching destination to 'cloud' must revoke old grant and reissue a new one
+  // Switching destination to 'cloud' revokes the grant and waits for explicit user confirmation.
   const check2 = grantMgr.verifyOrReissue(initialGrant.grantId, 'hwnd-editor', 'cloud');
-  assert.equal(check2.reissued, true);
-  assert.notEqual(check2.grant.grantId, initialGrant.grantId);
-  assert.equal(check2.grant.destination, 'cloud');
+  assert.equal(check2.status, 'reauthorization_required');
   assert.equal(grantMgr.getGrant(initialGrant.grantId)?.status, 'revoked');
+  assert.equal(grantMgr.listActiveGrants().length, 0, 'A destination change must not issue a replacement grant');
+
+  const confirmed = grantMgr.reauthorizeGrant(initialGrant.grantId, {
+    sessionId: initialGrant.sessionId,
+    scopeType: initialGrant.scopeType,
+    targetId: 'hwnd-editor',
+    purpose: initialGrant.purpose,
+    destination: 'cloud',
+    duration: initialGrant.duration,
+  }, true);
+  assert.equal(confirmed.destination, 'cloud');
+  assert.equal(confirmed.revision, initialGrant.revision + 1);
+
+  const targetChange = grantMgr.verifyOrReissue(confirmed.grantId, 'hwnd-other', 'local');
+  assert.equal(targetChange.status, 'reauthorization_required', 'Changing the target or destination in either direction requires a fresh confirmation');
+  assert.equal(grantMgr.listActiveGrants().length, 0);
+  assert.throws(() => grantMgr.reauthorizeGrant(confirmed.grantId, {
+    sessionId: 'different-session', scopeType: 'window', targetId: 'hwnd-other', purpose: '阅读代码',
+    destination: 'local', duration: 'session',
+  }, true), /grant_session_scope_mismatch/);
+  const confirmedTarget = grantMgr.reauthorizeGrant(confirmed.grantId, {
+    sessionId: initialGrant.sessionId, scopeType: 'window', targetId: 'hwnd-other', purpose: '阅读代码',
+    destination: 'local', duration: 'session',
+  }, true);
+  assert.equal(confirmedTarget.revision, confirmed.revision + 1);
 });
 
 test('AC-0803-3: Mid-flight cancellation stops observation production', async () => {
@@ -101,7 +127,7 @@ test('AC-0803-3: Mid-flight cancellation stops observation production', async ()
     });
   };
 
-  const service = new ScreenPerceptionService(grantMgr, { vlmEngine: slowVlm });
+  const service = new ScreenPerceptionService(grantMgr, { localVlmEngine: slowVlm });
   const pairing = productionPairing('companion', 'inst-alpha');
   const grant = grantMgr.issueGrant({
     sessionId: 'session-1',
@@ -141,7 +167,7 @@ test('AC-0803-4: Raw image buffer dropped, structured extraction preserved with 
     };
   };
 
-  const service = new ScreenPerceptionService(grantMgr, { ocrEngine: mockOcr });
+  const service = new ScreenPerceptionService(grantMgr, { localOcrEngine: mockOcr });
   const pairing = productionPairing('companion', 'inst-alpha');
   const grant = grantMgr.issueGrant({
     sessionId: 'session-1',
@@ -166,6 +192,92 @@ test('AC-0803-4: Raw image buffer dropped, structured extraction preserved with 
   const obs2 = await service.processCapture({ grantId: grant.grantId, imageBytes: imgBytes, mimeType: 'image/png' }, pairing);
   assert.equal(ocrCallCount, 1, 'Second identical capture must hit frame cache and not re-run OCR');
   assert.equal(obs2.frameHash, expectedHash);
+});
+
+test('AC-0803-4a: Revoking a grant purges its OCR cache and observation text', async () => {
+  const grantMgr = new CaptureGrantManager();
+  let ocrCallCount = 0;
+  const service = new ScreenPerceptionService(grantMgr, {
+    localOcrEngine: async (): Promise<OcrResult> => {
+      ocrCallCount++;
+      return { status: 'ok', engine: 'fixture', readingOrderText: 'private text', blocks: [] };
+    },
+  });
+  const pairing = productionPairing('companion', 'inst-alpha');
+  const imageBytes = new Uint8Array([4, 3, 2, 1]);
+  const firstGrant = grantMgr.issueGrant({ sessionId: 'session-1', scopeType: 'window', targetId: 'window-1',
+    purpose: 'test', destination: 'local', duration: 'session' });
+  const firstObservation = await service.processCapture({ grantId: firstGrant.grantId, imageBytes, mimeType: 'image/png' }, pairing);
+  grantMgr.revokeGrant(firstGrant.grantId);
+  const invalidated = service.getObservation(firstObservation.observationId);
+  assert.equal(invalidated?.state, 'invalidated');
+  assert.equal(invalidated?.ocr, undefined, 'Revoked observation text must be removed from the service');
+
+  const secondGrant = grantMgr.issueGrant({ sessionId: 'session-1', scopeType: 'window', targetId: 'window-1',
+    purpose: 'test', destination: 'local', duration: 'session' });
+  const secondObservation = await service.processCapture({ grantId: secondGrant.grantId, imageBytes, mimeType: 'image/png' }, pairing);
+  assert.equal(ocrCallCount, 2, 'A new authorization must not reuse a previous grant cache entry');
+  assert.equal(grantMgr.endSession('session-1'), 1);
+  const afterSessionEnd = service.getObservation(secondObservation.observationId);
+  assert.equal(afterSessionEnd?.state, 'invalidated');
+  assert.equal(afterSessionEnd?.ocr, undefined, 'Ending the session removes observation text');
+});
+
+test('AC-0803-4c: Ending a session redacts an observation from a consumed single-use grant', async () => {
+  const grantMgr = new CaptureGrantManager();
+  const service = new ScreenPerceptionService(grantMgr, {
+    localOcrEngine: async (): Promise<OcrResult> => ({ status: 'ok', engine: 'fixture', readingOrderText: 'turn-only text', blocks: [] }),
+  });
+  const grant = grantMgr.issueGrant({ sessionId: 'single-session', scopeType: 'window', targetId: 'window-1',
+    purpose: 'current turn only', destination: 'local', duration: 'single' });
+  const observation = await service.processCapture({ grantId: grant.grantId, imageBytes: new Uint8Array([9]), mimeType: 'image/png' },
+    productionPairing('companion', 'inst-alpha'));
+  assert.equal(service.getObservation(observation.observationId)?.ocr?.readingOrderText, 'turn-only text');
+
+  // It is already expired as a grant because it was consumed, but session end
+  // must still clear its current-turn allowance and retained observation body.
+  assert.equal(grantMgr.endSession('single-session'), 0);
+  const afterSessionEnd = service.getObservation(observation.observationId);
+  assert.equal(afterSessionEnd?.state, 'invalidated');
+  assert.equal(afterSessionEnd?.ocr, undefined);
+});
+
+test('AC-0803-4b: Local grants cannot reach the cloud engine, and cloud grants fail closed without one', async () => {
+  const grantMgr = new CaptureGrantManager();
+  let localCalls = 0;
+  let cloudCalls = 0;
+  const service = new ScreenPerceptionService(grantMgr, {
+    localVlmEngine: async (): Promise<VlmObservationResult> => {
+      localCalls++;
+      return { status: 'ok', summary: 'local result', visualElements: [], rawExcluded: true };
+    },
+    cloudVlmEngine: async (): Promise<VlmObservationResult> => {
+      cloudCalls++;
+      return { status: 'ok', summary: 'cloud result', visualElements: [], rawExcluded: true };
+    },
+  });
+  const pairing = productionPairing('companion', 'inst-alpha');
+  const imageBytes = new Uint8Array([7, 7]);
+  const localGrant = grantMgr.issueGrant({ sessionId: 'session-local', scopeType: 'window', targetId: 'window-1',
+    purpose: 'local only', destination: 'local', duration: 'session' });
+  await service.processCapture({ grantId: localGrant.grantId, imageBytes, mimeType: 'image/png' }, pairing);
+  assert.equal(localCalls, 1);
+  assert.equal(cloudCalls, 0, 'A local grant must never route bytes to the cloud engine');
+
+  const cloudGrant = grantMgr.issueGrant({ sessionId: 'session-cloud', scopeType: 'window', targetId: 'window-1',
+    purpose: 'cloud explicit', destination: 'cloud', duration: 'session' });
+  const noCloudService = new ScreenPerceptionService(grantMgr, {
+    localVlmEngine: async (): Promise<VlmObservationResult> => {
+      localCalls++;
+      return { status: 'ok', summary: 'must not run', visualElements: [], rawExcluded: true };
+    },
+  });
+  await assert.rejects(
+    () => noCloudService.processCapture({ grantId: cloudGrant.grantId, imageBytes, mimeType: 'image/png' }, pairing),
+    /cloud_perception_engine_unavailable/,
+  );
+  assert.equal(localCalls, 1, 'A cloud grant must not silently fall back to local or another route');
+  assert.equal(cloudCalls, 0, 'An unconfigured cloud route must not report successful processing');
 });
 
 test('AC-0803-5: Dynamic suffix context injection preserves frozen prefix snapshot', () => {
