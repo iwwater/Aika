@@ -79,6 +79,32 @@ test('N079-02 trace bodies stay masked at rest and are available only through th
   assert.equal((await forgotten.json() as {status:string}).status, 'forgotten');
 });
 
+test('N079-02 trace content refuses role-mismatched and cross-session History rows without returning text', async t => {
+  const historyFixtureStore = historyFixture(300_000_000, 'next079-trace-role-scope');
+  t.after(() => historyFixtureStore.cleanup());
+  const history = historyFixtureStore.open();
+  const scope = { characterId: 'companion' as const, sessionId: 'session-role-check', turnId: 'turn-role-check', generation: 0 };
+  history.append(scope, [
+    { id: 'turn-role-check:user', characterId: 'companion', role: 'assistant', text: 'assistant-role-secret', createdAt: '2026-09-23T08:00:00.000Z' },
+    { id: 'turn-role-check:assistant', characterId: 'companion', role: 'user', text: 'user-role-secret', createdAt: '2026-09-23T08:00:00.000Z' },
+  ]);
+  const trace: RuntimeTrace = {
+    traceId: 'trace-role-check', turnId: scope.turnId, characterId: scope.characterId, sessionId: scope.sessionId,
+    userText: '[digest:00000000 len:1]', replyText: '[digest:00000000 len:1]', totalElapsedMs: 1, status: 'ok', stages: [], createdAt: '2026-09-23T08:00:00.000Z',
+  };
+  const roleMismatch = readTraceContentFromHistory(history, trace);
+  assert.equal(roleMismatch.status, 'unavailable');
+  assert.doesNotMatch(JSON.stringify(roleMismatch), /assistant-role-secret|user-role-secret/);
+
+  history.append({ ...scope, sessionId: 'other-session', turnId: 'other-turn' }, [
+    { id: 'other-turn:user', characterId: 'companion', role: 'user', text: 'other-session-user', createdAt: '2026-09-23T08:00:00.000Z' },
+    { id: 'other-turn:assistant', characterId: 'companion', role: 'assistant', text: 'other-session-assistant', createdAt: '2026-09-23T08:00:00.000Z' },
+  ]);
+  const crossSession = readTraceContentFromHistory(history, { ...trace, sessionId: 'missing-session' });
+  assert.equal(crossSession.status, 'unavailable');
+  assert.doesNotMatch(JSON.stringify(crossSession), /other-session-user|other-session-assistant/);
+});
+
 test('N079-02 legacy plain-text traces and un-sanitized stage details are masked on read and API export', async t => {
   const f = await fixture(t);
   const historyFixtureStore = historyFixture(300_000_000, 'next079-trace-legacy');
@@ -180,4 +206,3 @@ test('P0 RV-01 sanitizeStageDetails recursively redacts nested objects and array
   assert.match((complex as any).nestedArrays[0][0], /^\[digest:[0-9a-f]{8} len:13\]$/);
   assert.match((complex as any).nestedArrays[1][0].innerText, /^\[digest:[0-9a-f]{8} len:25\]$/);
 });
-

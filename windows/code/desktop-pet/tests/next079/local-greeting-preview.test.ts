@@ -129,3 +129,17 @@ test('ACCEPT-02 a backwards clock jump cannot unlock a fresh greeting', () => {
   clock.set(MORNING);
   assert.equal(scheduler.tick({ visible: true, busy: false }), null, 'a backwards clock must not produce a greeting');
 });
+
+test('N079-07 waking after a long sleep produces at most one current greeting and no backlog', () => {
+  const clock = fixedClock('2026-09-23T08:00:00');
+  const scheduler = new LocalGreetingScheduler({ now: clock.now });
+
+  // The app remained hidden throughout sleep; missed bands are not queued for replay.
+  clock.advance(30 * 60 * 60 * 1000);
+  assert.equal(scheduler.tick({ visible: false, busy: false }), null);
+  const resumed = scheduler.tick({ visible: true, busy: false });
+  assert.ok(resumed, 'a still-idle app may greet once in the band that is current after wake');
+  assert.equal(resumed.band, 'day');
+  clock.advance(60 * 1000);
+  assert.equal(scheduler.tick({ visible: true, busy: false }), null, 'wake recovery must not replay missed intervals');
+});
