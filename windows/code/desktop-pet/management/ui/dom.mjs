@@ -143,8 +143,8 @@ export function restoreView(root,key){
     root.querySelectorAll('details').forEach((n,i)=>{const open=saved.disclosures.get(stateKey(n,i));if(open!==undefined)n.open=open;});
     root.querySelectorAll('[data-scroll-key],.record-list,.text-block,.tablescroll,textarea,dialog').forEach((n,i)=>{const pos=saved.scrolls.get(stateKey(n,i));if(pos){n.scrollLeft=pos[0];n.scrollTop=pos[1];}});
     const f=saved.focus&&root.querySelector(saved.focus.selector);
-    if(f){f.focus({preventScroll:true});if(saved.focus.selection&&f.setSelectionRange)try{f.setSelectionRange(...saved.focus.selection)}catch{}}
-    window.scrollTo(...saved.window);
+    if(f){f.focus({preventScroll:true});if(saved.focus?.selection&&f.setSelectionRange)try{f.setSelectionRange(...saved.focus.selection)}catch{}}
+    if(saved.window)window.scrollTo(...saved.window);
   }else if(changed)window.scrollTo(0,0);
   // Animate only navigation/selection changes, never polling or draft renders.
   if(!reduced()){

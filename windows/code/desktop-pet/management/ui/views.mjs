@@ -67,36 +67,48 @@ function contextView(a){const {s}=a,c=s.context;const form=el('form',{class:'car
 }
 export function modelsView(a) {
   const {s}=a,settings=s.snapshot.settings;
-  const primary=[['dialogue','对话大模型'],...(settings.effective.providers.asr?[['asr','语音转写']]:[]),['perception','视频情绪'],['tts','语音合成 TTS']];
+  const primary=[['dialogue','对话大模型'],...(settings.effective?.providers?.asr?[['asr','语音转写']]:[]),['perception','授权感知/视觉'],['tts','语音合成 TTS']];
   const summaries=el('div',{class:'grid primary-models'},primary.map(([slot,label])=>{
-    const active=settings.effective.providers[slot],saved=settings.saved.providers[slot];
-    return card(label,badge('当前生效','success'),el('p',{class:'model-name'},active.model),el('small',{},active.provider+' · '+active.adapterId),
+    const active=settings.effective?.providers?.[slot],saved=settings.saved?.providers?.[slot];
+    if(!active){
+      return card(label,badge('未配置','warning'),el('p',{class:'model-name'},'暂未生效'),el('small',{},'点击下方按钮进行配置绑定'),
+        button('配置此模型',()=>{s.providerSlot=slot;a.render()},{id:'configure-'+slot,'aria-expanded':s.providerSlot===slot}));
+    }
+    return card(label,badge('当前生效','success'),el('p',{class:'model-name'},active.model || '未命名'),el('small',{},(active.provider || '未知')+' · '+(active.adapterId || '标准适配')),
       active.voice&&el('p',{},'音色：'+active.voice),
-
-      changes(active,saved).length>0&&el('p',{class:'subtle'},'已保存待重启：'+saved.model+(saved.voice?' · '+saved.voice:'')),
+      (saved && changes(active,saved).length>0)&&el('p',{class:'subtle'},'已保存待重启：'+saved.model+(saved.voice?' · '+saved.voice:'')),
       button('编辑配置',()=>{s.providerSlot=slot;a.render()},{id:'configure-'+slot,'aria-expanded':s.providerSlot===slot}));
   }));
   const background=el('details',{class:'card'},el('summary',{},'后台模块配置 · 记忆维护、摘要、轮次判断'),
-    ['memory_turn','summary','admission'].map(slot=>el('div',{class:'label-row section-gap'},el('span',{},slots[slot]+' · '+settings.effective.providers[slot].model),button('编辑配置',()=>{s.providerSlot=slot;a.render()},{id:'configure-'+slot}))));
+    ['memory_turn','summary','admission'].map(slot=>{
+      const mod=settings.effective?.providers?.[slot];
+      return el('div',{class:'label-row section-gap'},el('span',{},(slots[slot] || slot)+' · '+(mod?.model || '未配置')),button('编辑配置',()=>{s.providerSlot=slot;a.render()},{id:'configure-'+slot}));
+    }));
   const editor=s.providerSlot?el('div',{},el('div',{class:'label-row section-gap'},el('h2',{},'编辑：'+slots[s.providerSlot]),button('收起配置',()=>{s.providerSlot=null;a.render()})),providerForm(a,s.providerSlot,slots[s.providerSlot])):null;
   const history=el('details',{class:'card'},el('summary',{},'配置历史与回滚'),el('p',{class:'subtle section-gap'},'回滚保存为新的配置版本，重启后生效。回滚会替换当前表单草稿，请先核对。'),
-    settings.history.length?el('div',{class:'record-list'},settings.history.map(h=>el('div',{class:'label-row'},el('span',{},`版本 ${h.revision} · ${time(h.savedAt)}`),button('回滚到此版本',()=>a.rollbackSettings(h.revision),{'data-target-revision':h.revision,disabled:!canSave(a)||s.settingsConflict||s.pending.has('settings')||h.revision===settings.revision})))):el('p',{class:'empty'},'暂时没有可回滚的保存版本。'));
+    settings.history?.length?el('div',{class:'record-list'},settings.history.map(h=>el('div',{class:'label-row'},el('span',{},`版本 ${h.revision} · ${time(h.savedAt)}`),button('回滚到此版本',()=>a.rollbackSettings(h.revision),{'data-target-revision':h.revision,disabled:!canSave(a)||s.settingsConflict||s.pending.has('settings')||h.revision===settings.revision})))):el('p',{class:'empty'},'暂时没有可回滚的保存版本。'));
   return el('div',{},a.wake?.view(),a.selfSetup?.view(),versionStrip(settings),a.selfSetup?.available()&&a.selfSetup.modelHelp(),summaries,
     el('p',{class:'subtle section-gap'},settings.pending?'版本已保存，重启后生效；当前运行仍使用上方有效配置。':'表单修改需保存并重启后才生效。'),
     ...settingsNotices(a),editor,el('div',{class:'savebar'},settingsActions(a)),background,history);
 }
-export function providerForm(a,slot,label){const {s}=a,current=s.snapshot.settings.effective.providers[slot],draft=s.settingsDraft.providers[slot],available=(a.selfSetup?.getAdapters()||s.snapshot.adapters).filter(x=>x.slots.includes(slot)),adapter=available.find(x=>x.id===draft.adapterId),busy=s.pending.has('settings');
- const update=(key,value)=>a.editSetting(['providers',slot,key],value);
- const choose=(next,model)=>{const configured=providerChoice(draft,next,model);if(configured)a.editSetting(['providers',slot],configured);else{if(next.provider!==draft.provider)update('credentialRef','');update('adapterId',next.id);update('provider',next.provider);update('model',model);update('endpoint',next.endpoints[0]||'');}a.render();};
- const choice=adapter?.choices?.find(c=>c.configuration.model===draft.model);
- const panel=card(label,!s.setupFirstRun&&el('div',{class:'config-summary'},el('small',{},'当前实际生效'),el('p',{},`${current.provider} / ${current.model}${current.voice?' · 音色 '+current.voice:''}`),el('small',{},'适配：'+current.adapterId)),el('p',{class:'subtle'},s.setupFirstRun?'初始化配置尚未运行。请选择模型及对应服务的凭据。':'下面是准备保存的配置；当前运行实例不会随表单变化。'));
- const adapters=available.map(x=>({value:x.id,label:x.label+(x.status==='not_integrated'?'（尚未接入）':''),disabled:x.status!=='available'}));if(!adapters.some(x=>x.value===draft.adapterId))adapters.push({value:draft.adapterId,label:draft.adapterId+'（当前配置）',disabled:true});
- const models=(adapter?.models||[]).map(m=>({value:m,label:adapter?.choices?.find(c=>c.configuration.model===m)?.label||m}));if(!models.some(x=>x.value===draft.model))models.push({value:draft.model,label:draft.model+'（未在当前支持列表）',disabled:true});
- panel.id='provider-'+slot;
- const credentials=a.selfSetup?.available()?a.selfSetup.getCredentials(draft.provider):s.snapshot.credentials;
- const credentialOptions=[{value:'',label:'请选择此服务的凭据引用'},...credentials.map(c=>({value:c.id,label:`${c.label} · ${statuses[c.status]||c.status}`,disabled:c.status!=='configured'}))];
- if(draft.credentialRef&&!credentialOptions.some(c=>c.value===draft.credentialRef))credentialOptions.push({value:draft.credentialRef,label:'当前引用不属于此供应商，请重新选择',disabled:true});
- const grid=el('div',{class:'form-grid'},select('服务商','adapter-'+slot,draft.adapterId,adapters,v=>{const next=available.find(x=>x.id===v);choose(next,next.models[0]||'')},{disabled:busy}),select('型号','model-'+slot,draft.model,models,v=>choose(adapter,v),{disabled:busy}),select('服务地址','endpoint-'+slot,draft.endpoint,(adapter?.endpoints||[draft.endpoint]).map(v=>({value:v,label:v})),v=>update('endpoint',v),{disabled:busy}),select('凭据引用','credential-'+slot,draft.credentialRef,credentialOptions,v=>update('credentialRef',v),{disabled:busy}),slot!=='asr'&&field('上下文输入上界','input-limit-'+slot,draft.inputTokenLimit,v=>update('inputTokenLimit',Number(v)),{type:'number',min:1,step:1,disabled:busy}));
+export function providerForm(a,slot,label){
+  const {s}=a;
+  const current=s.snapshot.settings.effective?.providers?.[slot] || { provider: 'dashscope', model: '未配置', adapterId: 'none', outputTokenLimit: 0, reservationMicros: 0, inputMicrosPerToken: 0, outputMicrosPerToken: 0 };
+  const draft=s.settingsDraft?.providers?.[slot] || { provider: 'dashscope', model: '', adapterId: '', endpoint: '', credentialRef: '' };
+  const available=(a.selfSetup?.getAdapters()||s.snapshot.adapters||[]).filter(x=>x.slots?.includes(slot));
+  const adapter=available.find(x=>x.id===draft.adapterId);
+  const busy=s.pending.has('settings');
+  const update=(key,value)=>a.editSetting(['providers',slot,key],value);
+  const choose=(next,model)=>{const configured=providerChoice(draft,next,model);if(configured)a.editSetting(['providers',slot],configured);else{if(next?.provider!==draft.provider)update('credentialRef','');update('adapterId',next?.id || '');update('provider',next?.provider || '');update('model',model);update('endpoint',next?.endpoints?.[0]||'');}a.render();};
+  const choice=adapter?.choices?.find(c=>c.configuration?.model===draft.model);
+  const panel=card(label,!s.setupFirstRun&&el('div',{class:'config-summary'},el('small',{},'当前实际生效'),el('p',{},`${current.provider} / ${current.model}${current.voice?' · 音色 '+current.voice:''}`),el('small',{},'适配：'+current.adapterId)),el('p',{class:'subtle'},s.setupFirstRun?'初始化配置尚未运行。请选择模型及对应服务的凭据。':'下面是准备保存的配置；当前运行实例不会随表单变化。'));
+  const adapters=available.map(x=>({value:x.id,label:x.label+(x.status==='not_integrated'?'（尚未接入）':''),disabled:x.status!=='available'}));if(!adapters.some(x=>x.value===draft.adapterId))adapters.push({value:draft.adapterId,label:draft.adapterId+'（当前配置）',disabled:true});
+  const models=(adapter?.models||[]).map(m=>({value:m,label:adapter?.choices?.find(c=>c.configuration?.model===m)?.label||m}));if(!models.some(x=>x.value===draft.model))models.push({value:draft.model,label:draft.model+'（未在当前支持列表）',disabled:true});
+  panel.id='provider-'+slot;
+  const credentials=a.selfSetup?.available()?a.selfSetup.getCredentials(draft.provider):(s.snapshot.credentials||[]);
+  const credentialOptions=[{value:'',label:'请选择此服务的凭据引用'},...credentials.map(c=>({value:c.id,label:`${c.label} · ${statuses[c.status]||c.status}`,disabled:c.status!=='configured'}))];
+  if(draft.credentialRef&&!credentialOptions.some(c=>c.value===draft.credentialRef))credentialOptions.push({value:draft.credentialRef,label:'当前引用不属于此供应商，请重新选择',disabled:true});
+  const grid=el('div',{class:'form-grid'},select('服务商','adapter-'+slot,draft.adapterId,adapters,v=>{const next=available.find(x=>x.id===v);choose(next,next?.models?.[0]||'')},{disabled:busy}),select('型号','model-'+slot,draft.model,models,v=>choose(adapter,v),{disabled:busy}),select('服务地址','endpoint-'+slot,draft.endpoint,(adapter?.endpoints||[draft.endpoint]).map(v=>({value:v,label:v})),v=>update('endpoint',v),{disabled:busy}),select('凭据引用','credential-'+slot,draft.credentialRef,credentialOptions,v=>update('credentialRef',v),{disabled:busy}),slot!=='asr'&&field('上下文输入上界','input-limit-'+slot,draft.inputTokenLimit,v=>update('inputTokenLimit',Number(v)),{type:'number',min:1,step:1,disabled:busy}));
  if(slot==='tts'&&adapter?.capabilities.voice&&(choice?.voices?.length||a.selfSetup?.available()))grid.append(select('已登记音色','voice-'+slot,draft.voice||'',[{value:'',label:'请选择已登记音色'},...(choice?.voices||[]).map(v=>({value:v.id,label:v.label}))],v=>update('voice',v),{disabled:busy}));
  else if(slot==='tts'&&adapter?.capabilities.voice)grid.append(field('音色标识','voice-'+slot,draft.voice,v=>update('voice',v),{disabled:busy,hint:'填写已登记的音色标识。'}));
  if(slot==='tts'&&adapter?.capabilities.language)grid.append(field('语言','language-'+slot,draft.language,v=>update('language',v),{disabled:busy}));
