@@ -86,6 +86,7 @@ import { CaptureGrantManager } from '../core/perception-grant.js';
 import { ScreenPerceptionService } from '../core/screen-perception.js';
 import { ObservationContextAdapter, ObservationTurnInbox, ObservationAwareDialogueProvider } from '../core/observation-context.js';
 import { PerceptionManagementRuntime } from '../management/perception-runtime.js';
+import { createLocalOcrEngine } from '../core/local-ocr-engine.js';
 import { qwenCloudScreenObservation, SCREEN_OBSERVATION_PROMPT } from '../providers/qwen-screen-observation.js';
 // Health is derived from the runtime's own observations, so no extra probe is started here.
 
@@ -370,13 +371,16 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
         cloudObservationEngine = qwenCloudScreenObservation(transport, endpoint('perception'));
       }
     } catch { /* The authenticated route remains unavailable without a registered provider binding. */ }
-    const screenPerception = new ScreenPerceptionService(captureGrantManager,
-      cloudObservationEngine ? { cloudVlmEngine: cloudObservationEngine } : {});
+    const localOcr = createLocalOcrEngine();
+    const screenPerception = new ScreenPerceptionService(captureGrantManager, {
+      localOcrEngine: localOcr,
+      ...(cloudObservationEngine ? { cloudVlmEngine: cloudObservationEngine } : {})
+    });
     const observationContext = new ObservationContextAdapter(screenPerception);
     const observationInbox = new ObservationTurnInbox(screenPerception, observationContext);
     perceptionManagement = configuration.purpose === 'user-trial'
       ? new PerceptionManagementRuntime(captureGrantManager, screenPerception, observationInbox, candidatePairing,
-        runtime.instanceId, { local: false, cloud: !!cloudObservationEngine }) : undefined;
+        runtime.instanceId, { local: true, cloud: !!cloudObservationEngine }) : undefined;
     const unifiedTimeline = new UnifiedTimelineService(store.rawDatabaseForKnowledge(), characterPacks);
     const companionEventHub = new CompanionEventHub();
     let timelineDispatchError: unknown;

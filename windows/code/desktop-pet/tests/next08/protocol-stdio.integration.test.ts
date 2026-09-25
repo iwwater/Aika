@@ -71,3 +71,47 @@ test('MCP stdio adapter detects a legacy server and negotiates the frozen 2025-1
     assert.equal(tools[0]!.readOnly, true);
   } finally { await adapter.close(); }
 });
+
+test('real standalone stdio MCP server discovers tools, runs mathematical execution, and returns structured result', async () => {
+  const { resolve } = await import('node:path');
+  const serverPath = resolve(process.cwd(), 'tests/next08/fixtures/real-stdio-mcp-server.mjs');
+
+  const adapter = new McpToolProtocolAdapter(undefined, [], {
+    command: process.execPath,
+    args: [serverPath],
+    cwd: process.cwd(),
+    requestTimeoutMs: 5_000,
+    trustedToolPolicies: {
+      calculate_sum: { readOnly: true },
+      system_echo: { readOnly: true },
+    },
+  });
+
+  try {
+    const tools = await adapter.listTools();
+    assert.equal(tools.length, 2);
+    assert.ok(tools.some(t => t.name === 'calculate_sum'));
+    assert.ok(tools.some(t => t.name === 'system_echo'));
+
+    const result = await adapter.callTool('calculate_sum', { a: 23, b: 19 }, []) as {
+      content: Array<{ type: string; text: string }>;
+      isError: boolean;
+    };
+
+    assert.equal(result.isError, false);
+    const parsed = JSON.parse(result.content[0]!.text) as { operation: string; a: number; b: number; result: number };
+    assert.equal(parsed.operation, 'sum');
+    assert.equal(parsed.a, 23);
+    assert.equal(parsed.b, 19);
+    assert.equal(parsed.result, 42);
+
+    const echoResult = await adapter.callTool('system_echo', { message: 'hello-mcp' }, []) as {
+      content: Array<{ type: string; text: string }>;
+      isError: boolean;
+    };
+    assert.equal(echoResult.isError, false);
+    assert.ok(echoResult.content[0]!.text.includes('Echo: hello-mcp'));
+  } finally {
+    await adapter.close();
+  }
+});

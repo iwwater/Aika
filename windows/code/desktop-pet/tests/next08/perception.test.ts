@@ -332,3 +332,44 @@ test('AC-0803-5: Dynamic suffix context injection preserves frozen prefix snapsh
   assert.doesNotMatch(afterRevokeResult.fullPrompt, /订单编号|电商结账/);
   assert.equal(afterRevokeResult.dynamicSuffix, '用户：屏幕上是什么？');
 });
+
+test('AC-0803-6: createLocalOcrEngine extracts text and structural bounds under local grant', async () => {
+  const { createLocalOcrEngine } = await import('../../core/local-ocr-engine.js');
+  const grantMgr = new CaptureGrantManager();
+  const localOcr = createLocalOcrEngine('local-unit-ocr');
+  const service = new ScreenPerceptionService(grantMgr, { localOcrEngine: localOcr });
+
+  const pairing = productionPairing('companion', 'inst-ocr-test');
+  const grant = grantMgr.issueGrant({
+    sessionId: 'session-ocr-1',
+    scopeType: 'window',
+    targetId: 'hwnd-local',
+    purpose: '离线本地界面识别',
+    destination: 'local',
+    duration: 'single',
+  });
+
+  // Minimal valid 8x8 PNG header with IHDR
+  const pngHeader = new Uint8Array([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, // PNG Signature
+    0x00, 0x00, 0x00, 0x0d,                         // IHDR length: 13
+    0x49, 0x48, 0x44, 0x52,                         // "IHDR"
+    0x00, 0x00, 0x02, 0x80,                         // Width: 640
+    0x00, 0x00, 0x01, 0xe0,                         // Height: 480
+    0x08, 0x06, 0x00, 0x00, 0x00,                   // Bit depth 8, ColorType 6
+    0x00, 0x00, 0x00, 0x00                          // CRC placeholder
+  ]);
+
+  const observation = await service.processCapture({
+    grantId: grant.grantId,
+    imageBytes: pngHeader,
+    mimeType: 'image/png',
+  }, pairing);
+
+  assert.equal(observation.state, 'active');
+  assert.ok(observation.ocr);
+  assert.equal(observation.ocr?.status, 'ok');
+  assert.equal(observation.ocr?.engine, 'local-unit-ocr');
+  assert.ok(observation.ocr?.readingOrderText.includes('640x480'));
+  assert.equal(observation.vlm, undefined, 'Local OCR only engine does not produce VLM summary');
+});

@@ -301,3 +301,76 @@ test('AC-0804-7: ScheduleSourcePort contract fails closed and observation withou
   const events = await schedulePort.getUpcomingEvents(pairing, '2026-09-25T00:00:00.000Z', '2026-09-25T23:59:59.000Z');
   assert.deepEqual(events, []);
 });
+
+test('AC-0804-8: LocalFileScheduleSourcePort loads upcoming events and triggers proactive candidate registration', async t => {
+  const { LocalFileScheduleSourcePort } = await import('../../core/local-schedule-source.js');
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+
+  const dir = mkdtempSync(join(tmpdir(), 'sched-test-'));
+  const scheduleFile = join(dir, 'schedule.json');
+  t.after(() => { try { rmSync(dir, { recursive: true, force: true }); } catch {} });
+
+  const pairing = productionPairing('companion', 'inst-sched-local');
+  const now = '2026-09-25T09:00:00.000Z';
+  const scheduleSource = new LocalFileScheduleSourcePort(scheduleFile, () => now);
+
+  // Status before events saved
+  const initialStatus = await scheduleSource.status(pairing);
+  assert.equal(initialStatus.available, true);
+  assert.equal(initialStatus.sourceKind, 'local_file');
+
+  // Save 2 events: one upcoming in 30min, one next week
+  await scheduleSource.saveEvents([
+    {
+      id: 'event-standup',
+      revision: 1,
+      title: '团队日常同步会',
+      startAt: '2026-09-25T09:30:00.000Z',
+      endAt: '2026-09-25T10:00:00.000Z',
+      location: '会议室 A',
+    },
+    {
+      id: 'event-next-week',
+      revision: 1,
+      title: '远期里程碑评审',
+      startAt: '2026-10-02T10:00:00.000Z',
+      endAt: '2026-10-02T11:00:00.000Z',
+    },
+  ]);
+
+  // Query events in window [09:00, 10:00]
+  const upcoming = await scheduleSource.getUpcomingEvents(pairing, '2026-09-25T09:00:00.000Z', '2026-09-25T10:00:00.000Z');
+  assert.equal(upcoming.length, 1);
+  assert.equal(upcoming[0]?.scheduleId, 'event-standup');
+  assert.equal(upcoming[0]?.title, '团队日常同步会');
+  assert.equal(upcoming[0]?.location, '会议室 A');
+  assert.equal(upcoming[0]?.sourceService, 'local_file');
+
+  // Feed into ProactiveCompanionService
+  const hub = new CompanionEventHub();
+  const service = new ProactiveCompanionService(hub, {
+    enabled: true, dailyMax: 3, minIntervalMs: 0, timezone: 'Asia/Shanghai',
+  }, () => now, () => true);
+
+  const event = upcoming[0]!;
+  service.registerCandidate({
+    id: `sched-${event.scheduleId}-${event.revision}`,
+    pairing,
+    reasonCode: 'schedule_reminder',
+    sourceRef: { kind: 'schedule', id: event.scheduleId, version: event.revision },
+    text: `你有一项日程即将开始：${event.title}`,
+    actionKind: 'text',
+    quotaDomain: 'proactive_topic',
+    createdAt: now,
+    validUntil: event.startAt,
+    status: 'pending',
+  });
+
+  const presented = service.presentNext(pairing);
+  assert.ok(presented);
+  assert.equal(presented?.id, 'sched-event-standup-1');
+  assert.equal(presented?.text, '你有一项日程即将开始：团队日常同步会');
+  assert.equal(presented?.sourceRef.kind, 'schedule');
+});

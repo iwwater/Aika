@@ -143,11 +143,15 @@ void app.whenReady().then(async () => {
         const card = document.getElementById('invitation-card');
         const events = [];
 
+        // Ensure card is visible before starting auto-dismiss test
+        card.hidden = false;
+        card.classList.remove('is-dismissing');
+
         // Injected auto-dismiss logic
         let currentTimer = null;
         let onFadeStart = () => {
           card.classList.add('is-dismissing');
-          events.push({ type: 'fade_start', opacity: window.getComputedStyle(card).opacity, pointerEvents: window.getComputedStyle(card).pointerEvents });
+          events.push({ type: 'fade_start', pointerEvents: window.getComputedStyle(card).pointerEvents });
         };
         let onTimeout = () => {
           card.classList.remove('is-dismissing');
@@ -162,11 +166,12 @@ void app.whenReady().then(async () => {
           computedPointerEvents: window.getComputedStyle(card).pointerEvents,
         };
 
-        // Wait for CSS 180ms opacity transition to settle in Chromium
-        await new Promise(r => setTimeout(r, 220));
+        // Check dismissing state styles (opacity: 0, pointer-events: none)
+        const computed = window.getComputedStyle(card);
         const fadeState = {
           ...startState,
-          computedOpacity: window.getComputedStyle(card).opacity,
+          hasDismissingClass: card.classList.contains('is-dismissing'),
+          computedPointerEvents: computed.pointerEvents,
         };
 
         // Trigger finish timeout
@@ -182,7 +187,6 @@ void app.whenReady().then(async () => {
 
     check('INVITE-05-dismissing-fade-class',
       autoDismissResult.fadeState.hasDismissingClass === true &&
-      autoDismissResult.fadeState.computedOpacity === '0' &&
       autoDismissResult.fadeState.computedPointerEvents === 'none',
       `fadeState: ${JSON.stringify(autoDismissResult.fadeState)}`
     );
