@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { isKernelError, type PluginContext } from "../../kernel";
 import { ContextSourcesToken } from "../../services/context/tokens";
+import { KnowledgeWikiToken } from "../../services/knowledge/wiki";
 import { MemoryRepositoryToken } from "../../services/memory/tokens";
 import { ProviderSettingsToken, ProviderToken, RuntimeToken } from "../../services/runtime/tokens";
 import type { AikaStorage } from "../../services/storage/contracts";
@@ -101,6 +102,25 @@ describe("LLM 能力插件装配", () => {
     // Runtime 照样能装配起来：没有记忆不等于不能对话。
     expect(kernel.registry.resolve(RuntimeToken)).toBeDefined();
 
+    await kernel.dispose();
+  });
+
+  it("无 SQL 的宿主不声明 Wiki，仍提供可用的上下文来源", async () => {
+    const { sqlExecutor: _sqlExecutor, ...storage } = await realStorage();
+    const { kernel, report } = await bootWith(storage, [
+      providerSettingsPlugin(), memoryPlugin(), contextSourcesPlugin(false), runtimePlugin(),
+    ]);
+
+    expect(report.ok).toBe(true);
+    expect(kernel.registry.has(KnowledgeWikiToken)).toBe(false);
+    expect(kernel.registry.resolve(ContextSourcesToken).map((source) => source.id)).toEqual(["memory"]);
+    await kernel.dispose();
+  });
+
+  it("SQL 宿主仍提供 Wiki 管理入口", async () => {
+    const { kernel, report } = await bootWith(await realStorage());
+    expect(report.ok).toBe(true);
+    expect(kernel.registry.resolve(KnowledgeWikiToken)).toBeDefined();
     await kernel.dispose();
   });
 

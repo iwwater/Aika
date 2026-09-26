@@ -9,8 +9,9 @@ export function localTasksPlugin(): AikaPlugin {
     id: "runtime.localTasks", version: "1.0.0",
     requires: [StorageToken, ClockToken, TimersToken, NotifierToken], provides: [LocalTasksToken],
     async activate(context) {
+      const clock = context.registrar.resolve(ClockToken);
       const service = await createLocalTasks({ storage: context.registrar.resolve(StorageToken),
-        clock: () => context.registrar.resolve(ClockToken).now(),
+        clock: () => clock.now(),
         timers: context.registrar.resolve(TimersToken), notifier: context.registrar.resolve(NotifierToken) });
       context.registrar.provide(LocalTasksToken, () => service);
       const stop = () => service.dispose();

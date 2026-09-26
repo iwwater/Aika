@@ -3,7 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AikaPlugin } from "../kernel";
 import { activeFetch, FetchToken, resetInstalledHttpFetch } from "../services/http";
 import { NotifierToken } from "../services/notification/notifier";
+import { KnowledgeWikiToken } from "../services/knowledge/wiki";
 import { remoteAvailable, resetInstalledRemoteHost, type RemoteHost } from "../services/remote/bridge";
+import { LocalTasksToken } from "../services/runtime/localTasks";
 import { RemoteHostToken } from "../services/remote/tokens";
 import type { AikaStorage } from "../services/storage/contracts";
 import { resetInstalledSecretStore, secretStore } from "../services/storage/secretStore";
@@ -47,6 +49,27 @@ afterEach(() => {
 });
 
 describe("宿主装配", () => {
+  it("默认组合根在无 SQL 宿主上不声明 Wiki，内核仍能启动", async () => {
+    const { sqlExecutor: _sqlExecutor, ...storage } = await realStorage();
+    const { kernel, report } = await createAikaKernel({
+      hostPlugins: testHostPlugins({ storage: { ...storage, kind: "local" } }),
+      installLegacyPorts: false,
+    });
+    expect(report.ok).toBe(true);
+    expect(kernel.registry.has(KnowledgeWikiToken)).toBe(false);
+    await kernel.dispose();
+  });
+
+  it("正式任务插件激活后仍可使用时钟执行 tick", async () => {
+    const { kernel, report } = await createAikaKernel({
+      hostPlugins: testHostPlugins({ storage: await realStorage() }),
+      installLegacyPorts: false,
+    });
+    expect(report.ok).toBe(true);
+    await expect(kernel.registry.resolve(LocalTasksToken).tick()).resolves.toBeUndefined();
+    await kernel.dispose();
+  });
+
   it("测试宿主装好后六个核心端口都解析得到", async () => {
     const storage = await realStorage();
     const { kernel, report } = await createAikaKernel({

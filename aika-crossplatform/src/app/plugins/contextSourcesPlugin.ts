@@ -29,7 +29,7 @@ import { createSystemClock } from "../../services/time/systemTime";
  * SQL 可用，知识能力整体不装，而不是装一个永远为空的假源。两类来源互不绑架：
  * memoryV2 缺失不让 Knowledge 一起消失，反之亦然。
  */
-export function contextSourcesPlugin(): AikaPlugin {
+export function contextSourcesPlugin(withWiki = true): AikaPlugin {
   return {
     id: "llm.contextSources",
     version: "1.0.0",
@@ -38,7 +38,7 @@ export function contextSourcesPlugin(): AikaPlugin {
       MemoryRepositoryToken, EnvironmentMonitorToken, ScreenContextSourceToken,
       EnvironmentBusyObserverToken, SettingsToken, ClockToken,
     ],
-    provides: [ContextSourcesToken, KnowledgeWikiToken],
+    provides: withWiki ? [ContextSourcesToken, KnowledgeWikiToken] : [ContextSourcesToken],
     activate(context) {
       const storage = context.registrar.resolve(StorageToken);
       const memoryRepository = context.registrar.tryResolve(MemoryRepositoryToken);
@@ -62,8 +62,10 @@ export function contextSourcesPlugin(): AikaPlugin {
             : true,
         }));
         // Wiki 管理面：不受检索开关影响（关掉 RAG 不该把用户的条目藏起来）。
-        context.registrar.provide(KnowledgeWikiToken, () =>
-          createKnowledgeWiki(index, { characterId: DEFAULT_CHARACTER.id }));
+        if (withWiki) {
+          context.registrar.provide(KnowledgeWikiToken, () =>
+            createKnowledgeWiki(index, { characterId: DEFAULT_CHARACTER.id }));
+        }
       }
 
       /**

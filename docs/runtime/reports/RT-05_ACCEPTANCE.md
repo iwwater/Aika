@@ -50,3 +50,9 @@
 - 真实宿主长期运行（跨天 cron、真实 DST 跳变实测）NOT RUN——需要真实宿主长跑环境；DST 语义以 `nextDailyOccurrence` 逐日扫描实现并留 skip 记录。
 - 通知投递（Scheduler fire → GW-01 outbox）的实际接线归宿主组合根（端口已按 `fire` 回调抽象）。
 - 状态：AUTO_PASS = 所有可自动 AC 通过；完整验收待人工。
+
+## 2026-09-26 · 浏览器任务入口修复补记
+
+浏览器实际打开设置→定时任务后，每秒出现“任务调度失败”告警。临时诊断日志定位为 `localTasksPlugin` 将作用域注册器的 `ClockToken` 解析延迟到了 `activate()` 返回后的 tick；注册器按内核契约已撤销。修复为激活期间解析时钟服务，后续只调用其 `now()`。未改变调度持久格式、授权规则或通知语义；临时诊断日志已移除。
+
+`src/app/composition.test.ts` 新增正式插件激活后再次 tick 的回归，连同 `src/services/runtime/localTasks.test.ts` 和插件测试共 3 文件 31/31 PASS、退出码 0；`npx tsc --noEmit` 退出码 0。Vite 页面经真实浏览器打开，设置内的定时任务面板可见，刷新后不再显示后台 tick 失败告警。浏览器表单的创建/取消交互本轮 **NOT RUN**（日期输入自动化未完成）；服务层创建/取消由既有定向测试覆盖。Tauri 真实通知与长跑仍 **NOT RUN**，不提升 RT-05 整体状态。

@@ -51,3 +51,9 @@
 - AC-D 真实模型问答：NOT RUN（无凭证；执行禁止未经授权的真实服务调用）。
 - Tauri 生产 plugin-sql 上的事务/FTS 行为：INT-01 槽位。
 - 知识导入 UI/dev 入口：未接线（readFile 端口已定义，测试注入）。
+
+## 2026-09-26 · 合批分支浏览器启动回归
+
+浏览器 localStorage 宿主没有 `sqlExecutor`，原 `contextSourcesPlugin` 却静态声明 `KnowledgeWikiToken`；激活时仅在有 SQL 时注册，触发 `PLUGIN_CONTRACT_VIOLATION` 并回滚内核。组合根现在按宿主选择是否声明 Wiki：浏览器不声明、不提供 Wiki 管理端口，仍提供 Memory 上下文；Tauri SQLite 宿主继续声明并提供 Wiki。`KnowledgeWikiPort` 签名、知识检索与存储格式均未变；直接消费者 `useKnowledgeWiki` 在缺 token 时沿用可选服务降级。
+
+证据：`npx vitest run src/app/plugins/plugins.test.ts src/app/composition.test.ts src/services/runtime/localTasks.test.ts` 3 文件 31/31 PASS、退出码 0；`npx tsc --noEmit` 退出码 0。Codex 内置浏览器访问 Vite `http://127.0.0.1:5179/`，聊天页与设置弹窗实际渲染，定时任务入口可见；浏览器端 Wiki 管理功能按原宿主边界不可用。真实 Tauri plugin-sql 回归 **NOT RUN**，本次不重判旧 LLM-05 真实模型质量 AC。

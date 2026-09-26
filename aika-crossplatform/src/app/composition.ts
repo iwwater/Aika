@@ -13,6 +13,7 @@ import type { PresentationServices } from "../presentation/fallback";
 import { capabilityPlugins } from "./plugins";
 import { presentationPlugin } from "./plugins/presentationPlugin";
 import { selectHostPlugins, type HostOptions } from "./hosts";
+import { isTauriHost } from "./hosts/detect";
 import type { ServiceResolver } from "./plugins/petClickReactionPlugin";
 
 /**
@@ -68,7 +69,7 @@ export async function createAikaKernel(options: CompositionOptions = {}): Promis
   const hostOptions: HostOptions = { ...options, resolve: options.resolve ?? resolveService };
   for (const plugin of options.hostPlugins ?? selectHostPlugins(hostOptions)) kernel.use(plugin);
   // 默认装配能力插件；测试或特殊宿主可显式覆盖。
-  for (const plugin of options.featurePlugins ?? capabilityPlugins()) kernel.use(plugin);
+  for (const plugin of options.featurePlugins ?? capabilityPlugins({}, isTauriHost())) kernel.use(plugin);
   // 展示层在内核里也是普通插件：注册表提供实例，Hook 经 useService 取。
   // 运行时用惰性闭包取：没人解析 Presenter 时不会顺带实例化 Runtime。
   kernel.use(presentationPlugin({

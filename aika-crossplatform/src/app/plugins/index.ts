@@ -61,11 +61,11 @@ export function llmPlugins(options: RuntimePluginOptions = {}): AikaPlugin[] {
  * 表情包没有硬依赖，因此浏览器宿主也装得起；记忆与 Runtime 的宿主前置由宿主插件
  * 保证（两个生产存储实现都带 memoryV2）。
  */
-export function capabilityPlugins(options: RuntimePluginOptions = {}): AikaPlugin[] {
+export function capabilityPlugins(options: RuntimePluginOptions = {}, withWiki = true): AikaPlugin[] {
   return [
     providerSettingsPlugin(),
     memoryPlugin(),
-    contextSourcesPlugin(),
+    contextSourcesPlugin(withWiki),
     // Trace 排在 runtime 之前只是可读性：真正的顺序由内核按 requires/optional 解析。
     tracePlugin(),
     // 用量台账跟在 trace 后面：它的采集开关读 TraceSettings（LLM-12 契约）。
