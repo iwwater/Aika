@@ -149,6 +149,7 @@ describe("持久 Scheduler（RT-05）", () => {
         return storage as AikaStorage;
       },
       clock: () => now,
+      authorize: async () => true,
       fire: async () => {
         attempts += 1;
         return "unknown";
@@ -178,6 +179,7 @@ describe("持久 Scheduler（RT-05）", () => {
         return storage as AikaStorage;
       },
       clock: () => now,
+      authorize: async () => true,
       fire: async () => {
         attempts += 1;
         return "failed";

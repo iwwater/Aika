@@ -11,6 +11,8 @@ import { MessageBody } from "./components/MessageBody";
 import { MessageSticker } from "./components/MessageSticker";
 import { MessageTranslation } from "./components/MessageTranslation";
 import { VoiceModal } from "./components/VoiceModal";
+import { LocalTasksPanel } from "./components/LocalTasksPanel";
+import { LocalTasksToken } from "./services/runtime/localTasks";
 import type { VoiceOutput } from "./services/voice/outputEngine";
 import { DevToolsPage } from "./pages/DevToolsPage";
 import { LiveInspector } from "./components/LiveInspector";
@@ -37,6 +39,11 @@ const NEXT_LANGUAGE: Record<VoiceInputLanguage, VoiceInputLanguage> = {
   "en-US": "ja-JP",
 };
 import { createWhisperClient } from "./services/voice/whisperClient";
+
+function LocalTasksEntry() {
+  const service = useService(LocalTasksToken);
+  return <LocalTasksPanel service={service} />;
+}
 
 const QUICK_STARTS = ["今天发生了一件小事…", "有点累，想随便聊聊", "刚才想到你说过的那件事"];
 
@@ -469,6 +476,7 @@ function App() {
                 ["settings-pet", "桌宠 / 陪伴"],
                 ["settings-voice", "语音"],
                 ["settings-remote", "手机连接"],
+                ["settings-tasks", "定时任务"],
                 ["settings-developer", "开发调试"],
               ].map(([id, label]) => (
                 <button
@@ -1005,6 +1013,7 @@ function App() {
               </>
             )}
             <div className="settings-divider" />
+            <LocalTasksEntry />
             <div id="settings-developer" className="modal-heading settings-anchor"><div><p className="eyebrow">Developer</p><h3>开发者模式</h3></div></div>
             <p className="modal-intro">打开之后标题栏会多一个入口，进去能看到每一轮对话在内部都发生了什么——组装了什么上下文、请求发给了谁、首 token 多久到、哪一步失败了。只写本机，不发往任何地方。</p>
             <div className="toggle-row">

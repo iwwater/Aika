@@ -35,6 +35,19 @@
 
 后续不得使用 v2–v6 角色稿作为身份参考。
 
+## 素材侧现状（2026-09-21 更新）
+
+分层与表情素材已收口到 **v3**，可直接导入 Cubism：
+
+- `output/live2d/production-v1/v3/cubism-import-v3.psd` —— 2048×4096，RGBA 真透明底，53 个唯一命名像素层。
+- `output/live2d/production-v1/v3-layers/` —— 对应的 53 张部件 PNG。
+- 制作脚本改为 Python 优先，见 `tools/live2d-pipeline/photoshop/`（体检 / 夹缝归属 / 缺口归属 / PSD 生成 / COM 驱动）。
+- 验收报告：`docs/frontend/reports/LIVE2D-ASSET-V3_ACCEPTANCE.md`。
+
+要点：v1 所谓「剩余像素层需归入部件」经实测不成立——残留层是**部件间夹缝**（431,275 px == 整人减部件并集，零重叠零外溢），
+13 处大块缺口则是**未拆分区**（与母稿逐像素一致）。v3 按几何+显式规则归属后，分层对原稿**无损**
+（alpha 差 0 px、不透明区 RGB 差 0）。**仍未做 Cubism 绑定**，本机未安装 Cubism Editor。
+
 当前 4K 母稿保留 SeedVR 的头发、服装与眼睛细化，只对鼻部和嘴下被放大的白色高光做了局部、无生成式色彩回填。原始白点版保存在 `output/live2d/rejected/source-tests/`，不会再作为正式输入。
 
 ## 执行顺序

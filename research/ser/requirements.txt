@@ -17,3 +17,4 @@ requests==2.34.2
 fastapi==0.141.1
 uvicorn==0.53.0
 python-multipart==0.0.32
+opensmile==2.6.0  # 非商业研究许可；不得直接用于商业产品

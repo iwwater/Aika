@@ -114,6 +114,7 @@ export function createPersistentScheduler(options: SchedulerStoreOptions): Persi
   const tasks = new Map<string, SchedulerTaskV1>();
   const consumedKeys = new Set<string>();
   let loaded = false;
+  let loading: Promise<void> | undefined;
 
   async function persist(): Promise<void> {
     const storage = await options.loadStorage();
@@ -126,7 +127,12 @@ export function createPersistentScheduler(options: SchedulerStoreOptions): Persi
 
   async function ensureLoaded(): Promise<void> {
     if (loaded) return;
-    loaded = true;
+    if (loading) return loading;
+    loading = load();
+    try { await loading; loaded = true; } finally { loading = undefined; }
+  }
+
+  async function load(): Promise<void> {
     try {
       const storage = await options.loadStorage();
       const raw = await storage.getSetting(SCHEDULER_STORE_KEY);
@@ -135,11 +141,12 @@ export function createPersistentScheduler(options: SchedulerStoreOptions): Persi
       if (parsed?.schemaVersion === SCHEDULER_SCHEMA_VERSION && Array.isArray(parsed.tasks)) {
         for (const task of parsed.tasks) tasks.set(task.taskId, task);
         for (const key of parsed.consumedKeys ?? []) consumedKeys.add(key);
-      }
+      } else { throw new Error("scheduler-store-invalid"); }
     } catch {
-      // 损坏按空调度器处理：宁可不触发，不可重复触发副作用。
+      // 读取失败不能当空库覆盖，否则丢失已消费记录会导致重放。
       tasks.clear();
       consumedKeys.clear();
+      throw new Error("scheduler-store-unavailable");
     }
   }
 
@@ -274,8 +281,8 @@ export function createPersistentScheduler(options: SchedulerStoreOptions): Persi
         }
 
         // 到期执行前重新校验权限（RT-05-B）。
-        if (options.authorize) {
-          const allowed = await options.authorize(task);
+        {
+          const allowed = options.authorize ? await options.authorize(task) : false;
           if (!allowed) {
             task.state = "cancelled";
             result.denied += 1;
@@ -287,7 +294,11 @@ export function createPersistentScheduler(options: SchedulerStoreOptions): Persi
         // 认领 → 执行 → 同一持久提交边界：先改状态落盘，再产生结果。
         task.attempts += 1;
         task.nextRunAt = now + Math.min(60_000 * Math.pow(2, task.attempts), 10 * 60_000);
-        const outcome = await options.fire(task);
+        task.state = "unknown";
+        await persist();
+        let outcome: "done" | "failed" | "unknown";
+        try { outcome = await options.fire(task); }
+        catch { outcome = "unknown"; }
         if (outcome === "done") {
           consumedKeys.add(task.executionKey);
           task.state = "done";

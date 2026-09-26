@@ -11,6 +11,7 @@ import { usagePlugin } from "./usagePlugin";
 import { voicePlugin } from "./voicePlugin";
 import { outboundPlugin } from "../../services/outbound/outboundPlugin";
 import { LOCAL_PRINCIPAL_ID } from "../../domain/identity";
+import { localTasksPlugin } from "./localTasksPlugin";
 
 export { memoryPlugin, noMemoryPlugin } from "./memoryPlugin";
 export { contextSourcesPlugin } from "./contextSourcesPlugin";
@@ -69,6 +70,7 @@ export function capabilityPlugins(options: RuntimePluginOptions = {}): AikaPlugi
     tracePlugin(),
     // 用量台账跟在 trace 后面：它的采集开关读 TraceSettings（LLM-12 契约）。
     usagePlugin(),
+    localTasksPlugin(),
     runtimePlugin(options),
     // 远程出站：requires Runtime；transport/生命周期都从注册表 tryResolve，
     // 浏览器宿主没有传输即自动退化为「本地投影，不外发」（FE-17-host）。
