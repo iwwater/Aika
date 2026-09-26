@@ -18,3 +18,5 @@
 审阅证据见[2026-09-21复核清单](reports/OPTIMIZATION_REVIEW_20260921.md)。剩余条件项不阻塞代码优化收口；下一步见[2026-09-22任务单](../DAILY_TASKS_2026-09-22.md)。
 
 后续研究质量路线见 [SER V2 路线图](ROADMAP_V2.md)。当前方向暂停 TTS M1 重训，SER 按 SER-06 → 07 → 08 → 09 → 10 → 11 推进；一次只执行一份 SPEC。
+
+合批后的当前 checkout 排除了 SER-06～10 的生成 manifest、split 与多数运行产物；历史报告结论与新工作区复跑状态的区别见[证据核对](reports/SER_V2_MERGE_AUDIT_20260926.md)。
