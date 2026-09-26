@@ -1,6 +1,6 @@
 # 0.82 执行 SPEC · 主动与被动陪伴模式
 
-状态：**AGENT_ACCEPTED / READY_FOR_HUMAN**。N082-00～08 代码与自动化全部通过，N082-09 合并验证完成，等待最终人工测试与自然试运行。Windows 工程根为 `windows/code/desktop-pet/`，文档根为本目录。共用 [CONTRACTS](CONTRACTS.md)、[测试配置与最终验收](TESTING.md)。
+状态：**BLOCKED（CR-02/03 与实机验收 DEFERRED）**。2026-09-26 用户明确将真实抓屏/像素 OCR、正式正文来源与自动观察/陪伴闭环及其最终实机验收后置；其余 CR-01、04～10 的定向修复已完成。自动测试通过不代表 0.82 已达到人工验收门槛。本次 Git 合批只整合代码历史，不改变该版本的验收状态。Windows 工程根为 `windows/code/desktop-pet/`，文档根为本目录。共用 [CONTRACTS](CONTRACTS.md)、[测试配置与最终验收](TESTING.md)。
 
 ## 执行顺序与责任
 
