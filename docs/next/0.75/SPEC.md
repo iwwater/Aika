@@ -1,5 +1,7 @@
 # 0.75 执行 SPEC：逐界面改造范围
 
+2026-09-25 衔接：六入口控制台重构的当前执行入口为 [UIR-00～08](../ui-rework/SPEC.md)，按其依赖实施；用户已允许本专项自行设计 UI，无需等待下文 WAIT_REQUIREMENTS/参考图/逐页批准。此覆盖不将任何旧步骤改为通过，也不撤销后端数据/运行时保障。
+
 状态：基线复核与校准中。已完成初步外壳初稿与后端收口，现按 2026-09-23 Review 与 RP75-00~08 计划推进运行时真值与界面整改。更新日期：2026-09-23。
 
 > **Runtime Truth 术语纪律（2026-09-22 起）**：本文档及 0.75 全部报告统一使用 `IMPLEMENTED`（Domain/Core 代码存在，并有单测或验收证据）、`WIRED`（正式 Production Runtime 实际消费该能力）、`EXPOSED`（Management API / Console 可以真实读取或控制该能力）三态描述完成度。禁止以下模糊表述："implemented therefore production-ready"、"accepted therefore runtime-wired"、"API exists therefore real runtime uses it"。当前正式启动装配点为 `windows/code/desktop-pet/app/trial-backend.ts`。

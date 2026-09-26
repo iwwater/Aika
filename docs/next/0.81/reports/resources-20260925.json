@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-25T12:55:45.223Z",
+  "scope": "controlled-local-instance",
+  "platform": "win32",
+  "dataRoot": "temporary-isolated-root",
+  "sourceGrantIssued": false,
+  "helper": {
+    "ready": true,
+    "activityBucketsObserved": 3,
+    "injectionDurationMs": 2811,
+    "measurementWindowMs": 13583
+  },
+  "cpu": {
+    "deltaMs": 0,
+    "percentOfOneCore": 0,
+    "probeSelfTest": {
+      "ok": true,
+      "deltaMs": 406,
+      "detail": "probe reported a live CPU delta"
+    }
+  },
+  "memory": {
+    "idlePrivateBytes": 1191936,
+    "busyPrivateBytes": 1196032,
+    "peakWorkingSetBytes": 6553600,
+    "samples": 8
+  },
+  "disk": {
+    "managedBytesBefore": 0,
+    "managedBytesAfter": 0,
+    "growthBytes": 0,
+    "baselineSettledAtMs": 2399
+  },
+  "store": {
+    "keyboardInserts": 50,
+    "keyboardLatencyMs": {
+      "median": 7.245,
+      "p95": 7.672,
+      "max": 11.211
+    },
+    "imageInserts": 12,
+    "imageLatencyMs": {
+      "median": 13.021,
+      "p95": 17.559,
+      "max": 17.559
+    },
+    "imagePayloadBytes": 1048576,
+    "managedBytesAfter": 12582912,
+    "activeSamples": 62,
+    "concurrent": {
+      "windowMs": 505.8,
+      "keyboardWrites": 25,
+      "imageWrites": 25,
+      "imagePayloadBytes": 262144,
+      "keyboardLatencyMs": {
+        "median": 7.22,
+        "p95": 9.177,
+        "max": 12.822
+      },
+      "imageLatencyMs": {
+        "median": 12.387,
+        "p95": 13.37,
+        "max": 14.3
+      },
+      "combinedLatencyMs": {
+        "median": 12.012,
+        "p95": 13.137,
+        "max": 14.3
+      },
+      "worstObservedMs": 14.3,
+      "stallsOver50ms": 0,
+      "firstSampleMs": {
+        "keyboard": 325.279,
+        "image": 15.009
+      },
+      "samplesAfter": 112,
+      "managedBytesAfter": 19136512
+    }
+  },
+  "notes": [
+    "No --thresholds file was supplied. Values are recorded for the N081-00 performance table but no pass line is asserted by this script."
+  ],
+  "verdict": "NOT_JUDGED"
+}

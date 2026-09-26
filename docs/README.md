@@ -1,6 +1,6 @@
 # Aika Next 文档入口
 
-更新日期：2026-09-23。开发规范见根 [AGENTS.md](../AGENTS.md)；版本执行状态以对应 SPEC 索引、实际报告及生产接线证据为准，本入口不复制易过期的测试计数。
+更新日期：2026-09-25。开发规范见根 [AGENTS.md](../AGENTS.md)；版本执行状态以对应 SPEC 索引、实际报告及生产接线证据为准，本入口不复制易过期的测试计数。
 
 用户使用 RPD 命名，本目录沿用 RPD，内容承担产品需求与路线图职责。
 
@@ -25,6 +25,7 @@
 | 文档 | 用途 |
 | --- | --- |
 | [开发与 Agent 协作规范](../AGENTS.md) | 模块责任、契约变更、定向测试、交接与版本验收 |
+| [UI 重构 PRD](next/ui-rework/RPD.md) / [9 步 SPEC](next/ui-rework/SPEC.md) / [MVP 修复方案](next/ui-rework/MVP_REPAIR_PLAN_20260925.md) | 六入口控制台已有实施，但角色预设、正式 Playground 接线及部分页面仍需修复；当前为 REPAIR_REQUIRED，按 MVP 方案重验 |
 | [插件与能力包开发规范](development/PLUGIN_DEVELOPMENT.md) | STT/TTS/情感陪伴合作者的分工、接口与交付清单 |
 | [0.61 → 0.65 连续开发计划](next/EXECUTION_061_065.md) | 自动接续、人工验收后置、可复制的 Goal 指令 |
 | [0.65 架构改造测试计划](next/0.65/TEST_PLAN.md) | 保留旧业务回归，按 K65 步骤新增契约、插件、多源与独立产物测试 |
@@ -38,6 +39,8 @@
 | [Aika Next 0.75 计划书](next/0.75/RPD.md) / [逐步 SPEC](next/0.75/SPEC.md) | 全前端逐界面重写，保留桌宠表现；含源码与接口清单，每页实施前索取参考，本轮仅规划 |
 | [Aika Next 0.79 RPD](next/0.79/RPD.md) / [SPEC](next/0.79/SPEC.md) / [MVP 核对](next/0.79/SOURCE_AUDIT.md) | 自动开发收口完成；N079-08 候选写入与 N079-09 Host/Flow 回放自动通过，旧库恢复、Electron UI 与跨日/长时仍为发布准入 BLOCKED/NOT RUN |
 | [Aika Next 0.8 RPD](next/0.8/RPD.md) / [SPEC](next/0.8/SPEC.md) / [源码映射](next/0.8/SOURCE_MAPPING.md) | 08-01 Timeline 与 08-05 ACP/MCP 正式 fixture 运行链自动验收通过；授权感知、主动候选生产、真实外部服务及 Electron/人工验收仍 BLOCKED/NOT RUN |
+| [Aika Next 0.81 RPD](next/0.81/RPD.md) / [SPEC](next/0.81/SPEC.md) / [接口契约](next/0.81/CONTRACTS.md) / [双配置](next/0.81/TEST_PROFILES.md) | 插入 0.8 与 0.85 之间；keyboard 活动与用户截图优先；N081-00～07 已拆、未实施，正式门槛通过后开始有界采集 |
+| [Aika Next 0.82 RPD](next/0.82/RPD.md) / [SPEC](next/0.82/SPEC.md) / [契约](next/0.82/CONTRACTS.md) / [测试](next/0.82/TESTING.md) | 需求已审核，N082-00～09 已拆、尚未实施；主动周期 OCR/陪伴，被动正文、截图与下载文件按日/手动处理，最终人工测试集中后置 |
 | [Aika Next 0.85 RPD](next/0.85/RPD.md) / [SPEC](next/0.85/SPEC.md) | 陪伴 Wiki 编纂与检索质量；N085-00～06 已写规格，尚未实施 |
 | [Aika Next 0.9 RPD](next/0.9/RPD.md) | 高级语音、Live2D/窗口和前台协作；需求已细化，未拆 SPEC |
 | [Aika Next 1.0 RPD](next/1.0/RPD.md) | 清洁安装、升级迁移、恢复、隐私诊断和集中交付；未拆 SPEC |

@@ -1,0 +1,31 @@
+{
+  "_comment": "N081-00 §6 性能通过线。此文件是模板：每个键都会被 measure:next081 判定，键为 null/缺失即记 NOT_RUN（不等于通过）。请在首次实机测量前填入经审阅的数值，之后不得为通过而改线。",
+  "_measured": "docs/next/0.81/reports/resources-20260925.json",
+  "_units": {
+    "cpuPercentOfOneCore": "单核百分比，测量窗口内均值",
+    "privateMemoryBytes": "进程私有提交字节",
+    "diskGrowthBytesPerWindow": "受管目录在一个测量窗口内的字节增长",
+    "keyboardInsertLatencyP95Ms": "键盘片段写入 p95 毫秒",
+    "imageInsertLatencyP95Ms": "1 MiB 图片复制（含校验与原子转正）p95 毫秒"
+  },
+  "_reference": {
+    "note": "首轮受控实测值，仅作填线参考，不是通过线本身",
+    "cpuPercentOfOneCore": 0,
+    "privateMemoryBytes": 1191936,
+    "diskGrowthBytesPerWindow": 0,
+    "keyboardInsertLatencyP95Ms": 2.397,
+    "imageInsertLatencyP95Ms": 7.322
+  },
+  "_openFinding": {
+    "id": "N08100-CONCURRENT-FIRST-KEYBOARD-WRITE",
+    "status": "RESOLVED",
+    "resolution": "测量方法问题，非产品缺陷：Promise.all 中图片循环连续同步调用不让出事件循环，键盘循环的首次 await 必须等整批同步工作结束才能恢复，因此把图片批次的累计阻塞时间记在了键盘首次写入上。对照实验证实：对一个 no-op 函数 await，其'首次时延'随另一任务的单次同步耗时线性放大（1ms->25ms、5ms->125ms、12ms->300ms、25ms->625ms）。排除首个样本后，并发下键盘 p95 9.18 ms、图片 p95 13.37 ms、最大 14.3 ms、零停顿；单独测量 appendKeyboard（7.2 ms 平坦）与 service 串行调用（7.3 ms 平坦，max 10.1 ms）同样无停顿。",
+    "conclusion": "无需修复；已把首个样本从百分位中排除并保留为 firstSampleMs 以供查证。",
+    "detail": "reports/N081-00.md#62-并发下的首次键盘写入停顿已定位为测量方法问题"
+  },
+  "cpuPercentOfOneCore": null,
+  "privateMemoryBytes": null,
+  "diskGrowthBytesPerWindow": null,
+  "keyboardInsertLatencyP95Ms": null,
+  "imageInsertLatencyP95Ms": null
+}
