@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "formatVersion": 1,
+  "hostApiRange": ">=1.0.0 <2.0.0",
+  "dependencies": [],
+  "optionalDependencies": [],
+  "resources": [],
+  "platform": {
+    "platform": [
+      "any"
+    ],
+    "arch": [
+      "any"
+    ],
+    "runtimeVersion": "22.0.0",
+    "features": []
+  },
+  "packageId": "com.aika.fixture.stt",
+  "version": "0.9.0",
+  "label": "STT 包",
+  "plugins": [
+    {
+      "pluginId": "stt.plugin",
+      "entry": "entry.mjs",
+      "label": "STT 转写插件",
+      "capabilities": [
+        {
+          "adapterVersion": "1.0.0",
+          "contractVersion": "1.0.0",
+          "auth": "none",
+          "sideEffect": "device_capture",
+          "execution": [
+            "streaming"
+          ],
+          "capabilityId": "stt.transcribe",
+          "category": "input",
+          "adapterId": "stt.local",
+          "parameters": [
+            "language",
+            "streaming"
+          ],
+          "inputs": [
+            {
+              "name": "audio",
+              "type": "bytes",
+              "required": true,
+              "description": "输入音频字节"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "transcript",
+              "type": "string",
+              "required": true,
+              "description": "转写文本"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "permissions": [
+    {
+      "id": "microphone",
+      "scope": "stt:capture",
+      "reason": "采集麦克风音频用于转写",
+      "promptsUser": true
+    }
+  ],
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 49,
+      "hash": "sha256-c2ef1352480dea748a1fa476ba057c32cb90018321caf4584c155c23a2a16be1",
+      "role": "documentation",
+      "executable": false
+    },
+    {
+      "path": "entry.mjs",
+      "bytes": 54,
+      "hash": "sha256-f40186c90db8d266064e3b6da84b33f07e69619929f166e586ba73ca3c85900b",
+      "role": "entry",
+      "executable": false
+    }
+  ],
+  "manifestHash": "sha256-78e40920ac1a530d2a87c8223fe1f8abbbe8026dbce1c3bf0401d31d259e8efb"
+}

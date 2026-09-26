@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "formatVersion": 1,
+  "hostApiRange": ">=1.0.0 <2.0.0",
+  "dependencies": [],
+  "optionalDependencies": [],
+  "resources": [],
+  "platform": {
+    "platform": [
+      "any"
+    ],
+    "arch": [
+      "any"
+    ],
+    "runtimeVersion": "22.0.0",
+    "features": []
+  },
+  "packageId": "com.aika.fixture.normal",
+  "version": "1.0.0",
+  "label": "普通包",
+  "plugins": [
+    {
+      "pluginId": "normal.plugin",
+      "entry": "entry.mjs",
+      "label": "普通能力插件",
+      "capabilities": [
+        {
+          "adapterVersion": "1.0.0",
+          "contractVersion": "1.0.0",
+          "auth": "none",
+          "sideEffect": "none",
+          "execution": [
+            "unary"
+          ],
+          "capabilityId": "presentation.render",
+          "category": "presentation",
+          "adapterId": "normal.adapter",
+          "parameters": [
+            "presetId",
+            "maxFps"
+          ],
+          "inputs": [
+            {
+              "name": "presetId",
+              "type": "string",
+              "required": true,
+              "description": "要渲染的展示载荷"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "rendered",
+              "type": "string",
+              "required": true,
+              "description": "渲染结果描述"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "permissions": [],
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 52,
+      "hash": "sha256-61c9e48f223d432b34024946cd896c6d85c22792ca1db805585e3c1020ecbd2f",
+      "role": "documentation",
+      "executable": false
+    },
+    {
+      "path": "entry.mjs",
+      "bytes": 57,
+      "hash": "sha256-a9c565a949ec624ad8eeb0a84347874967342409e1f54f9cb7636f6b395a1853",
+      "role": "entry",
+      "executable": false
+    }
+  ],
+  "manifestHash": "sha256-30717f63949d2b8c9362e6f83eb5215b74c9801130240112025f5a931531c23a"
+}

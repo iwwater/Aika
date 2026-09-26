@@ -79,3 +79,7 @@ gradle/                Android 原型构建工具
 ## 许可
 
 项目当前未指定整体开源许可证。公开可见不代表授予额外使用许可。第三方组件与资料各自遵循原许可，见 [第三方说明](THIRD_PARTY_NOTICES.md)。
+
+## Aika Next（云端独立历史）
+
+本仓库现同时保留 Aika 主工程与 Aika Next 的独立产品线。Next 的平台入口为 [Windows](windows/README-WINDOWS.md) 与 code/desktop-pet/，原始项目介绍见 [README-NEXT.md](README-NEXT.md)，版本状态见 [Next 文档入口](docs/README_NEXT.md)。两套工程的依赖、数据和构建命令分别管理。

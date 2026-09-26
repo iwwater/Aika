@@ -1,0 +1,29 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'self' pet:; script-src 'self' pet: 'wasm-unsafe-eval'; style-src 'self' pet:; img-src 'self' pet: blob:; connect-src 'self' pet: blob:; media-src blob:; worker-src blob:"><title>AAAAGENT</title><link rel="stylesheet" href="style.css"></head><body>
+<main id="pet"><div id="character"><canvas id="model" aria-label="AAAAGENT桌宠，左键抚摸，右键功能菜单，拖动移动"></canvas><div id="speech-bubble" hidden aria-live="polite" class="speech-bubble"><div class="speech-bubble-tail"></div><div class="speech-bubble-content"><span id="speech-bubble-text"></span></div><button id="speech-bubble-close" type="button" class="speech-bubble-close" aria-label="关闭气泡">×</button></div><span id="thinking-indicator" role="status" aria-live="polite" hidden><span class="thinking-orbit" aria-hidden="true"><span>✦</span></span><span>想一想…</span></span><span id="loading">AAAAGENT正在过来…</span></div><button id="work-badge" type="button" aria-live="polite" aria-controls="work-card" aria-expanded="false" hidden></button><div id="invitation-card" role="group" aria-label="主动邀请" hidden><button id="invitation" type="button"></button><button id="invitation-ignore" type="button">稍后再说</button></div><button id="model-resize" type="button" aria-label="拖动调整模型大小；方向键也可调整" data-resizing="false" hidden></button><div id="capture-feedback" hidden aria-label="语音输入状态"><span id="capture-connecting" role="status">正在连接语音</span><span id="capture-wave" hidden><svg viewBox="0 0 160 24" role="img" aria-label="实时输入音量"><path id="capture-wave-path" d=""></path></svg></span></div><button id="open" aria-label="打开对话" aria-controls="drawer" aria-expanded="false">聊一会儿</button></main>
+<section id="drawer" hidden aria-label="对话面板">
+ <header><div class="panel-title"><span class="presence-dot" aria-hidden="true"></span><strong>青梅竹马</strong></div><button id="management" type="button" title="打开网页控制台" aria-label="打开网页控制台">控制台</button><div id="display-controls" role="group" aria-label="展示模式"><button id="view-full" type="button" aria-pressed="true">全身</button><button id="view-half" type="button" aria-pressed="false">半身</button></div><label id="model-size-control" title="调整桌宠大小"><span>大小</span><input id="model-size" type="range" min="220" max="720" step="10" value="360" aria-label="桌宠大小"><output id="model-size-value" for="model-size">360px</output></label><button id="close" aria-label="收起对话">×</button></header>
+ <p id="management-notice" role="status" hidden></p>
+ <p id="status" role="status">正在连接…</p>
+ <section id="conversation" aria-label="对话与任务内容" tabindex="0">
+ <div id="reply" role="log" aria-live="polite" aria-label="聊天记录与开场"></div>
+ <section id="work-card" aria-label="工程转交与回执" hidden></section>
+ </section>
+ <section id="work-actions" aria-label="任务操作" hidden></section>
+ <form id="form"><label class="sr-only" for="text">想说的话</label><textarea id="text" rows="1" autocomplete="off" placeholder="想说些什么…"></textarea><button type="submit" id="send" aria-label="发送">↑</button></form>
+ <footer><button id="voice">开始语音</button><button id="stop" hidden>停止</button><span id="hint">语音使用麦克风与摄像头</span><button id="quit" aria-label="退出桌宠">退出</button></footer>
+ <div id="hotkey-settings"><span>输入框外按住发言 · <b id="hotkey-value">未绑定</b></span><button id="hotkey-bind" type="button">设置按键</button><button id="hotkey-clear" type="button">清除</button><span class="input-tip">Enter 发送 · Shift + Enter 换行</span></div>
+</section>
+<dialog id="work-records-dialog" aria-labelledby="work-records-title"><header><h2 id="work-records-title">工程记录</h2><button id="work-records-close" type="button" aria-label="关闭工程记录">×</button></header><div id="work-records-content" tabindex="0" aria-label="任务问答与执行详情"></div></dialog>
+<section id="function-panel" hidden aria-label="功能面板" role="dialog" aria-modal="false"><header><div class="panel-title"><span class="presence-dot" aria-hidden="true"></span><strong>功能</strong></div><button id="function-close" type="button" aria-label="关闭功能面板">×</button></header><nav id="function-entries" aria-label="功能入口"></nav><p id="function-notice" role="status"></p></section>
+<section id="mic-test" hidden aria-label="麦克风测试" role="dialog" aria-modal="false">
+ <header><div class="panel-title"><span class="presence-dot" aria-hidden="true"></span><strong>麦克风测试</strong></div><button id="mic-close" type="button" aria-label="关闭麦克风测试">×</button></header>
+ <p class="subtle" id="mic-hint">只在本机测试设备，最长 5 秒，录音只留在内存里，不会上传，也不会写进对话记录。</p>
+ <label class="field" for="mic-device"><span>输入设备</span><select id="mic-device"><option value="">系统默认设备</option></select></label>
+ <div class="actions"><button id="mic-refresh" type="button">刷新设备</button><button id="mic-start" type="button" class="primary">开始试麦</button><button id="mic-stop" type="button" hidden>停止</button></div>
+ <div id="mic-meter" hidden aria-label="实测输入电平"><span id="mic-meter-fill"></span></div>
+ <p id="mic-level" role="status">尚未开始：先选择一个设备，再点“开始试麦”。</p>
+ <div id="mic-playback" hidden><audio id="mic-audio" controls preload="none"></audio><small>本地回放，关闭面板即销毁。</small></div>
+ <dl class="definitions" id="mic-facts"></dl>
+ <p id="mic-diagnosis" role="status"></p>
+</section>
+<div id="toast" role="status" aria-live="polite" hidden></div><script src="vendor/cubism/Core/live2dcubismcore.min.js"></script><script type="module" src="build/renderer.js"></script></body></html>

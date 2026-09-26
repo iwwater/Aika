@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "modelId": "local-model",
+  "modelFingerprint": "734221159c6c9f732457a749ff4f030e5c2797ba664d8e3aa30bd0cb53324c25",
+  "items": [
+    {
+      "id": "local-unmapped",
+      "label": "Hiyori",
+      "category": "idle",
+      "source": "procedural",
+      "availability": "unavailable",
+      "defaultEnabled": false,
+      "previewable": false
+    }
+  ]
+}

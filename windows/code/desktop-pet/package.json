@@ -1,0 +1,73 @@
+{
+  "name": "desktop-pet",
+  "version": "0.1.2",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node tools/build-wechat.mjs",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node tools/run-tests.mjs",
+    "test:next": "npm run build && node tools/run-tests.mjs next",
+    "test:next075": "npm run build && node tools/run-tests.mjs next075",
+    "test:next079": "npm run build && npm run build:desktop && node --test --test-concurrency=1 dist/tests/next079/data-safety.test.js dist/tests/next079/conversation-candidates.test.js dist/tests/next079/n079-flow-conversation.test.js dist/tests/next079/trace-content.test.js dist/tests/next079/interactive-region.test.js dist/tests/next079/local-greeting-preview.test.js dist/tests/management/memory-dynamics-http.test.js dist/tests/management/presentation.test.js dist/tests/management/strict-forget-integration.test.js tests/next079/thinking-timeout.test.mjs tests/management/presentation-preview-ui.test.mjs tests/tools/sanitize-trace-storage.test.mjs",
+    "test:next079:electron": "npm run build:desktop && node tools/run-next079-electron.mjs",
+    "test:next08": "npm run build && node --test dist/tests/next08/timeline-events.test.js dist/tests/next08/interaction-invariants.test.js dist/tests/next08/perception.test.js dist/tests/next08/perception-runtime.test.js dist/tests/next08/proactive-companion.test.js dist/tests/next08/invitation-runtime.test.js dist/tests/next08/proactive-invitation-runtime.test.js dist/tests/next08/work-protocol.test.js dist/tests/next08/work-protocol-runtime.test.js dist/tests/next08/protocol-stdio.integration.test.js dist/tests/next08/integration-closure.test.js tests/management/perception-routes.test.mjs tests/management/perception-view.test.mjs tests/management/modern-timeline-view.test.mjs tests/management/work-protocol-view.test.mjs tests/management/proactive-view.test.mjs tests/management/invitation-auto-dismiss.test.mjs",
+    "test:next081": "npm run build && node tools/run-tests.mjs next081",
+    "dev:next081:smoke": "node tools/run-next081-smoke.mjs",
+    "report:next081": "node tools/next081-trial-report.mjs",
+    "measure:next081": "node tools/measure-next081-resources.mjs",
+    "check:next081:pin": "node tools/check-next081-trial-pin.mjs",
+    "test:next082": "npm run build && node tools/run-tests.mjs next082",
+    "dev:next082:smoke": "node tools/run-next082-smoke.mjs",
+    "test:next08:electron": "npm run build:desktop && node tools/run-next08-electron.mjs",
+    "audit:console": "node tools/run-audit-management-console.mjs",
+    "test:next61": "npm run build && node tools/run-tests.mjs next61",
+    "test:next65": "npm run build && node tools/build-next65.mjs && node tools/release-next65.mjs && node tools/run-tests.mjs next65",
+    "build:next65": "npm run build && node tools/build-next65.mjs",
+    "sdk:next65": "npm run build && node tools/emit-plugin-sdk.mjs",
+    "test:next:real": "npm run build && node tools/run-tests.mjs next-real",
+    "test:next07:real": "npm run build && node tools/acceptance-next07-05.mjs",
+    "test:next07": "npm run build && node --test dist/tests/memory/character-pack-source.test.js dist/tests/memory/character-pack-validator.test.js dist/tests/memory/character-pack-store.test.js dist/tests/memory/character-pack-activation.test.js dist/tests/memory/character-source-provider.test.js dist/tests/providers/character-distiller.test.js dist/tests/providers/character-distiller-02.test.js dist/tests/memory/continuity-memory.test.js dist/tests/memory/continuity-context.test.js dist/tests/management/continuity-routes.test.js",
+    "test:release": "npm run build && node tools/run-tests.mjs release",
+    "build:wake": "node tools/build-wake.mjs",
+    "build:desktop": "node desktop/build-web.mjs && node desktop/build-presentation-preview.mjs",
+    "build:native": "node tools/build-native.mjs",
+    "build:collection": "node tools/build-collection-helper.mjs",
+    "doctor": "node tools/release-doctor.mjs",
+    "dev": "npm run build && npm run build:desktop && node tools/dev-desktop.mjs",
+    "start": "node dist/app/trial-launcher.js",
+    "configure": "node tools/configure-local.mjs",
+    "build:windows": "npm run build && npm run build:desktop && npm run build:wake && npm run build:native && npm run build:collection",    "test:windows": "npm run build && node tools/run-tests.mjs windows",
+    "test:stress": "npm run build && node --test --test-concurrency=1 tests/windows-stress.test.mjs",
+    "test:windows:ui": "npm run build && npm run build:desktop && node tools/dev-desktop.mjs --smoke-test",
+    "refresh:runtime": "node tools/refresh-runtime.mjs",
+    "configure-local": "node tools/configure-local.mjs",
+    "test:setup": "npm run build && node --test dist/tests/integration/self-setup-50.test.js dist/tests/management/self-setup.test.js dist/tests/management/voice-setup.test.js dist/tests/providers/voice-enrollment.test.js dist/tests/providers/registered-voices.test.js",
+    "test:emotion": "npm run build && node --test dist/tests/memory/emotion-state.test.js dist/tests/providers/emotion-inference.test.js dist/tests/integration/emotion-state-51.test.js dist/tests/integration/emotion-http-51.test.js dist/tests/integration/emotion-review.test.js",
+    "test:emotion:ui": "node --test tests/management/emotion-ui.test.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "20.19.43",
+    "@types/qrcode": "1.5.6",
+    "electron": "44.4.1",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  },
+  "dependencies": {
+    "better-sqlite3": "12.11.1",
+    "pinyin-pro": "3.29.4",
+    "qrcode": "1.5.4",
+    "sherpa-onnx-node": "1.13.8",
+    "silk-wasm": "3.7.1"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true,
+    "esbuild@0.28.2": true,
+    "electron@44.4.1": true
+  }
+}

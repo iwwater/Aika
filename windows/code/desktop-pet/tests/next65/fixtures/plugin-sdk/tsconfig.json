@@ -1,0 +1,26 @@
+{
+  "//": "K65-01 01-C: this tsconfig deliberately does NOT extend the host tsconfig. `extends: '../../../../tsconfig.json'` would make the fixture compile with the host's include/rootDir/outDir and would prove nothing about whether a third-party package can build on its own.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "declaration": false,
+    "sourceMap": false,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "aika-plugin-sdk": ["../../../../dist/next65-sdk/index.ts"],
+      "aika-plugin-sdk/*": ["../../../../dist/next65-sdk/*"]
+    }
+  },
+  // `src/host-reach-through.ts` is the NEGATIVE fixture: it must never join this project's own
+  // build, because that build is 01-C's positive claim ("this package compiles without the host").
+  "include": ["src/**/*.ts"],
+  "exclude": ["dist", "node_modules", "src/host-reach-through.ts"]
+}

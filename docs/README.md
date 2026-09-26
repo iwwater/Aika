@@ -53,3 +53,7 @@
 [RPD_MVP_0.6](RPD_MVP_0.6.md)：Pet Shell（OpenPet fork ＋ Live2D 换装）规划稿。[SPEC 索引与 MVP-07～13 明细](integration/SPEC_MVP_0.6.md)已拆为草案；MVP-12 未纳入，其他项仍待决策与实施授权。独立小任务见 [KB-01](llm/specs/KB-01.md)。
 
 [TODO 工作池](TODO.md)：用户方向性需求的登记与状态看板（愿望池，非执行授权）。
+
+## Aika Next 文档
+
+Next 的版本路线、SPEC 与报告见 [Next 文档入口](README_NEXT.md)；旧主工程与 Next 文档保持各自版本边界。

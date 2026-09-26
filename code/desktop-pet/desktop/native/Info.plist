@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleExecutable</key><string>DesktopPet</string>
+<key>CFBundleIdentifier</key><string>local.movefile.desktop-pet</string>
+<key>CFBundleName</key><string>AAAAGENT</string>
+<key>CFBundleDisplayName</key><string>AAAAGENT</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleVersion</key><string>0.1.0</string>
+<key>LSMinimumSystemVersion</key><string>14.0</string>
+<key>LSUIElement</key><true/>
+<key>NSMicrophoneUsageDescription</key><string>仅在你主动开始语音时录制这一轮声音，用于对话和语气理解。</string>
+<key>NSCameraUsageDescription</key><string>仅在你主动开始语音时获取本轮画面，用于理解表情；结束输入后停止采集。</string>
+</dict></plist>

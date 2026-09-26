@@ -1,0 +1,3 @@
+{"probe":"derived-after-forget","sourceGone":true,"derivedStillActive":true}
+{"probe":"distiller-metadata","status":"validated","cutoffSaved":null,"workTitleSaved":null}
+{"probe":"unknown-cutoff","blocks":2,"allowed":2}

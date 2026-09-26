@@ -1,0 +1,93 @@
+# K65-00 raw evidence (machine-generated; see reports/K65-00.md for the analysis)
+generated=2026-09-21T20:31:39.3705069+08:00
+HEAD=d7c61d674374d760e57d18ebe2bf0b42c7e94c4b
+
+## A. Suite TAP summaries
+--- 00b-test-next65.txt  (the new suite; this is the 00-D gate)
+ℹ tests 21
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+--- 00b-media.log
+ℹ tests 63
+ℹ pass 63
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ duration_ms 367.7775
+--- 00b-next.log
+ℹ tests 80
+ℹ pass 80
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ duration_ms 876.2747
+--- 00b-next61.log
+ℹ tests 143
+ℹ pass 143
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ duration_ms 41387.13
+--- 00b-windows.log
+ℹ tests 22
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ duration_ms 16669.4423
+
+## B. Runner guard probes (exit codes)
+guard A (both dirs missing)  : exit 2 : K65 test directories missing (dist/tests/next65, tests/next65); build first, then re-run. Refusing a passWithNoTests run.
+guard B (dirs empty)         : exit 2 : K65 test collection is empty; refusing a passWithNoTests run.
+guard C (one case present)   : exit 0 : pass 1 / fail 0 (guard does not false-positive)
+guard D (git HEAD runner)    : exit 1 : Error: Unknown test group  (RED: the next65 branch is new)
+
+## C. Real-replay branches
+npm run test:next:real (no PET_NEXT_REAL) : exit 2 : NEXT-REAL BLOCKED: real-service replay requires PET_NEXT_REAL=1 plus authorized credentials and recorded fixtures.
+PET_NEXT_REAL=1 node tools/run-tests.mjs next-real : exit 0 : tests 5 / pass 3 / skipped 2
+
+## D. CER gate diagnostics (three runs)
+[k65-cer] parts=11 firstPartialMs=438 finalMs=6 cer=0.0000 text="对我做了介绍那么我想说的是大家如果对我的研究感兴趣"
+[k65-cer] parts=11 firstPartialMs=471 finalMs=8 cer=0.0000 text="对我做了介绍那么我想说的是大家如果对我的研究感兴趣"
+[k65-cer] parts=11 firstPartialMs=491 finalMs=6 cer=0.0000 text="对我做了介绍那么我想说的是大家如果对我的研究感兴趣"
+[k65-cer] parts=11 firstPartialMs=481 finalMs=6 cer=0.0000 text="对我做了介绍那么我想说的是大家如果对我的研究感兴趣"
+
+## E. Integration failures: exact error text (per-file isolation, 32 files / 261 tests / 247 pass / 6 fail / 3 skipped)
+--- integration/backend-session.test.js
+Error [ERR_MODULE_NOT_FOUND]: Cannot find module 'F:\AIVoice\Aika-Next\windows\code\desktop-pet\tests\desktop\ui-harness.mjs' imported from F:\AIVoice\Aika-Next\windows\code\desktop-pet\dist\tests\integration\backend-session.test.js
+code: 'ERR_MODULE_NOT_FOUND',
+Error [ERR_MODULE_NOT_FOUND]: Cannot find module 'F:\AIVoice\Aika-Next\windows\code\desktop-pet\tests\desktop\ui-harness.mjs' imported from F:\AIVoice\Aika-Next\windows\code\desktop-pet\dist\tests\integration\backend-session.test.js
+code: 'ERR_MODULE_NOT_FOUND',
+--- integration/capture-feedback-wire.test.js
+Error [ERR_MODULE_NOT_FOUND]: Cannot find module 'F:\AIVoice\Aika-Next\windows\code\desktop-pet\tests\desktop\ui-harness.mjs' imported from F:\AIVoice\Aika-Next\windows\code\desktop-pet\dist\tests\integration\capture-feedback-wire.test.js
+code: 'ERR_MODULE_NOT_FOUND',
+--- integration/clear-reminders.test.js
+Error [ERR_MODULE_NOT_FOUND]: Cannot find module 'F:\AIVoice\Aika-Next\windows\code\desktop-pet\tests\desktop\ui-harness.mjs' imported from F:\AIVoice\Aika-Next\windows\code\desktop-pet\dist\tests\integration\clear-reminders.test.js
+code: 'ERR_MODULE_NOT_FOUND',
+--- integration/deepseek-text-update.test.js
+throw new ERR_MODULE_NOT_FOUND(
+Error [ERR_MODULE_NOT_FOUND]: Cannot find module 'F:\AIVoice\Aika-Next\windows\code\desktop-pet\tools\prepare-trial-update.mjs' imported from F:\AIVoice\Aika-Next\windows\code\desktop-pet\dist\tests\integration\deepseek-text-update.test.js
+code: 'ERR_MODULE_NOT_FOUND',
+--- integration/memory-trial.test.js
+AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Bounded trial is stopped/. Input:
+'Error: Invalid explicit evaluation paths or run ID'
+code: 'ERR_ASSERTION',
+--- integration/pending-memory-management.test.js
+OBSERVED HANG, no TAP summary produced. Raw log content (264 bytes, complete):
+  "real HTTP/SQLite pending recovery is explicit, instance-bound, duplicate-safe and blocks the cancelled late writer (180.5872ms)"
+Re-run isolated with --test-timeout=60000: process did NOT return within 300000 ms (killed by the caller).
+Pre-existing: the node --test process for this file was already alive before this step began (PID 10032, started 19:35:28).
+
+## F. git-tracked state of the failing test files (all TRACKED@HEAD, worktree clean)
+windows/code/desktop-pet/tests/integration/backend-session.test.ts
+windows/code/desktop-pet/tests/integration/capture-feedback-wire.test.ts
+windows/code/desktop-pet/tests/integration/clear-reminders.test.ts
+windows/code/desktop-pet/tests/integration/deepseek-text-update.test.ts
+windows/code/desktop-pet/tests/integration/memory-trial.test.ts
+windows/code/desktop-pet/tests/integration/pending-memory-management.test.ts
+
+## G. never-in-git probes (empty output = never existed)
+--- git log --all -- tests/desktop/ui-harness.mjs
+--- git log --all -- tools/prepare-trial-update.mjs

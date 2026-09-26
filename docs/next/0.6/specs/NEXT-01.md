@@ -1,0 +1,26 @@
+# NEXT-01 · 行为语料与契约测试基座
+
+状态：AUTO_PASS（2026-09-19）。需求：N06-R02。前置：NEXT-00 源码映射与基线通过。产物与证据见 [CORPUS_MANIFEST](../CORPUS_MANIFEST.md)、[CONTRACT_MAP](../CONTRACT_MAP.md)、[验收报告](../reports/NEXT-01_ACCEPTANCE.md)。
+
+## 边界与接口
+
+允许新增测试 fixture、harness、模块测试配置和必要薄测试入口；按 CONTRACTS 将设计符号映射为实际上游类型。不提前实现 Provider、Timeline 或新 Runtime，不复制整套旧测试目录。被测对象必须是上游生产代码或后续 adapter。
+
+## TDD 步骤
+
+1. 从固定 Legacy 与上游测试提取行为案例，写 CORPUS_MANIFEST，登记路径、hash、预期和真实/模拟标签。
+2. 为现有行为建立 characterization tests；新契约的缺口分别记录待对应 SPEC 实现，不能使日常基线长期全红。新行为测试在对应 SPEC 实施时启用并先证明 RED。
+3. 建 fake Provider、虚拟时钟、可控延迟 Promise、临时持久化库、音频/流片段入口，支持注入迟到、乱序、错误和取消。只替换依赖，不能 fake 被测链路。
+4. 固定真实服务回放样本、参数和客观断言；验证可访问性。可复用本机已有语料，但不得提交私有素材。
+
+## AC
+
+| ID | 验收 |
+| --- | --- |
+| 01-A | TESTING 最低矩阵逐项映射 caseId/来源/预期/责任 SPEC，无“以后随便补”的空范围 |
+| 01-B | Scope、终态、取消、订阅清理契约可直接作用于生产实现，现有行为通过 |
+| 01-C | 确定性用例连续运行两次结果一致，不靠任意 sleep 或联网决定逻辑断言 |
+| 01-D | fixture 和真实回放入口分开；缺真实服务不能静默 fallback 到 fake 并报 PASS |
+| 01-E | 全部拟用测试命令经实际验证能发现用例；源码映射、语料清单无密钥和私人正文 |
+
+定向验证测试基础设施及现有契约，不强制全产品构建。产物：语料清单、实际契约映射、报告。

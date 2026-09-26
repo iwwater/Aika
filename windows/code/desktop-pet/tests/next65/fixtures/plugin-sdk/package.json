@@ -1,0 +1,11 @@
+{
+  "name": "aika-fixture-capability-package",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "K65-01 01-C: an independent capability-package project. It compiles against the emitted plugin SDK artifact and nothing else; it never reuses the host tsconfig, the host contracts tree or the host node_modules resolver state.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit"
+  }
+}

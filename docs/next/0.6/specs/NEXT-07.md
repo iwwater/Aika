@@ -1,0 +1,24 @@
+# NEXT-07 · 最小操作 UI
+
+状态：AUTO_PASS（2026-09-20）。需求：N06-R08。前置：NEXT-02～06。证据见 [验收报告](../reports/NEXT-07_ACCEPTANCE.md)；presenter 在 `management/aika-console.ts`，路由在 `management/aika-routes.ts`。
+
+## 边界与接口
+
+在上游 Windows Management/交互入口最小扩展：Aika 名称、角色/Provider 配置、文本发送、语音启停、当前状态与错误、Timeline 查询。不重写整套 UI，不迁移旧 App.tsx，不加入桌宠/Live2D 功能。
+
+UI 消费 profile/settings、TurnPort、Voice 状态与 TimelinePort；不得直接调用模型或自己抽取 Memory。UI 单模块测试用 fake ports，关键装配另做生产 wiring 测试。
+
+## TDD 与 AC
+
+先写交互断言再接线；使用可用的上游组件/浏览器测试工具，不为视觉微调建庞大测试体系。
+
+| ID | 验收 |
+| --- | --- |
+| 07-A | 配置读写调用正确端口，非法值和保存失败可见，密钥显示不泄漏正文 |
+| 07-B | 发送、取消、语音启停只产生一次命令；状态遵循生产终态，错误后可再次发送 |
+| 07-C | 切会话后旧轮结果不覆盖当前显示；卸载页面解除订阅 |
+| 07-D | Timeline 可分页并显示取消/失败；redact 后刷新不显示已清理正文 |
+| 07-E | 缺语音后端显示准确不可用/降级信息；不假装已启用真实语音 |
+| 07-F | 至少一个实际 UI→生产端口的装配测试通过，证明 fake UI 测试没有掩盖接线错误 |
+
+小阶段只跑相关 UI 和契约；真实布局、设备权限和听感留版本人工验收。

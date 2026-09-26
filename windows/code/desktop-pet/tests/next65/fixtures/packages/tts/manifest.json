@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "formatVersion": 1,
+  "hostApiRange": ">=1.0.0 <2.0.0",
+  "dependencies": [],
+  "optionalDependencies": [],
+  "resources": [],
+  "platform": {
+    "platform": [
+      "any"
+    ],
+    "arch": [
+      "any"
+    ],
+    "runtimeVersion": "22.0.0",
+    "features": []
+  },
+  "packageId": "com.aika.fixture.tts",
+  "version": "1.2.3",
+  "label": "TTS 包",
+  "plugins": [
+    {
+      "pluginId": "tts.plugin",
+      "entry": "entry.mjs",
+      "label": "TTS 合成插件",
+      "capabilities": [
+        {
+          "adapterVersion": "1.0.0",
+          "contractVersion": "1.0.0",
+          "auth": "none",
+          "sideEffect": "none",
+          "execution": [
+            "unary",
+            "streaming"
+          ],
+          "capabilityId": "tts.synthesize",
+          "category": "output",
+          "adapterId": "tts.local",
+          "parameters": [
+            "voiceId",
+            "streaming"
+          ],
+          "inputs": [
+            {
+              "name": "voiceId",
+              "type": "string",
+              "required": true,
+              "description": "音色标识"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "audio",
+              "type": "bytes",
+              "required": true,
+              "description": "合成音频字节"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "permissions": [
+    {
+      "id": "speaker",
+      "scope": "tts:playback",
+      "reason": "播放合成语音",
+      "promptsUser": true
+    }
+  ],
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 49,
+      "hash": "sha256-7590aae4665a63f0270f0e1fda38c1d3d63c3f8fc8e96413ee84977010aa5342",
+      "role": "documentation",
+      "executable": false
+    },
+    {
+      "path": "entry.mjs",
+      "bytes": 54,
+      "hash": "sha256-4aa3c013b347542709504227f57ecade4851927e2c104037f74e54909d9a7037",
+      "role": "entry",
+      "executable": false
+    },
+    {
+      "path": "voices/default.json",
+      "bytes": 28,
+      "hash": "sha256-7c10a5d82de8996d1002003d8fb7e9e4775bc7fe2b0186f48ba29ecb2884c165",
+      "role": "asset",
+      "executable": false
+    }
+  ],
+  "manifestHash": "sha256-8a9bd28ef1bd8ef63a0f46b418173a73e497d7ac7b5a6fb4a385581dbaa5430b"
+}

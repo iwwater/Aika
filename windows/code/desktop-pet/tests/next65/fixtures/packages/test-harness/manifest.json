@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "formatVersion": 1,
+  "hostApiRange": ">=1.0.0 <2.0.0",
+  "dependencies": [],
+  "optionalDependencies": [],
+  "resources": [
+    {
+      "id": "probe-weight",
+      "kind": "model",
+      "reference": "external://models/probe.bin",
+      "required": false,
+      "readiness": null,
+      "external": true
+    }
+  ],
+  "platform": {
+    "platform": [
+      "any"
+    ],
+    "arch": [
+      "any"
+    ],
+    "runtimeVersion": "22.0.0",
+    "features": []
+  },
+  "packageId": "com.aika.fixture.test",
+  "version": "2.0.0",
+  "label": "测试包",
+  "plugins": [
+    {
+      "pluginId": "test.harness",
+      "entry": "entry.mjs",
+      "label": "测试探针插件",
+      "capabilities": [
+        {
+          "adapterVersion": "1.0.0",
+          "contractVersion": "1.0.0",
+          "auth": "none",
+          "sideEffect": "local_read",
+          "execution": [
+            "unary"
+          ],
+          "capabilityId": "background.lifecycle",
+          "category": "background_lifecycle",
+          "adapterId": "test.adapter",
+          "parameters": [
+            "pollIntervalMs"
+          ],
+          "inputs": [
+            {
+              "name": "pollIntervalMs",
+              "type": "string",
+              "required": true,
+              "description": "探针间隔"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "status",
+              "type": "string",
+              "required": true,
+              "description": "探针状态"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "permissions": [],
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 52,
+      "hash": "sha256-08373c8ef684658a3b113fa0d623046778c5c045cf8ba0320c8770f6a4f4d198",
+      "role": "documentation",
+      "executable": false
+    },
+    {
+      "path": "data/probe.json",
+      "bytes": 22,
+      "hash": "sha256-5a21ebd0de1e2f20bdd229131f99114ddf31eef850ff5d466a8c73ee96513b41",
+      "role": "data",
+      "executable": false
+    },
+    {
+      "path": "entry.mjs",
+      "bytes": 56,
+      "hash": "sha256-6bf4c870cb0f42e187000026c5a1fdd4c2bbe3e8f84d8281ca23a31f00f633a5",
+      "role": "entry",
+      "executable": false
+    }
+  ],
+  "manifestHash": "sha256-98a829e966db73d62b4abd5407b8871fce05749d8bce2346a57a222751cef8c9"
+}

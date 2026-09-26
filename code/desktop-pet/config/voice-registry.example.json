@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "revision": 1,
+  "voices": [
+    {
+      "voiceId": "YOUR_AUTHORIZED_VOICE_ID",
+      "label": "Your authorized voice",
+      "provider": "dashscope",
+      "endpoint": "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+      "targetModel": "MiniMax/speech-2.8-turbo",
+      "credentialRef": "OUTPUT_OF_VOICE_REFERENCE_TOOL",
+      "referenceSha256": "SHA256_OF_YOUR_REAL_REFERENCE_ASSET",
+      "createdAt": "REAL_PROVIDER_REGISTRATION_TIME_ISO_UTC"
+    }
+  ]
+}
