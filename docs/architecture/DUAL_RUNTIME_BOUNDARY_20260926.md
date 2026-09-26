@@ -1,6 +1,6 @@
 # 合批后的双运行端边界 · 2026-09-26
 
-状态：**边界已核对；下一交付主端待产品决定**。基线 `codex/aika-local-cloud-merge`，`4e723e3`。本记录是当前交付选择的依据，不创建跨端共享运行时，也不迁移用户数据。
+状态：**交付优先级已确认（2026-09-27）**。基线 `codex/aika-local-cloud-merge`，`8317093`。Tauri Windows 是下一交付主线，Next Windows Electron 独立维护；不创建跨端共享运行时，也不迁移用户数据。
 
 | 维度 | Aika Tauri / React | Aika Next Windows Electron |
 | --- | --- | --- |
@@ -13,10 +13,10 @@
 ## 执行决定
 
 1. 两端保持各自组合根、数据根、版本状态和报告；本轮不搬运对话、记忆、角色、授权或任务记录，不把两端的 `Runtime`/`BackendSession` 直接接在一起。
-2. 产品默认入口暂沿用根 README 的 Aika Tauri/React 口径。Next Windows Electron 继续作为独立交付线审阅，0.79/0.81 的准入和 UI 修复按该线现有 SPEC 执行；若用户决定改以 Next 为下一交付主端，只调整优先级，不更改本表事实。
+2. 用户已确认沿根 README 优先交付 Aika Tauri Windows。先补当前分支的 Tauri 启动、生产存储与相关集成证据，再按适用门禁评估交付。Next Windows Electron 独立维护，0.79/0.81 的准入和 UI 修复仍按该线现有 SPEC 记录与执行，但不占本轮 Tauri 主线的先序；0.82 CR-02/03 继续 DEFERRED。
 3. 任何跨端共享需求先写清一个用户场景和字段级契约，再列来源数据、权限、撤销、冲突和回滚方案；只有获准的单一消费者接线可进入实施。不存在“合批 Git 后自动共享数据”的默认迁移。
 4. 下一次合入 `master` 或 `aika-next` 需先通过[合批准入核对](../integration/MERGE_ADMISSION_20260926.md)，尤其是许可证覆盖范围；合入动作不代签任一版本验收。
 
-## 待决定项
+## 后续安排
 
-下一交付版本优先投入哪一端：Aika Tauri、Next Windows Electron，或两端分别维护。该选择只影响 P1 工作排序；两端现有数据与验收边界均保持独立。选定后把决定补在本节，旧报告不回填为 PASS。
+当前先执行 [INT-01-D](../integration/SPEC.md) 的 Tauri 宿主与 plugin-sql 核验，再处理 Tauri 适用的集成缺口；Next 的 UI 与 0.79/0.81 准入作为独立维护队列。两端现有数据与验收边界保持独立，旧报告不回填为 PASS。

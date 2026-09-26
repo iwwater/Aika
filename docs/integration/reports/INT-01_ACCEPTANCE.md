@@ -44,3 +44,17 @@ npm run build                        退出码 0；产物 dist/assets/index-6kdO
 结论：**生产构建下 Trace 默认关**——`services/trace/traceSettings.ts:28` 依赖的 `import.meta.env.DEV` 在构建期被替换为 `false`，与[规划文档 §7 问题 2](../../PLAN_DEV_DEBUG_WORKBENCH.md)的取舍一致；`includeText` 与构建无关，恒为 `false`。
 
 边界（不外推）：本节是**构建产物级**证据，不替代真实桌面宿主启动的目视验收，也不构成 INT-01-D 其余子项的证据；本轮未做真实外发，未启动真实宿主。
+
+## 补记：合批分支 Tauri 主线构建（2026-09-27）
+
+用户确认下一交付主线为 Tauri Windows 后，在 `codex/aika-local-cloud-merge` 的 `8317093` 源码基线运行 `npm run build`（`aika-crossplatform/`）：`prebuild` 同步 2 个本地 ORT 运行时文件，`tsc && vite build` **退出码 0**，2075 个模块转换完成，主 JS 产物 `index-CkcHJqwf.js` 602.58 kB。Vite 报告混合静态/动态 import 与超过 500 kB 的 chunk 警告，没有构建失败。
+
+首次在受限工作区执行时，`prebuild` 复制 ORT wasm 到 `public/ort/` 返回 `EPERM`（退出码 1）；允许工作区写入后，原命令重试成功。该首次失败是构建环境写权限，不计为源码通过证据。生成的 `public/ort/` 和 `dist/` 均不纳入提交。
+
+| INT-01-D 子项 | 当前结果 |
+| --- | --- |
+| 当前分支前端生产构建 | **PASS**：`npm run build` 退出码 0；与 2026-09-16 的历史产物区分。 |
+| 真实 Tauri 启动与重开 | **NOT RUN**：本轮未生成当前分支的原生可执行文件，也未启动桌面宿主。 |
+| plugin-sql 生产库建表、插入、删除与错误 UI | **NOT RUN**：浏览器 localStorage 和 node:sqlite 证据不能替代真实 Tauri plugin-sql。 |
+
+INT-01-D 仍为 **PARTIAL**，INT-01 整体状态不变。下次宿主核验应在隔离测试数据根进行，记录可执行文件基线、数据库位置、窗口/错误 UI 与重开结果；不读取或改写日用数据。
