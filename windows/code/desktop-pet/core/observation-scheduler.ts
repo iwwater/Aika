@@ -35,6 +35,8 @@ export class ObservationScheduler {
   private readonly onObservation?: ((item: ObservationItem) => void) | undefined;
   private readonly now: () => string;
   private isBusy = false;
+  private generation = 0;
+  private activeAbort: AbortController | null = null;
   private currentGrant: ContinuousPerceptionGrant | null = null;
   private currentTarget: ScreenTarget | null = null;
 
@@ -47,6 +49,7 @@ export class ObservationScheduler {
   }
 
   setContext(grant: ContinuousPerceptionGrant | null, target: ScreenTarget | null): void {
+    this.cancel();
     this.currentGrant = grant;
     this.currentTarget = target;
   }
@@ -87,11 +90,24 @@ export class ObservationScheduler {
 
   async #runObservation(signal?: AbortSignal): Promise<ObservationItem | null> {
     this.isBusy = true;
+    const generation = this.generation;
+    const grant = this.currentGrant;
+    const target = this.currentTarget;
+    const abort = new AbortController();
+    this.activeAbort = abort;
+    const forwardAbort = () => abort.abort();
+    if (signal?.aborted) abort.abort();
+    else signal?.addEventListener('abort', forwardAbort, { once: true });
+    const current = () => !abort.signal.aborted && this.generation === generation
+      && this.currentGrant === grant && this.currentTarget === target
+      && grant?.state === 'active' && Date.parse(grant.expiry) > Date.parse(this.now());
     try {
-      const frame = await this.captureSource.capture(this.currentTarget!, signal);
+      const frame = await this.captureSource.capture(target!, abort.signal);
+      if (!current()) return null;
       if (!frame || frame.bytes.length === 0) return null;
 
-      const ocr = await this.ocrEngine(frame.bytes, signal);
+      const ocr = await this.ocrEngine(frame.bytes, abort.signal);
+      if (!current()) return null;
       if (ocr.status !== 'ok' || !ocr.readingOrderText.trim()) {
         return null;
       }
@@ -104,14 +120,20 @@ export class ObservationScheduler {
         blockCount: ocr.blocks.length,
       };
 
+      if (!current()) return null;
       this.onObservation?.(item);
       return item;
     } finally {
-      this.isBusy = false;
+      signal?.removeEventListener('abort', forwardAbort);
+      if (this.activeAbort === abort) {
+        this.activeAbort = null;
+        this.isBusy = false;
+      }
     }
   }
 
   cancel(): void {
-    this.isBusy = false;
+    this.generation++;
+    this.activeAbort?.abort();
   }
 }

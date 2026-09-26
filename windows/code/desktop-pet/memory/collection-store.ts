@@ -632,31 +632,25 @@ export class CollectionStore implements CollectionGrantStorePort {
       const invalidate = this.db.prepare("UPDATE collection_samples SET state='invalidated', revision=revision+1 WHERE id=?");
       const pairKey = `${input.pairing.userId}|${input.pairing.characterId}|${input.pairing.characterInstanceId}`;
 
-      let candidateAffected = 0;
-      // N082-02: Cascade invalidation to candidates and derived text
-      if (input.scope === 'source' && input.sourceKind) {
-        const cands = this.db.prepare(`
-          SELECT id, native_event_id FROM collection_candidates
-          WHERE user_id=? AND character_id=? AND character_instance_id=? AND source_kind=? AND state='pending'
-        `).all(input.pairing.userId, input.pairing.characterId, input.pairing.characterInstanceId, input.sourceKind) as { id: string; native_event_id: string }[];
-        candidateAffected = cands.length;
-        for (const c of cands) {
-          tombstones.run(pairKey, c.native_event_id, input.scope, this.now());
-        }
-        this.db.prepare(`
-          UPDATE collection_candidates SET state='invalidated', revision=revision+1
-          WHERE user_id=? AND character_id=? AND character_instance_id=? AND source_kind=?
-        `).run(input.pairing.userId, input.pairing.characterId, input.pairing.characterInstanceId, input.sourceKind);
-      } else if (input.scope === 'all') {
-        this.db.prepare(`
-          UPDATE collection_candidates SET state='invalidated', revision=revision+1
-          WHERE user_id=? AND character_id=? AND character_instance_id=?
-        `).run(input.pairing.userId, input.pairing.characterId, input.pairing.characterInstanceId);
-        this.db.prepare(`
-          DELETE FROM collection_derived_text
-          WHERE user_id=? AND character_id=? AND character_instance_id=?
-        `).run(input.pairing.userId, input.pairing.characterId, input.pairing.characterInstanceId);
-      }
+      // Invalidate pending and processed candidates for every erase scope. Derived text must
+      // disappear with any parent, including a parent whose processing finished earlier.
+      const candidateWhere = ['user_id=?', 'character_id=?', 'character_instance_id=?', "state IN ('pending','processed')"];
+      const candidateArgs: unknown[] = [input.pairing.userId, input.pairing.characterId, input.pairing.characterInstanceId];
+      if (input.scope === 'item') { candidateWhere.push('id=?'); candidateArgs.push(input.sampleId ?? ''); }
+      if (input.scope === 'range') { candidateWhere.push('received_at>=?', 'received_at<?'); candidateArgs.push(input.from ?? '', input.to ?? ''); }
+      if (input.scope === 'source') { candidateWhere.push('source_kind=?'); candidateArgs.push(input.sourceKind ?? ''); }
+      const cands = this.db.prepare(`SELECT id, native_event_id FROM collection_candidates WHERE ${candidateWhere.join(' AND ')}`)
+        .all(...candidateArgs) as { id: string; native_event_id: string }[];
+      for (const cand of cands) tombstones.run(pairKey, cand.native_event_id, input.scope, this.now());
+      this.db.prepare(`UPDATE collection_candidates SET state='invalidated', text_content=NULL,
+        revision=revision+1 WHERE ${candidateWhere.join(' AND ')}`)
+        .run(...candidateArgs);
+      this.db.prepare(`
+        DELETE FROM collection_derived_text WHERE user_id=? AND character_id=? AND character_instance_id=?
+          AND EXISTS (SELECT 1 FROM json_each(parent_refs_json) AS parent
+            JOIN collection_candidates AS candidate ON candidate.id=json_extract(parent.value,'$.sourceId')
+            WHERE candidate.state='invalidated')
+      `).run(input.pairing.userId, input.pairing.characterId, input.pairing.characterInstanceId);
 
       for (const target of targets) {
         tombstones.run(pairKey, target.idempotency_key, input.scope, this.now());
@@ -664,11 +658,11 @@ export class CollectionStore implements CollectionGrantStorePort {
         if (target.asset_id) this.#releaseAssetRef(target.asset_id);
       }
 
-      if (targets.length === 0 && candidateAffected === 0) return { affected: 0, revision: this.revision };
+      if (targets.length === 0 && cands.length === 0) return { affected: 0, revision: this.revision };
       // The user's original screenshots are never in the managed asset area and are never removed here.
       this.#collectUnreferencedAssets();
       this.#bumpCollectionRevision();
-      return { affected: targets.length, revision: this.revision };
+      return { affected: targets.length + cands.length, revision: this.revision };
     }).immediate();
   }
 
@@ -697,14 +691,31 @@ export class CollectionStore implements CollectionGrantStorePort {
         update.run(row.id);
         if (row.asset_id) this.#releaseAssetRef(row.asset_id);
       }
+      const expiredCandidates = this.db.prepare(`
+        SELECT user_id, character_id, character_instance_id, native_event_id
+        FROM collection_candidates WHERE state IN ('pending','processed') AND expires_at<=?
+      `).all(now) as { user_id: string; character_id: string; character_instance_id: string; native_event_id: string }[];
+      for (const row of expiredCandidates) {
+        this.db.prepare(`INSERT OR IGNORE INTO collection_tombstones(pair_key,idempotency_key,reason,created_at)
+          VALUES(?,?,?,?)`).run(`${row.user_id}|${row.character_id}|${row.character_instance_id}`,
+          row.native_event_id, 'expired', now);
+      }
+      this.db.prepare(`UPDATE collection_candidates SET state='invalidated', text_content=NULL,
+        revision=revision+1 WHERE state IN ('pending','processed') AND expires_at<=?`).run(now);
+      this.db.prepare(`DELETE FROM collection_derived_text WHERE expires_at<=?
+        OR EXISTS (SELECT 1 FROM json_each(parent_refs_json) AS parent
+          JOIN collection_candidates AS candidate ON candidate.id=json_extract(parent.value,'$.sourceId')
+          WHERE candidate.state='invalidated')`).run(now);
+      this.db.prepare("UPDATE collection_candidates SET text_content=NULL WHERE state='invalidated' AND text_content IS NOT NULL").run();
       const evicted = this.#enforceCapacity();
-      if (expired.length > 0) this.#bumpCollectionRevision();
-      return { expired: expired.length, evicted };
+      if (expired.length > 0 || expiredCandidates.length > 0 || evicted > 0) this.#bumpCollectionRevision();
+      return { expired: expired.length + expiredCandidates.length, evicted };
     }).immediate();
   }
 
   /** Oldest-first eviction until the managed byte budget is satisfied. Returns how many were evicted. */
   #enforceCapacity(): number {
+    this.db.prepare("UPDATE collection_candidates SET text_content=NULL WHERE state='invalidated' AND text_content IS NOT NULL").run();
     let bytes = this.managedBytes();
     if (bytes <= this.policy.managedByteLimit) return 0;
     let evicted = 0;
@@ -728,16 +739,42 @@ export class CollectionStore implements CollectionGrantStorePort {
       evicted++;
     }
     this.#collectUnreferencedAssets();
+    bytes = this.managedBytes();
+    const textCandidates = this.db.prepare(`SELECT id, user_id, character_id, character_instance_id, native_event_id
+      FROM collection_candidates WHERE state IN ('pending','processed')
+      ORDER BY received_at ASC, rowid ASC`).all() as {
+        id: string; user_id: string; character_id: string; character_instance_id: string; native_event_id: string }[];
+    for (const row of textCandidates) {
+      if (bytes <= this.policy.managedByteLimit) break;
+      this.db.prepare(`INSERT OR IGNORE INTO collection_tombstones(pair_key,idempotency_key,reason,created_at)
+        VALUES(?,?,?,?)`).run(`${row.user_id}|${row.character_id}|${row.character_instance_id}`,
+        row.native_event_id, 'capacity', this.now());
+      this.db.prepare("UPDATE collection_candidates SET state='invalidated', text_content=NULL, revision=revision+1 WHERE id=?")
+        .run(row.id);
+      this.db.prepare(`DELETE FROM collection_derived_text WHERE EXISTS (
+        SELECT 1 FROM json_each(parent_refs_json) AS parent
+        WHERE json_extract(parent.value,'$.sourceId')=?)`).run(row.id);
+      bytes = this.managedBytes();
+      evicted++;
+    }
+    const derivedRows = this.db.prepare('SELECT id FROM collection_derived_text ORDER BY created_at ASC, id ASC')
+      .all() as { id: string }[];
+    for (const row of derivedRows) {
+      if (bytes <= this.policy.managedByteLimit) break;
+      this.db.prepare('DELETE FROM collection_derived_text WHERE id=?').run(row.id);
+      bytes = this.managedBytes();
+      evicted++;
+    }
     return evicted;
   }
 
   managedBytes(): number {
     const assetBytes = (this.db.prepare('SELECT COALESCE(SUM(bytes),0) AS total FROM collection_assets').get() as { total: number }).total;
     const textBytes = (this.db.prepare(`
-      SELECT COALESCE(SUM(LENGTH(text_content)), 0) AS total FROM collection_candidates WHERE state='pending'
+      SELECT COALESCE(SUM(LENGTH(CAST(text_content AS BLOB))), 0) AS total FROM collection_candidates
     `).get() as { total: number }).total;
     const derivedBytes = (this.db.prepare(`
-      SELECT COALESCE(SUM(LENGTH(text_content)), 0) AS total FROM collection_derived_text
+      SELECT COALESCE(SUM(LENGTH(CAST(text_content AS BLOB))), 0) AS total FROM collection_derived_text
     `).get() as { total: number }).total;
     return assetBytes + textBytes + derivedBytes;
   }
@@ -849,6 +886,10 @@ export class CollectionStore implements CollectionGrantStorePort {
         return { outcome: 'duplicate' as const, sampleId: existing.id, reason: 'already_exists' };
       }
 
+      if (candidate.textContent && Buffer.byteLength(candidate.textContent, 'utf8') > this.policy.managedByteLimit) {
+        return { outcome: 'rejected' as const, sampleId: null, reason: 'capacity' };
+      }
+
       const id = `cand-${randomUUID()}`;
       this.db.prepare(`
         INSERT INTO collection_candidates(
@@ -866,20 +907,27 @@ export class CollectionStore implements CollectionGrantStorePort {
         candidate.size ?? null, candidate.canonicalRootId ?? null, candidate.stableVersion ?? null, this.now(),
       );
 
+      this.#enforceCapacity();
+      const retained = this.db.prepare("SELECT 1 FROM collection_candidates WHERE id=? AND state='pending'").get(id);
       this.#bumpCollectionRevision();
-      return { outcome: 'inserted' as const, sampleId: id, reason: null };
+      return retained
+        ? { outcome: 'inserted' as const, sampleId: id, reason: null }
+        : { outcome: 'rejected' as const, sampleId: null, reason: 'capacity' };
     }).immediate();
   }
 
-  listPending(pairing: PairingScope, cutoff?: string, limit = 50): readonly SourceCandidate[] {
+  listPending(pairing: PairingScope, cutoff?: string, limit = 50,
+    after?: { readonly receivedAt: string; readonly id: string }): readonly SourceCandidate[] {
     const rows = this.db.prepare(`
       SELECT * FROM collection_candidates
       WHERE user_id=? AND character_id=? AND character_instance_id=? AND state='pending'
         ${cutoff ? 'AND received_at <= ?' : ''}
-      ORDER BY received_at ASC
+        ${after ? 'AND (received_at > ? OR (received_at = ? AND id > ?))' : ''}
+      ORDER BY received_at ASC, id ASC
       LIMIT ?
     `).all(
-      ...[pairing.userId, pairing.characterId, pairing.characterInstanceId, ...(cutoff ? [cutoff] : []), limit],
+      ...[pairing.userId, pairing.characterId, pairing.characterInstanceId, ...(cutoff ? [cutoff] : []),
+        ...(after ? [after.receivedAt, after.receivedAt, after.id] : []), limit],
     ) as Record<string, unknown>[];
 
     return Object.freeze(rows.map(row => ({
@@ -907,6 +955,18 @@ export class CollectionStore implements CollectionGrantStorePort {
     })));
   }
 
+  /** Read private text for the batch owner without adding it to status or candidate projections. */
+  readPendingText(pairing: PairingScope, candidateId: string, grantRevision: number): string | null {
+    const row = this.db.prepare(`
+      SELECT text_content FROM collection_candidates
+      WHERE id=? AND user_id=? AND character_id=? AND character_instance_id=?
+        AND grant_revision=? AND state='pending' AND expires_at>?
+        AND source_kind IN ('clipboard_text','input_text','manual_text')
+    `).get(candidateId, pairing.userId, pairing.characterId, pairing.characterInstanceId,
+      grantRevision, this.now()) as { text_content: string | null } | undefined;
+    return row?.text_content ?? null;
+  }
+
   commitDerived(
     pairing: PairingScope,
     input: {
@@ -922,13 +982,32 @@ export class CollectionStore implements CollectionGrantStorePort {
     },
   ): { readonly id: string; readonly revision: number } {
     return this.db.transaction(() => {
+      if (input.parentRefs.length === 0) throw new Error('parent_required');
       const existing = this.db.prepare(`
         SELECT id, revision FROM collection_derived_text
         WHERE user_id=? AND character_id=? AND character_instance_id=? AND processing_key=?
       `).get(pairing.userId, pairing.characterId, pairing.characterInstanceId, input.processingKey) as { id: string; revision: number } | undefined;
-
+      const readParent = this.db.prepare(`
+        SELECT state, stable_version, grant_revision, expires_at FROM collection_candidates
+        WHERE id=? AND user_id=? AND character_id=? AND character_instance_id=?
+      `);
+      for (const ref of input.parentRefs) {
+        const parent = readParent.get(ref.sourceId, pairing.userId, pairing.characterId,
+          pairing.characterInstanceId) as { state: string; stable_version: string | null;
+            grant_revision: number; expires_at: string } | undefined;
+        if (!parent || (parent.state !== 'pending' && !(existing && parent.state === 'processed'))
+          || parent.expires_at <= this.now()
+          || (parent.stable_version ?? 'v1') !== ref.version
+          || parent.grant_revision !== input.grantRevision) {
+          throw new Error('parent_invalidated');
+        }
+      }
       if (existing) {
         return existing;
+      }
+
+      if (Buffer.byteLength(input.text, 'utf8') > this.policy.managedByteLimit) {
+        throw new Error('capacity_exceeded');
       }
 
       const id = `dt-${randomUUID()}`;
@@ -947,11 +1026,16 @@ export class CollectionStore implements CollectionGrantStorePort {
 
       // Mark parent pending candidates as processed
       const markProcessed = this.db.prepare(`
-        UPDATE collection_candidates SET state='processed', revision=revision+1 WHERE id=?
+        UPDATE collection_candidates SET state='processed', revision=revision+1
+        WHERE id=? AND user_id=? AND character_id=? AND character_instance_id=? AND state='pending'
       `);
       for (const parent of input.parentRefs) {
-        markProcessed.run(parent.sourceId);
+        markProcessed.run(parent.sourceId, pairing.userId, pairing.characterId, pairing.characterInstanceId);
       }
+
+      this.#enforceCapacity();
+      const retained = this.db.prepare('SELECT 1 FROM collection_derived_text WHERE id=?').get(id);
+      if (!retained) throw new Error('capacity_exceeded');
 
       this.#bumpCollectionRevision();
       return { id, revision: 1 };
@@ -987,8 +1071,13 @@ export class CollectionStore implements CollectionGrantStorePort {
       SELECT * FROM collection_derived_text
       WHERE user_id=? AND character_id=? AND character_instance_id=?
         AND status='ok' AND expires_at > ?
+        AND NOT EXISTS (SELECT 1 FROM json_each(parent_refs_json) AS parent
+          LEFT JOIN collection_candidates AS candidate
+            ON candidate.id=json_extract(parent.value,'$.sourceId')
+          WHERE candidate.id IS NULL OR candidate.state NOT IN ('pending','processed')
+            OR candidate.expires_at <= ?)
       ORDER BY created_at DESC LIMIT ?
-    `).all(pairing.userId, pairing.characterId, pairing.characterInstanceId, now, limit) as Record<string, unknown>[];
+    `).all(pairing.userId, pairing.characterId, pairing.characterInstanceId, now, now, limit) as Record<string, unknown>[];
 
     const candidates = candRows.map(row => ({
       id: String(row.id),

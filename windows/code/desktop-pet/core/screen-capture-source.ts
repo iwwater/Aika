@@ -30,14 +30,12 @@ export interface ScreenCaptureSourceOptions {
   readonly maxImageBytes?: number;   // Default 20 MiB
   readonly maxPixels?: number;       // Default 40,000,000 pixels (40 MP)
   readonly captureHook?: (target: ScreenTarget, signal?: AbortSignal) => Promise<CapturedFrame | null>;
-  readonly now?: () => string;
 }
 
 export class ScreenCaptureSource {
   private readonly maxImageBytes: number;
   private readonly maxPixels: number;
   private readonly captureHook?: ((target: ScreenTarget, signal?: AbortSignal) => Promise<CapturedFrame | null>) | undefined;
-  private readonly now: () => string;
   private activeGrant: ContinuousPerceptionGrant | null = null;
   private closed = false;
 
@@ -45,7 +43,6 @@ export class ScreenCaptureSource {
     this.maxImageBytes = options.maxImageBytes ?? 20 * 1024 * 1024;
     this.maxPixels = options.maxPixels ?? 40_000_000;
     this.captureHook = options.captureHook;
-    this.now = options.now ?? (() => new Date().toISOString());
   }
 
   async attachContinuousGrant(grant: ContinuousPerceptionGrant): Promise<void> {
@@ -67,6 +64,11 @@ export class ScreenCaptureSource {
   validateTarget(target: ScreenTarget): boolean {
     if (!target || !target.targetId || target.targetId.trim().length === 0) return false;
     if (!target.isValid) return false;
+    if (!this.activeGrant || target.targetId !== this.activeGrant.targetId
+      || target.targetRevision !== this.activeGrant.targetRevision) return false;
+    const granted = this.activeGrant.bounds;
+    if (target.bounds.x !== granted.x || target.bounds.y !== granted.y
+      || target.bounds.width !== granted.width || target.bounds.height !== granted.height) return false;
     if (target.bounds.width <= 0 || target.bounds.height <= 0) return false;
     const pixels = target.bounds.width * target.bounds.height;
     if (pixels > this.maxPixels) return false;
@@ -94,19 +96,6 @@ export class ScreenCaptureSource {
       return frame;
     }
 
-    // Default synthetic test frame for unit harnesses without native display hooks
-    const width = Math.min(target.bounds.width, 400);
-    const height = Math.min(target.bounds.height, 300);
-    const fakeBytes = new Uint8Array(64);
-    fakeBytes[0] = 0x89; fakeBytes[1] = 0x50; // PNG
-
-    return {
-      targetId: target.targetId,
-      targetRevision: target.targetRevision,
-      capturedAt: this.now(),
-      mimeType: 'image/png',
-      dimensions: { width, height },
-      bytes: fakeBytes,
-    };
+    throw new Error('capture_unavailable');
   }
 }

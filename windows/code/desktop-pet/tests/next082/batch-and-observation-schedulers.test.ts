@@ -166,6 +166,95 @@ test('AC-08206-2: 候选批次流转：读取 pending 候选 -> 调用解析器 
   }
 });
 
+test('CR-05: a manual text batch preserves the actual candidate body', async () => {
+  const h = await harness();
+  try {
+    const grant: SourceGrant = {
+      schemaVersion: 1, grantId: 'g-manual-body', revision: 1, pairing,
+      kind: 'manual_text', scope: {}, purposes: ['receive'], destination: 'local',
+      profile: 'normal', state: 'active', grantedAt: h.clock.now(),
+      expiresAt: new Date(h.clock.at() + 3600_000).toISOString(),
+    };
+    h.store.appendCandidate(grant, {
+      sourceKind: 'manual_text', modeGeneration: 1, nativeEventId: 'manual-body',
+      receivedAt: h.clock.now(), origin: 'manual', confidence: 1,
+      expiresAt: grant.expiresAt, payloadRef: 'manual-ref', textContent: '真正的正文内容',
+    }, 'manual-body-key');
+    await h.runner.request({ trigger: 'manual', operationId: 'manual-body-job',
+      expectedPolicyRevision: 1, generation: 1 });
+    await new Promise(resolve => setTimeout(resolve, 30));
+    const row = h.db.prepare('SELECT text_content, status FROM collection_derived_text').get() as
+      { text_content: string; status: string };
+    assert.equal(row.text_content, '真正的正文内容');
+    assert.equal(row.status, 'ok');
+  } finally {
+    h.memory.close();
+  }
+});
+
+test('CR-09/10: manual work does not close the daily ledger and a daily batch scans past 50 items', async () => {
+  const h = await harness();
+  try {
+    const grant: SourceGrant = { schemaVersion: 1, grantId: 'g-many', revision: 1, pairing,
+      kind: 'manual_text', scope: {}, purposes: ['receive'], destination: 'local',
+      profile: 'normal', state: 'active', grantedAt: h.clock.now(),
+      expiresAt: new Date(h.clock.at() + 3600_000).toISOString() };
+    h.store.appendCandidate(grant, { sourceKind: 'manual_text', modeGeneration: 1,
+      nativeEventId: 'manual-first', receivedAt: h.clock.now(), origin: 'manual',
+      confidence: 1, expiresAt: grant.expiresAt, payloadRef: 'manual-first',
+      textContent: '手动先处理' }, 'manual-first');
+    await h.runner.request({ trigger: 'manual', operationId: 'manual-before-daily',
+      expectedPolicyRevision: 1, generation: 1 });
+    assert.equal(h.runner.isDayCompleted(h.clock.now().slice(0, 10)), false);
+
+    for (let i = 0; i < 51; i++) {
+      h.store.appendCandidate(grant, { sourceKind: 'manual_text', modeGeneration: 1,
+        nativeEventId: `daily-${i}`, receivedAt: h.clock.now(), origin: 'manual',
+        confidence: 1, expiresAt: grant.expiresAt, payloadRef: `daily-${i}`,
+        textContent: `正文-${i}` }, `daily-${i}`);
+    }
+    await h.runner.request({ trigger: 'daily', operationId: 'daily-after-manual',
+      expectedPolicyRevision: 1, generation: 1, scheduledDay: h.clock.now().slice(0, 10) });
+    assert.equal((h.db.prepare('SELECT COUNT(*) AS n FROM collection_derived_text').get() as { n: number }).n, 52);
+    assert.equal(h.runner.isDayCompleted(h.clock.now().slice(0, 10)), true);
+  } finally {
+    h.memory.close();
+  }
+});
+
+test('CR-10: unsupported first page cannot starve later text or close the daily ledger', async () => {
+  const h = await harness();
+  try {
+    const expiresAt = new Date(h.clock.at() + 3600_000).toISOString();
+    const grantBase = { schemaVersion: 1 as const, revision: 1, pairing,
+      scope: {}, purposes: ['receive'] as const, destination: 'local' as const,
+      profile: 'normal' as const, state: 'active' as const,
+      grantedAt: h.clock.now(), expiresAt };
+    const unsupportedGrant: SourceGrant = { ...grantBase, grantId: 'g-history',
+      kind: 'history_reference' };
+    const textGrant: SourceGrant = { ...grantBase, grantId: 'g-later',
+      kind: 'manual_text' };
+    for (let i = 0; i < 50; i++) {
+      h.store.appendCandidate(unsupportedGrant, { sourceKind: 'history_reference',
+        modeGeneration: 1, nativeEventId: `history-${i}`, receivedAt: h.clock.now(),
+        origin: 'manual', confidence: 1, expiresAt, payloadRef: `history-${i}` },
+      `history-${i}`);
+    }
+    h.store.appendCandidate(textGrant, { sourceKind: 'manual_text',
+      modeGeneration: 1, nativeEventId: 'later-text', receivedAt: h.clock.now(),
+      origin: 'manual', confidence: 1, expiresAt, payloadRef: 'later-text',
+      textContent: '后页正文' }, 'later-text');
+    await h.runner.request({ trigger: 'daily', operationId: 'unsupported-first-page',
+      expectedPolicyRevision: 1, generation: 1, scheduledDay: h.clock.now().slice(0, 10) });
+    const row = h.db.prepare('SELECT text_content FROM collection_derived_text').get() as
+      { text_content: string };
+    assert.equal(row.text_content, '后页正文');
+    assert.equal(h.runner.isDayCompleted(h.clock.now().slice(0, 10)), false);
+  } finally {
+    h.memory.close();
+  }
+});
+
 test('AC-08206-3: 周期观察调度器：在途并发严格为 1，错过 tick 绝不补抓历史帧', async () => {
   const captureSource = new ScreenCaptureSource({
     captureHook: async (target) => {
@@ -300,4 +389,36 @@ test('AC-08206-4: 观察无实质文字时不产生 Observation 候选，取消�
   controller.abort();
   const cancelRes = await scheduler.tick(controller.signal);
   assert.equal(cancelRes, null);
+});
+
+test('CR-07: cancelling a delayed capture prevents late observation and overlapping jobs', async () => {
+  let releaseCapture!: () => void;
+  const captureWait = new Promise<void>(resolve => { releaseCapture = resolve; });
+  const captureSource = new ScreenCaptureSource({ captureHook: async target => {
+    await captureWait; // Deliberately ignores AbortSignal to exercise the scheduler's own fence.
+    return { targetId: target.targetId, targetRevision: target.targetRevision,
+      capturedAt: new Date().toISOString(), mimeType: 'image/png' as const,
+      dimensions: { width: 1, height: 1 }, bytes: new Uint8Array([1]) };
+  } });
+  const observed: ObservationItem[] = [];
+  const scheduler = new ObservationScheduler({ pairing, captureSource,
+    ocrEngine: createLocalOcrEngine({ recognizePixelHook: async () => [
+      { text: 'late', bounds: { x: 0, y: 0, width: 1, height: 1 }, confidence: 1 },
+    ] }), onObservation: item => observed.push(item) });
+  const target: ScreenTarget = { targetId: 'screen-cancel', targetRevision: 1,
+    kind: 'screen', displayName: 'test', bounds: { x: 0, y: 0, width: 1, height: 1 }, isValid: true };
+  const grant: ContinuousPerceptionGrant = { schemaVersion: 1, grantId: 'g-cancel', revision: 1,
+    pairing, targetId: target.targetId, targetRevision: 1, bounds: target.bounds,
+    runtimeSessionId: 'session', minPollIntervalMs: 5000,
+    expiry: new Date(Date.now() + 3600_000).toISOString(), destination: 'local', state: 'active' };
+  await captureSource.attachContinuousGrant(grant);
+  scheduler.setContext(grant, target);
+  const pending = scheduler.tick();
+  scheduler.cancel();
+  assert.equal(scheduler.inFlight, true, 'a cancelled but unresolved capture still occupies the slot');
+  assert.equal(await scheduler.tick(), null);
+  releaseCapture();
+  assert.equal(await pending, null);
+  assert.equal(observed.length, 0);
+  assert.equal(scheduler.inFlight, false);
 });

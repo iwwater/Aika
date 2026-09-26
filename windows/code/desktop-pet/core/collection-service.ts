@@ -129,11 +129,12 @@ export class CollectionService {
   /** P1-1: Stop one source listener and release its lease. Other sources continue. */
   async stopSource(kind: 'keyboard' | 'screenshot_directory' | 'clipboard_image'): Promise<void> {
     const { grants } = this.options;
-    await grants.releaseLease(kind).catch(() => undefined);
+    const attached = grants.hasLease(kind);
+    await grants.releaseLease(kind);
     for (const [key, lease] of [...this.leases]) {
       if (key.startsWith(`${kind}:`)) {
         this.leases.delete(key);
-        await lease.close().catch(() => undefined);
+        if (!attached) await lease.close();
       }
     }
   }

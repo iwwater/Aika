@@ -185,3 +185,14 @@ test('AC-08204-3: 取消信号 (signal) 中止解析，空文件与超限文件�
   assert.equal(hugeRes.status, 'failed');
   assert.ok(hugeRes.warnings.includes('file_too_large'));
 });
+
+test('CR-08: forged ZIP length cannot bypass the actual DOCX inflate limit', async () => {
+  const docx = Buffer.from(createFakeDocx('A'.repeat(1024)));
+  docx.writeUInt32LE(1, 22); // Local header claims one decompressed byte.
+  const result = await new DocumentParser({ maxZipDecompressedBytes: 64 }).parse({
+    filename: 'forged.docx', bytes: docx,
+  });
+  assert.equal(result.status, 'failed');
+  assert.ok(result.warnings.includes('zip_bomb_detected'));
+  assert.equal(result.text, '');
+});

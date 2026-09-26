@@ -15,6 +15,10 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { SqliteMemoryStore, CONFIRMED_RETENTION } from '../../memory/sqlite-store.js';
+import { CollectionStore } from '../../memory/collection-store.js';
+import { CollectionGrantManager } from '../../core/collection-grants.js';
+import { CollectionService } from '../../core/collection-service.js';
+import { NORMAL_COLLECTION_POLICY } from '../../contracts/collection.js';
 import { confirmedInvitationPolicy } from '../../companion/invitations.js';
 import { CompanionModeRuntime, CompanionModeError } from '../../core/companion-mode-runtime.js';
 import { productionPairing } from '../../contracts/character-pack.js';
@@ -207,6 +211,60 @@ test('AC-08201-4: 撤销后允许重新授权，旧代次不可用', async () =>
     assert.equal(reissued.state, 'active');
     assert.equal(reissued.revision, revoked.revision + 1);
     assert.equal(reissued.scope.canonicalRoot, 'D:/NewScreenshots');
+  } finally {
+    h.memory.close();
+  }
+});
+
+test('CR-01: global pause invalidates an old collection grant and closes its live listener', async () => {
+  const h = harness();
+  try {
+    const store = await CollectionStore.open(h.memory, {
+      collectionDirectory: resolve(h.root, 'collection'), policy: NORMAL_COLLECTION_POLICY, now: h.clock.now,
+    });
+    const grants = new CollectionGrantManager({ store, policy: NORMAL_COLLECTION_POLICY, now: h.clock.now });
+    const service = new CollectionService({ grants, store, pairing, instanceId: 'inst-08201', now: h.clock.now });
+    const grant = grants.issue({ pairing, kind: 'keyboard',
+      expiresAt: new Date(h.clock.at() + 3600_000).toISOString(),
+      expectedRevision: 0, operationId: 'old-keyboard-grant' });
+    let listenerClosed = false;
+    await grants.attachLease({ kind: 'keyboard', grantId: grant.grantId,
+      grantRevision: grant.revision, release: () => { listenerClosed = true; } });
+    const runtime = new CompanionModeRuntime({ db: h.db, pairing, now: h.clock.now,
+      onPauseAll: () => grants.suspendAll('paused', pairing) });
+
+    await runtime.pauseAll('user_paused', 'pause-old-keyboard');
+    assert.equal(runtime.currentRunState, 'paused');
+    assert.equal(listenerClosed, true);
+    assert.equal(grants.hasLease('keyboard'), false);
+    assert.equal(grants.current(pairing, 'keyboard')?.state, 'paused');
+    assert.throws(() => grants.assertActive({ grantId: grant.grantId,
+      grantRevision: grant.revision, pairing, kind: 'keyboard' }));
+    const late = await service.onKeyboardActivity({ grantId: grant.grantId,
+      grantRevision: grant.revision, bucketStart: h.clock.now(), bucketEnd: h.clock.now(),
+      activityCount: 1, foregroundAppId: null, afkBoundary: false });
+    assert.equal(late, null, 'a late native callback cannot write after global pause');
+
+    const reissued = grants.issue({ pairing, kind: 'keyboard',
+      expiresAt: new Date(h.clock.at() + 3600_000).toISOString(),
+      expectedRevision: grant.revision + 1, operationId: 'old-keyboard-reissue' });
+    assert.equal(reissued.state, 'active');
+    await runtime.pauseAll('user_paused', 'pause-without-lease');
+    assert.equal(grants.current(pairing, 'keyboard')?.state, 'paused',
+      'an active grant without a listener is also invalidated');
+    await service.close();
+  } finally {
+    h.memory.close();
+  }
+});
+
+test('CR-01: a failed listener release is reported as an error state', async () => {
+  const h = harness();
+  try {
+    const runtime = new CompanionModeRuntime({ db: h.db, pairing, now: h.clock.now,
+      onPauseAll: async () => { throw new Error('listener_release_failed'); } });
+    await assert.rejects(runtime.pauseAll('user_paused'), /listener_release_failed/);
+    assert.equal(runtime.currentRunState, 'error');
   } finally {
     h.memory.close();
   }

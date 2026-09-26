@@ -118,64 +118,71 @@ export class CollectionBatchRunner {
     let processed = 0;
     let failed = 0;
     let skipped = 0;
+    let accepted = 0;
+    let after: { readonly receivedAt: string; readonly id: string } | undefined;
 
-    const pending = this.store.listPending(this.pairing, cutoff, 50);
-    const accepted = pending.length;
+    while (true) {
+      const pending = this.store.listPending(this.pairing, cutoff, 50, after);
+      if (pending.length === 0) break;
+      accepted += pending.length;
+      for (const item of pending) {
+        try {
+          let extractedText = '';
+          let status: DerivedTextStatus = 'ok';
 
-    for (const item of pending) {
-      try {
-        let extractedText = '';
-        let status: DerivedTextStatus = 'ok';
-
-        if (item.sourceKind === 'clipboard_text' || item.sourceKind === 'input_text' || item.sourceKind === 'manual_text') {
-          // Plain text candidate: normalize and commit
-          extractedText = String((item as unknown as { text_content?: string }).text_content ?? item.displayName ?? '');
-          status = 'ok';
-        } else if (item.sourceKind === 'download_directory' && this.parser && readFileBytes) {
-          const bytes = await readFileBytes(item.payloadRef);
-          if (!bytes) {
-            status = 'missing';
+          if (item.sourceKind === 'clipboard_text' || item.sourceKind === 'input_text' || item.sourceKind === 'manual_text') {
+            const text = this.store.readPendingText(this.pairing, item.id, item.grantRevision);
+            if (text === null || !text.trim()) status = 'failed';
+            else extractedText = text;
+          } else if (item.sourceKind === 'download_directory' && this.parser && readFileBytes) {
+            const bytes = await readFileBytes(item.payloadRef);
+            if (!bytes) {
+              status = 'missing';
+            } else {
+              const parsed = await this.parser.parse({
+                filename: item.displayName ?? 'document.txt',
+                bytes,
+                mimeType: item.mimeType,
+              });
+              extractedText = parsed.text;
+              status = parsed.status;
+            }
           } else {
-            const parsed = await this.parser.parse({
-              filename: item.displayName ?? 'document.txt',
-              bytes,
-              mimeType: item.mimeType,
-            });
-            extractedText = parsed.text;
-            status = parsed.status;
+            skipped++;
+            continue;
           }
-        } else {
-          skipped++;
-          continue;
+
+          const processingKey = `proc-${item.id}-v1`;
+          this.store.commitDerived(this.pairing, {
+            parentRefs: [{ sourceId: item.id, version: item.stableVersion ?? 'v1' }],
+            processorId: 'standard-batch-parser-v1',
+            processorVersion: '1.0.0',
+            grantRevision: item.grantRevision,
+            processingKey,
+            status,
+            text: extractedText,
+            expiresAt: item.expiresAt,
+          });
+
+          if (status === 'ok') processed++;
+          else failed++;
+        } catch {
+          failed++;
         }
-
-        const processingKey = `proc-${item.id}-v1`;
-        this.store.commitDerived(this.pairing, {
-          parentRefs: [{ sourceId: item.id, version: item.stableVersion ?? 'v1' }],
-          processorId: 'standard-batch-parser-v1',
-          processorVersion: '1.0.0',
-          grantRevision: item.grantRevision,
-          processingKey,
-          status,
-          text: extractedText,
-          expiresAt: item.expiresAt,
-        });
-
-        if (status === 'ok') processed++;
-        else failed++;
-      } catch {
-        failed++;
       }
+      const last = pending[pending.length - 1]!;
+      after = { receivedAt: last.receivedAt, id: last.id };
     }
 
-    const finalState = failed > 0 ? (processed > 0 ? 'partial' : 'failed') : 'succeeded';
+    const complete = failed === 0 && skipped === 0;
+    const finalState = complete ? 'succeeded' : (processed > 0 ? 'partial' : 'failed');
     this.store.finishJob(job.jobId, {
       state: finalState,
       counts: { accepted, processed, failed, skipped, dropped: 0 },
     });
 
     // Record success in daily ledger
-    if (finalState === 'succeeded' || finalState === 'partial') {
+    if (complete && (job.trigger === 'daily' || job.trigger === 'catchup')) {
       this.db.prepare(`
         INSERT INTO companion_batch_ledger(
           user_id, character_id, character_instance_id, scheduled_day, last_success_at)

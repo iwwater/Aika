@@ -162,8 +162,9 @@ export class DocumentParser {
         byteLength: finalBytes,
         warnings,
       };
-    } catch {
-      return { status: 'failed', text: '', byteLength: 0, warnings: ['corrupted_docx'] };
+    } catch (error) {
+      return { status: 'failed', text: '', byteLength: 0,
+        warnings: [(error as Error).message === 'zip_bomb_detected' ? 'zip_bomb_detected' : 'corrupted_docx'] };
     }
   }
 
@@ -236,6 +237,7 @@ export class DocumentParser {
 
       const fileName = buf.subarray(offset + 30, offset + 30 + fileNameLen).toString('utf8');
       const dataOffset = offset + 30 + fileNameLen + extraLen;
+      if (dataOffset + compressedSize > buf.length) return null;
 
       if (fileName === targetEntry) {
         // Zip bomb protection
@@ -245,10 +247,20 @@ export class DocumentParser {
 
         const data = buf.subarray(dataOffset, dataOffset + compressedSize);
         if (compression === 0) {
+          if (data.length > this.maxZipDecompressedBytes) throw new Error('zip_bomb_detected');
           return data.toString('utf8');
         }
         if (compression === 8) { // Deflate
-          const decompressed = inflateRawSync(data);
+          let decompressed: Buffer;
+          try {
+            decompressed = inflateRawSync(data, { maxOutputLength: this.maxZipDecompressedBytes + 1 });
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === 'ERR_BUFFER_TOO_LARGE') {
+              throw new Error('zip_bomb_detected');
+            }
+            throw error;
+          }
+          if (decompressed.length > this.maxZipDecompressedBytes) throw new Error('zip_bomb_detected');
           return decompressed.toString('utf8');
         }
         return null;

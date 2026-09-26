@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, protocol, screen, Menu, shell, globalShortcut } from 'electron';
+import { app, BrowserWindow, ipcMain, protocol, screen, Menu, shell, globalShortcut, powerMonitor } from 'electron';
 import { spawn } from 'node:child_process';
 import { readFile, writeFile, mkdir, mkdtemp } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
@@ -246,6 +246,11 @@ ipcMain.on('pet:diagnostic', (event, value) => {
 // Do not await readiness at module scope: Electron must finish loading this ESM
 // entry before it can emit ready. Keep initialization in the ready callback.
 void app.whenReady().then(async () => {
+const pauseCollection = () => {
+  connection.send({ channel: 'desktop_system', event: 'session_locked' }, connection.generation);
+};
+powerMonitor.on('lock-screen', pauseCollection);
+powerMonitor.on('suspend', pauseCollection);
 await mkdir(app.getPath('userData'), { recursive: true });
 prefsFile = resolve(app.getPath('userData'), 'windows-display.json');
 microphoneFile = resolve(app.getPath('userData'), 'microphone.json');

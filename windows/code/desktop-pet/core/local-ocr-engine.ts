@@ -77,64 +77,7 @@ export function createLocalOcrEngine(
       }
     }
 
-    // 2. Compatibility check for metadata (only for controlled fixtures)
-    const extractedTexts: string[] = [];
-    let width = 800;
-    let height = 600;
-
-    if (bytes.length >= 24 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
-      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-      width = view.getUint32(16);
-      height = view.getUint32(20);
-
-      let offset = 8;
-      while (offset + 12 <= bytes.length) {
-        const chunkLen = view.getUint32(offset);
-        const chunkType = String.fromCharCode(
-          bytes[offset + 4]!, bytes[offset + 5]!, bytes[offset + 6]!, bytes[offset + 7]!
-        );
-        if (chunkType === 'tEXt' || chunkType === 'iTXt') {
-          const chunkData = bytes.subarray(offset + 8, offset + 8 + chunkLen);
-          const str = new TextDecoder('utf-8', { fatal: false }).decode(chunkData);
-          const nullIdx = str.indexOf('\0');
-          if (nullIdx >= 0) {
-            extractedTexts.push(str.slice(nullIdx + 1).trim());
-          }
-        }
-        offset += 12 + chunkLen;
-      }
-    }
-
-    const blocks: OcrTextBlock[] = [];
-    if (extractedTexts.length > 0) {
-      let y = 10;
-      for (const text of extractedTexts) {
-        if (!text) continue;
-        blocks.push({
-          text,
-          confidence: 0.95,
-          bounds: { x: 10, y, width: Math.min(width - 20, text.length * 14), height: 24 },
-        });
-        y += 30;
-      }
-    }
-
-    // N082-05: Blank or pure images have zero blocks and empty reading order text!
-    // NEVER fabricate "[本地屏幕图像 WxH]" as recognized text!
-    const readingOrderText = blocks.map(b => b.text).join('\n');
-    const result: OcrResult = {
-      status: 'ok',
-      blocks: Object.freeze(blocks),
-      readingOrderText,
-      language: 'zh-CN',
-      engine: engineName,
-    };
-
-    if (cache.size >= maxCache) {
-      const first = cache.keys().next().value;
-      if (first) cache.delete(first);
-    }
-    cache.set(digest, result);
-    return result;
+    // A missing native engine cannot establish whether pixels contain text.
+    return { status: 'failed', blocks: [], readingOrderText: '', engine: engineName };
   };
 }

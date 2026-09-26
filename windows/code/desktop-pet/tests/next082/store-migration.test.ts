@@ -299,3 +299,80 @@ test('AC-08202-4: 来源撤销与全量 erase 级联作废候选与派生文本�
     h.memory.close();
   }
 });
+
+test('CR-04: deleting a processed source removes derived text and rejects a late commit', async () => {
+  const h = await harness();
+  try {
+    const grant: import('../../contracts/companion-mode.js').SourceGrant = {
+      schemaVersion: 1, grantId: 'g-delete-derived', revision: 1, pairing,
+      kind: 'manual_text', scope: {}, purposes: ['receive'], destination: 'local',
+      profile: 'normal', state: 'active', grantedAt: h.clock.now(),
+      expiresAt: new Date(h.clock.at() + 3600_000).toISOString(),
+    };
+    const candidate = h.store.appendCandidate(grant, {
+      sourceKind: 'manual_text', modeGeneration: 1, nativeEventId: 'delete-me',
+      receivedAt: h.clock.now(), origin: 'manual', confidence: 1,
+      expiresAt: grant.expiresAt, payloadRef: 'local-text', textContent: 'private text',
+    }, 'delete-me-key');
+    assert.equal(candidate.outcome, 'inserted');
+    const parentRefs = [{ sourceId: candidate.sampleId!, version: 'v1' }];
+    const commit = (processingKey: string) => h.store.commitDerived(pairing, {
+      parentRefs, processorId: 'test', processorVersion: '1', grantRevision: 1,
+      processingKey, status: 'ok', text: 'private text', expiresAt: grant.expiresAt,
+    });
+    commit('first-commit');
+    assert.equal(h.store.queryEffective(pairing).derived.length, 1);
+    h.store.erase({ pairing, scope: 'source', sourceKind: 'manual_text',
+      expectedRevision: h.store.revision, operationId: 'delete-source' });
+    assert.equal(h.store.queryEffective(pairing).derived.length, 0);
+    assert.throws(() => commit('late-commit'), /parent_invalidated/);
+    const db = h.memory.rawDatabaseForKnowledge();
+    const row = db.prepare('SELECT state FROM collection_candidates WHERE id=?').get(candidate.sampleId) as { state: string };
+    assert.equal(row.state, 'invalidated');
+    assert.equal((db.prepare('SELECT COUNT(*) AS n FROM collection_derived_text').get() as { n: number }).n, 0);
+  } finally {
+    h.memory.close();
+  }
+});
+
+test('CR-06: UTF-8 text obeys the shared byte budget and expires physically', async () => {
+  const h = await harness();
+  try {
+    const tiny = await CollectionStore.open(h.memory, {
+      collectionDirectory: resolve(h.root, 'collection'),
+      policy: { ...NORMAL_COLLECTION_POLICY, managedByteLimit: 20 }, now: h.clock.now,
+    });
+    const grant: import('../../contracts/companion-mode.js').SourceGrant = {
+      schemaVersion: 1, grantId: 'g-tiny-budget', revision: 1, pairing,
+      kind: 'manual_text', scope: {}, purposes: ['receive'], destination: 'local',
+      profile: 'normal', state: 'active', grantedAt: h.clock.now(),
+      expiresAt: new Date(h.clock.at() + 3600_000).toISOString(),
+    };
+    const add = (id: string, text: string) => tiny.appendCandidate(grant, {
+      sourceKind: 'manual_text', modeGeneration: 1, nativeEventId: id,
+      receivedAt: h.clock.now(), origin: 'manual', confidence: 1,
+      expiresAt: grant.expiresAt, payloadRef: id, textContent: text,
+    }, id);
+    assert.equal(add('oversized', '中文中文中文中文中文中文中文').outcome, 'rejected');
+    assert.equal(add('first', '中文正文').outcome, 'inserted');
+    assert.equal(tiny.managedBytes(), 12);
+    assert.equal(add('second', '另一段话').outcome, 'inserted');
+    assert.ok(tiny.managedBytes() <= 20);
+    const db = h.memory.rawDatabaseForKnowledge();
+    assert.equal((db.prepare("SELECT COUNT(*) AS n FROM collection_candidates WHERE state='invalidated'").get() as { n: number }).n, 1);
+    const pending = tiny.listPending(pairing);
+    assert.equal(pending.length, 1);
+    tiny.commitDerived(pairing, {
+      parentRefs: [{ sourceId: pending[0]!.id, version: 'v1' }],
+      processorId: 'test', processorVersion: '1', grantRevision: 1,
+      processingKey: 'tiny-derived', status: 'ok', text: '文', expiresAt: grant.expiresAt,
+    });
+    assert.ok(tiny.managedBytes() <= 20);
+    h.clock.advance(3600_001);
+    tiny.expire();
+    assert.equal(tiny.managedBytes(), 0);
+    assert.equal((db.prepare('SELECT COUNT(*) AS n FROM collection_derived_text').get() as { n: number }).n, 0);
+  } finally {
+    h.memory.close();
+  }
+});

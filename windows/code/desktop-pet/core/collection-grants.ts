@@ -340,22 +340,23 @@ export class CollectionGrantManager {
     await binding.release();
   }
 
-  /** Stop every listener for one reason without touching grant state (lock/pack/session events). */
+  /** Pause every active grant and stop its listener (lock/pack/session events). */
   async suspendAll(reason: CollectionRevokeReason, pairing?: PairingScope): Promise<void> {
     const store = this.options.store;
+    // Invalidate authority first, including grants issued while the global mode was paused.
+    // A callback racing with listener release must fail assertActive immediately.
+    for (const scope of pairing ? [pairing] : this.knownPairings) {
+      for (const kind of ['keyboard', 'screenshot_directory', 'clipboard_image'] as const) {
+        const record = store?.current(scope, kind);
+        if (record?.state !== 'active') continue;
+        const next = store!.update({ grantId: record.grantId, expectedRevision: record.revision,
+          state: 'paused', revision: record.revision + 1 });
+        this.#notify(this.#toGrant(next), reason);
+      }
+    }
     for (const [kind, binding] of [...this.leases]) {
       this.leases.delete(kind);
       await binding.release();
-      if (!store) continue;
-      const scope = pairing ?? (this.#recordById(binding.grantId)?.pairing);
-      if (!scope) continue;
-      const record = store.current(scope, kind);
-      if (record && record.state === 'active') {
-        const next = store.update({ grantId: record.grantId, expectedRevision: record.revision, state: 'paused', revision: record.revision + 1 });
-        this.#notify(this.#toGrant(next), reason);
-      } else {
-        this.#notify(this.#toGrant(record!), reason);
-      }
     }
   }
 
@@ -367,18 +368,6 @@ export class CollectionGrantManager {
     this.leases.clear();
     await Promise.all(pending);
     this.listeners.clear();
-  }
-
-  #recordById(grantId: string): CollectionGrantRecord | null {
-    const store = this.options.store;
-    if (!store) return null;
-    for (const kind of ['keyboard', 'screenshot_directory', 'clipboard_image'] as const) {
-      for (const pairing of this.knownPairings) {
-        const record = store.current(pairing, kind);
-        if (record?.grantId === grantId) return record;
-      }
-    }
-    return null;
   }
 
   /** Pairings observed through issue/transition, used only for close-time bookkeeping. */

@@ -28,6 +28,8 @@ export interface CompanionModeRuntimeOptions {
   readonly pairing: PairingScope;
   readonly now?: (() => string) | undefined;
   readonly onSourceSync?: ((kind: CompanionSourceKind, active: boolean) => Promise<void>) | undefined;
+  readonly onPauseAll?: (() => Promise<void>) | undefined;
+  readonly onResume?: (() => Promise<void>) | undefined;
   readonly onGenerationChange?: ((generation: number) => void) | undefined;
 }
 
@@ -43,6 +45,8 @@ export class CompanionModeRuntime {
   private readonly pairing: PairingScope;
   private readonly now: () => string;
   private readonly onSourceSync?: ((kind: CompanionSourceKind, active: boolean) => Promise<void>) | undefined;
+  private readonly onPauseAll?: (() => Promise<void>) | undefined;
+  private readonly onResume?: (() => Promise<void>) | undefined;
   private readonly onGenerationChange?: ((generation: number) => void) | undefined;
   private generation = 1;
   private runState: CompanionRunState = 'paused';
@@ -53,6 +57,8 @@ export class CompanionModeRuntime {
     this.pairing = options.pairing;
     this.now = options.now ?? (() => new Date().toISOString());
     this.onSourceSync = options.onSourceSync;
+    this.onPauseAll = options.onPauseAll;
+    this.onResume = options.onResume;
     this.onGenerationChange = options.onGenerationChange;
     this.#initSchema();
   }
@@ -181,10 +187,15 @@ export class CompanionModeRuntime {
     return this.#idempotent(operationId, ['pauseAll', reason], async () => {
       this.runState = 'paused';
       this.#bumpGeneration();
+      let failure: unknown;
+      try { await this.onPauseAll?.(); } catch (error) { failure = error; }
       for (const kind of [...this.leases]) {
-        this.leases.delete(kind);
-        await this.onSourceSync?.(kind, false).catch(() => undefined);
+        try {
+          await this.onSourceSync?.(kind, false);
+          this.leases.delete(kind);
+        } catch (error) { failure ??= error; }
       }
+      if (failure !== undefined) { this.runState = 'error'; throw failure; }
       return this.getStatus(reason);
     });
   }
@@ -194,14 +205,18 @@ export class CompanionModeRuntime {
     return this.#idempotent(operationId, ['resume'], async () => {
       this.runState = 'running';
       this.#bumpGeneration();
-      const sources = this.listGrants();
-      for (const source of sources) {
-        if (source.state === 'active' && Date.parse(source.expiresAt) > Date.parse(this.now())) {
-          this.leases.add(source.kind);
-          await this.onSourceSync?.(source.kind, true).catch(() => {
-            this.leases.delete(source.kind);
-          });
+      try {
+        await this.onResume?.();
+        const sources = this.listGrants();
+        for (const source of sources) {
+          if (source.state === 'active' && Date.parse(source.expiresAt) > Date.parse(this.now())) {
+            await this.onSourceSync?.(source.kind, true);
+            this.leases.add(source.kind);
+          }
         }
+      } catch (error) {
+        await this.pauseAll('resume_failed');
+        throw error;
       }
       return this.getStatus();
     });

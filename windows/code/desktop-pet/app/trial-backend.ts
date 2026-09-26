@@ -508,30 +508,51 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
           ...(helper ? { helper } : {}),
           screenshotDirectory,
         });
+        const syncLegacySource = async (kind: 'keyboard' | 'screenshot_directory' | 'clipboard_image', active: boolean) => {
+          if (!active) {
+            await collectionService!.stopSource(kind);
+            return;
+          }
+          const mode = companionModeRuntime;
+          if (!mode || mode.currentRunState !== 'running') return;
+          const generation = mode.currentGeneration;
+          if (grants.hasLease(kind)) await collectionService!.stopSource(kind);
+          await collectionService!.startSource(kind);
+          if (mode.currentRunState !== 'running' || mode.currentGeneration !== generation) {
+            await collectionService!.stopSource(kind);
+          }
+        };
         collectionManagement = new CollectionManagement({
           service: collectionService, grants, store: collectionStore, pairing: candidatePairing,
-          // P1-1: A source is started or stopped independently without affecting other sources.
-          syncSource: async (kind, active) => {
-            if (active) await collectionService!.startSource(kind);
-            else await collectionService!.stopSource(kind);
-          },
+          syncSource: syncLegacySource,
         });
-        // P1-2: Restore listeners for any active, unexpired sources after startup/restart.
+        // A restart begins paused. Old grants require an explicit per-source resume.
         for (const kind of ['keyboard', 'screenshot_directory', 'clipboard_image'] as const) {
           const current = grants.current(candidatePairing, kind);
           if (current && current.state === 'active') {
-            if (Date.parse(current.expiresAt) > Date.now()) {
-              void collectionService.startSource(kind).catch(() => undefined);
-            }
+            grants.transition({ pairing: candidatePairing, kind, action: 'pause',
+              expectedRevision: current.revision, operationId: randomUUID() });
           }
         }
         // N082-08: companion mode runtime, batch runner, and observation scheduler
         companionModeRuntime = new CompanionModeRuntime({
           db: store.rawDatabaseForKnowledge(),
           pairing: candidatePairing,
+          onGenerationChange: () => observationScheduler?.cancel(),
+          onPauseAll: () => grants.suspendAll('paused', candidatePairing),
+          onResume: async () => {
+            for (const kind of ['keyboard', 'screenshot_directory', 'clipboard_image'] as const) {
+              const current = grants.current(candidatePairing, kind);
+              if (current?.state === 'active' && Date.parse(current.expiresAt) > Date.now()) {
+                await syncLegacySource(kind, true);
+              }
+            }
+          },
           onSourceSync: async (kind, active) => {
-            if (active) await collectionService!.startSource(kind as any);
-            else await collectionService!.stopSource(kind as any);
+            if (kind !== 'keyboard' && kind !== 'screenshot_directory' && kind !== 'clipboard_image') {
+              throw new Error(`collection_source_unavailable:${kind}`);
+            }
+            await syncLegacySource(kind, active);
           },
         });
         batchRunner = new CollectionBatchRunner({
@@ -591,7 +612,13 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
         return;
       }
       if (event.kind === 'system' && event.op === 'session_locked') {
-        void grants.suspendAll('session_locked', candidatePairing);
+        if (companionModeRuntime) {
+          void companionModeRuntime.onSessionLock().catch(() => {
+            process.stderr.write('Collection could not pause on session lock.\n');
+          });
+        } else {
+          void grants.suspendAll('session_locked', candidatePairing);
+        }
         return;
       }
     }
@@ -1012,6 +1039,17 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
           }
         } catch { void authorizer.stop('unregistered_smoke_input').finally(close); return; }
       }
+      try {
+        const event = JSON.parse(line);
+        if (event?.channel === 'desktop_system' && event.event === 'session_locked') {
+          if (configuration.purpose === 'user-trial') {
+            void companionModeRuntime?.onSessionLock().catch(() => {
+              process.stderr.write('Collection could not pause on session lock.\n');
+            });
+          }
+          return;
+        }
+      } catch { /* The session protocol reports malformed input. */ }
       try { if(wake?.receive(JSON.parse(line)))return; } catch { /* Original protocol validator owns non-wake input. */ }
       void session!.receiveLine(line);
     });

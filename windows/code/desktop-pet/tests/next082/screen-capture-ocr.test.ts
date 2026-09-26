@@ -24,7 +24,7 @@ function fakeContinuousGrant(): ContinuousPerceptionGrant {
     grantId: 'grant-cont-ocr',
     revision: 1,
     pairing,
-    targetId: 'display-1',
+    targetId: 'screen-primary',
     targetRevision: 1,
     bounds: { x: 0, y: 0, width: 1920, height: 1080 },
     runtimeSessionId: 'sess-ocr',
@@ -35,7 +35,7 @@ function fakeContinuousGrant(): ContinuousPerceptionGrant {
   };
 }
 
-test('AC-08205-1: 真实像素 OCR 引擎：空白无字图真实返回空文本、严禁伪造尺寸描述占位符', async () => {
+test('CR-02: without a pixel OCR adapter, image metadata cannot be reported as recognized text', async () => {
   const engine = createLocalOcrEngine('test-native-engine');
 
   // 1. 构造一个标准的纯白色位图（无任何 tEXt / iTXt 元数据）
@@ -48,13 +48,13 @@ test('AC-08205-1: 真实像素 OCR 引擎：空白无字图真实返回空文本
   ]);
 
   const res = await engine(blankPng);
-  assert.equal(res.status, 'ok');
+  assert.equal(res.status, 'failed');
   assert.equal(res.blocks.length, 0, '空白图片不得识别出伪造文本块');
   assert.equal(res.readingOrderText, '', '空白图片的阅读文本必须为空');
   assert.equal(res.readingOrderText.includes('本地屏幕图像'), false, '绝对严禁输出尺寸占位符！');
 });
 
-test('AC-08205-2: 屏幕捕获目标边界校验、像素上限防御、持续感知授权绑定与解绑', async () => {
+test('CR-02: screen capture requires a real adapter and a matching continuous grant', async () => {
   const source = new ScreenCaptureSource({
     maxPixels: 2_073_600, // 1920x1080 上限
   });
@@ -77,10 +77,9 @@ test('AC-08205-2: 屏幕捕获目标边界校验、像素上限防御、持续�
   // 2. 绑定持续授权
   await source.attachContinuousGrant(fakeContinuousGrant());
 
-  // 3. 正常捕获
-  const frame = await source.capture(validTarget);
-  assert.ok(frame);
-  assert.equal(frame.targetId, 'screen-primary');
+  // A production source without a capture adapter must fail closed.
+  await assert.rejects(source.capture(validTarget), /capture_unavailable/);
+  await assert.rejects(source.capture({ ...validTarget, targetRevision: 2 }), /target_invalid/);
 
   // 4. 目标无效（已关闭的窗口或超出最大像素的区域）：必须拒绝
   const invalidTarget: ScreenTarget = {
