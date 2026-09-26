@@ -24,4 +24,4 @@
 
 ## 后置边界
 
-用户明确后置 CR-02 的真实抓屏/像素 OCR、CR-03 的正式正文来源/自动调度/陪伴输出，以及依赖它们的实机验收；详见 [0.82 审阅记录](../next/0.82/reports/CODE_REVIEW_20260926.md)。代码历史合批不表示 0.82 功能验收通过。合批分支未推送、未并回 `master`；后续发布前仍需处理上述后置项与 `knowledge.wiki` 插件启动缺口。
+用户明确后置 CR-02 的真实抓屏/像素 OCR、CR-03 的正式正文来源/自动调度/陪伴输出，以及依赖它们的实机验收；详见 [0.82 审阅记录](../next/0.82/reports/CODE_REVIEW_20260926.md)。代码历史合批不表示 0.82 功能验收通过。合批分支已推送至 `origin/codex/aika-local-cloud-merge`，尚未并回 `master`；后续发布前仍需处理上述后置项与 `knowledge.wiki` 插件启动缺口。下一步见[合批后执行计划](POST_MERGE_EXECUTION_PLAN_20260926.md)。
