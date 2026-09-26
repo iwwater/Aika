@@ -99,7 +99,7 @@ export interface ObservationContextProjection {
 
 // --- 3. CompanionEventEnvelope -------------------------------------------------------------------
 
-export type EventDomain = 'canon' | 'companion' | 'work';
+export type EventDomain = 'canon' | 'companion' | 'work' | 'collection';
 
 export interface CompanionEventEnvelope<T = unknown> {
   readonly eventId: string;

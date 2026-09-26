@@ -60,12 +60,13 @@ export function createModernKnowledgeView(actions) {
   const ks = s.kbState;
 
   // Load snapshot if missing
-  if (!ks.snapshot && !ks.loadingSnapshot && client?.token) {
+  if (!ks.snapshot && !ks.loadingSnapshot && !ks.snapshotError && client?.token) {
     ks.loadingSnapshot = true;
     client.request('/api/knowledge')
       .then(snap => {
         ks.snapshot = snap;
         ks.loadingSnapshot = false;
+        ks.snapshotError = null;
         if (!ks.selectedLibraryId && snap.libraries?.length > 0) {
           ks.selectedLibraryId = snap.activeLibraryId || snap.libraries[0].id;
         }
@@ -73,7 +74,8 @@ export function createModernKnowledgeView(actions) {
       })
       .catch(err => {
         ks.loadingSnapshot = false;
-        actions.error(err);
+        ks.snapshotError = err.message || String(err);
+        actions.error?.(err);
       });
   }
 
@@ -88,6 +90,8 @@ export function createModernKnowledgeView(actions) {
         actions.render();
       })
       .catch(err => {
+        ks.loadedDocLib = ks.selectedLibraryId;
+        ks.documents = [];
         ks.documentsLoading = false;
         actions.error(err);
       });
@@ -555,15 +559,13 @@ export function createModernKnowledgeView(actions) {
       );
     }
 
-    // TAB 4: 检索
+    // TAB 4: 检索说明
     else if (ks.activeTab === 'search') {
       const searchBox = el(
         'div',
         { class: 'kb-search-test-box' },
-        el('h3', {}, '语义检索验证'),
-        el('p', { class: 'subtle' }, '在此输入问题，测试知识库切片命中情况（不调用大模型）。'),
-        el('input', { type: 'text', class: 'kb-search-test-input', placeholder: '输入测试查询词，如：偏好、准则...' }),
-        button('测试检索', () => alert('当前知识库切片已就绪，日常对话将根据问答语义自动检索注入。'), { class: 'primary' }),
+        el('h3', {}, '知识库切片与检索'),
+        el('p', { class: 'subtle' }, '参考资料切片在对话进行时由系统根据语义自动检索注入，独立检索试算请在 Playground 调试页执行。'),
       );
       drawerBody.append(searchBox);
     }

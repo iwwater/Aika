@@ -1,6 +1,9 @@
 **/node_modules/
 **/dist/
 **/build/
+**/.build/
+*.obj
+*.pdb
 **/.cache/
 **/__pycache__/
 .local/
@@ -45,6 +48,8 @@ id_ed25519*
 *.zip
 
 # 审计/侦察临时残渣（AI worker 会话产物，不入库）
+test-results/
+**/test-results/
 .audit-k65/
 .audit-*/
 .n61-*

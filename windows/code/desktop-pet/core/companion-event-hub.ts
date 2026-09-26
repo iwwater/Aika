@@ -90,7 +90,7 @@ export class CompanionEventHub implements HostEventChannel {
   private validateEnvelope(envelope: CompanionEventEnvelope): void {
     if (!envelope || envelope.schemaVersion !== 1) throw new Error('Invalid event envelope: schemaVersion must be 1');
     if (!envelope.eventId?.trim()) throw new Error('Invalid event envelope: missing eventId');
-    if (!['canon', 'companion', 'work'].includes(envelope.domain)) throw new Error(`Invalid event envelope: invalid domain ${envelope.domain}`);
+    if (!['canon', 'companion', 'work', 'collection'].includes(envelope.domain)) throw new Error(`Invalid event envelope: invalid domain ${envelope.domain}`);
     if (!envelope.pairing?.userId || !envelope.pairing?.characterId || !envelope.pairing?.characterInstanceId) {
       throw new Error('Invalid event envelope: invalid pairing scope');
     }

@@ -187,6 +187,95 @@ export class ManagementError extends Error {
   constructor(readonly code: ManagementErrorCode, message: string) { super(message); this.name = 'ManagementError'; }
 }
 
+export interface PlaygroundSessionView {
+  pairing: { userId: string; characterId: string; characterInstanceId: string };
+  sessionId: string;
+  capabilities: {
+    canSubmitText: boolean;
+    canCancel: boolean;
+    hasStt: boolean;
+    hasTts: boolean;
+  };
+  effectiveConfigRevision: number;
+  status: 'idle' | 'busy';
+}
+
+export interface PlaygroundTurnSubmitInput {
+  operationId: string;
+  pairing: { userId: string; characterId: string; characterInstanceId: string };
+  sessionId: string;
+  expectedConfigRevision?: number | undefined;
+  text: string;
+}
+
+export interface PlaygroundTurnView {
+  turnId: string;
+  operationId: string;
+  status: 'running' | 'completed' | 'failed' | 'cancelled';
+  text: string;
+  reply: string | null;
+  traceRef: string | null;
+  error?: string;
+  startedAt: string;
+  completedAt?: string;
+}
+
+export interface PlaygroundManagementPort {
+  session(pairing?: { userId: string; characterId: string; characterInstanceId: string }): Promise<PlaygroundSessionView> | PlaygroundSessionView;
+  submitTurn(input: PlaygroundTurnSubmitInput): Promise<PlaygroundTurnView>;
+  getTurn(turnId: string): Promise<PlaygroundTurnView | null> | (PlaygroundTurnView | null);
+  cancelTurn(turnId: string): Promise<{ cancelled: boolean; turnId: string }>;
+}
+
+export interface CharacterPresetBinding {
+  provider: string;
+  model: string;
+  credentialRef: string;
+  temperature?: number;
+  voice?: string;
+  language?: string;
+}
+
+export interface CharacterPresetAppearance {
+  type: 'live2d' | 'sprite';
+  resourceId: string;
+  label?: string;
+  stateMappings?: Record<string, string>;
+}
+
+export interface CharacterPresetPersona {
+  text: string;
+  revision: number;
+}
+
+export interface CharacterPreset {
+  characterId: string;
+  presetId: string;
+  revision: number;
+  savedRevision: number;
+  effectiveRevision: number;
+  appearance: CharacterPresetAppearance;
+  persona: CharacterPresetPersona;
+  bindings: {
+    dialogue: CharacterPresetBinding;
+    asr?: CharacterPresetBinding;
+    tts?: CharacterPresetBinding;
+  };
+}
+
+export interface CharacterPresetSaveInput {
+  characterId: string;
+  presetId?: string;
+  expectedRevision: number;
+  appearance?: CharacterPresetAppearance;
+  persona?: { text: string };
+  bindings?: {
+    dialogue?: Partial<CharacterPresetBinding>;
+    asr?: Partial<CharacterPresetBinding>;
+    tts?: Partial<CharacterPresetBinding>;
+  };
+}
+
 /* Same-origin HTTP routes, all require Authorization: Bearer <local session token>:
  GET  /api/snapshot -> ManagementSnapshot
  GET  /api/records?characterId=&kind=&query=&offset=&limit=&state= -> RecordPage

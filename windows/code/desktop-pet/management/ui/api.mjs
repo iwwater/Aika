@@ -20,6 +20,24 @@ export class ManagementClient {
     if(!/^audio\//i.test(response.headers.get('content-type')||''))throw new ApiError('试听音频格式无效。');
     const blob=await response.blob();if(!blob.size||blob.size>20*1024*1024)throw new ApiError('试听音频大小无效。');return blob;
   }
+  /**
+   * N081-06: read one authenticated image asset as an object URL.
+   *
+   * `<img src>` cannot carry the Bearer header, so the bytes are fetched with the normal
+   * authenticated request and exposed as a short-lived blob URL. The caller must revoke it.
+   */
+  async requestImage(path) {
+    if (!path.startsWith('/api/collection/samples/')) throw new ApiError('样本资产地址无效。');
+    let response;
+    try { response = await this.transport(path, { method: 'GET', redirect: 'error', credentials: 'omit', cache: 'no-store', headers: { Authorization: `Bearer ${this.token}`, Accept: 'image/*' } }); }
+    catch { throw new ApiError('无法读取本地样本图片。'); }
+    if (!response.ok) throw new ApiError('该样本已失效或不属于当前配对。', response.status);
+    const type = response.headers.get('content-type') || '';
+    if (!/^image\//i.test(type)) throw new ApiError('样本资产格式无效。');
+    const blob = await response.blob();
+    if (!blob.size || blob.size > 20 * 1024 * 1024) throw new ApiError('样本图片大小无效。');
+    return URL.createObjectURL(blob);
+  }
 }
 export function query(path, values) { return path+'?'+new URLSearchParams(values).toString(); }
 export const clone=value=>structuredClone(value);

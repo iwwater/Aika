@@ -36,6 +36,7 @@ import { AikaProfileStore } from './aika-profile.js';
 import { AikaTimelineStore, AikaTimelineRecorder } from './aika-timeline.js';
 import { aikaManagement, ModelDiscoveryService } from './aika-routes.js';
 import { AikaDiscoveryDraftStore } from './model-discovery-draft.js';
+import { CharacterPresetStore } from './character-preset-store.js';
 import { readSetupKey } from './self-setup.js';
 import { healthManagement, microphoneManagement } from './health-routes.js';
 import { MicrophonePreferenceStore } from '../media/microphone-preference.js';
@@ -67,7 +68,15 @@ export async function startRuntimeManagement(base: TrialConfiguration, configFil
   /** 08-04: opt-in source-based invitations share the existing delivery budget. */
   proactiveInvitations?: import('./proactive-invitation-routes.js').ProactiveInvitationManagement,
   /** 08-03: explicitly confirmed, pair-scoped screen capture and one-turn observation handoff. */
-  perception?: import('./perception-runtime.js').PerceptionManagementRuntime) {
+  perception?: import('./perception-runtime.js').PerceptionManagementRuntime,
+  /** UIR-04: production playground turn debugging port. */
+  playground?: import('../contracts/management.js').PlaygroundManagementPort,
+  /** N081-06: local collection console over the composition root's Collection service. */
+  collection?: import('./collection-routes.js').CollectionManagementPort,
+  /** N082-08: companion mode runtime, batch runner, and observation scheduler */
+  companionMode?: import('../core/companion-mode-runtime.js').CompanionModeRuntime,
+  batchRunner?: import('../core/collection-batch-runner.js').CollectionBatchRunner,
+  observationScheduler?: import('../core/observation-scheduler.js').ObservationScheduler) {
   /** The registry already publishes which provider owns a reference; no key material is read here. */
   const credentialOwner = (ref: string, list: readonly { id: string; provider?: string }[]) => {
     const owner = list.find(entry => entry.id === ref)?.provider;
@@ -119,7 +128,14 @@ export async function startRuntimeManagement(base: TrialConfiguration, configFil
   const aikaPort = aika ? aikaManagement(aika.store, aika.timeline, aikaDiscovery) : undefined;
   const aikaRecorder = aika?.turn ? new AikaTimelineRecorder(aika.turn, aika.timeline) : undefined;
   const stopRecorder = aikaRecorder?.start();
-  try { server = await startManagementServer({ ...(emotion?{emotion}:{}), selfSetup, ...(memoryImport?{memoryImport}:{}), balances, ...(wake?{wake}:{}), uiRoot: resolve(base.projectRoot, 'code/desktop-pet/management/ui'), settings, memory, ...(aikaPort?{aika:aikaPort}:{}), ...(knowledge?{knowledge}:{}), ...(continuity?{continuity}:{}), health: healthManagement(runtime.health),
+  const presets = await CharacterPresetStore.open({
+    filePath: resolve(base.projectRoot, '.local/data/character-presets.json'),
+    memory,
+    settings,
+    skins,
+    base,
+  });
+  try { server = await startManagementServer({ ...(emotion?{emotion}:{}), selfSetup, ...(memoryImport?{memoryImport}:{}), balances, ...(wake?{wake}:{}), uiRoot: resolve(base.projectRoot, 'code/desktop-pet/management/ui'), settings, memory, presets, ...(aikaPort?{aika:aikaPort}:{}), ...(knowledge?{knowledge}:{}), ...(continuity?{continuity}:{}), health: healthManagement(runtime.health),
       ...(microphone?{microphone: microphoneManagement(microphone)}:{}), ...(skins?{skins}:{}), ...(wechat?{wechat}:{}), ...(projects ? { projects } : {}), ...(tasks ? { tasks } : {}), ...(pendingMemory?{pendingMemory}:{}), ...(presentation ? { presentation, presentationAssets: await presentationAssetRoutes(base.projectRoot) } : {}),
       ...(traces ? { traces } : {}),
       ...(traceContent ? { traceContent } : {}),
@@ -127,6 +143,11 @@ export async function startRuntimeManagement(base: TrialConfiguration, configFil
       ...(workProtocol ? { workProtocol } : {}),
       ...(proactiveInvitations ? { proactiveInvitations } : {}),
       ...(perception ? { perception } : {}),
+      ...(playground ? { playground } : {}),
+      ...(collection ? { collection } : {}),
+      ...(companionMode ? { companionMode } : {}),
+      ...(batchRunner ? { batchRunner } : {}),
+      ...(observationScheduler ? { observationScheduler } : {}),
       ...(unifiedTimeline ? { unifiedTimeline: input => unifiedTimeline.service.queryTimeline({ pairing: unifiedTimeline.pairing, ...input }) } : {}),
     snapshot: async () => ({ apiVersion: 1, balances:balances.snapshot(), accounting:await accountingSnapshot(base), runtime: runtime.identity(), modules: runtime.modules(), events: runtime.recentEvents(),
       settings: settings.snapshot(), adapters: availableAdapters(base, settings.registeredVoices), credentials: credentialRegistry(base).list(), characters: memory.characters() }) });

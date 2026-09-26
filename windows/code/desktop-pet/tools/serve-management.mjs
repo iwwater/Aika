@@ -17,6 +17,8 @@ import { confirmedInvitationPolicy } from '../dist/companion/invitations.js';
 import { RuntimeTraceStore } from '../dist/core/trace-store.js';
 import { readTraceContentFromHistory } from '../dist/memory/trace-history-content.js';
 import { credentialRegistry } from '../dist/management/credentials.js';
+import { CharacterPresetStore } from '../dist/management/character-preset-store.js';
+import { createSelfSetup } from '../dist/management/self-setup.js';
 import { availableAdapters } from '../dist/management/settings.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -107,10 +109,32 @@ async function main() {
   process.on('uncaughtException', err => console.error('Uncaught:', err));
   process.on('unhandledRejection', err => console.error('Unhandled:', err));
 
+  let selfSetup;
+  try {
+    selfSetup = createSelfSetup({
+      base: rawConfig,
+      settings,
+      instanceId: runtime.identity().instanceId,
+    mode: 'runtime',
+      credentials: credentialRegistry(rawConfig),
+    });
+  } catch (err) {
+    console.warn('selfSetup init optional:', err.message);
+  }
+
+  const presetStore = await CharacterPresetStore.open({
+    filePath: resolve(tempDir, 'character-presets.json'),
+    memory: memoryPort,
+    settings,
+    skins: store,
+    base: rawConfig,
+  });
+
   const instance = await startManagementServer({
     uiRoot: resolve(root, 'management/ui'),
     settings,
     skins: store,
+    presets: presetStore,
     token,
     port: 10158,
     memory: memoryPort,
@@ -123,16 +147,94 @@ async function main() {
       list: async () => []
     },
     knowledge: {
-      listLibraries: async () => [{ id: 'sample-lib', name: '系统核心知识库', active: true, documentCount: 1, revision: 1 }],
-      listDocuments: async () => [{ id: 'doc-1', title: '示例离线规范.md', tokenCount: 120, createdAt: new Date().toISOString() }],
-      removeDocument: async () => ({ removed: true, revision: 2 }),
-      getDocument: async (id) => ({ id, title: '示例离线规范.md', content: '# 示例离线规范\n\n这是系统知识库文档。', tokenCount: 120 })
+      snapshot: async () => ({
+        revision: 1,
+        activeLibraryId: 'sample-lib',
+        libraries: [{ id: 'sample-lib', name: '系统核心知识库', active: true, documentCount: 1, bytes: 2048, revision: 1 }]
+      }),
+      documents: async (libraryId) => [
+        { id: 'doc-1', title: '示例离线规范.md', tokenCount: 120, bytes: 2048, createdAt: new Date().toISOString() }
+      ],
+      documentContent: async (libraryId, documentId) => ({
+        id: documentId,
+        title: '示例离线规范.md',
+        content: '# 示例离线规范\n\n这是系统知识库文档。',
+        tokenCount: 120,
+        bytes: 2048
+      }),
+      removeDocument: async () => ({
+        revision: 2,
+        activeLibraryId: 'sample-lib',
+        libraries: [{ id: 'sample-lib', name: '系统核心知识库', active: true, documentCount: 0, bytes: 0, revision: 2 }]
+      }),
+      create: async () => ({ revision: 2, activeLibraryId: 'sample-lib', libraries: [] }),
+      rename: async () => ({ revision: 2, activeLibraryId: 'sample-lib', libraries: [] }),
+      importDocuments: async () => ({ revision: 2, activeLibraryId: 'sample-lib', libraries: [] }),
+      deleteLibrary: async () => ({ revision: 2, activeLibraryId: '', libraries: [] }),
+      activate: async () => ({ revision: 2, activeLibraryId: 'sample-lib', libraries: [] })
     },
     continuity: {
-      snapshot: async () => ({ version: 1, soul: [], wiki: [], relationship: [] }),
-      record: async () => ({ fact: { id: 'sample-fact', version: 1 } }),
-      correct: async () => ({ fact: { id: 'sample-fact', version: 2 } }),
+      snapshot: async () => ({
+        version: 1,
+        soul: [{ id: 'soul-1', text: '称呼是阿航。', version: 1, category: '称谓设定' }],
+        wiki: [
+          { id: 'fact-1', text: '用户是全栈方案专家，正在推进 Aika-Next 现代控制台重构。', version: 1, category: '职业与工作', observedAt: new Date().toISOString(), tags: ['工作', '架构'] },
+          { id: 'fact-2', text: '用户喜欢在晨间喝乌龙茶。', version: 1, category: '生活习惯', observedAt: new Date().toISOString(), tags: ['偏好', '饮食'] }
+        ],
+        facts: [
+          { id: 'fact-1', text: '用户是全栈方案专家，正在推进 Aika-Next 现代控制台重构。', version: 1, category: '职业与工作', observedAt: new Date().toISOString(), tags: ['工作', '架构'] },
+          { id: 'fact-2', text: '用户喜欢在晨间喝乌龙茶。', version: 1, category: '生活习惯', observedAt: new Date().toISOString(), tags: ['偏好', '饮食'] }
+        ],
+        candidates: [
+          { id: 'cand-1', text: '用户计划下个月调研本地离线大模型推理框架。', version: 1, category: '待审计划', observedAt: new Date().toISOString(), tags: ['调研'] }
+        ],
+        relationship: []
+      }),
+      record: async () => ({ status: 'applied', fact: { id: 'sample-fact', version: 1 } }),
+      correct: async () => ({ status: 'applied', fact: { id: 'sample-fact', version: 2 } }),
+      promote: async () => ({ status: 'applied', fact: { id: 'promoted-fact-1', version: 1 } }),
       forget: async () => ({ removed: true })
+    },
+    next65: {
+      packages: () => [
+        { packageId: 'pkg-core-sherpa-tts', enabled: true, ready: true, loaded: true, active: true, manifestLabels: ['Sherpa 本地离线 TTS'] },
+        { packageId: 'pkg-visual-emotion', enabled: true, ready: false, loaded: false, active: false, manifestLabels: ['视觉情绪识别'] }
+      ],
+      runtimeTruth: () => ({
+        hostAvailable: true,
+        flowAvailable: true,
+        installedCount: 2,
+        loadedPackages: ['pkg-core-sherpa-tts'],
+        activePackages: ['pkg-core-sherpa-tts'],
+        registeredCapabilities: ['llm.chat', 'tts.synthesize', 'perception.visual']
+      }),
+      disable: (pkgId) => ({ packageId: pkgId, enabled: false }),
+      uninstall: (pkgId) => {},
+      importPackage: (path) => ({ packageId: 'pkg-imported', enabled: true, ready: true, loaded: true, manifestLabels: ['导入插件'] })
+    },
+    playground: {
+      session: async () => ({
+        pairing: { userId: 'default-user', characterId: 'companion', characterInstanceId: 'default-instance' },
+        sessionId: 'session-demo',
+        capabilities: { canSubmitText: true, canCancel: true, hasStt: true, hasTts: true },
+        effectiveConfigRevision: 1,
+        status: 'idle'
+      }),
+      submitTurn: async (input) => {
+        const turnId = `turn-${input.operationId}`;
+        return {
+          turnId,
+          operationId: input.operationId,
+          status: 'completed',
+          text: input.text,
+          reply: `你好！收到调试输入：“${input.text}”。后端与 SQLite 数据库交互正常。`,
+          traceRef: `trace-${turnId}`,
+          startedAt: new Date().toISOString(),
+          completedAt: new Date().toISOString()
+        };
+      },
+      getTurn: async () => null,
+      cancelTurn: async (turnId) => ({ cancelled: true, turnId })
     },
     snapshot: () => ({
       apiVersion: 1,
@@ -156,12 +258,13 @@ async function main() {
     url: `${instance.origin}/#token=${token}`,
     pid: process.pid,
     instanceId: runtime.identity().instanceId,
+    mode: 'runtime',
     sourceRevision: runtime.identity().sourceRevision
   };
   writeFileSync(sessionFile, JSON.stringify(descriptor, null, 2), 'utf8');
   restrictPrivatePathSync(sessionFile);
 
-  const url = `${instance.origin}/#page=overview&token=${token}`;
+  const url = `${instance.origin}/#token=${token}`;
   console.log(`\n======================================================`);
   console.log(`  Aika-Next 运行控制台 (已连接真实数据库与凭据)`);
   console.log(`  数据库路径: ${rawConfig.database}`);

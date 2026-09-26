@@ -1,3 +1,6 @@
+import { createStatusBadge, LIFECYCLE_STATUSES } from './envelope.mjs';
+export { createStatusBadge, LIFECYCLE_STATUSES };
+
 export function el(tag,attrs={},...children) {
   const node=document.createElement(tag);
   for(const [key,value] of Object.entries(attrs)){
@@ -91,12 +94,16 @@ export function select(label,id,value,options,onChange,attrs={}) {
   pickerConfig.set(trigger,{label,value,options,onChange});
   return el('div',{class:'field choice-field'},el('label',{id:id+'-label',htmlFor:id},label),trigger);
 }
-document.addEventListener('pointerdown',event=>{if(picker&&!picker.panel.contains(event.target)&&!picker.trigger.contains(event.target))closePicker();},true);
-document.addEventListener('focusin',event=>{if(picker&&event.target!==picker.trigger&&!picker.panel.contains(event.target))closePicker();});
-document.addEventListener('visibilitychange',()=>{if(document.hidden)closePicker();});
-window.addEventListener('pagehide',()=>closePicker());
-window.addEventListener('resize',placePicker);
-document.addEventListener('scroll',placePicker,true);
+if(typeof document!=='undefined'){
+  document.addEventListener('pointerdown',event=>{if(picker&&!picker.panel.contains(event.target)&&!picker.trigger.contains(event.target))closePicker();},true);
+  document.addEventListener('focusin',event=>{if(picker&&event.target!==picker.trigger&&!picker.panel.contains(event.target))closePicker();});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)closePicker();});
+  document.addEventListener('scroll',placePicker,true);
+}
+if(typeof window!=='undefined'){
+  window.addEventListener('pagehide',()=>closePicker());
+  window.addEventListener('resize',placePicker);
+}
 function restorePicker(root,changed){
   if(!picker)return;
   const trigger=root.querySelector('#'+CSS.escape(picker.id));
@@ -115,7 +122,7 @@ export const kinds={memory:'长期记忆',transcript:'对话原文',summary:'会
 // Preserve local reading position across data refreshes, without persisting user content.
 const viewStates=new Map();
 let activeView=null,activeDetail=null;
-const reduced=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
+const reduced=()=>typeof matchMedia!=='undefined'&&matchMedia('(prefers-reduced-motion: reduce)').matches;
 function stateKey(node,index){
   const scope=node.closest('[data-detail-id]')?.dataset.detailId||'';
   return node.id||node.getAttribute('data-scroll-key')||scope+'/'+node.tagName+'/'+(node.querySelector(':scope > summary')?.textContent||node.className)+'/'+index;
@@ -138,7 +145,12 @@ export function restoreView(root,key){
   root.querySelectorAll('.record-list,.text-block,.tablescroll').forEach((n,i)=>{if(!n.hasAttribute('tabindex'))n.tabIndex=0;if(!n.id&&!n.dataset.scrollKey)n.dataset.scrollKey=stateKey(n,i);});
   restorePicker(root,changed);
   // Show the replacement dialog before restoring focus: hidden dialogs cannot receive it.
-  root.querySelectorAll('dialog').forEach(dialog=>{if(!dialog.open){dialog.showModal();(dialog.querySelector('[data-dialog-back]')||dialog.querySelector('#task-confirm-back'))?.focus({preventScroll:true});}});
+  root.querySelectorAll('dialog').forEach(dialog=>{
+    if(!dialog.open && (dialog.dataset.confirmDialog==='true' || dialog.classList.contains('confirm-dialog') || dialog.classList.contains('task-confirm'))){
+      try { dialog.showModal(); } catch {}
+      (dialog.querySelector('[data-dialog-back]')||dialog.querySelector('#task-confirm-back'))?.focus({preventScroll:true});
+    }
+  });
   if(saved){
     root.querySelectorAll('details').forEach((n,i)=>{const open=saved.disclosures.get(stateKey(n,i));if(open!==undefined)n.open=open;});
     root.querySelectorAll('[data-scroll-key],.record-list,.text-block,.tablescroll,textarea,dialog').forEach((n,i)=>{const pos=saved.scrolls.get(stateKey(n,i));if(pos){n.scrollLeft=pos[0];n.scrollTop=pos[1];}});

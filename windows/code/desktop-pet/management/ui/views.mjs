@@ -1,4 +1,4 @@
-import {el,button,badge,notice,card,field,select,definition,time,statuses,slots,kinds} from './dom.mjs';
+﻿import {el,button,badge,notice,card,field,select,definition,time,statuses,slots,kinds} from './dom.mjs';
 import {changes,providerChoice} from './api.mjs';
 const options=map=>Object.entries(map).map(([value,label])=>({value,label}));
 const canSave=a=>a.s.connection==='online';
@@ -91,30 +91,244 @@ export function modelsView(a) {
     el('p',{class:'subtle section-gap'},settings.pending?'版本已保存，重启后生效；当前运行仍使用上方有效配置。':'表单修改需保存并重启后才生效。'),
     ...settingsNotices(a),editor,el('div',{class:'savebar'},settingsActions(a)),background,history);
 }
-export function providerForm(a,slot,label){
-  const {s}=a;
-  const current=s.snapshot.settings.effective?.providers?.[slot] || { provider: 'dashscope', model: '未配置', adapterId: 'none', outputTokenLimit: 0, reservationMicros: 0, inputMicrosPerToken: 0, outputMicrosPerToken: 0 };
-  const draft=s.settingsDraft?.providers?.[slot] || { provider: 'dashscope', model: '', adapterId: '', endpoint: '', credentialRef: '' };
-  const available=(a.selfSetup?.getAdapters()||s.snapshot.adapters||[]).filter(x=>x.slots?.includes(slot));
-  const adapter=available.find(x=>x.id===draft.adapterId);
-  const busy=s.pending.has('settings');
-  const update=(key,value)=>a.editSetting(['providers',slot,key],value);
-  const choose=(next,model)=>{const configured=providerChoice(draft,next,model);if(configured)a.editSetting(['providers',slot],configured);else{if(next?.provider!==draft.provider)update('credentialRef','');update('adapterId',next?.id || '');update('provider',next?.provider || '');update('model',model);update('endpoint',next?.endpoints?.[0]||'');}a.render();};
-  const choice=adapter?.choices?.find(c=>c.configuration?.model===draft.model);
-  const panel=card(label,!s.setupFirstRun&&el('div',{class:'config-summary'},el('small',{},'当前实际生效'),el('p',{},`${current.provider} / ${current.model}${current.voice?' · 音色 '+current.voice:''}`),el('small',{},'适配：'+current.adapterId)),el('p',{class:'subtle'},s.setupFirstRun?'初始化配置尚未运行。请选择模型及对应服务的凭据。':'下面是准备保存的配置；当前运行实例不会随表单变化。'));
-  const adapters=available.map(x=>({value:x.id,label:x.label+(x.status==='not_integrated'?'（尚未接入）':''),disabled:x.status!=='available'}));if(!adapters.some(x=>x.value===draft.adapterId))adapters.push({value:draft.adapterId,label:draft.adapterId+'（当前配置）',disabled:true});
-  const models=(adapter?.models||[]).map(m=>({value:m,label:adapter?.choices?.find(c=>c.configuration?.model===m)?.label||m}));if(!models.some(x=>x.value===draft.model))models.push({value:draft.model,label:draft.model+'（未在当前支持列表）',disabled:true});
-  panel.id='provider-'+slot;
-  const credentials=a.selfSetup?.available()?a.selfSetup.getCredentials(draft.provider):(s.snapshot.credentials||[]);
-  const credentialOptions=[{value:'',label:'请选择此服务的凭据引用'},...credentials.map(c=>({value:c.id,label:`${c.label} · ${statuses[c.status]||c.status}`,disabled:c.status!=='configured'}))];
-  if(draft.credentialRef&&!credentialOptions.some(c=>c.value===draft.credentialRef))credentialOptions.push({value:draft.credentialRef,label:'当前引用不属于此供应商，请重新选择',disabled:true});
-  const grid=el('div',{class:'form-grid'},select('服务商','adapter-'+slot,draft.adapterId,adapters,v=>{const next=available.find(x=>x.id===v);choose(next,next?.models?.[0]||'')},{disabled:busy}),select('型号','model-'+slot,draft.model,models,v=>choose(adapter,v),{disabled:busy}),select('服务地址','endpoint-'+slot,draft.endpoint,(adapter?.endpoints||[draft.endpoint]).map(v=>({value:v,label:v})),v=>update('endpoint',v),{disabled:busy}),select('凭据引用','credential-'+slot,draft.credentialRef,credentialOptions,v=>update('credentialRef',v),{disabled:busy}),slot!=='asr'&&field('上下文输入上界','input-limit-'+slot,draft.inputTokenLimit,v=>update('inputTokenLimit',Number(v)),{type:'number',min:1,step:1,disabled:busy}));
- if(slot==='tts'&&adapter?.capabilities.voice&&(choice?.voices?.length||a.selfSetup?.available()))grid.append(select('已登记音色','voice-'+slot,draft.voice||'',[{value:'',label:'请选择已登记音色'},...(choice?.voices||[]).map(v=>({value:v.id,label:v.label}))],v=>update('voice',v),{disabled:busy}));
- else if(slot==='tts'&&adapter?.capabilities.voice)grid.append(field('音色标识','voice-'+slot,draft.voice,v=>update('voice',v),{disabled:busy,hint:'填写已登记的音色标识。'}));
- if(slot==='tts'&&adapter?.capabilities.language)grid.append(field('语言','language-'+slot,draft.language,v=>update('language',v),{disabled:busy}));
- if(slot==='dialogue'&&adapter?.capabilities.temperature)grid.append(field('温度','temperature-'+slot,draft.temperature,v=>update('temperature',v===''?undefined:Number(v)),{type:'number',min:0,max:2,step:.1,disabled:busy,hint:'控制实际对话请求的随机性。'}));
- panel.append(grid,el('div',{class:'provider-support'},adapter?.status==='not_integrated'&&notice('此服务暂未开放。','warning'),adapter&&el('p',{class:'subtle'},'支持范围：'+([adapter.capabilities.instructions?'表达指令':null,adapter.capabilities.voice?'选择音色':null,adapter.capabilities.cloning?'克隆音色能力':null,adapter.capabilities.language?'语言选择':null,adapter.capabilities.temperature?'温度':null].filter(Boolean).join('、')||'基础功能'))),
- el('details',{},el('summary',{},'用量与费用详情（只读）'),definition([['输出计费范围',current.outputTokenLimit+' token；不代表回复硬截断'],['单次预留',current.reservationMicros+' 微元'],['输入单价',current.inputMicrosPerToken+' 微元 / token'],['输出单价',current.outputMicrosPerToken+' 微元 / token'],['字符单价',current.characterMicros==null?'不适用':current.characterMicros+' 微元 / 字符']]),el('small',{},'可切换型号以已登记的支持列表为准；保存时由服务校验型号与费用范围。')));return panel;
+export function providerForm(a, slot, label) {
+  const { s } = a;
+  const current = s.snapshot.settings.effective?.providers?.[slot] || { provider: 'dashscope', model: '未配置', adapterId: 'none', outputTokenLimit: 0, reservationMicros: 0, inputMicrosPerToken: 0, outputMicrosPerToken: 0 };
+  const draft = s.settingsDraft?.providers?.[slot] || { provider: 'dashscope', model: '', adapterId: '', endpoint: '', credentialRef: '' };
+  const available = (a.selfSetup?.getAdapters() || s.snapshot.adapters || []).filter(x => x.slots?.includes(slot));
+  const adapter = available.find(x => x.id === draft.adapterId);
+  const isOpen = adapter?.open || draft.adapterId?.startsWith('openai-compatible') || draft.adapterId?.startsWith('gemini');
+  const busy = s.pending.has('settings');
+
+  const update = (key, value) => a.editSetting(['providers', slot, key], value);
+  const choose = (next, model) => {
+    const configured = providerChoice(draft, next, model);
+    if (configured) {
+      a.editSetting(['providers', slot], configured);
+    } else {
+      if (next?.provider && next.provider !== draft.provider) update('credentialRef', '');
+      update('adapterId', next?.id || '');
+      update('provider', next?.provider || draft.provider || 'deepseek');
+      update('model', model || draft.model || '');
+      update('endpoint', next?.endpoints?.[0] || draft.endpoint || '');
+    }
+    a.render();
+  };
+
+  const choice = adapter?.choices?.find(c => c.configuration?.model === draft.model);
+  const panel = card(label, !s.setupFirstRun && el('div', { class: 'config-summary' },
+    el('small', {}, '当前实际生效'),
+    el('p', {}, `${current.provider} / ${current.model}${current.voice ? ' · 音色 ' + current.voice : ''}`),
+    el('small', {}, '适配：' + current.adapterId)
+  ), el('p', { class: 'subtle' }, s.setupFirstRun ? '初始化配置尚未运行。请选择模型及对应服务的凭据。' : '下面是准备保存的配置；当前运行实例不会随表单变化。'));
+
+  panel.id = 'provider-' + slot;
+
+  // 1. 全量凭据选项：列出全部有效凭据，不限制死 provider
+  const allCredentials = s.snapshot.credentials || [];
+  const credentialOptions = [
+    { value: '', label: '请选择此服务的凭据引用' },
+    ...allCredentials.map(c => ({
+      value: c.id,
+      label: `${c.label} · ${statuses[c.status] || c.status}`,
+      disabled: c.status !== 'configured'
+    }))
+  ];
+
+  // 2. 快捷一键新建/切换自定义配置（New 一个配置）
+  const newCustomBtn = button('✨ 一键切换/新建为自定义配置 (OpenAI 兼容)', () => {
+    const openAdapter = available.find(x => x.open) || available.find(x => x.id.includes('openai-compatible')) || available[0];
+    const defaultCred = allCredentials.find(c => c.status === 'configured') || allCredentials[0];
+    const defaultEndpoint = (slot === 'asr' || slot === 'tts') ? '' : 'https://api.deepseek.com/chat/completions';
+    const defaultModel = (slot === 'asr') ? 'qwen3-asr-flash' : (slot === 'tts') ? 'qwen3-tts-instruct-flash' : 'deepseek-chat';
+    a.editSetting(['providers', slot], {
+      adapterId: openAdapter?.id || 'openai-compatible-text',
+      protocol: 'openai-compatible',
+      provider: defaultCred?.provider || 'deepseek',
+      model: draft.model && draft.model !== '(未在当前支持列表)' ? draft.model : defaultModel,
+      endpoint: draft.endpoint || defaultEndpoint,
+      credentialRef: defaultCred?.id || '',
+      inputTokenLimit: 32768,
+      outputTokenLimit: 8192,
+      reservationMicros: 0,
+      inputMicrosPerToken: 0,
+      outputMicrosPerToken: 0,
+      ...(slot === 'dialogue' ? { temperature: 0.7 } : {}),
+      ...(slot === 'tts' ? { voice: 'Cherry', language: 'Chinese' } : {})
+    });
+    a.render();
+  }, { class: 'secondary', id: 'new-custom-' + slot, style: 'margin-bottom: 12px; font-weight: bold; background: var(--surface-secondary, #f0f4ff); color: #2563eb; border: 1px dashed #3b82f6;' });
+
+  // 3. 服务商选择
+  const adapters = available.map(x => ({ value: x.id, label: x.label + (x.status === 'not_integrated' ? '（尚未接入）' : ''), disabled: x.status !== 'available' }));
+  if (!adapters.some(x => x.value === draft.adapterId)) {
+    adapters.push({ value: draft.adapterId, label: draft.adapterId + '（当前配置）', disabled: true });
+  }
+
+  // 4. 服务地址（端点）：输入框 + 常用预设快捷按钮
+  const defaultEndpoints = [
+    ['DeepSeek 官方', 'https://api.deepseek.com/chat/completions'],
+    ['百炼兼容模式', 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'],
+    ['本地 Ollama', 'http://localhost:11434/v1/chat/completions'],
+    ['OpenAI 官方', 'https://api.openai.com/v1/chat/completions'],
+    ...(adapter?.endpoints || []).map(ep => ['适配器端点', ep])
+  ];
+  const uniqueEndpoints = [];
+  const epSeen = new Set();
+  for (const [name, url] of defaultEndpoints) {
+    if (url && !epSeen.has(url)) {
+      epSeen.add(url);
+      uniqueEndpoints.push([name, url]);
+    }
+  }
+
+  const endpointField = field('服务地址（端点 Endpoint URL）', 'endpoint-' + slot, draft.endpoint || '', v => update('endpoint', v.trim()), {
+    placeholder: '例如 https://api.deepseek.com/chat/completions 或 http://127.0.0.1:11434/...',
+    disabled: busy
+  });
+
+  const endpointPresetsBar = el('div', { class: 'endpoint-presets', style: 'display:flex; gap:6px; flex-wrap:wrap; margin-top:-6px; margin-bottom:12px; align-items:center;' },
+    el('small', { class: 'subtle', style: 'font-size:12px;' }, '常用端点快速填入：'),
+    ...uniqueEndpoints.map(([pName, pUrl]) => button(pName, () => {
+      update('endpoint', pUrl);
+      a.render();
+    }, { class: 'subtle-btn', style: 'font-size:11px; padding:2px 8px; border-radius:4px; border:1px solid #cbd5e1; background:#f8fafc; cursor:pointer;' }))
+  );
+
+  // 5. 型号（Model）：输入框 + 预设型号快速填入
+  const modelPresets = [
+    ...(adapter?.models || []),
+    ...(slot === 'dialogue' ? ['deepseek-chat', 'deepseek-reasoner', 'qwen-plus', 'gpt-4o'] : []),
+    ...(slot === 'memory_turn' ? ['deepseek-v4-pro', 'deepseek-chat'] : []),
+    ...(slot === 'summary' ? ['deepseek-flash', 'qwen-plus'] : []),
+    ...(slot === 'admission' ? ['deepseek-flash', 'qwen-plus'] : [])
+  ];
+  const uniqueModels = [...new Set(modelPresets.filter(Boolean))];
+
+  const modelField = field('型号 (Model ID)', 'model-' + slot, draft.model || '', v => update('model', v.trim()), {
+    placeholder: '例如 deepseek-chat, gpt-4o, qwen-plus...',
+    disabled: busy
+  });
+
+  const modelPresetsBar = uniqueModels.length ? el('div', { class: 'model-presets', style: 'display:flex; gap:6px; flex-wrap:wrap; margin-top:-6px; margin-bottom:12px; align-items:center;' },
+    el('small', { class: 'subtle', style: 'font-size:12px;' }, '推荐型号快捷填入：'),
+    ...uniqueModels.slice(0, 6).map(mName => button(mName, () => {
+      update('model', mName);
+      a.render();
+    }, { class: 'subtle-btn', style: 'font-size:11px; padding:2px 8px; border-radius:4px; border:1px solid #cbd5e1; background:#f8fafc; cursor:pointer;' }))
+  ) : null;
+
+  // 6. 凭据选择：选中时自动对齐 draft.provider
+  const credentialSelect = select('凭据引用', 'credential-' + slot, draft.credentialRef, credentialOptions, v => {
+    update('credentialRef', v);
+    const chosen = allCredentials.find(c => c.id === v);
+    if (chosen?.provider) {
+      update('provider', chosen.provider);
+    }
+    a.render();
+  }, { disabled: busy });
+
+  // 7. 轻量新凭据录入助手
+  const newKeyBox = el('details', { class: 'key-add-box', style: 'margin-top:10px; margin-bottom:14px; padding:10px; border:1px solid #e2e8f0; border-radius:6px; background:#fafafa;' },
+    el('summary', { style: 'cursor:pointer; font-weight:500; font-size:13px; color:#475569;' }, '➕ 录入新 API Key 到本机 (录入后自动绑定到当前模型)'),
+    el('div', { class: 'form-grid', style: 'margin-top:10px;' },
+      select('归属供应商', 'new-key-provider-' + slot, s['newKeyProvider_' + slot] || 'deepseek', [
+        { value: 'deepseek', label: 'DeepSeek 官方' },
+        { value: 'dashscope', label: '阿里云百炼' },
+        { value: 'openai', label: 'OpenAI / 自定义' }
+      ], v => { s['newKeyProvider_' + slot] = v; a.render(); }),
+      field('API Key 明文 (sk-...)', 'new-key-val-' + slot, s['newKeyVal_' + slot] || '', v => { s['newKeyVal_' + slot] = v; }, {
+        placeholder: '例如 sk-xxxxxxxxxxxxxxxxxxxx',
+        type: 'password'
+      }),
+      button('保存此 Key 并自动选中', async () => {
+        const key = (s['newKeyVal_' + slot] || '').trim();
+        const prov = s['newKeyProvider_' + slot] || 'deepseek';
+        if (!key || !key.startsWith('sk-')) {
+          alert('请填写合法的 API Key（通常以 sk- 开头）');
+          return;
+        }
+        try {
+          const res = await a.client.request('/api/self-setup/credentials', {
+            method: 'POST',
+            body: {
+              instanceId: s.snapshot.runtime.instanceId,
+              provider: prov,
+              key,
+              expectedRevision: (s.snapshot.credentials || []).length,
+              operationId: crypto.randomUUID()
+            }
+          });
+          if (res?.credentialRef) {
+            update('credentialRef', res.credentialRef);
+            update('provider', prov);
+            s['newKeyVal_' + slot] = '';
+            alert('凭据已成功保存到本机！已自动为您选中该凭据。');
+            a.render();
+          }
+        } catch (err) {
+          alert('保存凭据失败：' + (err.message || err));
+        }
+      }, { class: 'primary', style: 'align-self:flex-end; padding:8px 14px;' })
+    )
+  );
+
+  const grid = el('div', { class: 'form-grid' },
+    select('服务商', 'adapter-' + slot, draft.adapterId, adapters, v => {
+      const next = available.find(x => x.id === v);
+      choose(next, next?.models?.[0] || '');
+    }, { disabled: busy }),
+    modelField,
+    endpointField,
+    credentialSelect,
+    slot !== 'asr' && field('上下文输入上界', 'input-limit-' + slot, draft.inputTokenLimit || 32768, v => update('inputTokenLimit', Number(v)), { type: 'number', min: 1, step: 1, disabled: busy })
+  );
+
+  if (slot === 'tts' && adapter?.capabilities.voice && (choice?.voices?.length || a.selfSetup?.available())) {
+    grid.append(select('已登记音色', 'voice-' + slot, draft.voice || '', [
+      { value: '', label: '请选择已登记音色' },
+      ...(choice?.voices || []).map(v => ({ value: v.id, label: v.label }))
+    ], v => update('voice', v), { disabled: busy }));
+  } else if (slot === 'tts' && adapter?.capabilities.voice) {
+    grid.append(field('音色标识', 'voice-' + slot, draft.voice, v => update('voice', v), { disabled: busy, hint: '填写已登记的音色标识。' }));
+  }
+  if (slot === 'tts' && adapter?.capabilities.language) {
+    grid.append(field('语言', 'language-' + slot, draft.language, v => update('language', v), { disabled: busy }));
+  }
+  if (slot === 'dialogue' && (adapter?.capabilities.temperature || isOpen)) {
+    grid.append(field('温度', 'temperature-' + slot, draft.temperature, v => update('temperature', v === '' ? undefined : Number(v)), { type: 'number', min: 0, max: 2, step: .1, disabled: busy, hint: '控制实际对话请求的随机性。' }));
+  }
+
+  panel.append(
+    newCustomBtn,
+    grid,
+    modelPresetsBar,
+    endpointPresetsBar,
+    newKeyBox,
+    el('div', { class: 'provider-support' },
+      adapter?.status === 'not_integrated' && notice('此服务暂未开放。', 'warning'),
+      adapter && el('p', { class: 'subtle' }, '支持范围：' + ([
+        adapter.capabilities.instructions ? '表达指令' : null,
+        adapter.capabilities.voice ? '选择音色' : null,
+        adapter.capabilities.cloning ? '克隆音色能力' : null,
+        adapter.capabilities.language ? '语言选择' : null,
+        (adapter.capabilities.temperature || isOpen) ? '温度' : null
+      ].filter(Boolean).join('、') || '基础功能'))
+    ),
+    el('details', {},
+      el('summary', {}, '用量与费用详情（只读）'),
+      definition([
+        ['输出计费范围', (current.outputTokenLimit || 0) + ' token；不代表回复硬截断'],
+        ['单次预留', (current.reservationMicros || 0) + ' 微元'],
+        ['输入单价', (current.inputMicrosPerToken || 0) + ' 微元 / token'],
+        ['输出单价', (current.outputMicrosPerToken || 0) + ' 微元 / token'],
+        ['字符单价', current.characterMicros == null ? '不适用' : current.characterMicros + ' 微元 / 字符']
+      ]),
+      el('small', {}, '可切换型号以已登记的支持列表为准；保存时由服务校验型号与费用范围。')
+    )
+  );
+
+  return panel;
 }
 export function eventsView(a) {
   const { s } = a;

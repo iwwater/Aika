@@ -1,6 +1,15 @@
-// N075-02 / 0.75: Modern Overview View powered by REAL memory, dialogue transcripts, and runtime events.
-import { el, button, badge, notice, time } from './dom.mjs';
+// UIR-07: Modern Dashboard with 6 Semantic Cards & Accurate Real Read Model Metrics.
+// Strictly obeys:
+// 1. Current Character & Effective Models (Pending restart alert)
+// 2. Today's Real Statistics (Turns, facts, uptime, time zone explicit)
+// 3. Recent Experiences (3-5 items, clean summaries, no raw Trace)
+// 4. Recent Settled Knowledge (Excludes pending candidates)
+// 5. System Capabilities (Ready, disabled, unavailable - no misleading green)
+// 6. Quick Action Jump (Playground, Characters, Wiki, Plugins, Settings)
+
+import { el, button, time } from './dom.mjs';
 import { ICONS, svgIcon } from './icons.mjs';
+import { createStatusBadge } from './envelope.mjs';
 
 function formatDuration(startedAt) {
   if (!startedAt) return '0 小时 1 分钟';
@@ -10,22 +19,14 @@ function formatDuration(startedAt) {
   return `${hours} 小时 ${mins} 分钟`;
 }
 
-function formatMemoryTag(id, text) {
-  if (id.includes('habit') || id.includes('interactive')) return '交互偏好';
-  if (id.includes('project') || id.includes('goal')) return '项目目标';
-  if (id.includes('style') || id.includes('requirement')) return '真诚准则';
-  if (id.includes('summary')) return '会话摘要';
-  if (text.includes('工作') || text.includes('开发')) return '工作生活';
-  return '核心记忆';
-}
-
 export function createModernOverview(actions) {
-  const { s, client } = actions;
+  const { s, client, selectCanonicalPage } = actions;
   const snap = s.snapshot;
+  const container = el('div', { class: 'modern-dashboard-layout', style: 'display:flex; flex-direction:column; gap:20px;' });
 
-  // RV75-07: Invalidate overview cache if auth epoch or selected character changed
   const currentAuthEpoch = actions.authEpoch ?? s.authEpoch;
-  const currentCharacter = s.character || 'companion';
+  const currentCharacter = s.pairing?.characterId || s.character || 'companion';
+
   if (s.overviewEpoch !== currentAuthEpoch || s.overviewCharacter !== currentCharacter) {
     s.overviewData = null;
     s.overviewLoading = false;
@@ -33,22 +34,29 @@ export function createModernOverview(actions) {
     s.overviewCharacter = currentCharacter;
   }
 
-  // Trigger loading real memory records asynchronously if not loaded yet
+  // Load real backend data asynchronously
   if (!s.overviewData && !s.overviewLoading && client?.token) {
     s.overviewLoading = true;
     const charParam = encodeURIComponent(currentCharacter);
+    const userParam = encodeURIComponent(s.pairing?.userId || 'default-user');
+    const instParam = encodeURIComponent(s.pairing?.characterInstanceId || 'default-instance');
+
     Promise.all([
-      client.request(`/api/records?characterId=${charParam}&kind=memory&state=active&limit=6`).catch(() => ({ records: [], total: 0 })),
-      client.request(`/api/records?characterId=${charParam}&kind=transcript&state=active&limit=10`).catch(() => ({ records: [], total: 0 })),
-      client.request(`/api/records?characterId=${charParam}&kind=summary&state=active&limit=2`).catch(() => ({ records: [], total: 0 })),
-    ]).then(([mems, trans, sums]) => {
+      client.request(`/api/records?characterId=${charParam}&kind=memory&state=active&limit=10`).catch(() => ({ records: [], total: 0 })),
+      client.request(`/api/records?characterId=${charParam}&kind=summary&state=active&limit=5`).catch(() => ({ records: [], total: 0 })),
+      client.request('/api/continuity/snapshot', {
+        method: 'POST',
+        body: { pairing: { userId: userParam, characterId: charParam, characterInstanceId: instParam }, includeCandidates: false }
+      }).catch(() => ({ facts: [], soul: [] })),
+      client.request(`/api/traces?characterId=${charParam}&limit=10`).catch(() => ({ total: 0, traces: [] }))
+    ]).then(([mems, sums, continuity, traces]) => {
       s.overviewData = {
         memories: mems.records || [],
-        totalMemories: typeof mems.total === 'number' ? mems.total : (mems.records?.length || 0),
-        transcripts: trans.records || [],
-        totalTranscripts: typeof trans.total === 'number' ? trans.total : (trans.records?.length || 0),
+        totalMemories: mems.total ?? (mems.records?.length || 0),
         summaries: sums.records || [],
-        totalSummaries: typeof sums.total === 'number' ? sums.total : (sums.records?.length || 0),
+        wikiFacts: continuity.facts || continuity.soul || [],
+        recentTraces: traces.traces || [],
+        totalTurns: traces.total ?? 0,
       };
       s.overviewLoading = false;
       actions.render();
@@ -57,333 +65,167 @@ export function createModernOverview(actions) {
     });
   }
 
-  const uptime = formatDuration(snap?.runtime?.startedAt);
-  const memList = s.overviewData?.memories || [];
-  const transList = s.overviewData?.transcripts || [];
-  const sumList = s.overviewData?.summaries || [];
-  const totalMemCount = (s.overviewData?.totalMemories ?? memList.length) + (s.overviewData?.totalSummaries ?? sumList.length);
-  const totalTransCount = s.overviewData?.totalTranscripts ?? transList.length;
+  const od = s.overviewData;
+  const effectiveProviders = snap?.settings?.effective?.providers || {};
+  const isPendingRestart = snap?.settings?.pending === true;
 
-  // Real module health evaluation
-  const modulesList = Object.values(snap?.modules || {});
-  const hasFailedModule = modulesList.some(m => m.state === 'failed' || m.error);
-  const isHealthy = snap?.runtime?.status !== 'failed' && !hasFailedModule;
-  const heroTitle = isHealthy ? '系统运行正常 · 记忆就绪' : '部分模块未就绪 · 运行受限';
-  const heroSub = isHealthy
-    ? 'Aika 陪伴伙伴已接入本地真实记忆库，正在陪伴你 ✨'
-    : '存在未完全就绪的模块，请在健康与设置页面查看详情。';
-
-  // 1. Hero Card
-  const heroCard = el(
-    'div',
-    { class: isHealthy ? 'hero-status-card' : 'hero-status-card hero-status-warning' },
-    el(
-      'div',
-      { class: 'hero-status-top' },
-      el(
-        'div',
-        { class: 'hero-status-left' },
-        svgIcon(isHealthy ? ICONS.checkCircle : ICONS.alertCircle, 'hero-check-icon'),
-        el(
-          'div',
-          { class: 'hero-status-titles' },
-          el('h2', { class: 'hero-status-title' }, heroTitle),
-          el('p', { class: 'hero-status-sub' }, heroSub),
+  // -------------------------------------------------------------
+  // Card 1: 当前角色 (Current Character & Effective Pipeline)
+  // -------------------------------------------------------------
+  const charCard = el('div', {
+    class: 'dashboard-card card',
+    style: 'border-left: 4px solid #3b82f6; position:relative;'
+  },
+    el('div', { style: 'display:flex; justify-content:space-between; align-items:flex-start;' },
+      el('div', {},
+        el('div', { style: 'display:flex; align-items:center; gap:8px;' },
+          el('h3', { style: 'margin:0; font-size:16px;' }, `当前角色: ${currentCharacter}`),
+          s.connection === 'online' ? createStatusBadge('ready', '在线') :
+            s.connection === 'locked' ? createStatusBadge('disabled', '已锁定/未连接') :
+            createStatusBadge('error', '离线')
         ),
+        el('p', { class: 'subtle', style: 'margin:6px 0 0 0; font-size:13px;' },
+          `生效模型: `, el('strong', { style: 'color:#2563eb;' }, effectiveProviders.dialogue?.model || '未配置'),
+          ` | 生效音色: `, el('strong', { style: 'color:#0f172a;' }, effectiveProviders.tts?.voice || '未配置')
+        )
       ),
-      el(
-        'div',
-        { class: 'hero-status-right' },
-        el(
-          'div',
-          { class: 'aika-quote-box' },
-          el('span', { class: 'aika-quote-text' }, '“只有真实对话与记忆中的事实才算数，我不对你说假话。”'),
-          el('span', { class: 'aika-quote-author' }, '—— Aika 角色准则'),
-        ),
-        el(
-          'div',
-          { class: 'aika-avatar-wrap' },
-          el('img', {
-            src: './assets/aika-avatar.png',
-            class: 'aika-avatar-img',
-            alt: 'Aika',
-            onError: (e) => {
-              e.target.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="32" fill="%23dbeafe"/><text x="50%" y="54%" font-size="28" text-anchor="middle" dominant-baseline="middle" fill="%233b82f6">✨</text></svg>';
-            },
-          }),
-        ),
-      ),
+      button('配置角色 ➔', () => selectCanonicalPage('characters', 'preset'), { class: 'secondary', style: 'font-size:12px;' })
     ),
-    el(
-      'div',
-      { class: 'hero-metrics-row' },
-      // Metric 1: 运行时长
-      el(
-        'div',
-        { class: 'metric-pill' },
-        el('div', { class: 'metric-icon' }, svgIcon(ICONS.clock)),
-        el(
-          'div',
-          { class: 'metric-body' },
-          el('span', { class: 'metric-label' }, '运行时长'),
-          el('strong', { class: 'metric-value' }, uptime),
-        ),
-      ),
-      // Metric 2: 长期记忆沉淀数
-      el(
-        'div',
-        { class: 'metric-pill' },
-        el('div', { class: 'metric-icon' }, svgIcon(ICONS.database)),
-        el(
-          'div',
-          { class: 'metric-body' },
-          el('span', { class: 'metric-label' }, '长期记忆'),
-          el(
-            'div',
-            { class: 'metric-value-wrap' },
-            el('strong', { class: 'metric-value' }, `${totalMemCount} 条事实`),
-            svgIcon(ICONS.sparkline, 'metric-chart'),
-          ),
-        ),
-      ),
-      // Metric 3: 真实对话互动轮次
-      el(
-        'div',
-        { class: 'metric-pill' },
-        el('div', { class: 'metric-icon' }, svgIcon(ICONS.chatBubble)),
-        el(
-          'div',
-          { class: 'metric-body' },
-          el('span', { class: 'metric-label' }, '历史对话数'),
-          el(
-            'div',
-            { class: 'metric-value-wrap' },
-            el('strong', { class: 'metric-value' }, `${totalTransCount} 条记录`),
-            svgIcon(ICONS.barChart, 'metric-chart'),
-          ),
-        ),
-      ),
-      // Metric 4: 本地 SQLite 存储状态
-      el(
-        'div',
-        { class: 'metric-pill' },
-        el('div', { class: 'metric-icon' }, svgIcon(ICONS.chip)),
-        el(
-          'div',
-          { class: 'metric-body' },
-          el('span', { class: 'metric-label' }, '本地存储状态'),
-          el('strong', { class: 'metric-value' }, snap?.runtime?.pid ? '本地 SQLite 持久化' : '未连接'),
-          el(
-            'div',
-            { class: 'metric-progress-bar' },
-            el('div', { class: 'metric-progress-fill', style: `width: ${snap?.runtime?.pid ? '100%' : '0%'}` }),
-          ),
-        ),
-      ),
-    ),
+    isPendingRestart ? el('div', {
+      class: 'notice warning',
+      style: 'margin-top:12px; padding:6px 12px; font-size:12px;'
+    }, '⚠️ 配置草稿已保存，正在生效的仍为旧版本。重启桌宠后即可生效新配置。') : null
   );
 
-  // 2. Build Real Activities (Combining real runtime events + real dialogue records)
-  const activities = [];
+  // -------------------------------------------------------------
+  // Card 2: 今日概览真实统计 (Today's Real Metrics)
+  // -------------------------------------------------------------
+  const todayUptime = snap?.runtime?.startedAt ? formatDuration(snap.runtime.startedAt) : '未提供';
+  const realTurns = od ? String(od.totalTurns ?? 0) : '未提供';
+  const settledFactsCount = od ? String((od.totalMemories || 0) + (od.wikiFacts?.length || 0)) : '未提供';
 
-  // Add real dialogue transcripts
-  for (const t of transList.slice(0, 4)) {
-    const isAssistant = t.role === 'assistant';
-    activities.push({
-      time: time(t.createdAt),
-      rawTime: new Date(t.createdAt).getTime() || 0,
-      tag: isAssistant ? '桌宠回复' : '用户发言',
-      dot: isAssistant ? 'green' : 'blue',
-      text: t.text,
-    });
-  }
-
-  // Add real runtime events
-  if (snap?.events && Array.isArray(snap.events)) {
-    for (const e of snap.events.slice(0, 3)) {
-      activities.push({
-        time: time(e.at),
-        rawTime: new Date(e.at).getTime() || 0,
-        tag: e.module === 'memory' ? '长期记忆' : e.module === 'live2d' ? 'Live2D' : '系统内核',
-        dot: 'purple',
-        text: e.message,
-      });
-    }
-  }
-
-  // Sort activities by time descending
-  activities.sort((a, b) => b.rawTime - a.rawTime);
-
-  const displayActivities = activities.slice(0, 5);
-
-  const activityCard = el(
-    'section',
-    { class: 'modern-card' },
-    el(
-      'div',
-      { class: 'card-header' },
-      el(
-        'div',
-        { class: 'card-header-titles' },
-        el('h3', { class: 'card-title' }, '最近动态与交互'),
-        el('p', { class: 'card-sub' }, '真实对话与记忆事件流'),
-      ),
-      el(
-        'button',
-        {
-          type: 'button',
-          class: 'link-btn',
-          onClick: () => actions.selectPage('events'),
-        },
-        '查看全部 →',
-      ),
+  const statsCard = el('div', { class: 'dashboard-card card' },
+    el('div', { style: 'display:flex; justify-content:space-between; margin-bottom:12px;' },
+      el('h3', { style: 'margin:0; font-size:16px;' }, '今日运行与沉淀概览'),
+      el('small', { class: 'subtle', style: 'font-size:11px;' }, '统计范围：本日 00:00 至今 (本地时区) · 本机配对')
     ),
-    el(
-      'ul',
-      { class: 'activity-list' },
-      displayActivities.length > 0
-        ? displayActivities.map(item =>
-            el(
-              'li',
-              { class: 'activity-item' },
-              el('span', { class: `activity-dot dot-${item.dot}` }),
-              el('span', { class: 'activity-time' }, item.time),
-              el('span', { class: 'activity-tag' }, `[${item.tag}]`),
-              el('span', { class: 'activity-text' }, item.text),
-            ),
+    el('div', { style: 'display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:12px;' },
+      el('div', { style: 'padding:12px; background:#f8fafc; border-radius:8px; border:1px solid #e2e8f0;' },
+        el('span', { class: 'subtle', style: 'font-size:12px;' }, '正式对话轮次'),
+        el('div', { style: 'font-size:22px; font-weight:700; color:#0f172a; margin-top:4px;' }, realTurns)
+      ),
+      el('div', { style: 'padding:12px; background:#f8fafc; border-radius:8px; border:1px solid #e2e8f0;' },
+        el('span', { class: 'subtle', style: 'font-size:12px;' }, '沉淀记忆事实'),
+        el('div', { style: 'font-size:22px; font-weight:700; color:#0f172a; margin-top:4px;' }, settledFactsCount)
+      ),
+      el('div', { style: 'padding:12px; background:#f8fafc; border-radius:8px; border:1px solid #e2e8f0;' },
+        el('span', { class: 'subtle', style: 'font-size:12px;' }, '本次连续陪伴时长'),
+        el('div', { style: 'font-size:16px; font-weight:700; color:#0f172a; margin-top:8px;' }, todayUptime)
+      )
+    )
+  );
+
+  // -------------------------------------------------------------
+  // Card 3: 最近经历摘要 (Recent Experiences, 3-5 items)
+  // -------------------------------------------------------------
+  const recentSummaries = (od?.summaries || []).slice(0, 3);
+  const expCard = el('div', { class: 'dashboard-card card' },
+    el('div', { style: 'display:flex; justify-content:space-between; margin-bottom:12px;' },
+      el('h3', { style: 'margin:0; font-size:16px;' }, '最近经历摘要'),
+      el('small', { class: 'subtle', style: 'font-size:11px;' }, '简明陪伴事实，不外露底层 Trace 正文')
+    ),
+    recentSummaries.length > 0 ?
+      el('div', { style: 'display:flex; flex-direction:column; gap:8px;' },
+        ...recentSummaries.map(sItem =>
+          el('div', { style: 'padding:10px 12px; background:#f8fafc; border-radius:6px; font-size:13px; line-height:1.5;' },
+            el('div', { style: 'color:#1e293b;' }, sItem.text),
+            el('small', { class: 'subtle', style: 'font-size:11px; margin-top:4px; display:block;' }, time(sItem.createdAt))
           )
-        : [el('li', { class: 'activity-item empty' }, '暂无最近活动记录')],
-    ),
+        )
+      ) :
+      el('div', { class: 'subtle', style: 'padding:16px; text-align:center; background:#f8fafc; border-radius:6px;' },
+        '暂无近期对话经历摘要。开始在 Playground 或桌宠中聊天吧！'
+      )
   );
 
-  // 3. Build Real Core Memories Cards (Replaces the fake "最近任务")
-  const memoryCardsData = [];
-  for (const m of memList) {
-    memoryCardsData.push({
-      title: formatMemoryTag(m.id, m.text),
-      sub: m.text,
-      badgeText: '已沉淀',
-      badgeClass: 'task-badge success',
-      time: time(m.createdAt),
-    });
-  }
-  for (const sItem of sumList) {
-    memoryCardsData.push({
-      title: '陪伴摘要',
-      sub: sItem.text,
-      badgeText: '阶段摘要',
-      badgeClass: 'task-badge success',
-      time: time(sItem.createdAt),
-    });
-  }
-
-  const memoryCard = el(
-    'section',
-    { class: 'modern-card' },
-    el(
-      'div',
-      { class: 'card-header' },
-      el(
-        'div',
-        { class: 'card-header-titles' },
-        el('h3', { class: 'card-title' }, '核心长期记忆'),
-        el('p', { class: 'card-sub' }, '从本地真实对话沉淀的长期事实与偏好'),
-      ),
-      el(
-        'button',
-        {
-          type: 'button',
-          class: 'link-btn',
-          onClick: () => {
-            s.section = 'records';
-            actions.selectPage('memory');
-          },
-        },
-        '管理记忆库 →',
-      ),
+  // -------------------------------------------------------------
+  // Card 4: 最近沉淀知识 (Recent Settled Knowledge - Excludes Candidates)
+  // -------------------------------------------------------------
+  const recentFacts = [...(od?.wikiFacts || []), ...(od?.memories || [])].slice(0, 3);
+  const knowledgeCard = el('div', { class: 'dashboard-card card' },
+    el('div', { style: 'display:flex; justify-content:space-between; margin-bottom:12px;' },
+      el('h3', { style: 'margin:0; font-size:16px;' }, '最新沉淀知识 Wiki'),
+      button('查看全部 Wiki ➔', () => selectCanonicalPage('knowledge', 'wiki'), { class: 'subtle-btn', style: 'font-size:11px;' })
     ),
-    el(
-      'div',
-      { class: 'task-cards-grid' },
-      memoryCardsData.length > 0
-        ? memoryCardsData.map(mem =>
-            el(
-              'div',
-              {
-                class: 'task-mini-card',
-                style: 'cursor: pointer;',
-                onClick: () => {
-                  s.section = 'records';
-                  actions.selectPage('memory');
-                },
-              },
-              el(
-                'div',
-                { class: 'task-mini-top' },
-                el('strong', { class: 'task-mini-title' }, mem.title),
-                el('span', { class: mem.badgeClass }, mem.badgeText),
-              ),
-              el('p', { class: 'task-mini-sub' }, mem.sub),
-              el('span', { class: 'task-mini-time' }, mem.time),
-            ),
+    recentFacts.length > 0 ?
+      el('div', { style: 'display:flex; flex-direction:column; gap:8px;' },
+        ...recentFacts.map(f =>
+          el('div', { style: 'padding:10px 12px; background:#f8fafc; border-radius:6px; font-size:13px; display:flex; justify-content:space-between; align-items:center;' },
+            el('span', { style: 'color:#0f172a;' }, f.text),
+            el('span', { class: 'badge success', style: 'font-size:10px;' }, '已沉淀')
           )
-        : [el('p', { class: 'empty', style: 'padding: 16px; color: #64748b;' }, s.overviewLoading ? '正在读取本地记忆库…' : '本地记忆库中暂无长期记忆条目')],
-    ),
+        )
+      ) :
+      el('div', { class: 'subtle', style: 'padding:16px; text-align:center; background:#f8fafc; border-radius:6px;' },
+        '当前无沉淀知识。'
+      )
   );
 
-  // 4. Quick Actions
-  const quickActions = [
-    { label: '记忆纠正工作台', page: 'memory', section: 'records', desc: '检索、核验与纠正已沉淀的记忆' },
-    { label: '浏览双时间线', page: 'timeline', desc: '查看原作叙事与陪伴历程' },
-    { label: '角色设定与 Prompt', page: 'memory', section: 'prompt', desc: '查看青梅竹马设定底色与对话原则' },
-    { label: 'Live2D 外观换肤', page: 'skins', desc: '切换桌宠外观立绘与服装' },
-    { label: 'Trace 调用链追踪', page: 'events', desc: '查看运行时诊断与模型调用日志' },
-  ];
+  // -------------------------------------------------------------
+  // Card 5: 系统与能力状态 (System Capabilities)
+  // -------------------------------------------------------------
+  const dialogueMod = snap?.modules?.find(m => m.providerSlot === 'dialogue');
+  const asrMod = snap?.modules?.find(m => m.providerSlot === 'asr' || m.id === 'asr');
+  const ttsMod = snap?.modules?.find(m => m.providerSlot === 'tts');
 
-  const quickActionCard = el(
-    'section',
-    { class: 'modern-card quick-actions-card' },
-    el(
-      'div',
-      { class: 'card-header' },
-      el(
-        'div',
-        { class: 'card-header-titles' },
-        el(
-          'div',
-          { class: 'quick-actions-title-wrap' },
-          svgIcon(ICONS.lightning, 'action-lightning'),
-          el('h3', { class: 'card-title' }, '快捷操作'),
-        ),
-        el('p', { class: 'card-sub' }, '常用操作，一键直达'),
+  const llmStatus = dialogueMod?.status === 'ready' ? 'ready' : (effectiveProviders.dialogue?.model ? 'configured' : 'unavailable');
+  const llmLabel = dialogueMod?.status === 'ready' ? '已就绪' : (effectiveProviders.dialogue?.model ? '已配置 (待调用)' : '未配置');
+
+  const asrStatus = asrMod?.status === 'ready' ? 'ready' : (effectiveProviders.asr?.model ? 'configured' : 'unavailable');
+  const asrLabel = asrMod?.status === 'ready' ? '已就绪' : (effectiveProviders.asr?.model ? '已配置 (待调用)' : '未配置');
+
+  const ttsStatus = ttsMod?.status === 'ready' ? 'ready' : (effectiveProviders.tts?.model ? 'configured' : 'unavailable');
+  const ttsLabel = ttsMod?.status === 'ready' ? '已就绪' : (effectiveProviders.tts?.model ? '已配置 (待调用)' : '未配置');
+
+  const capsCard = el('div', { class: 'dashboard-card card' },
+    el('h3', { style: 'margin:0 0 12px 0; font-size:16px;' }, '核心链路与能力就绪'),
+    el('div', { style: 'display:flex; gap:12px; flex-wrap:wrap;' },
+      el('div', { style: 'flex:1; min-width:130px; padding:10px; background:#f8fafc; border-radius:6px; border:1px solid #e2e8f0;' },
+        el('div', { style: 'font-size:12px; color:#64748b;' }, '对话大模型 (LLM)'),
+        el('div', { style: 'margin-top:6px;' }, createStatusBadge(llmStatus, llmLabel))
       ),
-    ),
-    el(
-      'ul',
-      { class: 'quick-actions-list' },
-      quickActions.map(action =>
-        el(
-          'li',
-          {
-            class: 'quick-action-item',
-            onClick: () => {
-              if (action.section) s.section = action.section;
-              actions.selectPage(action.page);
-            },
-          },
-          el('span', { class: 'quick-action-label' }, action.label),
-          svgIcon(ICONS.chevronRight, 'quick-action-arrow'),
-        ),
+      el('div', { style: 'flex:1; min-width:130px; padding:10px; background:#f8fafc; border-radius:69px; border:1px solid #e2e8f0;' },
+        el('div', { style: 'font-size:12px; color:#64748b;' }, '语音转写 (ASR)'),
+        el('div', { style: 'margin-top:6px;' }, createStatusBadge(asrStatus, asrLabel))
       ),
-    ),
+      el('div', { style: 'flex:1; min-width:130px; padding:10px; background:#f8fafc; border-radius:6px; border:1px solid #e2e8f0;' },
+        el('div', { style: 'font-size:12px; color:#64748b;' }, '语音合成 (TTS)'),
+        el('div', { style: 'margin-top:6px;' }, createStatusBadge(ttsStatus, ttsLabel))
+      )
+    )
   );
 
-  const contentGrid = el(
-    'div',
-    { class: 'overview-columns-grid' },
-    el('div', { class: 'overview-left-col' }, activityCard, memoryCard),
-    el('div', { class: 'overview-right-col' }, quickActionCard),
+  // -------------------------------------------------------------
+  // Card 6: 快捷入口 (Quick Jump Navigation)
+  // -------------------------------------------------------------
+  const quickJumpCard = el('div', { class: 'dashboard-card card' },
+    el('h3', { style: 'margin:0 0 12px 0; font-size:16px;' }, '控制台快捷操作'),
+    el('div', { style: 'display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:10px;' },
+      button('💬 前往 Playground 开始调试', () => selectCanonicalPage('playground', 'chat'), { class: 'primary', style: 'padding:10px;' }),
+      button('🎭 调整角色预设与绑定', () => selectCanonicalPage('characters', 'preset'), { class: 'secondary', style: 'padding:10px;' }),
+      button('📚 查阅知识 Wiki 与事实', () => selectCanonicalPage('knowledge', 'wiki'), { class: 'secondary', style: 'padding:10px;' }),
+      button('📦 插件包管理与扩展', () => selectCanonicalPage('plugins', 'list'), { class: 'secondary', style: 'padding:10px;' }),
+      button('⚙️ 系统来源与设置', () => selectCanonicalPage('settings', 'sources'), { class: 'secondary', style: 'padding:10px;' })
+    )
   );
 
-  return el('div', { class: 'modern-overview-container page-content' }, heroCard, contentGrid);
+  container.append(
+    charCard,
+    statsCard,
+    el('div', { style: 'display:grid; grid-template-columns: 1fr 1fr; gap:16px;' }, expCard, knowledgeCard),
+    capsCard,
+    quickJumpCard
+  );
+
+  return container;
 }

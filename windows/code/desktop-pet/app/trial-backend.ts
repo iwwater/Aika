@@ -40,6 +40,7 @@ import { effectiveTrialConfiguration } from '../management/settings.js';
 import { ManagementRuntime } from '../management/runtime.js';
 import { PresentationSettingsStore, readPresentationCatalog } from '../management/presentation.js';
 import { startRuntimeManagement } from '../management/bootstrap.js';
+import { ProductionPlaygroundPort } from '../management/playground-port.js';
 import type { MemoryRecord } from '../memory/ledger.js';
 import { abortable } from '../media/scope.js';
 import { MemoryMediaStore } from '../media/store.js';
@@ -86,13 +87,85 @@ import { CaptureGrantManager } from '../core/perception-grant.js';
 import { ScreenPerceptionService } from '../core/screen-perception.js';
 import { ObservationContextAdapter, ObservationTurnInbox, ObservationAwareDialogueProvider } from '../core/observation-context.js';
 import { PerceptionManagementRuntime } from '../management/perception-runtime.js';
+import { CollectionStore } from '../memory/collection-store.js';
+import { CollectionGrantManager } from '../core/collection-grants.js';
+import { CollectionService } from '../core/collection-service.js';
+import { CollectionManagement } from '../management/collection-management.js';
+import { CollectionHelperClient, collectionHelperPaths, resolveHelperPackageRoot, loadCollectionHelperManifest, sweepStaleStaging } from '../core/collection-helper-client.js';
+import { ScreenshotDirectorySource } from '../core/screenshot-directory-source.js';
+import { ClipboardImageSource } from '../core/clipboard-image-source.js';
+import { loadCollectionPolicy } from '../contracts/collection.js';
 import { createLocalOcrEngine } from '../core/local-ocr-engine.js';
+import { CompanionModeRuntime } from '../core/companion-mode-runtime.js';
+import { CollectionBatchRunner } from '../core/collection-batch-runner.js';
+import { ObservationScheduler } from '../core/observation-scheduler.js';
+import { ScreenCaptureSource } from '../core/screen-capture-source.js';
+import { DocumentParser } from '../core/document-parser.js';
 import { qwenCloudScreenObservation, SCREEN_OBSERVATION_PROMPT } from '../providers/qwen-screen-observation.js';
 // Health is derived from the runtime's own observations, so no extra probe is started here.
 
+/**
+ * N081-06: decode PNG/JPEG/WebP intrinsic dimensions from the header only.
+ *
+ * Used as the collection store's pixel probe. It reads no pixels, performs no decoding work beyond
+ * the header, and returns null for anything it cannot confidently interpret — so a malformed image
+ * is refused rather than stored with a guessed size.
+ */
+export function probeImageDimensions(bytes: Uint8Array, mimeType?: string): { readonly width: number; readonly height: number } | null {
+  const detected = mimeType ?? (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 ? 'image/png'
+    : bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 ? 'image/jpeg'
+    : bytes.length >= 12 && bytes[8] === 0x57 && bytes[9] === 0x45 ? 'image/webp'
+    : bytes.length >= 2 && bytes[0] === 0x42 && bytes[1] === 0x4d ? 'image/bmp' : '');
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (detected === 'image/bmp') {
+    // BMP carries signed 32-bit width/height at offsets 18 and 22; a negative height means the rows
+    // are stored top-down, which is still a valid image of that absolute size.
+    if (bytes.length < 26) return null;
+    const width = view.getInt32(18, true);
+    const height = Math.abs(view.getInt32(22, true));
+    return width > 0 && height > 0 ? { width, height } : null;
+  }
+  if (detected === 'image/png') {
+    if (bytes.length < 24) return null;
+    const width = view.getUint32(16);
+    const height = view.getUint32(20);
+    return width > 0 && height > 0 ? { width, height } : null;
+  }
+  if (detected === 'image/webp') {
+    if (bytes.length < 30) return null;
+    // Only the lossy (`VP8 `) variant carries plain 14-bit dimensions at a fixed offset.
+    if (bytes[12] === 0x56 && bytes[13] === 0x50 && bytes[14] === 0x38 && bytes[15] === 0x20) {
+      const width = view.getUint16(26, true) & 0x3fff;
+      const height = view.getUint16(28, true) & 0x3fff;
+      return width > 0 && height > 0 ? { width, height } : null;
+    }
+    return null;
+  }
+  if (detected === 'image/jpeg') {
+    // Walk the segment chain to the SOF marker, which carries the real frame dimensions.
+    let offset = 2;
+    while (offset + 9 < bytes.length) {
+      if (bytes[offset] !== 0xff) { offset++; continue; }
+      const marker = bytes[offset + 1]!;
+      if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) { offset += 2; continue; }
+      const length = view.getUint16(offset + 2);
+      if (length < 2) return null;
+      const isStartOfFrame = (marker >= 0xc0 && marker <= 0xc3) || (marker >= 0xc5 && marker <= 0xc7)
+        || (marker >= 0xc9 && marker <= 0xcb) || (marker >= 0xcd && marker <= 0xcf);
+      if (isStartOfFrame) {
+        const height = view.getUint16(offset + 5);
+        const width = view.getUint16(offset + 7);
+        return width > 0 && height > 0 ? { width, height } : null;
+      }
+      offset += 2 + length;
+    }
+    return null;
+  }
+  return null;
+}
+
 /** Keep production trial calls within the reviewed text bounds without truncating user content or replies. */
-export class TrialTransport extends ProviderTransport {
-  constructor(private readonly configuration: TrialConfiguration, private readonly providerFetch: typeof fetch = fetch,
+export class TrialTransport extends ProviderTransport {  constructor(private readonly configuration: TrialConfiguration, private readonly providerFetch: typeof fetch = fetch,
     private readonly runtime?: ManagementRuntime, private readonly dialogueTemperature?: number) { super(providerFetch); }
   override async request(config: EndpointConfig, scope: TurnScope, operation: ProviderOperation, body: JsonRecord,
     signal: AbortSignal, textCharacters?: number, audioSeconds?: number): Promise<JsonRecord> {
@@ -299,6 +372,8 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
   let desktopWork: import('../contracts/desktop-work.js').DesktopWorkPort | undefined;
   let management: Awaited<ReturnType<typeof startRuntimeManagement>> | undefined;
   let perceptionManagement: PerceptionManagementRuntime | undefined;
+  // N081-06: declared here so the outer failure path can also stop collection listeners.
+  let collectionService: CollectionService | undefined;
   let protocolWork: WorkProtocolRuntime | undefined;
   let liveHost: import('../plugins/host-runtime.js').PackageHost | undefined;
   let next65Runtime: Next65Management | undefined;
@@ -381,10 +456,156 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
     perceptionManagement = configuration.purpose === 'user-trial'
       ? new PerceptionManagementRuntime(captureGrantManager, screenPerception, observationInbox, candidatePairing,
         runtime.instanceId, { local: true, cloud: !!cloudObservationEngine }) : undefined;
+    // --- N081-06: controlled collection composition root -----------------------------------------
+    // Only a real product launch wires a collection service. A preview script or a fixture run must
+    // never carry this, so the whole block is fenced behind the same user-trial purpose.
+    let collectionManagement: CollectionManagement | undefined;
+    let collectionGrants: CollectionGrantManager | undefined;
+    let companionModeRuntime: CompanionModeRuntime | undefined;
+    let batchRunner: CollectionBatchRunner | undefined;
+    let observationScheduler: ObservationScheduler | undefined;
+    if (configuration.purpose === 'user-trial') {
+      // The `smoke` profile is only ever selected explicitly at launch and never inherited by the
+      // normal product entry; `loadCollectionPolicy` additionally refuses a shared data root.
+      const collectionProfile = process.env.Aika_COLLECTION_PROFILE === 'smoke' ? 'smoke' : 'normal';
+      const collectionDataRoot = process.env.Aika_COLLECTION_DATA_ROOT
+        ?? resolve(configuration.projectRoot, '..', '.local', 'data');
+      try {
+        const collectionPolicy = loadCollectionPolicy(collectionProfile, collectionDataRoot,
+          collectionProfile === 'smoke' ? resolve(configuration.projectRoot, '..', '.local', 'data') : undefined);
+        const collectionStore = await CollectionStore.open(store, {
+          collectionDirectory: resolve(collectionDataRoot, 'collection'),
+          policy: collectionPolicy,
+          probeImage: probeImageDimensions,
+        });
+        const grants = new CollectionGrantManager({ store: collectionStore, policy: collectionPolicy });
+        collectionGrants = grants;
+        const helperPaths = {
+          // The trial configuration's projectRoot is the WORKSPACE, but the helper builds into the
+          // desktop-pet package's dist/. Resolving from the workspace would look in windows/dist.
+          ...collectionHelperPaths(resolveHelperPackageRoot(configuration.projectRoot)),
+          ...(process.env.Aika_COLLECTION_STAGING_ROOT ? { stagingRoot: process.env.Aika_COLLECTION_STAGING_ROOT } : {}),
+        };
+        // A crashed helper can leave staged files behind; sweep them before wiring the client.
+        sweepStaleStaging(helperPaths.stagingRoot);
+        const helperAvailable = loadCollectionHelperManifest(helperPaths) !== null;
+        const helper = helperAvailable
+          ? new CollectionHelperClient({
+            paths: helperPaths,
+            instanceId: runtime.instanceId,
+            // The routing closure reads the manager variable, so declaration order does not matter.
+            onEvent: event => routeCollectionEvent(event),
+          })
+          : undefined;
+        const screenshotDirectory = new ScreenshotDirectorySource({
+          fileStableIntervalMs: collectionPolicy.fileStableIntervalMs,
+          maxImageBytes: collectionPolicy.maxImageBytes,
+          maxImagePixels: collectionPolicy.maxImagePixels,
+          probeImage: probeImageDimensions,
+        });
+        collectionService = new CollectionService({
+          grants, store: collectionStore, pairing: candidatePairing, instanceId: runtime.instanceId,
+          ...(helper ? { helper } : {}),
+          screenshotDirectory,
+        });
+        collectionManagement = new CollectionManagement({
+          service: collectionService, grants, store: collectionStore, pairing: candidatePairing,
+          // P1-1: A source is started or stopped independently without affecting other sources.
+          syncSource: async (kind, active) => {
+            if (active) await collectionService!.startSource(kind);
+            else await collectionService!.stopSource(kind);
+          },
+        });
+        // P1-2: Restore listeners for any active, unexpired sources after startup/restart.
+        for (const kind of ['keyboard', 'screenshot_directory', 'clipboard_image'] as const) {
+          const current = grants.current(candidatePairing, kind);
+          if (current && current.state === 'active') {
+            if (Date.parse(current.expiresAt) > Date.now()) {
+              void collectionService.startSource(kind).catch(() => undefined);
+            }
+          }
+        }
+        // N082-08: companion mode runtime, batch runner, and observation scheduler
+        companionModeRuntime = new CompanionModeRuntime({
+          db: store.rawDatabaseForKnowledge(),
+          pairing: candidatePairing,
+          onSourceSync: async (kind, active) => {
+            if (active) await collectionService!.startSource(kind as any);
+            else await collectionService!.stopSource(kind as any);
+          },
+        });
+        batchRunner = new CollectionBatchRunner({
+          db: store.rawDatabaseForKnowledge(),
+          store: collectionStore,
+          pairing: candidatePairing,
+          parser: new DocumentParser(),
+        });
+        const screenCapture = new ScreenCaptureSource();
+        const nativeOcr = createLocalOcrEngine();
+        observationScheduler = new ObservationScheduler({
+          pairing: candidatePairing,
+          captureSource: screenCapture,
+          ocrEngine: nativeOcr,
+        });
+
+        // The console reads the true wiring, so an absent helper reports unavailable rather than healthy.
+        runtime.observeModuleState('collection', helperAvailable ? 'ready' : 'unknown',
+          helperAvailable
+            ? `本地采集已接线（${collectionProfile} 档）；默认关闭，需在控制台为每个来源选择范围并启用。`
+            : '本地采集存储与授权已就绪，但采集 helper 未构建；来源将显示为不可用，基础对话不受影响。');
+      } catch {
+        // A collection failure must never stop companion chat.
+        process.stderr.write('Local collection unavailable; companion chat continues.\n');
+      }
+    }
+    /**
+     * N081-06: dispatch one helper event to the service that owns its grant.
+     * The grant is re-read here so a late event can never be written under a superseded revision.
+     */
+    function routeCollectionEvent(event: { op: string; kind: string; grantRevision: number; payload: Record<string, unknown> }): void {
+      const service = collectionService;
+      const grants = collectionGrants;
+      if (!service || !grants) return;
+      if (event.kind === 'keyboard' && event.op === 'activity') {
+        const grant = grants.current(candidatePairing, 'keyboard');
+        if (!grant) return;
+        void service.onKeyboardActivity({
+          grantId: grant.grantId, grantRevision: event.grantRevision || grant.revision,
+          bucketStart: String(event.payload.bucketStart ?? ''),
+          bucketEnd: String(event.payload.bucketEnd ?? ''),
+          activityCount: Number(event.payload.activityCount ?? 0),
+          foregroundAppId: event.payload.foregroundAppId === null || event.payload.foregroundAppId === undefined
+            ? null : String(event.payload.foregroundAppId),
+          afkBoundary: event.payload.afkBoundary === true,
+        });
+        return;
+      }
+      if (event.kind === 'clipboard_image' && event.op === 'clipboard_seq') {
+        const grant = grants.current(candidatePairing, 'clipboard_image');
+        if (!grant) return;
+        void service.onClipboardChange({
+          grantId: grant.grantId, grantRevision: event.grantRevision || grant.revision,
+          clipboardSequence: Number(event.payload.clipboardSequence ?? 0),
+          observedAt: String(event.payload.observedAt ?? new Date().toISOString()),
+        });
+        return;
+      }
+      if (event.kind === 'system' && event.op === 'session_locked') {
+        void grants.suspendAll('session_locked', candidatePairing);
+        return;
+      }
+    }
     const unifiedTimeline = new UnifiedTimelineService(store.rawDatabaseForKnowledge(), characterPacks);
     const companionEventHub = new CompanionEventHub();
     let timelineDispatchError: unknown;
     companionEventHub.subscribeDomain(['canon', 'companion', 'work'], envelope => {
+      try { unifiedTimeline.recordEventSync(envelope); }
+      catch (error) { timelineDispatchError = error; throw error; }
+    }, candidatePairing);
+    // N081-06: collection is an explicit opt-in domain. It is NOT added to the default subscriber
+    // above, so an old client's three-domain result set is unchanged; the collection projection is
+    // read from the Collection store by the management layer instead.
+    companionEventHub.subscribeDomain(['collection'], envelope => {
       try { unifiedTimeline.recordEventSync(envelope); }
       catch (error) { timelineDispatchError = error; throw error; }
     }, candidatePairing);
@@ -598,8 +819,19 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
       // N075-01/R5: real production trace store wired to dialogue pipeline and memory lifecycle queue
       traceStore,
     };
+    const playgroundPort = new ProductionPlaygroundPort({
+      sendCommand: command => session!.receiveLine(JSON.stringify({ channel: 'command', command })),
+      cancelCurrent: () => session!.receiveLine(JSON.stringify({ channel: 'command', command: { type: 'cancel' } })),
+      pairing: candidatePairing,
+      getConfigRevision: () => settings.snapshot().effectiveRevision,
+      hasStt: () => !!streamingModels || !!configuration.models.asr,
+      hasTts: () => !!settings.effective.providers.tts?.voice,
+      traceStore,
+      isBusy: () => session ? session.pendingMemoryJobs().some(x => x.queued + x.running > 0) : false,
+    });
     session = new BackendSession(sessionPorts, message => {
       runtime.observeDesktop(message);
+      playgroundPort.observeDesktopMessage(message);
       if (message.channel === 'event' && message.event.type === 'error' && configuration.purpose === 'smoke-text') void authorizer.stop('backend_error').catch(() => {});
       process.stdout.write(JSON.stringify(message) + '\n');
     }, () => store!.close(), (scope, kind) => {
@@ -706,7 +938,8 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
           if (!policy.enabled && previouslyShown) session?.withdrawInvitation(previouslyShown);
           if (policy.enabled) syncProactiveInvitations(pairing);
           session?.requestProactiveEvaluation();
-        }) : undefined, perceptionManagement);
+        }) : undefined, perceptionManagement, playgroundPort, collectionManagement,
+        companionModeRuntime, batchRunner, observationScheduler);
     }
     if (configuration.purpose === 'user-trial') {
       const classifier = new WorkIntentClassifier(endpoint('admission'), transport);
@@ -762,6 +995,9 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
     const close = async () => {
       if (stopping) return; stopping = true; clearInterval(cleanupTimer); lines.close(); process.stdin.pause();
       managementForget?.close();
+      // Stop collection listeners before the memory store closes, so no late event writes into a
+      // closing database. `collectionService.close()` also terminates the helper process.
+      try { await collectionService?.close(); } catch { process.stderr.write('Collection shutdown did not complete\n'); }
       try { await wake?.close(); await wechat?.close(); await desktopWork?.close(); await liveHost?.close(); await management?.close(); await managementForget?.drain(); await settings.drain(); await presentation.drain(); }
       finally { try { await session!.close(); } finally { await release(); } }
     };
@@ -784,6 +1020,7 @@ export async function startTrialBackend(environment: NodeJS.ProcessEnv = process
   } catch (error) {
     managementForget?.close();
     perceptionManagement?.close();
+    try { await collectionService?.close(); } catch { /* best-effort collection teardown */ }
     await wake?.close(); await wechat?.close(); await liveHost?.close(); await management?.close(); await managementForget?.drain();
     await memoryImport?.close();
     if (session) await session.close(); else store?.close();

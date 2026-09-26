@@ -54,6 +54,20 @@ else if (group === 'release') {
     console.error('K65 test collection is empty; refusing a passWithNoTests run.');
     process.exit(2);
   }
+} else if (group === 'next081') {
+  await collect('dist/tests/next081', name => name.endsWith('.test.js')).catch(() => {});
+  await collect('tests/next081', name => name.endsWith('.test.mjs')).catch(() => {});
+  if (!paths.length) {
+    console.error('NEXT081 test cases missing after build; refusing a passWithNoTests run.');
+    process.exit(2);
+  }
+} else if (group === 'next082') {
+  await collect('dist/tests/next082', name => name.endsWith('.test.js')).catch(() => {});
+  await collect('tests/next082', name => name.endsWith('.test.mjs')).catch(() => {});
+  if (!paths.length) {
+    console.error('NEXT082 test cases missing after build; refusing a passWithNoTests run.');
+    process.exit(2);
+  }
 } else if (group === 'next-real') {
   if (process.env.PET_NEXT_REAL !== '1') {
     console.error('NEXT-REAL BLOCKED: real-service replay requires PET_NEXT_REAL=1 plus authorized credentials and recorded fixtures. Fixture tests (npm run test:next) do not substitute for real replay.');

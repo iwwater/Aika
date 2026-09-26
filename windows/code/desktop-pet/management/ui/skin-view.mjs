@@ -13,7 +13,7 @@ const kib=bytes=>Math.max(1,Math.round(bytes/1024))+' KiB';
 export function createSkinView(client,render,getHost){
   let state=null,error='',message='',reading=false,writing=false,epoch=0,active=false,identity=null;
   let draftId='',draftLabel='',draftSource='',conflict=false;
-  const visible=()=>getHost().page==='skins'&&getHost().connection==='online'&&!document.hidden;
+  const visible=()=>['skins', 'characters'].includes(getHost().page)&&getHost().connection==='online'&&!document.hidden;
   const revision=()=>state?.state?.revision??0;
   function stop(){active=false;epoch++;}
   function sync(){const h=getHost(),key=JSON.stringify([h.instanceId,h.authEpoch]);if(key!==identity){if(identity!==null&&state)conflict=true;stop();identity=key;state=null;error='';}if(!visible()){if(active)stop();return;}if(!active){active=true;queueMicrotask(()=>active&&refresh());}}

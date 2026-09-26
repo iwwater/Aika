@@ -2890,3 +2890,16 @@ th {
 .perception-live-preview, .perception-frame-preview { display: block; width: 100%; max-height: min(68vh, 620px); object-fit: contain; border: 1px solid var(--border-line); border-radius: var(--radius-md); background: #0f172a; }
 .perception-consent { display: flex; align-items: flex-start; gap: 9px; margin: 14px 0; color: var(--text-main); }
 .perception-consent input { margin-top: 4px; accent-color: var(--primary); }
+
+/* N081-06: 本地采集（Collection）控制台。与感知页共享网格节奏，但不复用其预览样式。 */
+.collection-page { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 16px; align-items: start; }
+.collection-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 12px; }
+.collection-state { margin: 0 0 8px; font-size: 15px; }
+.collection-state.ok { color: var(--success, #2f9e6b); }
+.collection-state.warn { color: var(--warning, #c98a1e); }
+.collection-state.error { color: var(--danger, #c8503f); }
+.collection-state.muted { color: var(--text-subtle, #6b7280); }
+.collection-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.collection-thumb { display: block; width: 100%; max-height: 240px; object-fit: contain; border: 1px solid var(--border-line); border-radius: var(--radius-md); background: #0f172a; margin-bottom: 8px; }
+.collection-page label.subtle { display: block; margin-top: 10px; }
+.collection-page label.subtle input { display: block; width: 100%; margin-top: 6px; }

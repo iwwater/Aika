@@ -1,4 +1,4 @@
-import {el,button,badge,notice,field,select,definition,time,slots} from './dom.mjs';
+﻿import {el,button,badge,notice,field,select,definition,time,slots} from './dom.mjs';
 import {clone,changes,query} from './api.mjs';
 import {providerForm} from './views.mjs';
 
@@ -56,7 +56,7 @@ export function createSelfSetupView(client,render,host){
  }
  const ready=()=>data&&!stale&&!writing&&client.token&&visible();
  const getCredentials=provider=>(data?.credentials||[]).filter(c=>c.provider===provider);
- const validBindings=settings=>!data||Object.values(settings.providers).every(p=>data.credentials.some(c=>c.id===p.credentialRef&&c.provider===p.provider&&c.status==='configured'));
+ const validBindings=settings=>!data||!settings?.providers||Object.values(settings.providers).every(p=>{if(!p||!p.credentialRef)return true;return data.credentials.some(c=>c.id===p.credentialRef&&c.status==='configured');});
  function fail(e){stale=true;error=safeErrors[e.code]||'操作结果尚未确认，请刷新核对。不会自动重发收费请求。';if(e.status===401||e.status===403)host().onError({name:'Error',status:e.status});}
  async function mutate(path,body,acceptResult,{method='POST',cloudKey=null}={}){
   if(!ready())return;const t={epoch,instance:data.instanceId,auth:host().authEpoch};writing=t;reading?.controller.abort();reading=null;clearTimeout(timer);error='';message='';if(cloudKey)uncertain.add(cloudKey);render();

@@ -38,8 +38,13 @@ import type { WorkProtocolManagement } from '../contracts/work-protocol.js';
 import { proactiveInvitationRoute, type ProactiveInvitationManagement } from './proactive-invitation-routes.js';
 import { perceptionRoute } from './perception-routes.js';
 import type { PerceptionManagementPort } from './perception-routes.js';
+import { playgroundRoute } from './playground-routes.js';
+import { collectionRoute } from './collection-routes.js';
+import type { CollectionManagementPort } from './collection-routes.js';
+import { companionModeRoute } from './companion-mode-routes.js';
+import type { PlaygroundManagementPort } from '../contracts/management.js';
 
-interface RuntimeServerOptions { emotion?: EmotionManagement; aika?: import('./aika-routes.js').AikaManagement; knowledge?: import('../contracts/knowledge.js').KnowledgeManagement; continuity?: ContinuityManagement; health?: import('./health-routes.js').HealthManagement; microphone?: import('./health-routes.js').MicrophoneManagement; mode?: 'runtime'; selfSetup?:SelfSetupManagement; memoryImport?: MemoryImportManagement; balances?: BalanceManagement; wake?: WakeManagement; wechat?: WeChatManagement; uiRoot: string; memory: ManagementMemoryPort; settings: ManagementSettingsStore; snapshot(): ManagementSnapshot | Promise<ManagementSnapshot>; token?: string; port?: number; presentation?: PresentationControls; presentationAssets?: ReadonlyMap<string, string>; pendingMemory?:PendingMemoryManagement; projects?: ProjectIndexPort; tasks?: TaskManagement;
+interface RuntimeServerOptions { emotion?: EmotionManagement; aika?: import('./aika-routes.js').AikaManagement; knowledge?: import('../contracts/knowledge.js').KnowledgeManagement; continuity?: ContinuityManagement; playground?: PlaygroundManagementPort; presets?: import('./character-preset-store.js').CharacterPresetStore; health?: import('./health-routes.js').HealthManagement; microphone?: import('./health-routes.js').MicrophoneManagement; mode?: 'runtime'; selfSetup?:SelfSetupManagement; memoryImport?: MemoryImportManagement; balances?: BalanceManagement; wake?: WakeManagement; wechat?: WeChatManagement; uiRoot: string; memory: ManagementMemoryPort; settings: ManagementSettingsStore; snapshot(): ManagementSnapshot | Promise<ManagementSnapshot>; token?: string; port?: number; presentation?: PresentationControls; presentationAssets?: ReadonlyMap<string, string>; pendingMemory?:PendingMemoryManagement; projects?: ProjectIndexPort; tasks?: TaskManagement;
   /** Pairing is fixed by the runtime composition root; callers can filter domains, never change tenant scope. */
   unifiedTimeline?: (query: { readonly domains?: readonly EventDomain[]; readonly limit?: number; readonly cursor?: string }) => Promise<TimelineQueryResult>;
   traces?: import('../core/trace-store.js').RuntimeTraceStore;
@@ -52,7 +57,13 @@ interface RuntimeServerOptions { emotion?: EmotionManagement; aika?: import('./a
   /** 08-05: explicit, versioned ACP/MCP work cards and durable forget lifecycle. */
   workProtocol?: WorkProtocolManagement;
   /** 08-04: opt-in continuity-sourced invitations and shared quota/DND controls. */
-  proactiveInvitations?: ProactiveInvitationManagement; perception?: PerceptionManagementPort; }
+  proactiveInvitations?: ProactiveInvitationManagement; perception?: PerceptionManagementPort;
+  /** N081-06: local collection status, sources, samples and deletion. Absent leaves the section unavailable. */
+  collection?: CollectionManagementPort;
+  /** N082-08: companion mode runtime, batch runner, and observation scheduler */
+  companionMode?: import('../core/companion-mode-runtime.js').CompanionModeRuntime;
+  batchRunner?: import('../core/collection-batch-runner.js').CollectionBatchRunner;
+  observationScheduler?: import('../core/observation-scheduler.js').ObservationScheduler; }
 type ServerOptions = RuntimeServerOptions | { mode:'setup'; selfSetup:SelfSetupManagement; uiRoot:string; token?:string; presentationAssets?:undefined };
 const character = (value: unknown): CharacterId => { if (!isProductCharacter(value)) throw new ManagementError('invalid_request', '仅可访问当前陪伴角色。'); return value; };
 const integer = (value: unknown, fallback: number, min: number, max: number) => { const n = value === null || value === undefined ? fallback : Number(value); if (!Number.isSafeInteger(n) || n < min || n > max) throw new ManagementError('invalid_request', '数值范围无效。'); return n; };
@@ -105,7 +116,9 @@ export async function startManagementServer(options: ServerOptions) {
         if (!options.unifiedTimeline) throw new ManagementError('unavailable', '统一时间线尚未接入当前运行实例。');
         const rawDomains = q.get('domains');
         const domains = rawDomains === null ? undefined : rawDomains.split(',').filter(Boolean);
-        if (domains?.some(domain => !['canon', 'companion', 'work'].includes(domain))) throw new ManagementError('invalid_request', '时间线领域筛选无效。');
+        // N081-06: `collection` is an explicit opt-in domain. An absent `domains` still means the
+        // legacy three, so existing clients keep exactly their previous result set.
+        if (domains?.some(domain => !['canon', 'companion', 'work', 'collection'].includes(domain))) throw new ManagementError('invalid_request', '时间线领域筛选无效。');
         const rawCursor = q.get('cursor');
         const cursor = rawCursor === null ? undefined : str(rawCursor, 240);
         const input = {
@@ -126,6 +139,14 @@ export async function startManagementServer(options: ServerOptions) {
           () => body(req, url.pathname === '/api/perception/captures' ? 2_100_000 : 256 * 1024), value => json(res, 200, value))) return;
       }
       if (await projectRoute(req, url, options.projects, () => body(req), value => json(res, 200, value))) return;
+      // N082-08: companion mode & batch routes
+      if (await companionModeRoute(req.method, options.companionMode, options.batchRunner, options.observationScheduler, url.pathname, q, () => body(req), value => json(res, 200, value))) return;
+      // N081-06: local collection console. Bytes are served by the dedicated asset route only.
+      if (url.pathname.startsWith('/api/collection')) {
+        if (await collectionRoute(req.method, options.collection, url.pathname, q, () => body(req),
+          value => json(res, 200, value),
+          (bytes, mime) => { res.setHeader('Content-Type', mime); res.setHeader('Cache-Control', 'no-store'); res.end(bytes); })) return;
+      }
       if(url.pathname==='/api/memory-pending'&&req.method==='GET'){json(res,200,options.pendingMemory?.list()??{instanceId:(await options.snapshot()).runtime.instanceId,requests:[],busy:false});return;}
       if(['/api/memory-pending/retry','/api/memory-pending/cancel'].includes(url.pathname)&&req.method==='POST'){
         if(!options.pendingMemory)throw new ManagementError('unavailable','当前版本尚未接入未完成请求管理。');
@@ -144,11 +165,33 @@ export async function startManagementServer(options: ServerOptions) {
       }
       if (options.aika && url.pathname.startsWith('/api/aika/')) { json(res, 200, await aikaRoute(req.method, options.aika, url.pathname, url.searchParams, () => body(req))); return; }
       if (url.pathname.startsWith('/api/continuity/')) { json(res, 200, await continuityRoute(req.method, options.continuity, url.pathname, () => body(req))); return; }
+      if (url.pathname.startsWith('/api/playground/')) { json(res, 200, await playgroundRoute(req.method, options.playground, url.pathname, () => body(req), q)); return; }
       if (url.pathname.startsWith('/api/proactive/')) { json(res, 200, await proactiveInvitationRoute(req.method, options.proactiveInvitations, url.pathname, () => body(req))); return; }
       if (url.pathname.startsWith('/api/knowledge')) { json(res, 200, await knowledgeRoute(req.method, options.knowledge, url.pathname, () => body(req))); return; }
       if (req.method === 'GET' && url.pathname === '/api/next65/packages') {
         if (!options.next65) throw new ManagementError('unavailable', '0.65 包管理未接入。');
         json(res, 200, options.next65.packages());
+        return;
+      }
+      const packageActionMatch = /^\/api\/next65\/packages\/([^/]+)\/(disable|uninstall)$/.exec(url.pathname);
+      if (packageActionMatch && req.method === 'POST') {
+        if (!options.next65) throw new ManagementError('unavailable', '0.65 包管理未接入。');
+        const pkgId = decodeURIComponent(packageActionMatch[1]!);
+        const action = packageActionMatch[2];
+        if (action === 'disable') {
+          json(res, 200, options.next65.disable(pkgId));
+          return;
+        } else if (action === 'uninstall') {
+          options.next65.uninstall(pkgId);
+          json(res, 200, { uninstalled: true, packageId: pkgId });
+          return;
+        }
+      }
+      if (req.method === 'POST' && url.pathname === '/api/next65/packages/import') {
+        if (!options.next65) throw new ManagementError('unavailable', '0.65 包管理未接入。');
+        const b = await body(req);
+        const sourceRoot = str(b.sourceRoot, 1000);
+        json(res, 200, options.next65.importPackage(sourceRoot));
         return;
       }
       if (req.method === 'GET' && url.pathname === '/api/next65/truth') {
@@ -217,6 +260,20 @@ export async function startManagementServer(options: ServerOptions) {
         const b = await body(req); const text = str(b.text), operationId = str(b.operationId, 200);
         if (!text.trim() || !operationId.trim()) throw new ManagementError('invalid_request', '角色设定和操作编号不能为空。');
         json(res, 200, await options.memory.savePrompt({ characterId: character(b.characterId), expectedRevision: integer(b.expectedRevision, -1, 0, Number.MAX_SAFE_INTEGER), text, operationId })); return;
+      }
+      if (url.pathname === '/api/characters/preset') {
+        if (!options.presets) throw new ManagementError('unavailable', '角色预设服务未装载。');
+        if (req.method === 'GET') {
+          const charId = q.get('characterId') || 'companion';
+          json(res, 200, await options.presets.getPreset(charId));
+          return;
+        }
+        if (req.method === 'PUT') {
+          const b = await body(req);
+          json(res, 200, await options.presets.savePreset(b as any));
+          return;
+        }
+        throw new ManagementError('not_found', '请求方法不支持。');
       }
       if (req.method === 'PUT' && url.pathname === '/api/settings') { const b = await body(req); json(res, 200, await options.settings.save(integer(b.expectedRevision, -1, 0, Number.MAX_SAFE_INTEGER), b.settings)); return; }
       if (req.method === 'POST' && url.pathname === '/api/settings/rollback') { const b = await body(req); json(res, 200, await options.settings.rollback(integer(b.expectedRevision, -1, 0, Number.MAX_SAFE_INTEGER), integer(b.targetRevision, -1, 0, Number.MAX_SAFE_INTEGER))); return; }
