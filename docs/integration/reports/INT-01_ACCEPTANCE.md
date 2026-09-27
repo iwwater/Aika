@@ -1,5 +1,7 @@
 # INT-01 验收报告 · 文本与接口（自动消费者列）
 
+> 最新增量：2026-09-27 隔离 Tauri 宿主补验见文末。INT-01-D 当前 **PASS（隔离宿主）**；INT-01 整体仍 **PARTIAL**。下文较早日期的 NOT RUN 是当时的历史状态，不代表最新结论。
+
 - 性质：**部分验收报告**（2026-09-13，goal worker）。只覆盖[执行计划](../../GOAL_EXECUTION_PLAN.md) Wave 2 授权的「可自动消费者检查」；按 [SPEC](../SPEC.md) 2026-09-13 冻结的逐项 AC 分列，**部分通过不标整项 PASS**。
 - 基线 commit：`c0e7d17`。当前裁决：legacy 已删除，不测试恢复 legacy；只验唯一 Runtime、旧设置无害、双 id、兜底、Remote 路由。
 
@@ -89,3 +91,17 @@ INT-01-D 仍为 **PARTIAL**，INT-01 整体状态不变。下次宿主核验应�
 定时任务面板还经同一隔离宿主完成创建和取消，持久化状态从 `pending` 到 `cancelled`，页面无 alert。以上是实际 Tauri + plugin-sql/原生 SQLite 路径的证据。**INT-01-D 仍为 PARTIAL**：这轮验证的是 Wiki 与任务数据，聊天消息的 UI 插入/删除和专门的聊天错误 UI 仍 **NOT RUN**。INT-01 其余真实 Provider、Remote、旧库副本等列也未因此升级。正式 `com.aika.companion` 数据目录未访问。
 
 复验结束后停止指定隔离进程，并核对绝对路径后删除 `com.aika.companion.mergesmoke` 的 AppData 与本次 WebView2 测试 profile；构建产物及临时脚本均位于 Git 忽略的 `target/`，未纳入提交。
+
+## 补记：INT-01-D 与相邻页面项的真实宿主补验（2026-09-27）
+
+基线 `6c2918f`。复用本分支已编译的隔离 identifier 可执行文件，SHA-256 `EC891D0B693F18BCE2D98A3186D24B182917134A02313724D51091BDBA14EB16`。通过 WebView2 CDP 操作真实 Tauri 窗口，后端只指向 `127.0.0.1:18765` 的固定回环假 Provider，Key 为仅存于隔离目录的 dummy 值；它验证生产 UI→Runtime→Provider adapter→plugin-sql 编排，**不能证明真实 Provider 质量**。调试脚本位于 Git 忽略的 `src-tauri/target/`，每项退出码均为 0；第一次试跑因脚本路径未正确引用而未启动假 Provider，连接失败是测试环境问题，修正后用界面「重试」恢复，并验证失败提示可见。
+
+| 检查 | 实际证据 | 结论 |
+| --- | --- | --- |
+| 消息写入与撤回 | 成功回合写入用户/助手 2 行；故障回合出现 `is_error=1` 助手行；分别点击「撤回」后按轮删除，行数最终为 0。 | **PASS（隔离宿主）** |
+| 存储错误 UI 与失败不丢数据 | 对隔离库短时 `BEGIN EXCLUSIVE`，在 UI 点击撤回；页面 `role=alert` 显示 `database is locked`，消息仍在页面且库内保持 2 行。解除锁后再次撤回，库内为 0 行。 | **PASS（隔离宿主）** |
+| 旧库副本 | 预置仅有旧版 `messages` 字段和 `core.orchestrator=legacy` 的合成旧库；宿主启动后自动补 `runtime_turn_id`、`completion_status`、`conversation_id`，旧行新字段均为 NULL，旧设置值保留，旧消息在窗口可见且无存储错误。重开进程后旧行及新写入的消息继续可见。 | **PASS（合成旧 schema）**；真实用户历史库未取用 |
+| F1 浏览器交互 | 回环流式回复的正文与译文各显示一次；「重新生成」后同轮仍各一行；失败回合 `503` 显示错误，恢复假 Provider 后点「重试」得到成功回合；「回到这里」确认后只保留锚点之前消息；撤回已在上一行验证。朗读按钮已显示。 | **PARTIAL**：朗读实际发声与真人听感未测，按既定语音后置范围保留 |
+| 启动/重开与生产 DEV 开关 | 首次及旧库重开均 `Responding=True`、窗口非空；生产 DEV 开关构建证据见上文。 | **PASS** |
+
+因此 INT-01-D 的真实 Tauri 启动重开、plugin-sql 建表与消息增删、存储错误 UI、生产 DEV 开关四项已有本分支证据，列状态升为 **PASS（隔离宿主）**。INT-01-A 只补到假 Provider 的一条实际 UI/存储链，三模式与取消/迟到页面仍未补齐；INT-01-B 旧库证据是合成 schema；INT-01-C 真实手机、INT-01-F 真实 Provider 仍 **NOT RUN**。INT-01 整体保持 **PARTIAL**。隔离进程、假 Provider、测试 AppData 与 WebView2 profile 已停止并删除；只有不含日用数据的窗口截图留在本任务本地可视化目录，未进 Git。
