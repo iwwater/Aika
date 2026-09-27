@@ -89,7 +89,9 @@ INT-01报告为reports/INT-01_ACCEPTANCE.md，按AC与宿主分列。INT-02保�
 
 **INT-03 执行记录（2026-09-15）**：报告见 [reports/INT-03_ACCEPTANCE.md](reports/INT-03_ACCEPTANCE.md)。全量 1659 项 / tsc / `npm run build` / `cargo test --lib` 41 / release 构建 / MSI 打包 / 启动+重开渲染回归全绿；**NSIS 打包 BLOCKED（工具链获取 `timeout: global`）**、**安装/卸载回归 NOT RUN（需授权）**。按「只有全部适用门禁通过才发布就绪」，当前状态为**部分 PASS，不发布**。
 
-## INT-03 补验范围（2026-09-15 文档修订，未执行）
+**2026-09-27 当前分支补记**：当前分支全量 1718 项、原生 48 项通过，MSI 与 NSIS 均重新构建成功；独立命名、当前用户范围的 NSIS 包完成安装→启动→重开→卸载。详见同一 [INT-03 报告 §6](reports/INT-03_ACCEPTANCE.md)。上述 2026-09-15 的 BLOCKED/NOT RUN 属历史记录；当前发布状态仍因许可证范围和未完成的适用真实验收为 **BLOCKED**。
+
+## INT-03 历史补验范围（2026-09-15 文档修订；当前结果见上方补记）
 
 | AC | 后续操作与通过条件 |
 | --- | --- |
