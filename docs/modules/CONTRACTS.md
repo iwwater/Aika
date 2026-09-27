@@ -390,3 +390,11 @@ profile 键空间：`SEMANTIC_NAME` 允许**下划线与连字符**，因为 Aik
 | 表现出口互斥：集成启用时自研桌宠窗口让位 | `hooks/usePetWindow.ts`、`hooks/useDesktopPet.ts`、`App.tsx` | 行为增量。关闭集成即恢复自研窗口；关窗不取消主窗对话、不停 TTS（FE-20-G 不变） | FE-20/FE-31 设置区、PET-07 |
 
 语义边界：**关着的时候零网络、零进程**——`enabled=false` 时装配完成但不 enable、不请求 localhost、不 spawn；`testConnection()` 也只在启用后才真的探测。桌宠离线、超时或字段变化只影响桌宠表现，不阻塞 Provider/Runtime/存储；`Tool/审阅` 没有真实公开事件，只有受控显式入口，不按文本猜测。
+
+### 2026-09-27 存储执行器增量（v1 可选追加）
+
+| 追加 | 位置 | 兼容方式 | 受影响消费者 |
+| --- | --- | --- | --- |
+| `SqlExecutor.executeBatch?(statements)` | `services/memory/sqliteMemoryStore.ts`、`services/storage/sqliteStorage.ts` | 可选；既有 executor/fake 不需改动。Tauri 生产 executor 通过 `knowledge_sql_batch` 在同一 SQLite 连接上提交一批写入；批中任一语句失败则回滚。 | `services/knowledge/knowledgeIndex.ts` 是当前唯一调用方；Memory、Trace 等原有 `execute/select` 消费方不变。 |
+
+`knowledge_sql_batch` 固定操作宿主配置目录的 `aika.db`；它解决 plugin-sql 池化连接上分开执行 `BEGIN` 和 DML 时不共享事务的问题。知识索引在缺少 `executeBatch` 的测试 executor 中继续使用原事务路径。此次没有改变语音契约或领域层依赖。

@@ -58,3 +58,34 @@ npm run build                        退出码 0；产物 dist/assets/index-6kdO
 | plugin-sql 生产库建表、插入、删除与错误 UI | **NOT RUN**：浏览器 localStorage 和 node:sqlite 证据不能替代真实 Tauri plugin-sql。 |
 
 INT-01-D 仍为 **PARTIAL**，INT-01 整体状态不变。下次宿主核验应在隔离测试数据根进行，记录可执行文件基线、数据库位置、窗口/错误 UI 与重开结果；不读取或改写日用数据。
+
+## 补记：当前分支原生宿主与隔离库（2026-09-27）
+
+同一 `8317093` 源码基线，先在 `aika-crossplatform/src-tauri/` 执行 `cargo build --release --offline --features custom-protocol`，**退出码 0**（2m09s），得到 28,143,104 字节的 Release 可执行文件。编译有 2 条既有 Rust 警告和 linker 信息，均未导致失败。为避免正式 identifier `com.aika.companion` 触及日用数据，未启动这份正式配置的可执行文件。
+
+随后只覆盖构建环境中的 `TAURI_CONFIG={"identifier":"com.aika.companion.mergesmoke"}`，以相同源码、`custom-protocol` 和能力配置重新离线编译，**退出码 0**（41.39s）。隔离版可执行文件 SHA-256：`06E376D744DEC16A7227B69A52E222210B0AF78E30CAF9841A413FE38152EA5E`；identifier 变更只用于使 plugin-sql 落在独立数据目录，此文件不是发布产物。
+
+| INT-01-D 子项 | 当前证据和结论 |
+| --- | --- |
+| 真实 Tauri 启动与重开 | **PASS（隔离配置）**：启动前隔离目录不存在；首次进程 PID 17840，主窗 handle 1444830、标题 `愛花 Aika`、`Responding=True`。`PrintWindow(PW_RENDERFULLCONTENT=2)` 只抓测试窗口，确认聊天、角色和侧栏完整渲染。结束指定 PID 后重开为 PID 3648，主窗 handle 984862、`Responding=True`，再次抓图确认非空白页。 |
+| plugin-sql 生产路径建库建表 | **PASS（隔离配置）**：首次启动生成 `%APPDATA%/com.aika.companion.mergesmoke/aika.db`；只读查询 `sqlite_master` 见 `messages`、`settings`、`memories`、`summaries`、`memories_v2`、`knowledge_documents` 等表。重开后表仍在，`messages=0`、`settings=1`。生产前端调用 `createSqliteStorage()`，未注入测试 executor。 |
+| 消息插入/删除与错误 UI | **NOT RUN**：没有在窗口执行消息增删，也未注入 SQL 故障；上述建库和只读查询不代替这两项。正式 identifier 的日用库亦未启动或读取。 |
+
+该轮隔离进程已结束；新建的 `com.aika.companion.mergesmoke` 目录经路径核对后删除。两张窗口截图保存在本任务本地可视化目录，未加入 Git。当时 **INT-01-D 为 PARTIAL**；以下补记继续核验真实宿主写入路径。
+
+## 补记：知识索引原子写入修复与宿主复验（2026-09-27）
+
+隔离版原生宿主经 WebView2 CDP 操作设置页。修复前，在 Wiki 表单保存一条知识时，页面显示 `database is locked`，`knowledge_documents/chunks` 均为 0。原因是知识索引把 `BEGIN IMMEDIATE`、DML、`COMMIT` 分别送给 plugin-sql；插件从连接池取连接，各调用不保证落在同一连接。故改为 Tauri 原生 `knowledge_sql_batch`，固定操作当前应用配置目录的 `aika.db`，用同一 `sqlx` 连接开启事务并提交整批语句；失败时事务回滚。`SqlExecutor.executeBatch?` 是向后兼容的可选增量，调用方只有知识索引；测试 executor 保留旧路径。FTS 重建改为事务内单条 `INSERT … SELECT`。
+
+| 验证命令/操作 | 结果 | 退出码 |
+| --- | --- | --- |
+| `npx tsc --noEmit`（`aika-crossplatform/`） | 类型检查通过 | 0 |
+| `npx vitest run src/services/knowledge/knowledgeIndex.test.ts src/services/storage/sqliteStorage.test.ts` | 2 文件、14 测试通过；新增用例确认导入/删除各发一批且不向池化执行器发 `BEGIN` | 0 |
+| `npm run build`（`aika-crossplatform/`） | 2075 模块、产物生成；仅已有分包体积/混合 import 警告 | 0 |
+| `TAURI_CONFIG` 仅覆盖 identifier 为 `com.aika.companion.mergesmoke`，`cargo build --release --offline --features custom-protocol` | 当前修复的隔离宿主编译通过；既有 3 条 Rust 警告 | 0 |
+| WebView2 设置页 Wiki 表单保存、删除 | 独立库文档/切块行数 `0/0 → 1/1 → 0/0`，条目显示后消失，页面 alert 数 0 | PASS |
+| 原生命令故障注入：同一批对 `settings.key` 重复插入 | 第二条报 `UNIQUE`；失败后查询为 0 行，后续单批插入成功，清理后又为 0 行；无残留锁 | PASS |
+
+定时任务面板还经同一隔离宿主完成创建和取消，持久化状态从 `pending` 到 `cancelled`，页面无 alert。以上是实际 Tauri + plugin-sql/原生 SQLite 路径的证据。**INT-01-D 仍为 PARTIAL**：这轮验证的是 Wiki 与任务数据，聊天消息的 UI 插入/删除和专门的聊天错误 UI 仍 **NOT RUN**。INT-01 其余真实 Provider、Remote、旧库副本等列也未因此升级。正式 `com.aika.companion` 数据目录未访问。
+
+复验结束后停止指定隔离进程，并核对绝对路径后删除 `com.aika.companion.mergesmoke` 的 AppData 与本次 WebView2 测试 profile；构建产物及临时脚本均位于 Git 忽略的 `target/`，未纳入提交。
