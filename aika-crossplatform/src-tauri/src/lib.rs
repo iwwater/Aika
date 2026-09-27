@@ -6,6 +6,7 @@ mod pet_click_endpoint;
 mod remote;
 mod screen;
 mod secret_store;
+mod sql_batch;
 mod window_access;
 
 use tauri::menu::{Menu, MenuItem};
@@ -65,6 +66,7 @@ pub fn run() {
             secret_store::secret_set,
             secret_store::secret_get,
             secret_store::secret_delete,
+            sql_batch::knowledge_sql_batch,
         ])
         .setup(|app| {
             // 反向点击通道（MVP-12）：绑回环、端口由系统分配。**启动监听本身不是

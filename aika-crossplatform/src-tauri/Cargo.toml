@@ -34,6 +34,7 @@ serde_json = "1"
 tauri-plugin-http = "2.5.9"
 tauri-plugin-sql = { version = "2.4.1", features = ["sqlite"] }
 tauri-plugin-notification = "2.4.0"
+sqlx = { version = "0.8", features = ["sqlite"] }
 base64 = "0.23.1"
 # 手机远程终端的 HTTP 服务。选它是因为够小、同步、不用把 async 运行时拖进来。
 tiny_http = "0.12"

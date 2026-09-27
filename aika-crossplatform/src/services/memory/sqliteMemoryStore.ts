@@ -73,6 +73,7 @@ export const MEMORY_MIGRATION_SETTING_KEY = "memory.migrationVersion";
 export interface SqlExecutor {
   execute(query: string, bindValues?: unknown[]): Promise<unknown>;
   select<T>(query: string, bindValues?: unknown[]): Promise<T>;
+  executeBatch?(statements: readonly { query: string; values: unknown[] }[]): Promise<void>;
 }
 
 interface MemoryRow {

@@ -324,3 +324,38 @@ describe("LLM-05-E 安全与装配边界", () => {
     }
   });
 });
+
+describe("知识索引的宿主批处理路径", () => {
+  it("导入和删除都提交为单批写入，不向池化执行器发送 BEGIN", async () => {
+    const { executor } = openMemorySqlite();
+    let batches = 0;
+    const db: SqlExecutor = {
+      execute: (query, values) => {
+        if (/^BEGIN\b/i.test(query)) throw new Error("池化连接不能跨调用持有事务");
+        return executor.execute(query, values);
+      },
+      select: (query, values) => executor.select(query, values),
+      executeBatch: async (statements) => {
+        batches += 1;
+        await executor.execute("BEGIN IMMEDIATE");
+        try {
+          for (const statement of statements) {
+            await executor.execute(statement.query, statement.values);
+          }
+          await executor.execute("COMMIT");
+        } catch (error) {
+          await executor.execute("ROLLBACK");
+          throw error;
+        }
+      },
+    };
+    const index = createKnowledgeIndex({ db, readFile: reader });
+    expect((await index.importDocuments([ENTRIES[0]])).updated).toBe(1);
+    const before = await executor.select<{ id: string }[]>("SELECT id FROM knowledge_documents");
+    expect(before).toHaveLength(1);
+    await index.removeDocument(before[0].id);
+    const after = await executor.select<{ id: string }[]>("SELECT id FROM knowledge_documents");
+    expect(after).toEqual([]);
+    expect(batches).toBe(2);
+  });
+});

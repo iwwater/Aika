@@ -139,10 +139,20 @@ function parseJsonArray(raw: string | null | undefined): string[] {
   }
 }
 
-async function withTransaction<T>(db: SqlExecutor, work: () => Promise<T>): Promise<T> {
+async function withTransaction<T>(db: SqlExecutor, work: (writer: SqlExecutor) => Promise<T>): Promise<T> {
+  if (db.executeBatch) {
+    const statements: { query: string; values: unknown[] }[] = [];
+    const writer: SqlExecutor = {
+      execute: async (query, values = []) => { statements.push({ query, values }); },
+      select: (query, values) => db.select(query, values),
+    };
+    const result = await work(writer);
+    if (statements.length) await db.executeBatch(statements);
+    return result;
+  }
   await db.execute("BEGIN IMMEDIATE");
   try {
-    const result = await work();
+    const result = await work(db);
     await db.execute("COMMIT");
     return result;
   } catch (error) {
@@ -204,7 +214,7 @@ export function createKnowledgeIndex(options: KnowledgeIndexOptions): KnowledgeI
     return hash;
   }
 
-  async function importOne(entry: KnowledgeImportEntry, raw: string): Promise<"updated" | "skipped"> {
+  async function importOne(entry: KnowledgeImportEntry, raw: string, writer: SqlExecutor): Promise<"updated" | "skipped"> {
     if (!entry.characterId || !isKnowledgeType(entry.type)) {
       throw new Error(`知识导入参数不完整：${entry.path}`);
     }
@@ -235,9 +245,9 @@ export function createKnowledgeIndex(options: KnowledgeIndexOptions): KnowledgeI
 
     // staging：全部以 active=0 写入；同事务内切换激活，失败整体回滚。
     // FTS 不做增量删改——事务末尾 rebuildFts 统一按激活行重建。
-    await db.execute("DELETE FROM knowledge_chunks WHERE document_id = $1", [id]);
-    await db.execute("DELETE FROM knowledge_documents WHERE id = $1", [id]);
-    await db.execute(
+    await writer.execute("DELETE FROM knowledge_chunks WHERE document_id = $1", [id]);
+    await writer.execute("DELETE FROM knowledge_documents WHERE id = $1", [id]);
+    await writer.execute(
       `INSERT INTO knowledge_documents
        (id, source_path, content_hash, version, character_id, type, tags, unlock_stage, allowed_modes, active, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, $10)`,
@@ -245,26 +255,23 @@ export function createKnowledgeIndex(options: KnowledgeIndexOptions): KnowledgeI
         JSON.stringify(tags), entry.unlockStage, JSON.stringify(allowedModes ?? []), now()],
     );
     for (const chunk of chunks) {
-      await db.execute(
+      await writer.execute(
         "INSERT INTO knowledge_chunks (id, document_id, section, text, order_index, active) VALUES ($1, $2, $3, $4, $5, 0)",
         [chunk.id, chunk.documentId, chunk.section, chunk.text, chunk.order],
       );
     }
     // 原子激活：只有本批文档翻 1，其他文档不动（“不删除未在本批出现的其他文档”）。
-    await db.execute("UPDATE knowledge_documents SET active = 1 WHERE id = $1", [id]);
-    await db.execute("UPDATE knowledge_chunks SET active = 1 WHERE document_id = $1", [id]);
+    await writer.execute("UPDATE knowledge_documents SET active = 1 WHERE id = $1", [id]);
+    await writer.execute("UPDATE knowledge_chunks SET active = 1 WHERE document_id = $1", [id]);
     return "updated";
   }
 
-  async function rebuildFts(): Promise<void> {
+  async function rebuildFts(writer: SqlExecutor): Promise<void> {
     if (!ftsAvailable) return;
-    await db.execute("DELETE FROM knowledge_fts");
-    const rows = await db.select<ChunkRow[]>(
-      "SELECT id, text FROM knowledge_chunks WHERE active = 1",
+    await writer.execute("DELETE FROM knowledge_fts");
+    await writer.execute(
+      "INSERT INTO knowledge_fts (id, content) SELECT id, text FROM knowledge_chunks WHERE active = 1",
     );
-    for (const row of Array.isArray(rows) ? rows : []) {
-      await db.execute("INSERT INTO knowledge_fts (id, content) VALUES ($1, $2)", [row.id, row.text]);
-    }
   }
 
   function cacheKey(query: KnowledgeQuery, revisionValue: number): string {
@@ -407,14 +414,14 @@ export function createKnowledgeIndex(options: KnowledgeIndexOptions): KnowledgeI
         let skipped = 0;
         const reader = options.readFile;
         if (!reader) throw new Error("未注入 KnowledgeFileReader，无法读取知识文件");
-        await withTransaction(db, async () => {
+        await withTransaction(db, async (writer) => {
           for (const entry of entries) {
             const raw = await reader.read(entry.path);
-            const outcome = await importOne(entry, raw);
+            const outcome = await importOne(entry, raw, writer);
             if (outcome === "updated") updated += 1;
             else skipped += 1;
           }
-          await rebuildFts();
+          await rebuildFts(writer);
         });
         if (updated) bumpRevision();
         return { updated, skipped };
@@ -432,13 +439,13 @@ export function createKnowledgeIndex(options: KnowledgeIndexOptions): KnowledgeI
       const run = importChain.then(async () => {
         let updated = 0;
         let skipped = 0;
-        await withTransaction(db, async () => {
+        await withTransaction(db, async (writer) => {
           for (const entry of entries) {
-            const outcome = await importOne(entry, entry.content);
+            const outcome = await importOne(entry, entry.content, writer);
             if (outcome === "updated") updated += 1;
             else skipped += 1;
           }
-          await rebuildFts();
+          await rebuildFts(writer);
         });
         if (updated) bumpRevision();
         return { updated, skipped };
@@ -472,12 +479,11 @@ export function createKnowledgeIndex(options: KnowledgeIndexOptions): KnowledgeI
 
     async removeDocument(id: string): Promise<void> {
       await ensureSchema();
-      await withTransaction(db, async () => {
-        await db.execute("DELETE FROM knowledge_documents WHERE id = $1", [id]);
-        await db.execute("DELETE FROM knowledge_chunks WHERE document_id = $1", [id]);
+      await withTransaction(db, async (writer) => {
+        await writer.execute("DELETE FROM knowledge_documents WHERE id = $1", [id]);
+        await writer.execute("DELETE FROM knowledge_chunks WHERE document_id = $1", [id]);
         // FTS 整表清掉重建：本地小语料下最不易漂移的删除路径。
-        await db.execute("DELETE FROM knowledge_fts");
-        await rebuildFts();
+        await rebuildFts(writer);
       });
       bumpRevision();
     },

@@ -1,4 +1,5 @@
 import Database from "@tauri-apps/plugin-sql";
+import { invoke } from "@tauri-apps/api/core";
 import { formatClockTime, type ChatMessage, type MessageSource } from "../../domain/conversation";
 import { isMemoryCategory, type MemoryRecord } from "../../domain/memory";
 import { normalizeMood } from "../../domain/mood";
@@ -155,6 +156,11 @@ function toMemory(row: MemoryRow): MemoryRecord {
  */
 export async function createSqliteStorage(executor?: SqlExecutor): Promise<AikaStorage> {
   const db = executor ?? await Database.load(DB_URL);
+  const sqlExecutor: SqlExecutor = executor ?? {
+    execute: (query, values) => db.execute(query, values),
+    select: <T>(query: string, values?: unknown[]) => db.select<T>(query, values),
+    executeBatch: (statements) => invoke<void>("knowledge_sql_batch", { statements }),
+  };
   for (const statement of SCHEMA) await db.execute(statement);
   for (const statement of MIGRATIONS) {
     try {
@@ -172,7 +178,7 @@ export async function createSqliteStorage(executor?: SqlExecutor): Promise<AikaS
     kind: "sqlite",
     memoryV2: createSqliteMemoryStore(db, { fts }),
     // Trace 落盘等「自带表」的消费者从这里拿执行器，各自建表、各自清理。
-    sqlExecutor: db,
+    sqlExecutor,
 
     async listMessages(limit, scope) {
       // scope 过滤（RT-02）：local 归属同时匹配旧数据的 NULL（可回退，不丢历史）。
